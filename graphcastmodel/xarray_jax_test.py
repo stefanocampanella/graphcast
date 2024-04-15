@@ -15,7 +15,7 @@
 
 from absl.testing import absltest
 import chex
-from graphcast import xarray_jax
+from graphcastmodel import xarray_jax
 import jax
 import jax.numpy as jnp
 import numpy as np

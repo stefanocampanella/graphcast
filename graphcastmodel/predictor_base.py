@@ -17,8 +17,8 @@ import abc
 
 from typing import Tuple
 
-from graphcast import losses
-from graphcast import xarray_jax
+from graphcastmodel import losses
+from graphcastmodel import xarray_jax
 import jax.numpy as jnp
 import xarray
 
