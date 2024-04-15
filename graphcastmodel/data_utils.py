@@ -15,7 +15,7 @@
 
 from typing import Any, Mapping, Sequence, Tuple, Union
 
-from graphcast import solar_radiation
+from graphcastmodel import solar_radiation
 import numpy as np
 import pandas as pd
 import xarray

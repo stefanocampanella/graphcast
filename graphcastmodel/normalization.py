@@ -21,8 +21,8 @@ to the original domain.
 import logging
 from typing import Optional, Tuple
 
-from graphcast import predictor_base
-from graphcast import xarray_tree
+from graphcastmodel import predictor_base
+from graphcastmodel import xarray_tree
 import xarray
 
 
