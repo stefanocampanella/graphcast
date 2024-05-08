@@ -28,7 +28,7 @@ setup(
     license="Apache License, Version 2.0",
     keywords="GraphCast Weather Prediction",
     url="https://github.com/deepmind/graphcast",
-    packages=["graphcast"],
+    packages=["graphcastmodel"],
     install_requires=[
         "cartopy",
         "chex",
@@ -36,7 +36,7 @@ setup(
         "dask",
         "dm-haiku",
         "dm-tree",
-        "jax",
+        "jax[cuda12_local]==v0.4.16",
         "jraph",
         "matplotlib",
         "numpy",
