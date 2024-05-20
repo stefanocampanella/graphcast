@@ -69,7 +69,7 @@ PRESSURE_LEVELS = {
 
 # The list of all possible atmospheric variables. Taken from:
 # https://confluence.ecmwf.int/display/CKB/ERA5%3A+data+documentation#ERA5:datadocumentation-Table9
-ALL_ATMOSPHERIC_VARS = (
+ALL_VOLUME_VARS = (
     "potential_vorticity",
     "specific_rain_water_content",
     "specific_snow_water_content",
@@ -101,7 +101,7 @@ TARGET_SURFACE_NO_PRECIP_VARS = (
     "10m_v_component_of_wind",
     "10m_u_component_of_wind",
 )
-TARGET_ATMOSPHERIC_VARS = (
+TARGET_VOLUME_VARS = (
     "temperature",
     "geopotential",
     "u_component_of_wind",
@@ -109,23 +109,24 @@ TARGET_ATMOSPHERIC_VARS = (
     "vertical_velocity",
     "specific_humidity",
 )
-TARGET_ATMOSPHERIC_NO_W_VARS = (
+TARGET_VOLUME_NO_W_VARS = (
     "temperature",
     "geopotential",
     "u_component_of_wind",
     "v_component_of_wind",
     "specific_humidity",
 )
-EXTERNAL_FORCING_VARS = (
+EXTERNAL_FORCING_SURFACE_VARS = (
     "toa_incident_solar_radiation",
 )
+EXTERNAL_FORCING_VOLUME_VARS = ()
 GENERATED_FORCING_VARS = (
     "year_progress_sin",
     "year_progress_cos",
     "day_progress_sin",
     "day_progress_cos",
 )
-FORCING_VARS = EXTERNAL_FORCING_VARS + GENERATED_FORCING_VARS
+FORCING_VARS = EXTERNAL_FORCING_SURFACE_VARS + GENERATED_FORCING_VARS
 STATIC_VARS = (
     "geopotential_at_surface",
     "land_sea_mask",
@@ -144,27 +145,27 @@ class TaskConfig:
 
 TASK = TaskConfig(
     input_variables=(
-        TARGET_SURFACE_VARS + TARGET_ATMOSPHERIC_VARS + FORCING_VARS +
-        STATIC_VARS),
-    target_variables=TARGET_SURFACE_VARS + TARGET_ATMOSPHERIC_VARS,
+            TARGET_SURFACE_VARS + TARGET_VOLUME_VARS + FORCING_VARS +
+            STATIC_VARS),
+    target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
     forcing_variables=FORCING_VARS,
     pressure_levels=PRESSURE_LEVELS_ERA5_37,
     input_duration="12h",
 )
 TASK_13 = TaskConfig(
     input_variables=(
-        TARGET_SURFACE_VARS + TARGET_ATMOSPHERIC_VARS + FORCING_VARS +
-        STATIC_VARS),
-    target_variables=TARGET_SURFACE_VARS + TARGET_ATMOSPHERIC_VARS,
+            TARGET_SURFACE_VARS + TARGET_VOLUME_VARS + FORCING_VARS +
+            STATIC_VARS),
+    target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
     forcing_variables=FORCING_VARS,
     pressure_levels=PRESSURE_LEVELS_WEATHERBENCH_13,
     input_duration="12h",
 )
 TASK_13_PRECIP_OUT = TaskConfig(
     input_variables=(
-        TARGET_SURFACE_NO_PRECIP_VARS + TARGET_ATMOSPHERIC_VARS + FORCING_VARS +
-        STATIC_VARS),
-    target_variables=TARGET_SURFACE_VARS + TARGET_ATMOSPHERIC_VARS,
+            TARGET_SURFACE_NO_PRECIP_VARS + TARGET_VOLUME_VARS + FORCING_VARS +
+            STATIC_VARS),
+    target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
     forcing_variables=FORCING_VARS,
     pressure_levels=PRESSURE_LEVELS_WEATHERBENCH_13,
     input_duration="12h",
@@ -293,9 +294,9 @@ class GraphCast(predictor_base.Predictor):
     )
 
     num_surface_vars = len(
-        set(task_config.target_variables) - set(ALL_ATMOSPHERIC_VARS))
+        set(task_config.target_variables) - set(ALL_VOLUME_VARS))
     num_atmospheric_vars = len(
-        set(task_config.target_variables) & set(ALL_ATMOSPHERIC_VARS))
+        set(task_config.target_variables) & set(ALL_VOLUME_VARS))
     num_outputs = (num_surface_vars +
                    len(task_config.pressure_levels) * num_atmospheric_vars)
 
