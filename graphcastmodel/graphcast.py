@@ -45,47 +45,43 @@ Kwargs = Mapping[str, Any]
 
 GNN = Callable[[jraph.GraphsTuple], jraph.GraphsTuple]
 
+# https://doi.org/10.25423/CMCC/MEDSEA_MULTIYEAR_PHY_006_004_E3R1
+# https://doi.org/10.25423/cmcc/medsea_multiyear_bgc_006_008_medbfm3
+MINIMUM_LONGITUDE = -5.541666507720947
+MAXIMUM_LONGITUDE = 36.29166793823242
+MINIMUM_LATITUDE = 30.1875
+MAXIMUM_LATITUDE = 45.97916793823242
+# Subset of available depths selected using depths[_range_subsample(124, 0.05)]
+DEPTHS_37 = (
+    1.0182366, 3.1657474, 7.9203773, 13.318384, 19.39821, 26.2004,
+    33.767673, 42.14504, 51.37986, 61.521957, 72.62369, 84.74004,
+    97.92873, 112.250206, 127.76784, 153.43285, 182.17535, 214.24716,
+    249.91585, 289.46478, 333.19315, 381.41544, 434.46106, 513.287,
+    602.1486, 701.92865, 813.53485, 937.8891, 1075.9143, 1269.0518,
+    1486.6678, 1730.3303, 2001.4166, 2301.0576, 2699.4736, 3141.0015,
+    3625.7039)
 
-# https://www.ecmwf.int/en/forecasts/dataset/ecmwf-reanalysis-v5
-PRESSURE_LEVELS_ERA5_37 = (
-    1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 125, 150, 175, 200, 225, 250, 300,
-    350, 400, 450, 500, 550, 600, 650, 700, 750, 775, 800, 825, 850, 875, 900,
-    925, 950, 975, 1000)
-
-# https://www.ecmwf.int/en/forecasts/datasets/set-i
-PRESSURE_LEVELS_HRES_25 = (
-    1, 2, 3, 5, 7, 10, 20, 30, 50, 70, 100, 150, 200, 250, 300, 400, 500, 600,
-    700, 800, 850, 900, 925, 950, 1000)
-
-# https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2020MS002203
-PRESSURE_LEVELS_WEATHERBENCH_13 = (
-    50, 100, 150, 200, 250, 300, 400, 500, 600, 700, 850, 925, 1000)
-
-PRESSURE_LEVELS = {
-    13: PRESSURE_LEVELS_WEATHERBENCH_13,
-    25: PRESSURE_LEVELS_HRES_25,
-    37: PRESSURE_LEVELS_ERA5_37,
+DEPTH_LEVELS = {
+    37: DEPTHS_37,
 }
 
 # The list of all possible atmospheric variables. Taken from:
 # https://confluence.ecmwf.int/display/CKB/ERA5%3A+data+documentation#ERA5:datadocumentation-Table9
 ALL_VOLUME_VARS = (
-    "potential_vorticity",
-    "specific_rain_water_content",
-    "specific_snow_water_content",
-    "geopotential",
-    "temperature",
-    "u_component_of_wind",
-    "v_component_of_wind",
-    "specific_humidity",
-    "vertical_velocity",
-    "vorticity",
-    "divergence",
-    "relative_humidity",
-    "ozone_mass_mixing_ratio",
-    "specific_cloud_liquid_water_content",
-    "specific_cloud_ice_water_content",
-    "fraction_of_cloud_cover",
+    "o2",
+    "nppv",
+    "ph",
+    "dissic",
+    "talk",
+    "no3",
+    "po4",
+    "nh4",
+    "phyc",
+    "chl",
+    "uo",
+    "vo",
+    "so",
+    "thetao"
 )
 
 TARGET_SURFACE_VARS = (
@@ -149,25 +145,7 @@ TASK = TaskConfig(
             STATIC_VARS),
     target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
     forcing_variables=FORCING_VARS,
-    pressure_levels=PRESSURE_LEVELS_ERA5_37,
-    input_duration="12h",
-)
-TASK_13 = TaskConfig(
-    input_variables=(
-            TARGET_SURFACE_VARS + TARGET_VOLUME_VARS + FORCING_VARS +
-            STATIC_VARS),
-    target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
-    forcing_variables=FORCING_VARS,
-    pressure_levels=PRESSURE_LEVELS_WEATHERBENCH_13,
-    input_duration="12h",
-)
-TASK_13_PRECIP_OUT = TaskConfig(
-    input_variables=(
-            TARGET_SURFACE_NO_PRECIP_VARS + TARGET_VOLUME_VARS + FORCING_VARS +
-            STATIC_VARS),
-    target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
-    forcing_variables=FORCING_VARS,
-    pressure_levels=PRESSURE_LEVELS_WEATHERBENCH_13,
+    pressure_levels=DEPTHS_37,
     input_duration="12h",
 )
 

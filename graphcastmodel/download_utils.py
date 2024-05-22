@@ -1,38 +1,67 @@
-MED_CMCC_PHY_REAN = "MEDSEA_MULTIYEAR_PHY_006_004"
-MED_OGS_BGC_REAN = "MEDSEA_MULTIYEAR_BGC_006_008"
-
-DATASET_IDS = ("med-ogs-bio-rean-d",
-               "med-ogs-car-rean-d",
-               "med-ogs-nut-rean-d",
-               "med-ogs-pft-rean-d",
-               "med-cmcc-cur-rean-d",
-               "med-cmcc-sal-rean-d",
-               "med-cmcc-tem-rean-d")
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import copernicusmarine as cm
-from typing import Union, Iterable
+import xarray as xr
+import graphcastmodel.graphcast as bfmcastmodel
 
-CatalogueTree = Union[dict[str, Iterable['CatalogueTree']], list[Iterable['CatalogueTree']], str]
+from math import ceil, exp
 
-catalogue = cm.catalogue(include_datasets=True)
+DATASET_IDS = {"med-ogs-bio-rean-d": {"version": "202105", "variables": ("nppv", "o2")},
+               "med-ogs-car-rean-d": {"version": "202105", "variables": ("ph", "talk", "dissic")},
+               "med-ogs-co2-rean-d": {"version": "202105", "variables": ("fpco2", "spco2")},
+               "med-ogs-nut-rean-d": {"version": "202105", "variables": ("nh4", "po4", "no3")},
+               "med-ogs-pft-rean-d": {"version": "202105", "variables": ("phyc", "chl")},
+               "med-cmcc-cur-rean-d": {"version": "202012", "variables": ("uo", "vo")},
+               "med-cmcc-sal-rean-d": {"version": "202012", "variables": ("so", )},
+               "med-cmcc-tem-rean-d": {"version": "202012", "variables": ("thetao", )}}
 
-def find_first_matching_subtree(tree: CatalogueTree, search_key: str, valid_values: list[str]) -> CatalogueTree:
-    """Finds first subtree which is a `dict`, that has `search_key` among its keys, whose value is among `valid_values`
+DATASET_PART = "default"
+SERVICE = "arco-geo-series"
 
-    Args:
-        tree: tree to search for valid subtree
-        search_key: key to be searched
-        valid_values: list of valid value names
 
-    Returns:
-        First valid subtree
-    """
-    if isinstance(tree, list):
-        for subtree in tree:
-            find_first_matching_subtree(subtree, search_key, valid_values)
-    elif isinstance(tree, dict):
-        if search_key in tree.keys() and tree[search_key] in valid_values:
-            return tree
+def _range_subsampled(stop, start=0, scale=0.05):
+    last = start
+    k = 0
+    while True:
+        next = last + ceil(exp(scale * k))
+        if next <= stop:
+            last = next
+            k = k + 1
+            yield next
         else:
-            for subtree in tree.values():
-                find_first_matching_subtree(subtree, search_key, valid_values)
+            break
+
+
+def _dataset_generator(variables, **kwargs):
+    for (dataset_id, specs) in DATASET_IDS.items():
+        dataset_version = specs["version"]
+        dataset_variables = specs["variables"]
+        if selected_variables := [name for name in variables if name in dataset_variables]:
+            # TODO: add (batch, datetime) coordinates and retry if connection is lost
+            yield cm.open_dataset(
+                dataset_id=dataset_id,
+                variables=selected_variables,
+                dataset_version=dataset_version,
+                dataset_part=DATASET_PART,
+                service=SERVICE,
+                minimum_latitude=bfmcastmodel.MINIMUM_LATITUDE,
+                maximum_latitude=bfmcastmodel.MAXIMUM_LATITUDE,
+                minimum_longitude=bfmcastmodel.MINIMUM_LONGITUDE,
+                maximum_longitude=bfmcastmodel.MAXIMUM_LONGITUDE,
+                **kwargs)
+
+
+def open_dataset(variables, depths, **kwargs):
+    return xr.merge(
+        map(lambda ds: ds.sel(depth=depths) if 'depth' in ds.dims else ds,
+            _dataset_generator(variables, **kwargs)))
