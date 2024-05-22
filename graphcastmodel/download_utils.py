@@ -47,8 +47,13 @@ def _dataset_generator(variables, **kwargs):
         dataset_version = specs["version"]
         dataset_variables = specs["variables"]
         if selected_variables := [name for name in variables if name in dataset_variables]:
-            # TODO: add (batch, datetime) coordinates and retry if connection is lost
-            yield cm.open_dataset(
+            # TODO:
+            #  1. add dummy batch dimension to all variables X
+            #  2. change time coordinate to store leadtime :: timedelta X
+            #  3. add datetime coordinate X
+            #  4. change depth to levels :: int32?
+            #  5. retry if network is unresponsive
+            ds = cm.open_dataset(
                 dataset_id=dataset_id,
                 variables=selected_variables,
                 dataset_version=dataset_version,
@@ -59,6 +64,10 @@ def _dataset_generator(variables, **kwargs):
                 minimum_longitude=bfmcastmodel.MINIMUM_LONGITUDE,
                 maximum_longitude=bfmcastmodel.MAXIMUM_LONGITUDE,
                 **kwargs)
+            ds = ds.expand_dims(dim='batch', axis=0)
+            ds = ds.assign_coords({'datetime': ds['time'].expand_dims(dim='batch', axis=0)})
+            ds['time'] = ds['time'] - ds['time'][0]
+            yield ds
 
 
 def open_dataset(variables, depths, **kwargs):
