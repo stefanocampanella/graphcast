@@ -83,34 +83,30 @@ ALL_VOLUME_VARS = (
     "so",
     "thetao"
 )
-
-TARGET_SURFACE_VARS = (
-    "2m_temperature",
-    "mean_sea_level_pressure",
-    "10m_v_component_of_wind",
-    "10m_u_component_of_wind",
-    "total_precipitation_6hr",
+ALL_SURFACE_VARS = (
+    "fpco2",
+    "spco2"
 )
-TARGET_SURFACE_NO_PRECIP_VARS = (
-    "2m_temperature",
-    "mean_sea_level_pressure",
-    "10m_v_component_of_wind",
-    "10m_u_component_of_wind",
+TARGET_SURFACE_VARS = (
+    "fpco2",
+    "spco2"
 )
 TARGET_VOLUME_VARS = (
+    "o2",
+    "nppv",
+    "ph",
+    "dissic",
+    "talk",
+    "no3",
+    "po4",
+    "nh4",
+    "phyc",
+    "chl",
+    "uo",
+    "vo",
+    "so",
+    "thetao"
     "temperature",
-    "geopotential",
-    "u_component_of_wind",
-    "v_component_of_wind",
-    "vertical_velocity",
-    "specific_humidity",
-)
-TARGET_VOLUME_NO_W_VARS = (
-    "temperature",
-    "geopotential",
-    "u_component_of_wind",
-    "v_component_of_wind",
-    "specific_humidity",
 )
 EXTERNAL_FORCING_SURFACE_VARS = (
     "toa_incident_solar_radiation",
