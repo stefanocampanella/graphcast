@@ -146,7 +146,7 @@ TASK = TaskConfig(
     target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
     forcing_variables=FORCING_VARS,
     pressure_levels=DEPTHS_37,
-    input_duration="12h",
+    input_duration="1d",
 )
 
 

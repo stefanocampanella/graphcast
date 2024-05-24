@@ -13,6 +13,7 @@
 import copernicusmarine as cm
 import xarray as xr
 import graphcastmodel.graphcast as bfmcastmodel
+import logging
 
 from math import ceil, exp
 
@@ -47,12 +48,7 @@ def _dataset_generator(variables, **kwargs):
         dataset_version = specs["version"]
         dataset_variables = specs["variables"]
         if selected_variables := [name for name in variables if name in dataset_variables]:
-            # TODO:
-            #  1. add dummy batch dimension to all variables X
-            #  2. change time coordinate to store leadtime :: timedelta X
-            #  3. add datetime coordinate X
-            #  4. change depth to levels :: int32?
-            #  5. retry if network is unresponsive
+            logging.info(f"Variables: {selected_variables}, found in {dataset_id}")
             ds = cm.open_dataset(
                 dataset_id=dataset_id,
                 variables=selected_variables,
@@ -67,7 +63,12 @@ def _dataset_generator(variables, **kwargs):
             ds = ds.expand_dims(dim='batch', axis=0)
             ds = ds.assign_coords({'datetime': ds['time'].expand_dims(dim='batch', axis=0)})
             ds['time'] = ds['time'] - ds['time'][0]
+            ds = ds.swap_dims(latitude='lat', longitude='lon')
+            ds = ds.rename_vars(latitude='lat', longitude='lon')
+            ds = ds.set_index(lat='lat', lon='lon')
             yield ds
+        else:
+            logging.info(f"No variable found in {dataset_id} among {variables}")
 
 
 def open_dataset(variables, depths, **kwargs):
