@@ -629,7 +629,7 @@ def dataset_to_stacked(
 ) -> xarray.DataArray:
   """Converts an xarray.Dataset to a single stacked array.
 
-  This takes each consistuent data_var, converts it into BHWC layout
+  This takes each constituent data_var, converts it into BHWC layout
   using `variable_to_stacked`, then concats them all along the channels axis.
 
   Args:

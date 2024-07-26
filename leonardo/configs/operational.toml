@@ -1,0 +1,5 @@
+params_file = "../../data/params/GraphCast_operational - ERA5-HRES 1979-2021 - resolution 0.25 - pressure levels 13 - mesh 2to6 - precipitation output only.npz"
+dataset_file = "../../data/dataset/source-hres_date-2022-01-01_res-0.25_levels-13_steps-01.nc"
+stats_dir = "../../data/stats"
+train_steps = 1
+eval_steps = 1

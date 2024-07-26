@@ -1,0 +1,5 @@
+params_file = "../../data/params/GraphCast - ERA5 1979-2017 - resolution 0.25 - pressure levels 37 - mesh 2to6 - precipitation input and output.npz"
+dataset_file = "../../data/dataset/source-era5_date-2022-01-01_res-1.0_levels-37_steps-01.nc"
+stats_dir = "../../data/stats"
+train_steps = 1
+eval_steps = 1

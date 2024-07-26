@@ -12,13 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Dataset utilities."""
+import pathlib
+import dataclasses
 
 from typing import Any, Mapping, Sequence, Tuple, Union
 
 from graphcastmodel import solar_radiation
+from graphcastmodel import graphcast
+from graphcastmodel import xarray_jax
+from torch.utils.data import Dataset, DataLoader as TorchDataLoader, RandomSampler, BatchSampler
 import numpy as np
 import pandas as pd
 import xarray
+import jax
 
 TimedeltaLike = Any  # Something convertible to pd.Timedelta.
 TimedeltaStr = str  # A string convertible to pd.Timedelta.
@@ -357,3 +363,100 @@ def extract_inputs_targets_forcings(
   targets = targets[list(target_variables)]
 
   return inputs, targets, forcings
+
+class FakeGraphcastDemoDataset(Dataset):
+  def __init__(self, dataset_path: pathlib.Path, task_config: graphcast.TaskConfig, fake_len: int = 16, steps: int = 1):
+    self.dataset_path = dataset_path
+    self.task_config = task_config
+    self.fake_len = fake_len
+    self.steps = steps
+
+    with self.dataset_path.open("rb") as dataset_file:
+      example_batch = xarray.load_dataset(dataset_file).compute()
+
+    assert example_batch.sizes["time"] >= 3  # 2 for input, >=1 for targets
+
+    self.example_batch = example_batch
+  
+  def __len__(self):
+    return self.fake_len
+
+  def __getitem__(self, idx):
+    inputs, targets, forcings = extract_inputs_targets_forcings(
+      self.example_batch, target_lead_times=slice("6h", f"{self.steps * 6}h"),
+      **dataclasses.asdict(self.task_config))
+    return inputs, targets, forcings
+
+
+class ERA5Dataset(Dataset):
+  def __init__(self, dataset_path: Union[pathlib.Path, str], task_config: graphcast.TaskConfig, steps: int = 1):
+    self.dataset_path = dataset_path
+    self.task_config = task_config
+    self.steps = steps
+
+    ds = xarray.open_zarr(dataset_path)
+    assert ds.sizes["time"] >= 3  # at least 2 for input, >=1 for targets
+    
+    ds = ds.drop_vars(var for var in ds.data_vars.keys() if var not in task_config.input_variables)
+    ds = ds.expand_dims(dim='batch', axis=0)
+    ds = ds.assign_coords({'datetime': ds['time'].expand_dims(dim='batch', axis=0)})
+    ds['time'] = ds['time'] - ds['time'][0]
+
+    ds = ds.swap_dims(latitude='lat', longitude='lon')
+    ds = ds.rename_vars(latitude='lat', longitude='lon')
+    ds = ds.set_index(lat='lat', lon='lon', level='level', time='time')
+    # FIX NEEDED Transpose in accord to demo data breaks experiments.
+    # ds = ds.transpose("batch", "time", "level", "lat", "lon")
+    self.dataset = ds
+
+  
+  def __len__(self):
+    return self.dataset.sizes["time"] - 2
+
+
+  def __getitem__(self, idx):
+    ds = self.dataset.sel(time=self.dataset.time[idx:])
+    inputs, targets, forcings = extract_inputs_targets_forcings(ds, 
+                                           target_lead_times=slice("6h", f"{self.steps * 6}h"),
+                                           **dataclasses.asdict(self.task_config))
+    return inputs, targets, forcings
+
+
+def device_put(ds, *args, **kwargs):
+
+  def _move_data_array(var, name=None, jax_coords=None):
+    return xarray_jax.DataArray(jax.device_put(var.data, *args, **kwargs),
+                                coords=var.coords,
+                                dims=var.dims,
+                                name=name,
+                                attrs=var.attrs,
+                                jax_coords=jax_coords)
+  
+  data_variables_names = set(ds.variables.keys()) - set(ds.coords.keys())
+  variables = {name: _move_data_array(ds[name], name=name) for name in data_variables_names}
+  return xarray_jax.Dataset(variables, coords=ds.coords, attrs=ds.attrs)  
+
+
+def default_collate_fn(batch):
+  if len(batch) > 1:
+    data = map(lambda datasets: xarray.concat(datasets, dim='batch'), zip(*batch))
+  else:
+    data = batch[0]
+  inputs, targets, forcings = map(lambda ds: ds.compute(), data)
+  return inputs, targets, forcings
+
+
+class DataLoader(TorchDataLoader):
+  def __init__(self, dataset: Dataset, batch_size=None, num_samples=None, sharding=None, collate_fn=default_collate_fn, **kwargs):
+    sampler = RandomSampler(dataset, replacement=True, num_samples=num_samples * batch_size, generator=kwargs.get('generator'))
+    batch_sampler = BatchSampler(sampler=sampler, batch_size=batch_size, drop_last=True)
+    kwargs.update({'shuffle': None, 'drop_last': None, 'sampler': None, 'batch_sampler': batch_sampler})
+    super().__init__(dataset, collate_fn=collate_fn, **kwargs)
+    self.sharding = sharding
+  def __next__(self):
+    next_elem = super().__next__()
+    if self.sharding is None:
+      inputs, targets, forcings = next_elem
+    else:
+      inputs, targets, forcings = map(lambda x: device_put(x, self.sharding), next_elem)
+    return inputs, targets, forcings

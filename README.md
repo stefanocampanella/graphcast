@@ -1,5 +1,23 @@
 # GraphCast: Learning skillful medium-range global weather forecasting
 
+> [!NOTE]
+> This repository contains a fork of the original GraphCast model. The code has been changed 
+> to deploy it on Leonardo, the supercomputer hosted and managed by CINECA. 
+> These include
+>   1. Addition of a few scripts to setup a working environment in the [leonardo directory](./leonardo) (loading the right modules, download and install packages, 
+downloading local copies of the datasets and parameters from the Google Cloud bucket of the project).
+>   2. Slight modifications to [graphcast_demo.ipynb](./graphcast_demo.ipynb) to work with local data.
+>   3. Additional gradient checkpointing to comply with the available memory on Leonardo (64GB A100). [WIP]
+>   4. Additional sharding support to use multiple GPUs. [WIP]
+>
+> Notice that, with the current NVIDIA drivers on Leonardo, the latest working version of JAX is 0.4.16. Indeed, from the documentation of Jax: “You should use 
+> an NVIDIA driver version that is at least as new as your NVIDIA CUDA toolkit’s corresponding driver version”. The available versions on Leonardo are CUDA/12.1 and CUDA/12.3, 
+> while the version of the drivers is 530.30.02, as can be read [here](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#id5) the version to use is CUDA/12.1.
+> 
+> The end goal of this project is to adapt the model to ocean biogeochemistry forecasting. 
+> Intermediate steps in the process are making GraphCast work with arbitray grid/meshes, and understand how to deal with boundary conditions.  
+
+
 This package contains example code to run and train [GraphCast](https://www.science.org/doi/10.1126/science.adi2336).
 It also provides three pretrained models:
 

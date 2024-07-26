@@ -1,0 +1,14 @@
+.idea
+.vscode
+.run
+**/.ipynb_checkpoints
+**/slurm-*.out
+venv
+data
+scratch
+logs
+runs
+pkg_cache
+build
+graphcast.egg-info
+graphcastmodel/__pycache__

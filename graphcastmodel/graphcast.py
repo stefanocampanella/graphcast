@@ -37,6 +37,7 @@ from graphcastmodel import predictor_base
 from graphcastmodel import typed_graph
 from graphcastmodel import xarray_jax
 import jax.numpy as jnp
+import jax.profiler
 import jraph
 import numpy as np
 import xarray
@@ -370,7 +371,7 @@ class GraphCast(predictor_base.Predictor):
     # Transfer data for the grid to the mesh,
     # [num_mesh_nodes, batch, latent_size], [num_grid_nodes, batch, latent_size]
     (latent_mesh_nodes, latent_grid_nodes
-     ) = self._run_grid2mesh_gnn(grid_node_features)
+    ) = self._run_grid2mesh_gnn(grid_node_features)
 
     # Run message passing in the multimesh.
     # [num_mesh_nodes, batch, latent_size]
