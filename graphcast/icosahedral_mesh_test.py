@@ -16,7 +16,7 @@
 from absl.testing import absltest
 from absl.testing import parameterized
 import chex
-from graphcastmodel import icosahedral_mesh
+from graphcast import icosahedral_mesh
 import numpy as np
 
 

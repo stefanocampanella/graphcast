@@ -3,13 +3,13 @@ import pathlib
 import tomllib
 import dataclasses
 
-from graphcastmodel import autoregressive
-from graphcastmodel import casting
-from graphcastmodel import checkpoint
-from graphcastmodel import data_utils
-from graphcastmodel import graphcast
-from graphcastmodel import normalization
-from graphcastmodel import xarray_jax
+from graphcast import autoregressive
+from graphcast import casting
+from graphcast import checkpoint
+from graphcast import data_utils
+from graphcast import model
+from graphcast import normalization
+from graphcast import xarray_jax
 
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
@@ -50,7 +50,7 @@ if __name__ == '__main__':
   params_file = configs['params_file']
   print(f"Reading checkpoint from {params_file}")
   with params_file.open("rb") as f:
-    ckpt = checkpoint.load(f, graphcast.CheckPoint)
+    ckpt = checkpoint.load(f, model.CheckPoint)
 
   model_config = ckpt.model_config
   task_config = ckpt.task_config
@@ -78,9 +78,9 @@ if __name__ == '__main__':
   # Notice that the predictor is a Haiku module, 
   # hence its constructor has to be called inside a `hk.transform` decorated function.
   def construct_wrapped_graphcast(
-      model_config: graphcast.ModelConfig,
-      task_config: graphcast.TaskConfig):
-    predictor = graphcast.GraphCast(model_config, task_config)
+      model_config: model.ModelConfig,
+      task_config: model.TaskConfig):
+    predictor = model.GraphCast(model_config, task_config)
     predictor = casting.Bfloat16Cast(predictor)
     predictor = normalization.InputsAndResiduals(
       predictor,

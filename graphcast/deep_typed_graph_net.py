@@ -36,8 +36,8 @@ Generalization to TypedGraphs of the deep Graph Neural Network from:
 
 from typing import Mapping, Optional
 
-from graphcastmodel import typed_graph
-from graphcastmodel import typed_graph_net
+from graphcast import typed_graph
+from graphcast import typed_graph_net
 import haiku as hk
 import jax
 import jax.numpy as jnp

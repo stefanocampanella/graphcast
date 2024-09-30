@@ -17,9 +17,9 @@
 from typing import Optional, cast
 
 from absl import logging
-from graphcastmodel import predictor_base
-from graphcastmodel import xarray_jax
-from graphcastmodel import xarray_tree
+from graphcast import predictor_base
+from graphcast import xarray_jax
+from graphcast import xarray_tree
 import haiku as hk
 import jax
 import xarray

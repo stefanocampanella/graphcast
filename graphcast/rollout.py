@@ -18,7 +18,7 @@ from typing import Iterator
 from absl import logging
 import chex
 import dask.array
-from graphcastmodel import xarray_tree
+from graphcast import xarray_tree
 import jax
 import numpy as np
 import typing_extensions

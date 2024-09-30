@@ -17,7 +17,7 @@ from typing import Sequence
 from absl import logging
 from absl.testing import absltest
 from absl.testing import parameterized
-from graphcastmodel import solar_radiation
+from graphcast import solar_radiation
 import numpy as np
 import pandas as pd
 import xarray as xa

@@ -17,9 +17,9 @@ import dataclasses
 
 from typing import Any, Mapping, Sequence, Tuple, Union
 
-from graphcastmodel import solar_radiation
-from graphcastmodel import graphcast
-from graphcastmodel import xarray_jax
+from graphcast import solar_radiation
+from graphcast import model
+from graphcast import xarray_jax
 from torch.utils.data import Dataset, DataLoader as TorchDataLoader, RandomSampler, BatchSampler
 import numpy as np
 import pandas as pd
@@ -365,7 +365,7 @@ def extract_inputs_targets_forcings(
   return inputs, targets, forcings
 
 class FakeGraphcastDemoDataset(Dataset):
-  def __init__(self, dataset_path: pathlib.Path, task_config: graphcast.TaskConfig, fake_len: int = 16, steps: int = 1):
+  def __init__(self, dataset_path: pathlib.Path, task_config: model.TaskConfig, fake_len: int = 16, steps: int = 1):
     self.dataset_path = dataset_path
     self.task_config = task_config
     self.fake_len = fake_len
@@ -389,7 +389,7 @@ class FakeGraphcastDemoDataset(Dataset):
 
 
 class ERA5Dataset(Dataset):
-  def __init__(self, dataset_path: Union[pathlib.Path, str], task_config: graphcast.TaskConfig, steps: int = 1):
+  def __init__(self, dataset_path: Union[pathlib.Path, str], task_config: model.TaskConfig, steps: int = 1):
     self.dataset_path = dataset_path
     self.task_config = task_config
     self.steps = steps

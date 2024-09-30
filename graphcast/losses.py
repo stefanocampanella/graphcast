@@ -15,7 +15,7 @@
 
 from typing import Mapping
 
-from graphcastmodel import xarray_tree
+from graphcast import xarray_tree
 import numpy as np
 from typing_extensions import Protocol
 import xarray

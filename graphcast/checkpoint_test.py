@@ -18,7 +18,7 @@ import io
 from typing import Any, Optional, Union
 
 from absl.testing import absltest
-from graphcastmodel import checkpoint
+from graphcast import checkpoint
 import numpy as np
 
 

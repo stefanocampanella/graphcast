@@ -28,14 +28,14 @@ a 2D mesh over latitudes and longitudes.
 from typing import Any, Callable, Mapping, Optional
 
 import chex
-from graphcastmodel import deep_typed_graph_net
-from graphcastmodel import grid_mesh_connectivity
-from graphcastmodel import icosahedral_mesh
-from graphcastmodel import losses
-from graphcastmodel import model_utils
-from graphcastmodel import predictor_base
-from graphcastmodel import typed_graph
-from graphcastmodel import xarray_jax
+from graphcast import deep_typed_graph_net
+from graphcast import grid_mesh_connectivity
+from graphcast import icosahedral_mesh
+from graphcast import losses
+from graphcast import model_utils
+from graphcast import predictor_base
+from graphcast import typed_graph
+from graphcast import xarray_jax
 import jax.numpy as jnp
 import jax.profiler
 import jraph
