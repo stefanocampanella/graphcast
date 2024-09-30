@@ -5,10 +5,10 @@
 > to deploy it on Leonardo, the supercomputer hosted and managed by CINECA. 
 > These include
 >   1. Addition of a few scripts to setup a working environment in the [leonardo directory](./leonardo) (loading the right modules, download and install packages, 
-downloading local copies of the datasets and parameters from the Google Cloud bucket of the project).
+downloading local copies of the datasets and parameters from the Google Cloud bucket of the project, and ERA5 data from the WeatherBench2 dataset).
 >   2. Slight modifications to [graphcast_demo.ipynb](./graphcast_demo.ipynb) to work with local data.
->   3. Additional gradient checkpointing to comply with the available memory on Leonardo (64GB A100). [WIP]
->   4. Additional sharding support to use multiple GPUs. [WIP]
+>   3. Custom dataloaders (with sharding support to use multiple GPUs) to run experiments on Leonardo using data from the WeatherBench2 dataset.
+>   4. Additional gradient checkpointing to comply with the available memory on Leonardo (64GB per GPU). [WIP]
 >
 > Notice that, with the current NVIDIA drivers on Leonardo, the latest working version of JAX is 0.4.16. Indeed, from the documentation of Jax: “You should use 
 > an NVIDIA driver version that is at least as new as your NVIDIA CUDA toolkit’s corresponding driver version”. The available versions on Leonardo are CUDA/12.1 and CUDA/12.3, 
@@ -62,12 +62,12 @@ The one-step implementation of GraphCast architecture, is provided in
     vectors of features for each of the nodes and edges. `graphcast.py` uses
     three of these for the Grid2Mesh GNN, the Multi-mesh GNN and the Mesh2Grid
     GNN, respectively.
-*   `graphcast.py`: The main GraphCast model architecture for one-step of
-    predictions.
 *   `grid_mesh_connectivity.py`: Tools for converting between regular grids on a
     sphere and triangular meshes.
 *   `icosahedral_mesh.py`: Definition of an icosahedral multi-mesh.
 *   `losses.py`: Loss computations, including latitude-weighting.
+*   `model.py`: The main GraphCast model architecture for one-step of
+    predictions.
 *   `model_utils.py`: Utilities to produce flat node and edge vector features
     from input grid data, and to manipulate the node output vectors back
     into a multilevel grid data.
