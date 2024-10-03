@@ -13,6 +13,7 @@
 # limitations under the License.
 """Tools for converting from regular grids on a sphere, to triangular meshes."""
 
+from typing import Union
 from graphcast import icosahedral_mesh
 import numpy as np
 import scipy
@@ -41,7 +42,7 @@ def radius_query_indices(
     *,
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
-    mesh: icosahedral_mesh.TriangularMesh,
+    mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph],
     radius: float) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
@@ -90,7 +91,7 @@ def in_mesh_triangle_indices(
     *,
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
-    mesh: icosahedral_mesh.TriangularMesh) -> tuple[np.ndarray, np.ndarray]:
+    mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph]) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for grid points contained in mesh triangles.
 
   Args:

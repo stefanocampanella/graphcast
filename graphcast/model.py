@@ -25,7 +25,7 @@ It assumes data across time and level is stacked, and operates only operates in
 a 2D mesh over latitudes and longitudes.
 """
 
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Union
 
 import chex
 from graphcast import deep_typed_graph_net
@@ -37,7 +37,6 @@ from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
 import jax.numpy as jnp
-import jax.profiler
 import jraph
 import numpy as np
 import xarray
@@ -177,7 +176,8 @@ class ModelConfig:
   """Defines the architecture of the GraphCast neural network architecture.
 
   Properties:
-    resolution: The resolution of the data, in degrees (e.g. 0.25 or 1.0).
+    mesh_graph: Graph structure used by the processor.
+    grid_mask: Mask telling which grid nodes to include/exclude.
     mesh_size: How many refinements to do on the multi-mesh.
     gnn_msg_steps: How many Graph Network message passing steps to do.
     latent_size: How many latent features to include in the various MLPs.
@@ -193,8 +193,10 @@ class ModelConfig:
         This supports using pre-trained model weights with a different graph
         structure to what it was trained on.
   """
-  resolution: float
-  mesh_size: int
+  grid_lat: chex.Array
+  grid_lon: chex.Array
+  grid_mask: chex.Array
+  mesh_graph: icosahedral_mesh.MultiMeshGraph
   latent_size: int
   gnn_msg_steps: int
   hidden_layers: int
@@ -251,11 +253,6 @@ class GraphCast(predictor_base.Predictor):
         relative_longitude_local_coordinates=True,
         relative_latitude_local_coordinates=True,
     )
-
-    # Specification of the multimesh.
-    self._meshes = (
-        icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(
-            splits=model_config.mesh_size))
 
     # Encoder, which moves data from the grid to the mesh with a single message
     # passing step.
@@ -321,39 +318,209 @@ class GraphCast(predictor_base.Predictor):
         name="mesh2grid_gnn",
     )
 
+    self._mesh_graph = model_config.mesh_graph
+    self._grid_mask = model_config.grid_mask
+    self._grid_lat = model_config.grid_lat
+    self._grid_lon = model_config.grid_lon
+
     # Obtain the query radius in absolute units for the unit-sphere for the
     # grid2mesh model, by rescaling the `radius_query_fraction_edge_length`.
-    self._query_radius = (_get_max_edge_distance(self._finest_mesh)
+    self._query_radius = (_get_max_edge_distance(self._mesh_graph)
                           * model_config.radius_query_fraction_edge_length)
     self._mesh2grid_edge_normalization_factor = (
         model_config.mesh2grid_edge_normalization_factor
     )
 
-    # Other initialization is delayed until the first call (`_maybe_init`)
-    # when we get some sample data so we know the lat/lon values.
-    self._initialized = False
+    # Initialize remaining properties.
+    # Within "_init_mesh_properties":
+    #   self._num_mesh_nodes # num_mesh_nodes
+    #   self._mesh_nodes_lat # [num_mesh_nodes]
+    #   self._mesh_nodes_lon # [num_mesh_nodes]
+    # Within "_init_grid_properties":
+    #   self._grid_lat # [num_lat_points]
+    #   self._grid_lon # [num_lon_points]
+    #   self._num_grid_nodes # num_lat_points * num_lon_points
+    #   self._grid_nodes_lat # [num_grid_nodes]
+    #   self._grid_nodes_lon # [num_grid_nodes]
+    # Within "_init_{grid2mesh,processor,mesh2grid}_graph"
+    #   self._grid2mesh_graph_structure
+    #   self._mesh_graph_structure
+    #   self._mesh2grid_graph_structure
 
-    # A "_init_mesh_properties":
-    # This one could be initialized at init but we delay it for consistency too.
-    self._num_mesh_nodes = None  # num_mesh_nodes
-    self._mesh_nodes_lat = None  # [num_mesh_nodes]
-    self._mesh_nodes_lon = None  # [num_mesh_nodes]
+    self._init_mesh_properties()
+    self._init_grid_properties(
+      grid_lat=model_config.grid_lat, grid_lon=model_config.grid_lon)
+    self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
+    self._mesh_graph_structure = self._init_mesh_graph()
+    self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
 
-    # A "_init_grid_properties":
-    self._grid_lat = None  # [num_lat_points]
-    self._grid_lon = None  # [num_lon_points]
-    self._num_grid_nodes = None  # num_lat_points * num_lon_points
-    self._grid_nodes_lat = None  # [num_grid_nodes]
-    self._grid_nodes_lon = None  # [num_grid_nodes]
+  def _init_mesh_properties(self):
+    """Initializes static properties that have to do with mesh nodes."""
+    self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
+    mesh_phi, mesh_theta = model_utils.cartesian_to_spherical(
+      self._mesh_graph.vertices[:, 0],
+      self._mesh_graph.vertices[:, 1],
+      self._mesh_graph.vertices[:, 2])
+    (
+      mesh_nodes_lat,
+      mesh_nodes_lon,
+    ) = model_utils.spherical_to_lat_lon(
+      phi=mesh_phi, theta=mesh_theta)
+    # Convert to f32 to ensure the lat/lon features aren't in f64.
+    self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)
+    self._mesh_nodes_lon = mesh_nodes_lon.astype(np.float32)
 
-    # A "_init_{grid2mesh,processor,mesh2grid}_graph"
-    self._grid2mesh_graph_structure = None
-    self._mesh_graph_structure = None
-    self._mesh2grid_graph_structure = None
+  def _init_grid_properties(self, grid_lat: np.ndarray, grid_lon: np.ndarray):
+    """Initializes static properties that have to do with grid nodes"""
+    self._grid_lat = grid_lat.astype(np.float32)
+    self._grid_lon = grid_lon.astype(np.float32)
+    # Initialized the counters.
+    self._num_grid_nodes = grid_lat.shape[0] * grid_lon.shape[0]
 
-  @property
-  def _finest_mesh(self):
-    return self._meshes[-1]
+    # Initialize lat and lon for the grid.
+    grid_nodes_lon, grid_nodes_lat = np.meshgrid(grid_lon, grid_lat)
+    self._grid_nodes_lon = grid_nodes_lon.reshape([-1]).astype(np.float32)
+    self._grid_nodes_lat = grid_nodes_lat.reshape([-1]).astype(np.float32)
+
+  def _init_grid2mesh_graph(self) -> typed_graph.TypedGraph:
+    """Build Grid2Mesh graph."""
+
+    # Create some edges according to distance between mesh and grid nodes.
+    assert self._grid_lat is not None and self._grid_lon is not None
+    (grid_indices, mesh_indices) = grid_mesh_connectivity.radius_query_indices(
+      grid_latitude=self._grid_lat,
+      grid_longitude=self._grid_lon,
+      mesh=self._mesh_graph,
+      radius=self._query_radius)
+
+    # Edges sending info from grid to mesh.
+    senders = grid_indices
+    receivers = mesh_indices
+
+    # Precompute structural node and edge features according to config options.
+    # Structural features are those that depend on the fixed values of the
+    # latitude and longitudes of the nodes.
+    (senders_node_features, receivers_node_features,
+     edge_features) = model_utils.get_bipartite_graph_spatial_features(
+      senders_node_lat=self._grid_nodes_lat,
+      senders_node_lon=self._grid_nodes_lon,
+      receivers_node_lat=self._mesh_nodes_lat,
+      receivers_node_lon=self._mesh_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      edge_normalization_factor=None,
+      **self._spatial_features_kwargs,
+    )
+
+    n_grid_node = np.array([self._num_grid_nodes])
+    n_mesh_node = np.array([self._num_mesh_nodes])
+    n_edge = np.array([mesh_indices.shape[0]])
+    grid_node_set = typed_graph.NodeSet(
+      n_node=n_grid_node, features=senders_node_features)
+    mesh_node_set = typed_graph.NodeSet(
+      n_node=n_mesh_node, features=receivers_node_features)
+    edge_set = typed_graph.EdgeSet(
+      n_edge=n_edge,
+      indices=typed_graph.EdgesIndices(senders=senders, receivers=receivers),
+      features=edge_features)
+    nodes = {"grid_nodes": grid_node_set, "mesh_nodes": mesh_node_set}
+    edges = {
+      typed_graph.EdgeSetKey("grid2mesh", ("grid_nodes", "mesh_nodes")):
+        edge_set
+    }
+    grid2mesh_graph = typed_graph.TypedGraph(
+      context=typed_graph.Context(n_graph=np.array([1]), features=()),
+      nodes=nodes,
+      edges=edges)
+    return grid2mesh_graph
+
+  def _init_mesh_graph(self) -> typed_graph.TypedGraph:
+
+    # Work simply on the mesh edges.
+    senders, receivers = self._mesh_graph.edges
+
+    # Precompute structural node and edge features according to config options.
+    # Structural features are those that depend on the fixed values of the
+    # latitude and longitudes of the nodes.
+    assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
+    node_features, edge_features = model_utils.get_graph_spatial_features(
+      node_lat=self._mesh_nodes_lat,
+      node_lon=self._mesh_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      **self._spatial_features_kwargs,
+    )
+
+    n_mesh_node = np.array([self._num_mesh_nodes])
+    n_edge = np.array([senders.shape[0]])
+    assert n_mesh_node == len(node_features)
+    mesh_node_set = typed_graph.NodeSet(
+      n_node=n_mesh_node, features=node_features)
+    edge_set = typed_graph.EdgeSet(
+      n_edge=n_edge,
+      indices=typed_graph.EdgesIndices(senders=senders, receivers=receivers),
+      features=edge_features)
+    nodes = {"mesh_nodes": mesh_node_set}
+    edges = {
+      typed_graph.EdgeSetKey("mesh", ("mesh_nodes", "mesh_nodes")): edge_set
+    }
+    mesh_graph = typed_graph.TypedGraph(
+      context=typed_graph.Context(n_graph=np.array([1]), features=()),
+      nodes=nodes,
+      edges=edges)
+
+    return mesh_graph
+
+  def _init_mesh2grid_graph(self) -> typed_graph.TypedGraph:
+    """Build Mesh2Grid graph."""
+
+    # Create some edges according to how the grid nodes are contained by
+    # mesh triangles.
+    (grid_indices,
+     mesh_indices) = grid_mesh_connectivity.in_mesh_triangle_indices(
+      grid_latitude=self._grid_lat,
+      grid_longitude=self._grid_lon,
+      mesh=self._mesh_graph)
+
+    # Edges sending info from mesh to grid.
+    senders = mesh_indices
+    receivers = grid_indices
+
+    # Precompute structural node and edge features according to config options.
+    assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
+    (senders_node_features, receivers_node_features,
+     edge_features) = model_utils.get_bipartite_graph_spatial_features(
+      senders_node_lat=self._mesh_nodes_lat,
+      senders_node_lon=self._mesh_nodes_lon,
+      receivers_node_lat=self._grid_nodes_lat,
+      receivers_node_lon=self._grid_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      edge_normalization_factor=self._mesh2grid_edge_normalization_factor,
+      **self._spatial_features_kwargs,
+    )
+
+    n_grid_node = np.array([self._num_grid_nodes])
+    n_mesh_node = np.array([self._num_mesh_nodes])
+    n_edge = np.array([senders.shape[0]])
+    grid_node_set = typed_graph.NodeSet(
+      n_node=n_grid_node, features=receivers_node_features)
+    mesh_node_set = typed_graph.NodeSet(
+      n_node=n_mesh_node, features=senders_node_features)
+    edge_set = typed_graph.EdgeSet(
+      n_edge=n_edge,
+      indices=typed_graph.EdgesIndices(senders=senders, receivers=receivers),
+      features=edge_features)
+    nodes = {"grid_nodes": grid_node_set, "mesh_nodes": mesh_node_set}
+    edges = {
+      typed_graph.EdgeSetKey("mesh2grid", ("mesh_nodes", "grid_nodes")):
+        edge_set
+    }
+    mesh2grid_graph = typed_graph.TypedGraph(
+      context=typed_graph.Context(n_graph=np.array([1]), features=()),
+      nodes=nodes,
+      edges=edges)
+    return mesh2grid_graph
 
   def __call__(self,
                inputs: xarray.Dataset,
@@ -361,7 +528,6 @@ class GraphCast(predictor_base.Predictor):
                forcings: xarray.Dataset,
                is_training: bool = False,
                ) -> xarray.Dataset:
-    self._maybe_init(inputs)
 
     # Convert all input data into flat vectors for each of the grid nodes.
     # xarray (batch, time, lat, lon, level, multiple vars, forcings)
@@ -424,188 +590,6 @@ class GraphCast(predictor_base.Predictor):
       ) -> predictor_base.LossAndDiagnostics:
     loss, _ = self.loss_and_predictions(inputs, targets, forcings)
     return loss  # pytype: disable=bad-return-type  # jax-ndarray
-
-  def _maybe_init(self, sample_inputs: xarray.Dataset):
-    """Inits everything that has a dependency on the input coordinates."""
-    if not self._initialized:
-      self._init_mesh_properties()
-      self._init_grid_properties(
-          grid_lat=sample_inputs.lat, grid_lon=sample_inputs.lon)
-      self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
-      self._mesh_graph_structure = self._init_mesh_graph()
-      self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
-
-      self._initialized = True
-
-  def _init_mesh_properties(self):
-    """Inits static properties that have to do with mesh nodes."""
-    self._num_mesh_nodes = self._finest_mesh.vertices.shape[0]
-    mesh_phi, mesh_theta = model_utils.cartesian_to_spherical(
-        self._finest_mesh.vertices[:, 0],
-        self._finest_mesh.vertices[:, 1],
-        self._finest_mesh.vertices[:, 2])
-    (
-        mesh_nodes_lat,
-        mesh_nodes_lon,
-    ) = model_utils.spherical_to_lat_lon(
-        phi=mesh_phi, theta=mesh_theta)
-    # Convert to f32 to ensure the lat/lon features aren't in f64.
-    self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)
-    self._mesh_nodes_lon = mesh_nodes_lon.astype(np.float32)
-
-  def _init_grid_properties(self, grid_lat: np.ndarray, grid_lon: np.ndarray):
-    """Inits static properties that have to do with grid nodes."""
-    self._grid_lat = grid_lat.astype(np.float32)
-    self._grid_lon = grid_lon.astype(np.float32)
-    # Initialized the counters.
-    self._num_grid_nodes = grid_lat.shape[0] * grid_lon.shape[0]
-
-    # Initialize lat and lon for the grid.
-    grid_nodes_lon, grid_nodes_lat = np.meshgrid(grid_lon, grid_lat)
-    self._grid_nodes_lon = grid_nodes_lon.reshape([-1]).astype(np.float32)
-    self._grid_nodes_lat = grid_nodes_lat.reshape([-1]).astype(np.float32)
-
-  def _init_grid2mesh_graph(self) -> typed_graph.TypedGraph:
-    """Build Grid2Mesh graph."""
-
-    # Create some edges according to distance between mesh and grid nodes.
-    assert self._grid_lat is not None and self._grid_lon is not None
-    (grid_indices, mesh_indices) = grid_mesh_connectivity.radius_query_indices(
-        grid_latitude=self._grid_lat,
-        grid_longitude=self._grid_lon,
-        mesh=self._finest_mesh,
-        radius=self._query_radius)
-
-    # Edges sending info from grid to mesh.
-    senders = grid_indices
-    receivers = mesh_indices
-
-    # Precompute structural node and edge features according to config options.
-    # Structural features are those that depend on the fixed values of the
-    # latitude and longitudes of the nodes.
-    (senders_node_features, receivers_node_features,
-     edge_features) = model_utils.get_bipartite_graph_spatial_features(
-         senders_node_lat=self._grid_nodes_lat,
-         senders_node_lon=self._grid_nodes_lon,
-         receivers_node_lat=self._mesh_nodes_lat,
-         receivers_node_lon=self._mesh_nodes_lon,
-         senders=senders,
-         receivers=receivers,
-         edge_normalization_factor=None,
-         **self._spatial_features_kwargs,
-     )
-
-    n_grid_node = np.array([self._num_grid_nodes])
-    n_mesh_node = np.array([self._num_mesh_nodes])
-    n_edge = np.array([mesh_indices.shape[0]])
-    grid_node_set = typed_graph.NodeSet(
-        n_node=n_grid_node, features=senders_node_features)
-    mesh_node_set = typed_graph.NodeSet(
-        n_node=n_mesh_node, features=receivers_node_features)
-    edge_set = typed_graph.EdgeSet(
-        n_edge=n_edge,
-        indices=typed_graph.EdgesIndices(senders=senders, receivers=receivers),
-        features=edge_features)
-    nodes = {"grid_nodes": grid_node_set, "mesh_nodes": mesh_node_set}
-    edges = {
-        typed_graph.EdgeSetKey("grid2mesh", ("grid_nodes", "mesh_nodes")):
-            edge_set
-    }
-    grid2mesh_graph = typed_graph.TypedGraph(
-        context=typed_graph.Context(n_graph=np.array([1]), features=()),
-        nodes=nodes,
-        edges=edges)
-    return grid2mesh_graph
-
-  def _init_mesh_graph(self) -> typed_graph.TypedGraph:
-    """Build Mesh graph."""
-    merged_mesh = icosahedral_mesh.merge_meshes(self._meshes)
-
-    # Work simply on the mesh edges.
-    senders, receivers = icosahedral_mesh.faces_to_edges(merged_mesh.faces)
-
-    # Precompute structural node and edge features according to config options.
-    # Structural features are those that depend on the fixed values of the
-    # latitude and longitudes of the nodes.
-    assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
-    node_features, edge_features = model_utils.get_graph_spatial_features(
-        node_lat=self._mesh_nodes_lat,
-        node_lon=self._mesh_nodes_lon,
-        senders=senders,
-        receivers=receivers,
-        **self._spatial_features_kwargs,
-    )
-
-    n_mesh_node = np.array([self._num_mesh_nodes])
-    n_edge = np.array([senders.shape[0]])
-    assert n_mesh_node == len(node_features)
-    mesh_node_set = typed_graph.NodeSet(
-        n_node=n_mesh_node, features=node_features)
-    edge_set = typed_graph.EdgeSet(
-        n_edge=n_edge,
-        indices=typed_graph.EdgesIndices(senders=senders, receivers=receivers),
-        features=edge_features)
-    nodes = {"mesh_nodes": mesh_node_set}
-    edges = {
-        typed_graph.EdgeSetKey("mesh", ("mesh_nodes", "mesh_nodes")): edge_set
-    }
-    mesh_graph = typed_graph.TypedGraph(
-        context=typed_graph.Context(n_graph=np.array([1]), features=()),
-        nodes=nodes,
-        edges=edges)
-
-    return mesh_graph
-
-  def _init_mesh2grid_graph(self) -> typed_graph.TypedGraph:
-    """Build Mesh2Grid graph."""
-
-    # Create some edges according to how the grid nodes are contained by
-    # mesh triangles.
-    (grid_indices,
-     mesh_indices) = grid_mesh_connectivity.in_mesh_triangle_indices(
-         grid_latitude=self._grid_lat,
-         grid_longitude=self._grid_lon,
-         mesh=self._finest_mesh)
-
-    # Edges sending info from mesh to grid.
-    senders = mesh_indices
-    receivers = grid_indices
-
-    # Precompute structural node and edge features according to config options.
-    assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
-    (senders_node_features, receivers_node_features,
-     edge_features) = model_utils.get_bipartite_graph_spatial_features(
-         senders_node_lat=self._mesh_nodes_lat,
-         senders_node_lon=self._mesh_nodes_lon,
-         receivers_node_lat=self._grid_nodes_lat,
-         receivers_node_lon=self._grid_nodes_lon,
-         senders=senders,
-         receivers=receivers,
-         edge_normalization_factor=self._mesh2grid_edge_normalization_factor,
-         **self._spatial_features_kwargs,
-     )
-
-    n_grid_node = np.array([self._num_grid_nodes])
-    n_mesh_node = np.array([self._num_mesh_nodes])
-    n_edge = np.array([senders.shape[0]])
-    grid_node_set = typed_graph.NodeSet(
-        n_node=n_grid_node, features=receivers_node_features)
-    mesh_node_set = typed_graph.NodeSet(
-        n_node=n_mesh_node, features=senders_node_features)
-    edge_set = typed_graph.EdgeSet(
-        n_edge=n_edge,
-        indices=typed_graph.EdgesIndices(senders=senders, receivers=receivers),
-        features=edge_features)
-    nodes = {"grid_nodes": grid_node_set, "mesh_nodes": mesh_node_set}
-    edges = {
-        typed_graph.EdgeSetKey("mesh2grid", ("mesh_nodes", "grid_nodes")):
-            edge_set
-    }
-    mesh2grid_graph = typed_graph.TypedGraph(
-        context=typed_graph.Context(n_graph=np.array([1]), features=()),
-        nodes=nodes,
-        edges=edges)
-    return mesh2grid_graph
 
   def _run_grid2mesh_gnn(self, grid_node_features: chex.Array,
                          ) -> tuple[chex.Array, chex.Array]:
@@ -790,8 +774,13 @@ def _add_batch_second_axis(data, batch_size):
   return data[:, None] * ones  # [leading_dim, batch, trailing_dim]
 
 
-def _get_max_edge_distance(mesh):
-  senders, receivers = icosahedral_mesh.faces_to_edges(mesh.faces)
+def _get_max_edge_distance(mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph]):
+  if isinstance(mesh, icosahedral_mesh.TriangularMesh):
+    senders, receivers = icosahedral_mesh.faces_to_edges(mesh.faces)
+  elif isinstance(mesh, icosahedral_mesh.MultiMeshGraph):
+    senders, receivers = mesh.edges
+  else:
+    raise TypeError(f"Unsupported mesh type: {type(mesh)}.")
   edge_distances = np.linalg.norm(
       mesh.vertices[senders] - mesh.vertices[receivers], axis=-1)
   return edge_distances.max()

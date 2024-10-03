@@ -1,7 +1,7 @@
 #! /usr/bin/env bash
 #SBATCH --account=OGS23_PRACE_IT_0
 #SBATCH --partition=boost_usr_prod
-#SBATCH --time=16:00:00
+#SBATCH --time=04:00:00
 #SBATCH --exclusive
 #SBATCH --nodes=1
 #SBATCH --tasks-per-node=4

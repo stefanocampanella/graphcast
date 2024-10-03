@@ -14,13 +14,15 @@
 """Utils for creating icosahedral meshes."""
 
 import itertools
-from typing import List, NamedTuple, Sequence, Tuple
+import chex
+from typing import List, Sequence, Tuple
 
 import numpy as np
 from scipy.spatial import transform
 
 
-class TriangularMesh(NamedTuple):
+@chex.dataclass(frozen=True, eq=True)
+class TriangularMesh:
   """Data structure for triangular meshes.
 
   Attributes:
@@ -32,6 +34,19 @@ class TriangularMesh(NamedTuple):
   """
   vertices: np.ndarray
   faces: np.ndarray
+
+
+@chex.dataclass(frozen=True, eq=True)
+class MultiMeshGraph(TriangularMesh):
+  """Data structure for multi-mesh graphs.
+
+  Attributes:
+    vertices: same as TriangularMesh.vertices.
+    faces: same as TriangularMesh.faces.
+    edges: cumulated edges of all the triangular meshes used in building the multi-mesh graph.
+
+  """
+  edges: np.ndarray
 
 
 def merge_meshes(

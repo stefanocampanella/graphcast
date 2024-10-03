@@ -10,6 +10,7 @@ from graphcast import data_utils
 from graphcast import model
 from graphcast import normalization
 from graphcast import xarray_jax
+from graphcast import legacy_utils
 
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
@@ -47,10 +48,8 @@ with args.config_file.open('rb') as file:
 if __name__ == '__main__':
 
   # Load the checkpoint, containing model parameters, model configuration, and the task configuration.
-  params_file = configs['params_file']
-  print(f"Reading checkpoint from {params_file}")
-  with params_file.open("rb") as f:
-    ckpt = checkpoint.load(f, model.CheckPoint)
+  print(f"Reading checkpoint from {configs['params_file']}")
+  ckpt = legacy_utils.read_legacy_checkpoint(configs['params_file'], configs['dataset_path'] / 'training')
 
   model_config = ckpt.model_config
   task_config = ckpt.task_config
@@ -60,20 +59,20 @@ if __name__ == '__main__':
 
   # Since the parameters are sharded (replicated for performance reasons), 
   # we need to create a mesh to distribute them right here
-  mesh = Mesh(devices=mesh_utils.create_device_mesh((args.num_gpus,)), axis_names=('batch',))
+  device_mesh = Mesh(devices=mesh_utils.create_device_mesh((args.num_gpus,)), axis_names=('batch',))
 
   # Load statistical moments of the inputs for their normalization
   stats_dir = configs['stats_dir']
   print(f"Reading stats file from {stats_dir}")
   with (stats_dir / "diffs_stddev_by_level.nc").open("rb") as f:
     diffs_stddev_by_level = data_utils.device_put(xarray.load_dataset(f).compute(),
-                                                  NamedSharding(mesh, P()))
+                                                  NamedSharding(device_mesh, P()))
   with (stats_dir / "mean_by_level.nc").open("rb") as f:
     mean_by_level = data_utils.device_put(xarray.load_dataset(f).compute(),
-                                          NamedSharding(mesh, P()))
+                                          NamedSharding(device_mesh, P()))
   with (stats_dir / "stddev_by_level.nc").open("rb") as f:
     stddev_by_level = data_utils.device_put(xarray.load_dataset(f).compute(),
-                                            NamedSharding(mesh, P()))
+                                            NamedSharding(device_mesh, P()))
 
   # Notice that the predictor is a Haiku module, 
   # hence its constructor has to be called inside a `hk.transform` decorated function.
@@ -114,15 +113,15 @@ if __name__ == '__main__':
   print(f"Reading training dataset from {training_dataset_path}")
   train_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(training_dataset_path, task_config),
                                            num_samples=configs['max_updates'],
-                                           batch_size=args.num_gpus, 
-                                           sharding=NamedSharding(mesh, P('batch')))
+                                           batch_size=args.num_gpus,
+                                           sharding=NamedSharding(device_mesh, P('batch')))
   
   validation_dataset_path = configs['dataset_path'] / 'validation'
   print(f"Reading validation dataset from {validation_dataset_path}")
-  validation_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(validation_dataset_path, task_config), 
+  validation_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(validation_dataset_path, task_config),
                                                 num_samples=configs['max_updates'],
-                                                batch_size=4 * args.num_gpus, 
-                                                sharding=NamedSharding(mesh, P('batch')))
+                                                batch_size=4 * args.num_gpus,
+                                                sharding=NamedSharding(device_mesh, P('batch')))
   
   # Initialize the model parameters and shard them
   released_params = ckpt.params
@@ -133,7 +132,7 @@ if __name__ == '__main__':
     params = predictor.init(key, inputs, targets, forcings)
   else:
     params = released_params
-  params = jax.tree_util.tree_map(lambda x: jax.device_put(x, NamedSharding(mesh, P())), params)
+  params = jax.tree_util.tree_map(lambda x: jax.device_put(x, NamedSharding(device_mesh, P())), params)
 
   # Initialize the optimizer
   schedule = optax.constant_schedule(configs['learning_rate'])
@@ -164,7 +163,7 @@ if __name__ == '__main__':
     decorated_dataloader.set_description_str(f"train loss: {loss}, validation loss: {new_validation_loss}")
     writer.add_scalar('validation/loss', new_validation_loss.item(), n_iter)
     for key, value in validation_diagnostics.items():
-      writer.add_scalar(f"train/{key}", value.mean().item(), n_iter)
+      writer.add_scalar(f"validation/{key}", value.mean().item(), n_iter)
     if new_validation_loss < best_validation_loss:
       best_validation_loss = new_validation_loss
       patience = 0
