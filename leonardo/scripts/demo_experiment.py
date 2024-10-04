@@ -49,7 +49,10 @@ if __name__ == '__main__':
 
   # Load the checkpoint, containing model parameters, model configuration, and the task configuration.
   print(f"Reading checkpoint from {configs['params_file']}")
-  ckpt = legacy_utils.read_legacy_checkpoint(configs['params_file'], configs['dataset_path'] / 'training')
+  ckpt = legacy_utils.read_legacy_checkpoint(configs['params_file'], 
+                                             configs['dataset_path'] / 'training',
+                                             lon_range=configs.get('lon_range'),
+                                             lat_range=configs.get('lat_range'))
 
   model_config = ckpt.model_config
   task_config = ckpt.task_config

@@ -4,6 +4,8 @@ training_start_time = 2021-12-01T00:00:00
 training_end_time = 2022-02-28T00:00:00
 validation_start_time = 2023-01-01T00:00:00
 validation_end_time = 2023-01-31T00:00:00
+lon_range = [-30, 60]
+lat_range = [30, 85]
 
 params_file = "/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/graphcast/data/params/GraphCast_small - ERA5 1979-2015 - resolution 1.0 - pressure levels 13 - mesh 2to5 - precipitation input and output.npz"
 dataset_path = "/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/graphcast/data/era5_regridded"

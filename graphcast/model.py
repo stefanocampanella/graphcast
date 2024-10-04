@@ -25,7 +25,7 @@ It assumes data across time and level is stacked, and operates only operates in
 a 2D mesh over latitudes and longitudes.
 """
 
-from typing import Any, Callable, Mapping, Optional, Union
+from typing import Any, Callable, Mapping, Optional, Union, Iterable
 
 import chex
 from graphcast import deep_typed_graph_net
@@ -318,7 +318,10 @@ class GraphCast(predictor_base.Predictor):
         name="mesh2grid_gnn",
     )
 
+    # TODO: The model should be intitialized upon first call (as in the original GraphCast implementation, using `_maybe_init`).
+    # This way, one can more easily fine-tune the same model using different datasets (i.e. with different grid and mesh graphs).
     self._mesh_graph = model_config.mesh_graph
+    self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
     self._grid_mask = model_config.grid_mask
     self._grid_lat = model_config.grid_lat
     self._grid_lon = model_config.grid_lon
@@ -332,43 +335,46 @@ class GraphCast(predictor_base.Predictor):
     )
 
     # Initialize remaining properties.
-    # Within "_init_mesh_properties":
-    #   self._num_mesh_nodes # num_mesh_nodes
-    #   self._mesh_nodes_lat # [num_mesh_nodes]
-    #   self._mesh_nodes_lon # [num_mesh_nodes]
+    # Within "_init_connected_mesh_properties":
+    #   self._num_connected_mesh_nodes
+    #   self._connected_mesh_nodes # [num_connected_mesh_nodes, 3]
+    #   self._connected_mesh_graph # MultiMeshGraph
+    #   self._connected_mesh_nodes_lat # [num_connected_mesh_nodes]
+    #   self._connected_mesh_nodes_lon # [num_connected_mesh_nodes]
     # Within "_init_grid_properties":
     #   self._grid_lat # [num_lat_points]
     #   self._grid_lon # [num_lon_points]
     #   self._num_grid_nodes # num_lat_points * num_lon_points
     #   self._grid_nodes_lat # [num_grid_nodes]
     #   self._grid_nodes_lon # [num_grid_nodes]
-    # Within "_init_{grid2mesh,processor,mesh2grid}_graph"
-    #   self._grid2mesh_graph_structure
-    #   self._mesh_graph_structure
-    #   self._mesh2grid_graph_structure
+    # Within "_init_{grid2mesh,mesh,mesh2grid}_graph"
+    #   self._{grid2mesh,mesh,mesh2grid}_graph_structure
 
-    self._init_mesh_properties()
+    self._init_connected_mesh_properties()
     self._init_grid_properties(
       grid_lat=model_config.grid_lat, grid_lon=model_config.grid_lon)
     self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
-    self._mesh_graph_structure = self._init_mesh_graph()
+    self._mesh_graph_structure = self._init_connected_mesh_graph()
     self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
 
-  def _init_mesh_properties(self):
+  def _init_connected_mesh_properties(self):
     """Initializes static properties that have to do with mesh nodes."""
-    self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
+    self._connected_mesh_nodes = self._get_connected_mesh_nodes()
+    self._connected_mesh_graph = self._get_connected_mesh_graph(self._connected_mesh_nodes)
+    self._num_connected_mesh_nodes = self._connected_mesh_graph.vertices.shape[0]
+
     mesh_phi, mesh_theta = model_utils.cartesian_to_spherical(
-      self._mesh_graph.vertices[:, 0],
-      self._mesh_graph.vertices[:, 1],
-      self._mesh_graph.vertices[:, 2])
+      self._connected_mesh_graph.vertices[:, 0],
+      self._connected_mesh_graph.vertices[:, 1],
+      self._connected_mesh_graph.vertices[:, 2])
     (
       mesh_nodes_lat,
       mesh_nodes_lon,
     ) = model_utils.spherical_to_lat_lon(
       phi=mesh_phi, theta=mesh_theta)
     # Convert to f32 to ensure the lat/lon features aren't in f64.
-    self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)
-    self._mesh_nodes_lon = mesh_nodes_lon.astype(np.float32)
+    self._connected_mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)
+    self._connected_mesh_nodes_lon = mesh_nodes_lon.astype(np.float32)
 
   def _init_grid_properties(self, grid_lat: np.ndarray, grid_lon: np.ndarray):
     """Initializes static properties that have to do with grid nodes"""
@@ -390,8 +396,9 @@ class GraphCast(predictor_base.Predictor):
     (grid_indices, mesh_indices) = grid_mesh_connectivity.radius_query_indices(
       grid_latitude=self._grid_lat,
       grid_longitude=self._grid_lon,
-      mesh=self._mesh_graph,
-      radius=self._query_radius)
+      mesh=self._connected_mesh_graph,
+      radius=self._query_radius,
+      mask=self._grid_mask)
 
     # Edges sending info from grid to mesh.
     senders = grid_indices
@@ -404,8 +411,8 @@ class GraphCast(predictor_base.Predictor):
      edge_features) = model_utils.get_bipartite_graph_spatial_features(
       senders_node_lat=self._grid_nodes_lat,
       senders_node_lon=self._grid_nodes_lon,
-      receivers_node_lat=self._mesh_nodes_lat,
-      receivers_node_lon=self._mesh_nodes_lon,
+      receivers_node_lat=self._connected_mesh_nodes_lat,
+      receivers_node_lon=self._connected_mesh_nodes_lon,
       senders=senders,
       receivers=receivers,
       edge_normalization_factor=None,
@@ -413,7 +420,7 @@ class GraphCast(predictor_base.Predictor):
     )
 
     n_grid_node = np.array([self._num_grid_nodes])
-    n_mesh_node = np.array([self._num_mesh_nodes])
+    n_mesh_node = np.array([self._num_connected_mesh_nodes])
     n_edge = np.array([mesh_indices.shape[0]])
     grid_node_set = typed_graph.NodeSet(
       n_node=n_grid_node, features=senders_node_features)
@@ -434,24 +441,24 @@ class GraphCast(predictor_base.Predictor):
       edges=edges)
     return grid2mesh_graph
 
-  def _init_mesh_graph(self) -> typed_graph.TypedGraph:
+  def _init_connected_mesh_graph(self) -> typed_graph.TypedGraph:
 
-    # Work simply on the mesh edges.
-    senders, receivers = self._mesh_graph.edges
+    # Work simply with the connected mesh nodes.
+    senders, receivers = self._connected_mesh_graph.edges
 
     # Precompute structural node and edge features according to config options.
     # Structural features are those that depend on the fixed values of the
     # latitude and longitudes of the nodes.
-    assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
+    assert self._connected_mesh_nodes_lat is not None and self._connected_mesh_nodes_lon is not None
     node_features, edge_features = model_utils.get_graph_spatial_features(
-      node_lat=self._mesh_nodes_lat,
-      node_lon=self._mesh_nodes_lon,
+      node_lat=self._connected_mesh_nodes_lat,
+      node_lon=self._connected_mesh_nodes_lon,
       senders=senders,
       receivers=receivers,
       **self._spatial_features_kwargs,
     )
 
-    n_mesh_node = np.array([self._num_mesh_nodes])
+    n_mesh_node = np.array([self._num_connected_mesh_nodes])
     n_edge = np.array([senders.shape[0]])
     assert n_mesh_node == len(node_features)
     mesh_node_set = typed_graph.NodeSet(
@@ -464,12 +471,12 @@ class GraphCast(predictor_base.Predictor):
     edges = {
       typed_graph.EdgeSetKey("mesh", ("mesh_nodes", "mesh_nodes")): edge_set
     }
-    mesh_graph = typed_graph.TypedGraph(
+    connected_mesh_graph = typed_graph.TypedGraph(
       context=typed_graph.Context(n_graph=np.array([1]), features=()),
       nodes=nodes,
       edges=edges)
 
-    return mesh_graph
+    return connected_mesh_graph
 
   def _init_mesh2grid_graph(self) -> typed_graph.TypedGraph:
     """Build Mesh2Grid graph."""
@@ -480,18 +487,19 @@ class GraphCast(predictor_base.Predictor):
      mesh_indices) = grid_mesh_connectivity.in_mesh_triangle_indices(
       grid_latitude=self._grid_lat,
       grid_longitude=self._grid_lon,
-      mesh=self._mesh_graph)
+      mesh=self._connected_mesh_graph,
+      mask=self._grid_mask)
 
     # Edges sending info from mesh to grid.
     senders = mesh_indices
     receivers = grid_indices
 
     # Precompute structural node and edge features according to config options.
-    assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
+    assert self._connected_mesh_nodes_lat is not None and self._connected_mesh_nodes_lon is not None
     (senders_node_features, receivers_node_features,
      edge_features) = model_utils.get_bipartite_graph_spatial_features(
-      senders_node_lat=self._mesh_nodes_lat,
-      senders_node_lon=self._mesh_nodes_lon,
+      senders_node_lat=self._connected_mesh_nodes_lat,
+      senders_node_lon=self._connected_mesh_nodes_lon,
       receivers_node_lat=self._grid_nodes_lat,
       receivers_node_lon=self._grid_nodes_lon,
       senders=senders,
@@ -501,7 +509,7 @@ class GraphCast(predictor_base.Predictor):
     )
 
     n_grid_node = np.array([self._num_grid_nodes])
-    n_mesh_node = np.array([self._num_mesh_nodes])
+    n_mesh_node = np.array([self._num_connected_mesh_nodes])
     n_edge = np.array([senders.shape[0]])
     grid_node_set = typed_graph.NodeSet(
       n_node=n_grid_node, features=receivers_node_features)
@@ -521,6 +529,53 @@ class GraphCast(predictor_base.Predictor):
       nodes=nodes,
       edges=edges)
     return mesh2grid_graph
+  
+  def _get_connected_mesh_nodes(self):
+    
+    (_, mesh_receivers) = grid_mesh_connectivity.radius_query_indices(
+      grid_latitude=self._grid_lat,
+      grid_longitude=self._grid_lon,
+      mesh=self._mesh_graph,
+      radius=self._query_radius,
+      mask=self._grid_mask)
+    
+    (_, mesh_senders) = grid_mesh_connectivity.in_mesh_triangle_indices(
+      grid_latitude=self._grid_lat,
+      grid_longitude=self._grid_lon,
+      mesh=self._mesh_graph,
+      mask=self._grid_mask)
+
+    grid2mesh_connected_mesh_nodes = set(mesh_receivers)
+    mesh2grid_connected_mesh_nodes = set(mesh_senders)
+    connected_mesh_nodes = set.union(grid2mesh_connected_mesh_nodes, mesh2grid_connected_mesh_nodes)
+
+    return connected_mesh_nodes
+  
+  def _filter_edges(self, connected_mesh_nodes: Iterable[int], edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+    all_senders, all_receivers = edges
+    senders = []
+    receivers = []
+    for (i, j) in zip(all_senders, all_receivers):
+      if i in connected_mesh_nodes and j in connected_mesh_nodes:
+        senders.append(i)
+        receivers.append(j)
+    senders = np.array(senders)
+    receivers = np.array(receivers)
+    return senders, receivers
+  
+  def _get_connected_mesh_graph(self, connected_mesh_nodes):
+    connected_mesh_nodes_mapping = sorted(connected_mesh_nodes)
+
+    def update_indices(indices):
+      return np.array([connected_mesh_nodes_mapping.index(v) for v in indices])
+    
+    vertices = self._mesh_graph.vertices[connected_mesh_nodes_mapping]
+    faces = np.stack([update_indices(face) for face in self._mesh_graph.faces if all([v in connected_mesh_nodes for v in face])])
+    old_senders, old_receivers = self._filter_edges(connected_mesh_nodes, self._mesh_graph.edges)
+    edges = (update_indices(old_senders), update_indices(old_receivers))
+    connected_mesh_graph = icosahedral_mesh.MultiMeshGraph(vertices=vertices, faces=faces, edges=edges)
+
+    return connected_mesh_graph
 
   def __call__(self,
                inputs: xarray.Dataset,
@@ -548,7 +603,7 @@ class GraphCast(predictor_base.Predictor):
     output_grid_nodes = self._run_mesh2grid_gnn(
         updated_latent_mesh_nodes, latent_grid_nodes)
 
-    # Conver output flat vectors for the grid nodes to the format of the output.
+    # Convert output flat vectors for the grid nodes to the format of the output.
     # [num_grid_nodes, batch, output_size] ->
     # xarray (batch, one time step, lat, lon, level, multiple vars)
     return self._grid_node_outputs_to_prediction(
@@ -579,7 +634,8 @@ class GraphCast(predictor_base.Predictor):
             "10m_v_component_of_wind": 0.1,
             "mean_sea_level_pressure": 0.1,
             "total_precipitation_6hr": 0.1,
-        })
+        },
+        mask=self._grid_mask)
     return loss, predictions  # pytype: disable=bad-return-type  # jax-ndarray
 
   def loss(  # pytype: disable=signature-mismatch  # jax-ndarray
@@ -615,7 +671,7 @@ class GraphCast(predictor_base.Predictor):
     # the mesh nodes, we also append some dummy zero input features for the
     # mesh nodes.
     dummy_mesh_node_features = jnp.zeros(
-        (self._num_mesh_nodes,) + grid_node_features.shape[1:],
+        (self._num_connected_mesh_nodes,) + grid_node_features.shape[1:],
         dtype=grid_node_features.dtype)
     new_mesh_nodes = mesh_nodes._replace(
         features=jnp.concatenate([

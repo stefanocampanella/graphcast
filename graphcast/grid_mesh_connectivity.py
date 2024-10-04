@@ -43,7 +43,8 @@ def radius_query_indices(
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
     mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph],
-    radius: float) -> tuple[np.ndarray, np.ndarray]:
+    radius: float,
+    mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
   Args:
@@ -51,6 +52,7 @@ def radius_query_indices(
     grid_longitude: Longitude values for the grid [num_lon_points]
     mesh: Mesh object.
     radius: Radius of connectivity in R3. for a sphere of unit radius.
+    mask: Boolean mask of shape [num_lat_points, num_lon_points] to filter.
 
   Returns:
     tuple with `grid_indices` and `mesh_indices` indicating edges between the
@@ -73,12 +75,13 @@ def radius_query_indices(
   # Note `num_mesh_points_per_grid_point` is not constant, so this is a list
   # of arrays, rather than a 2d array.
   query_indices = kd_tree.query_ball_point(x=grid_positions, r=radius)
-
   grid_edge_indices = []
   mesh_edge_indices = []
   for grid_index, mesh_neighbors in enumerate(query_indices):
-    grid_edge_indices.append(np.repeat(grid_index, len(mesh_neighbors)))
-    mesh_edge_indices.append(mesh_neighbors)
+    mask_indices = np.unravel_index(grid_index, mask.shape)
+    if mask[mask_indices]:
+      grid_edge_indices.append(np.repeat(grid_index, len(mesh_neighbors)))
+      mesh_edge_indices.append(mesh_neighbors)
 
   # [num_edges]
   grid_edge_indices = np.concatenate(grid_edge_indices, axis=0).astype(int)
@@ -91,13 +94,15 @@ def in_mesh_triangle_indices(
     *,
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
-    mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph]) -> tuple[np.ndarray, np.ndarray]:
+    mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph],
+    mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for grid points contained in mesh triangles.
 
   Args:
     grid_latitude: Latitude values for the grid [num_lat_points]
     grid_longitude: Longitude values for the grid [num_lon_points]
     mesh: Mesh object.
+    mask: Boolean mask of shape [num_lat_points, num_lon_points] to filter.
 
   Returns:
     tuple with `grid_indices` and `mesh_indices` indicating edges between the
@@ -126,6 +131,11 @@ def in_mesh_triangle_indices(
   grid_indices = np.arange(grid_positions.shape[0])
   grid_edge_indices = np.tile(grid_indices.reshape([-1, 1]), [1, 3])
 
+  # Filter masked points.
+  # [num_edges=num_grid_points, 3]
+  mesh_edge_indices = mesh_edge_indices[mask.reshape([-1]), :]
+  grid_edge_indices = grid_edge_indices[mask.reshape([-1]), :]
+  
   # Flatten to get a regular list.
   # [num_edges=num_grid_points*3]
   mesh_edge_indices = mesh_edge_indices.reshape([-1])
