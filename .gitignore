@@ -3,6 +3,8 @@
 .run
 **/.ipynb_checkpoints
 **/slurm-*.out
+**/*.egg-info
+**/__pycache__
 venv
 data
 scratch
@@ -10,5 +12,3 @@ logs
 runs
 pkg_cache
 build
-graphcast.egg-info
-graphcast/__pycache__

@@ -417,6 +417,9 @@ class JaxArrayWrapper(np.lib.mixins.NDArrayOperatorsMixin):
   def __init__(self, jax_array):
     self.jax_array = jax_array
 
+  def __jax_array__(self):
+    return self.jax_array
+
   def __array_ufunc__(self, ufunc, method, *args, **kwargs):
     for x in args:
       if not isinstance(x, (jax.typing.ArrayLike, type(self))):

@@ -47,4 +47,4 @@ interactive = ["jupyterlab", "ipywidgets", "google-cloud-storage"]
 Homepage = "https://github.com/deepmind/graphcast"
 
 [tool.setuptools]
-packages = ["graphcastmodel"]
+packages = ["graphcast"]

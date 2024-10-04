@@ -46,7 +46,7 @@ class MultiMeshGraph(TriangularMesh):
     edges: cumulated edges of all the triangular meshes used in building the multi-mesh graph.
 
   """
-  edges: np.ndarray
+  edges: tuple[np.ndarray, np.ndarray]
 
 
 def merge_meshes(

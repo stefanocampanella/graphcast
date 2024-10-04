@@ -18,7 +18,9 @@ from typing import Mapping
 from graphcast import xarray_tree
 import numpy as np
 from typing_extensions import Protocol
+from typing import Optional
 import xarray
+import chex
 
 
 LossAndDiagnostics = tuple[xarray.DataArray, xarray.Dataset]
@@ -52,11 +54,12 @@ class LossFunction(Protocol):
         batch before logging.
     """
 
-
+#TODO: The loss could use spatial weights instead of a mask.
 def weighted_mse_per_level(
     predictions: xarray.Dataset,
     targets: xarray.Dataset,
     per_variable_weights: Mapping[str, float],
+    mask: Optional[xarray.DataArray]=None
 ) -> LossAndDiagnostics:
   """Latitude- and pressure-level-weighted MSE loss."""
   def loss(prediction, target):
@@ -64,13 +67,15 @@ def weighted_mse_per_level(
     loss *= normalized_latitude_weights(target).astype(loss.dtype)
     if 'level' in target.dims:
       loss *= normalized_level_weights(target).astype(loss.dtype)
-    return _mean_preserving_batch(loss)
+    return _mean_preserving_batch(loss, mask=mask)
 
   losses = xarray_tree.map_structure(loss, predictions, targets)
   return sum_per_variable_losses(losses, per_variable_weights)
 
 
-def _mean_preserving_batch(x: xarray.DataArray) -> xarray.DataArray:
+def _mean_preserving_batch(x: xarray.DataArray, mask: Optional[xarray.DataArray]=None) -> xarray.DataArray:
+  if mask is not None:
+    x = x.where(mask, 0.0)
   return x.mean([d for d in x.dims if d != 'batch'], skipna=False)
 
 

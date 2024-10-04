@@ -365,6 +365,7 @@ def extract_inputs_targets_forcings(
   return inputs, targets, forcings
 
 class FakeGraphcastDemoDataset(Dataset):
+
   def __init__(self, dataset_path: pathlib.Path, task_config: model.TaskConfig, fake_len: int = 16, steps: int = 1):
     self.dataset_path = dataset_path
     self.task_config = task_config
@@ -389,6 +390,7 @@ class FakeGraphcastDemoDataset(Dataset):
 
 
 class ERA5Dataset(Dataset):
+
   def __init__(self, dataset_path: Union[pathlib.Path, str], task_config: model.TaskConfig, steps: int = 1):
     self.dataset_path = dataset_path
     self.task_config = task_config
@@ -405,11 +407,15 @@ class ERA5Dataset(Dataset):
     ds = ds.swap_dims(latitude='lat', longitude='lon')
     ds = ds.rename_vars(latitude='lat', longitude='lon')
     ds = ds.set_index(lat='lat', lon='lon', level='level', time='time')
-    # FIX NEEDED Transpose in accord to demo data breaks experiments.
+    #TODO: The code should comply with the usual convention for longitudes. 
+    # However, this would require retraining of original GraphCast weights.
+    #ds['lon'] = np.where(ds.lon <= 180, ds.lon, ds.lon - 360)
+
+    #TODO: Find out why transpose in accord to demo data breaks experiments.
     # ds = ds.transpose("batch", "time", "level", "lat", "lon")
     self.dataset = ds
 
-  
+
   def __len__(self):
     return self.dataset.sizes["time"] - 2
 
@@ -447,12 +453,14 @@ def default_collate_fn(batch):
 
 
 class DataLoader(TorchDataLoader):
+
   def __init__(self, dataset: Dataset, batch_size=None, num_samples=None, sharding=None, collate_fn=default_collate_fn, **kwargs):
     sampler = RandomSampler(dataset, replacement=True, num_samples=num_samples * batch_size, generator=kwargs.get('generator'))
     batch_sampler = BatchSampler(sampler=sampler, batch_size=batch_size, drop_last=True)
     kwargs.update({'shuffle': None, 'drop_last': None, 'sampler': None, 'batch_sampler': batch_sampler})
     super().__init__(dataset, collate_fn=collate_fn, **kwargs)
     self.sharding = sharding
+
   def __next__(self):
     next_elem = super().__next__()
     if self.sharding is None:
@@ -460,3 +468,7 @@ class DataLoader(TorchDataLoader):
     else:
       inputs, targets, forcings = map(lambda x: device_put(x, self.sharding), next_elem)
     return inputs, targets, forcings
+
+  @property
+  def random_item(self):
+    return next(iter(self))

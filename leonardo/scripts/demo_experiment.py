@@ -1,35 +1,34 @@
 import argparse
+import dataclasses
 import pathlib
 import tomllib
-import dataclasses
-
-from graphcast import autoregressive
-from graphcast import casting
-from graphcast import checkpoint
-from graphcast import data_utils
-from graphcast import model
-from graphcast import normalization
-from graphcast import xarray_jax
-from graphcast import legacy_utils
-
-from jax.experimental import mesh_utils
-from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
-from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
 
 import haiku as hk
 import jax
-import optax
 import jax.profiler
+import optax
+import torch
 import xarray
+from jax.experimental import mesh_utils
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
+from graphcast import (autoregressive, casting, checkpoint, data_utils,
+                       legacy_utils, model, normalization, plot_utils,
+                       xarray_jax)
 
 parser = argparse.ArgumentParser(prog="graphcast-finetune-experiment")
 parser.add_argument('config_file', help="Path to the configuration file.", type=pathlib.Path)
 parser.add_argument('--num_gpus', help="Number of GPUs to be used.", type=int, default=len(jax.devices()))
+parser.add_argument('--seed', type=int, default=0)
 parser.add_argument('--jit', action='store_true')
 parser.add_argument('--random-init', action='store_true')
 parser.add_argument('--no-progress', action='store_true')
 parser.add_argument('--checkpoint', action='store_true')
+parser.add_argument('--plot', action='store_true')
+parser.add_argument('--plot-every-n-iterations', type=int, default=10)
 args = parser.parse_args()
 
 with args.config_file.open('rb') as file:
@@ -42,14 +41,15 @@ with args.config_file.open('rb') as file:
     return path
 
   # Parse path strings as `Path`s, and make them absolute
-  for name in ('params_file', 'dataset_path', 'stats_dir', 'output_file'):
+  for name in [key for key in configs.keys() if 'path' in key]:
     configs[name] = make_absolute_path(configs[name])
 
 if __name__ == '__main__':
 
   # Load the checkpoint, containing model parameters, model configuration, and the task configuration.
-  print(f"Reading checkpoint from {configs['params_file']}")
-  ckpt = legacy_utils.read_legacy_checkpoint(configs['params_file'], configs['dataset_path'] / 'training')
+  print(f"Reading checkpoint from {configs['checkpoint_file_path']}")
+  ckpt = legacy_utils.read_legacy_checkpoint(configs['checkpoint_file_path'],
+                                             configs['mask_and_weights_file_path'])
 
   model_config = ckpt.model_config
   task_config = ckpt.task_config
@@ -62,7 +62,7 @@ if __name__ == '__main__':
   device_mesh = Mesh(devices=mesh_utils.create_device_mesh((args.num_gpus,)), axis_names=('batch',))
 
   # Load statistical moments of the inputs for their normalization
-  stats_dir = configs['stats_dir']
+  stats_dir = configs['stats_dir_path']
   print(f"Reading stats file from {stats_dir}")
   with (stats_dir / "diffs_stddev_by_level.nc").open("rb") as f:
     diffs_stddev_by_level = data_utils.device_put(xarray.load_dataset(f).compute(),
@@ -109,26 +109,29 @@ if __name__ == '__main__':
   loss_fn_jit = jax.jit(loss_fn.apply)
 
   # Load the training and validation datasets
-  training_dataset_path = configs['dataset_path'] / 'training'
+  torch_generator = torch.Generator().manual_seed(args.seed)
+  training_dataset_path = configs['datasets_dir_path'] / 'training'
   print(f"Reading training dataset from {training_dataset_path}")
   train_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(training_dataset_path, task_config),
                                            num_samples=configs['max_updates'],
                                            batch_size=args.num_gpus,
-                                           sharding=NamedSharding(device_mesh, P('batch')))
+                                           sharding=NamedSharding(device_mesh, P('batch')),
+                                           generator=torch_generator)
   
-  validation_dataset_path = configs['dataset_path'] / 'validation'
+  validation_dataset_path = configs['datasets_dir_path'] / 'validation'
   print(f"Reading validation dataset from {validation_dataset_path}")
   validation_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(validation_dataset_path, task_config),
                                                 num_samples=configs['max_updates'],
                                                 batch_size=4 * args.num_gpus,
-                                                sharding=NamedSharding(device_mesh, P('batch')))
+                                                sharding=NamedSharding(device_mesh, P('batch')),
+                                                generator=torch_generator)
   
   # Initialize the model parameters and shard them
   released_params = ckpt.params
   best_params = ckpt.params
   key = jax.random.key(0)
   if args.random_init:
-    inputs, targets, forcings = iter(train_dataloader).__next__()
+    inputs, targets, forcings = train_dataloader.random_item
     params = predictor.init(key, inputs, targets, forcings)
   else:
     params = released_params
@@ -145,11 +148,11 @@ if __name__ == '__main__':
 
   # Train the model
   writer = SummaryWriter()
-  output_file = configs['output_file']
-  best_validation_loss, _ = loss_fn_jit(params, *iter(validation_dataloader).__next__())
+  output_file = configs['best_checkpoint_file_path']
+  plot_variables = configs['plot_variables']
+  best_validation_loss, _ = loss_fn_jit(params, *validation_dataloader.random_item)
   patience = 0
-  decorated_dataloader = tqdm(enumerate(train_dataloader), disable=args.no_progress)
-  for n_iter, (inputs, targets, forcings) in decorated_dataloader:
+  for n_iter, (inputs, targets, forcings) in enumerate(tqdm(train_dataloader, disable=args.no_progress)):
     # Compute and log the loss and its gradients
     (loss, diagnostics), grads = grads_fn(params, inputs, targets, forcings)
     writer.add_scalar('train/loss', loss.item(), n_iter)
@@ -159,8 +162,7 @@ if __name__ == '__main__':
     updates, optimizer_state = optimizer.update(grads, optimizer_state, params)
     params = optax.apply_updates(params, updates)
     # Compute and log the validation loss, then save the best model
-    new_validation_loss, validation_diagnostics = loss_fn_jit(params, *iter(validation_dataloader).__next__())
-    decorated_dataloader.set_description_str(f"train loss: {loss}, validation loss: {new_validation_loss}")
+    new_validation_loss, validation_diagnostics = loss_fn_jit(params, *validation_dataloader.random_item)
     writer.add_scalar('validation/loss', new_validation_loss.item(), n_iter)
     for key, value in validation_diagnostics.items():
       writer.add_scalar(f"validation/{key}", value.mean().item(), n_iter)
@@ -172,6 +174,26 @@ if __name__ == '__main__':
         checkpoint.dump(file, new_ckpt)
     else:
       patience += 1
+    if args.plot:
+      if n_iter % args.plot_every_n_iterations:
+        inputs, targets, forcings = validation_dataloader.random_item
+        predictions = predictor.apply(params, inputs, targets, forcings)
+        plot_size = 5
+        plot_steps = 1
+        for plot_variable, plot_level in plot_variables.items():
+          # TOML does not have a nil type, workaround is required
+          plot_level = plot_level if plot_level != -1 else None
+          data = {
+              "Targets": plot_utils.scale(plot_utils.select(targets, plot_variable, plot_level, plot_steps)),
+              "Predictions": plot_utils.scale(plot_utils.select(predictions, plot_variable, plot_level, plot_steps)),
+              "Diff": plot_utils.scale((plot_utils.select(targets, plot_variable, plot_level, plot_steps) -
+                                        plot_utils.select(predictions, plot_variable, plot_level, plot_steps)), 
+                                        center=0),
+          }
+          fig_title = plot_variable.value
+          if "level" in predictions[plot_variable].coords:
+            fig_title += f" at {plot_level} hPa"
+          figure, _, _ = plot_utils.plot_data(data, fig_title, plot_size)
+          writer.add_figure(f"plots/{plot_variable} - {plot_level}" if plot_level is not None else f"plots/{plot_variable}", figure, n_iter)
     if patience > configs['max_patience']:
       break
-
