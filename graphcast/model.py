@@ -193,10 +193,10 @@ class ModelConfig:
         This supports using pre-trained model weights with a different graph
         structure to what it was trained on.
   """
-  grid_lat: chex.Array
-  grid_lon: chex.Array
-  grid_mask: chex.Array
-  grid_weights: Optional[chex.Array]
+  grid_lat: np.ndarray
+  grid_lon: np.ndarray
+  grid_mask: xarray.DataArray
+  grid_weights: Optional[xarray.DataArray]
   mesh_graph: icosahedral_mesh.MultiMeshGraph
   latent_size: int
   gnn_msg_steps: int

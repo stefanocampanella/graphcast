@@ -59,7 +59,7 @@ def weighted_mse_per_level(
     predictions: xarray.Dataset,
     targets: xarray.Dataset,
     per_variable_weights: Mapping[str, float],
-    mask: Optional[chex.Array]=None
+    mask: Optional[xarray.DataArray]=None
 ) -> LossAndDiagnostics:
   """Latitude- and pressure-level-weighted MSE loss."""
   def loss(prediction, target):
@@ -73,9 +73,8 @@ def weighted_mse_per_level(
   return sum_per_variable_losses(losses, per_variable_weights)
 
 
-def _mean_preserving_batch(x: xarray.DataArray, mask: Optional[chex.Array]=None) -> xarray.DataArray:
+def _mean_preserving_batch(x: xarray.DataArray, mask: Optional[xarray.DataArray]=None) -> xarray.DataArray:
   if mask is not None:
-    #TODO: Currently masking depends on the order of lat and lon dimensions, so that `mask` can be broadcasted. Fix this.
     x = x.where(mask, 0.0)
   return x.mean([d for d in x.dims if d != 'batch'], skipna=False)
 

@@ -405,7 +405,11 @@ class ERA5Dataset(Dataset):
     ds = ds.swap_dims(latitude='lat', longitude='lon')
     ds = ds.rename_vars(latitude='lat', longitude='lon')
     ds = ds.set_index(lat='lat', lon='lon', level='level', time='time')
-    # FIX NEEDED Transpose in accord to demo data breaks experiments.
+    #TODO: The code should comply with the usual convention for longitudes. 
+    # However, this would require retraining of original GraphCast weights.
+    #ds['lon'] = np.where(ds.lon <= 180, ds.lon, ds.lon - 360)
+
+    #TODO: Find out why transpose in accord to demo data breaks experiments.
     # ds = ds.transpose("batch", "time", "level", "lat", "lon")
     self.dataset = ds
 

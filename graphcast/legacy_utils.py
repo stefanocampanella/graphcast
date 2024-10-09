@@ -38,7 +38,7 @@ class CheckPoint:
 
 
 def upgrade_legacy_model_config(old_model_config: ModelConfig, grid_mask: xarray.DataArray,
-                                grid_weights: xarray.DataArray) -> model.ModelConfig:
+                                grid_weights: Optional[xarray.DataArray]=None) -> model.ModelConfig:
   """Read a model_config for the released GraphCast model, then compute the additional attributes needed
   to work with new versions of the code."""
   meshes = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(
@@ -53,6 +53,7 @@ def upgrade_legacy_model_config(old_model_config: ModelConfig, grid_mask: xarray
     grid_lat=grid_mask.lat,
     grid_lon=grid_mask.lon,
     grid_mask=grid_mask,
+    grid_weights=grid_weights,
     mesh_graph=mesh_graph,
     **unchanged_configs)
   return model_config

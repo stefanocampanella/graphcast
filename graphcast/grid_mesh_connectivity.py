@@ -18,6 +18,7 @@ from graphcast import icosahedral_mesh
 import numpy as np
 import scipy
 import trimesh
+import xarray
 
 
 def _grid_lat_lon_to_coordinates(
@@ -44,7 +45,7 @@ def radius_query_indices(
     grid_longitude: np.ndarray,
     mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph],
     radius: float,
-    mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    mask: xarray.DataArray) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
   Args:
@@ -78,8 +79,9 @@ def radius_query_indices(
   grid_edge_indices = []
   mesh_edge_indices = []
   for grid_index, mesh_neighbors in enumerate(query_indices):
-    mask_indices = np.unravel_index(grid_index, mask.shape)
-    if mask[mask_indices]:
+    latitude_index, longitude_index = np.unravel_index(grid_index, (grid_latitude.shape[0], grid_longitude.shape[0]))
+    mask_value = mask.sel(lat=mask.lat[latitude_index], lon=mask.lon[longitude_index]).item()
+    if mask_value:
       grid_edge_indices.append(np.repeat(grid_index, len(mesh_neighbors)))
       mesh_edge_indices.append(mesh_neighbors)
 
@@ -95,7 +97,7 @@ def in_mesh_triangle_indices(
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
     mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph],
-    mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    mask: xarray.DataArray) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for grid points contained in mesh triangles.
 
   Args:
@@ -133,8 +135,9 @@ def in_mesh_triangle_indices(
 
   # Filter masked points.
   # [num_edges=num_grid_points, 3]
-  mesh_edge_indices = mesh_edge_indices[mask.reshape([-1]), :]
-  grid_edge_indices = grid_edge_indices[mask.reshape([-1]), :]
+  flat_mask = mask.transpose('lat', 'lon').data.reshape([-1])
+  mesh_edge_indices = mesh_edge_indices[flat_mask, :]
+  grid_edge_indices = grid_edge_indices[flat_mask, :]
   
   # Flatten to get a regular list.
   # [num_edges=num_grid_points*3]
