@@ -196,6 +196,7 @@ class ModelConfig:
   grid_lat: chex.Array
   grid_lon: chex.Array
   grid_mask: chex.Array
+  grid_weights: Optional[chex.Array]
   mesh_graph: icosahedral_mesh.MultiMeshGraph
   latent_size: int
   gnn_msg_steps: int
@@ -323,6 +324,7 @@ class GraphCast(predictor_base.Predictor):
     self._mesh_graph = model_config.mesh_graph
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
     self._grid_mask = model_config.grid_mask
+    self._grid_weights = model_config.grid_weights
     self._grid_lat = model_config.grid_lat
     self._grid_lon = model_config.grid_lon
 
@@ -619,6 +621,8 @@ class GraphCast(predictor_base.Predictor):
     predictions = self(
         inputs, targets_template=targets, forcings=forcings, is_training=True)
     # Compute loss.
+    #TODO: Here probably `self._grid_mask` should reside on device, possibly being sharded. However,
+    # during the model initialization is probably better to keep it just a `numpy.ndarray` Fix this.
     loss = losses.weighted_mse_per_level(
         predictions, targets,
         per_variable_weights={

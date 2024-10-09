@@ -1,10 +1,13 @@
-from typing import Optional, Any
+from typing import Optional, Any, Union
 from graphcast import icosahedral_mesh
 from graphcast import model
 from graphcast import checkpoint
 import chex
 import xarray
-import numpy as np
+import pathlib
+
+
+PathLike = Union[str, pathlib.Path]
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -34,18 +37,10 @@ class CheckPoint:
   license: str
 
 
-def upgrade_legacy_model_config(old_model_config, grid_lat, grid_lon, lon_range=None, lat_range=None):
+def upgrade_legacy_model_config(old_model_config: ModelConfig, grid_mask: xarray.DataArray,
+                                grid_weights: xarray.DataArray) -> model.ModelConfig:
   """Read a model_config for the released GraphCast model, then compute the additional attributes needed
   to work with new versions of the code."""
-  if lon_range is not None:
-    lon_mask = (grid_lon > lon_range[0]) & (grid_lon < lon_range[1])
-  else:
-    lon_mask = np.full(grid_lon.shape, True)
-  if lat_range is not None:
-    lat_mask = (grid_lat > lat_range[0]) & (grid_lat < lat_range[1])
-  else:
-    lat_mask = np.full(grid_lat.shape, True)
-  grid_mask = np.outer(lon_mask, lat_mask)
   meshes = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(
     splits=old_model_config.mesh_size)
   finest_mesh = meshes[-1]
@@ -55,31 +50,30 @@ def upgrade_legacy_model_config(old_model_config, grid_lat, grid_lon, lon_range=
   attributes_to_copy = [name for name in old_model_config.__dict__ if name in model.ModelConfig.__dataclass_fields__]
   unchanged_configs = {name: getattr(old_model_config, name) for name in attributes_to_copy}
   model_config = model.ModelConfig(
-    grid_lat=grid_lat,
-    grid_lon=grid_lon,
+    grid_lat=grid_mask.lat,
+    grid_lon=grid_mask.lon,
     grid_mask=grid_mask,
     mesh_graph=mesh_graph,
     **unchanged_configs)
   return model_config
 
 
-def read_legacy_checkpoint(params_file, dataset_path, lat_lon_names=("latitude", "longitude"), lon_range=None, lat_range=None):
+def read_legacy_checkpoint(checkpoint_file_path: PathLike, mask_and_weights_file_path: PathLike) -> model.ModelConfig:
   """Read a checkpoint for the released GraphCast model (i.e. those available in the dm-graphcast bucket on
   Google Cloud), then updates the model_config to work with new versions of the code."""
-  with params_file.open("rb") as f:
-    # Read original model checkpoint and update model_config to work with the new interface
-    old_ckpt = checkpoint.load(f, CheckPoint)
-    sample_dataset = xarray.open_zarr(dataset_path)
-    lat_name, lon_name = lat_lon_names
-    model_config = upgrade_legacy_model_config(old_ckpt.model_config,
-                                               grid_lat=getattr(sample_dataset, lat_name),
-                                               grid_lon=getattr(sample_dataset, lon_name),
-                                               lon_range=lon_range,
-                                               lat_range=lat_range)
-    new_ckpt = model.CheckPoint(params=old_ckpt.params,
-                                model_config=model_config,
-                                task_config=old_ckpt.task_config,
-                                description=old_ckpt.description,
-                                license=old_ckpt.license)
-    return new_ckpt
+
+  checkpoint_file_path = pathlib.Path(checkpoint_file_path)
+  mask_and_weights_file_path = pathlib.Path(mask_and_weights_file_path)
+  with checkpoint_file_path.open("rb") as ckpt_file:
+    old_ckpt = checkpoint.load(ckpt_file, CheckPoint)
+  ds = xarray.open_dataset(mask_and_weights_file_path)
+  grid_mask = ds.grid_mask
+  grid_weights = ds.get('grid_weights')
+  model_config = upgrade_legacy_model_config(old_ckpt.model_config, grid_mask, grid_weights)
+  new_ckpt = model.CheckPoint(params=old_ckpt.params,
+                              model_config=model_config,
+                              task_config=old_ckpt.task_config,
+                              description=old_ckpt.description,
+                              license=old_ckpt.license)
+  return new_ckpt
 

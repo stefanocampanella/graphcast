@@ -42,17 +42,15 @@ with args.config_file.open('rb') as file:
     return path
 
   # Parse path strings as `Path`s, and make them absolute
-  for name in ('params_file', 'dataset_path', 'stats_dir', 'output_file'):
+  for name in [key for key in configs.keys() if 'path' in key]:
     configs[name] = make_absolute_path(configs[name])
 
 if __name__ == '__main__':
 
   # Load the checkpoint, containing model parameters, model configuration, and the task configuration.
-  print(f"Reading checkpoint from {configs['params_file']}")
-  ckpt = legacy_utils.read_legacy_checkpoint(configs['params_file'], 
-                                             configs['dataset_path'] / 'training',
-                                             lon_range=configs.get('lon_range'),
-                                             lat_range=configs.get('lat_range'))
+  print(f"Reading checkpoint from {configs['checkpoint_file_path']}")
+  ckpt = legacy_utils.read_legacy_checkpoint(configs['checkpoint_file_path'],
+                                             configs['mask_and_weights_file_path'])
 
   model_config = ckpt.model_config
   task_config = ckpt.task_config
@@ -65,7 +63,7 @@ if __name__ == '__main__':
   device_mesh = Mesh(devices=mesh_utils.create_device_mesh((args.num_gpus,)), axis_names=('batch',))
 
   # Load statistical moments of the inputs for their normalization
-  stats_dir = configs['stats_dir']
+  stats_dir = configs['stats_dir_path']
   print(f"Reading stats file from {stats_dir}")
   with (stats_dir / "diffs_stddev_by_level.nc").open("rb") as f:
     diffs_stddev_by_level = data_utils.device_put(xarray.load_dataset(f).compute(),
@@ -112,14 +110,14 @@ if __name__ == '__main__':
   loss_fn_jit = jax.jit(loss_fn.apply)
 
   # Load the training and validation datasets
-  training_dataset_path = configs['dataset_path'] / 'training'
+  training_dataset_path = configs['datasets_dir_path'] / 'training'
   print(f"Reading training dataset from {training_dataset_path}")
   train_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(training_dataset_path, task_config),
                                            num_samples=configs['max_updates'],
                                            batch_size=args.num_gpus,
                                            sharding=NamedSharding(device_mesh, P('batch')))
   
-  validation_dataset_path = configs['dataset_path'] / 'validation'
+  validation_dataset_path = configs['datasets_dir_path'] / 'validation'
   print(f"Reading validation dataset from {validation_dataset_path}")
   validation_dataloader = data_utils.DataLoader(data_utils.ERA5Dataset(validation_dataset_path, task_config),
                                                 num_samples=configs['max_updates'],
@@ -148,7 +146,7 @@ if __name__ == '__main__':
 
   # Train the model
   writer = SummaryWriter()
-  output_file = configs['output_file']
+  output_file = configs['best_checkpoint_file_path']
   best_validation_loss, _ = loss_fn_jit(params, *iter(validation_dataloader).__next__())
   patience = 0
   decorated_dataloader = tqdm(enumerate(train_dataloader), disable=args.no_progress)
