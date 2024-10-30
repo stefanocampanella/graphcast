@@ -77,7 +77,7 @@ if [[ $MAKE_ENV == true ]]; then
     # But then one should find a functioning version of jax
     # and jaxlib to be used with graphcast...
     # Seems more reasonable to not have a working jax.profiler.trace
-    module load profile/deeplrn cineca-ai/4.1.1
+    module load profile/deeplrn cineca-ai/4.3.0
 
     # Create Python venv
     python -m venv --system-site-packages --upgrade-deps venv || exit
