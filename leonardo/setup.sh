@@ -3,7 +3,7 @@
 usage() {
     more <<EOF
 NAME
-    This script prepare the environment and files to run GraphCast on Leonardo.
+    This script prepares the environment and files necessary to run the GraphCast demo on Leonardo.
 
 SYNOPSIS
     usage: $0 --help
@@ -13,19 +13,18 @@ DESCRIPTION
     Setup options
         --skip-env                              Do not create an environment.
         --skip-data                             Do not download params and datasets.
-        --data-dir                              Path where to download data (default data).
-        --config                                Path to configuration file (default leonardo/configs/small.toml).
+        --data-dir                              Path where to download data (default 'data/demo').
+        --config                                Path to download config file (default 'configs/download/demo.toml').
         --help                                  Shows this help.
 EOF
 }
 
 # DEFAULTS
 ROOT=$(git rev-parse --show-toplevel)
-CLEAR=false
 MAKE_ENV=true
-DOWNLOAD_DATA=true
-DATA_DIR=data
-CONFIG_FILE="${ROOT}/leonardo/configs/small.toml"
+DOWNLOAD=true
+DATA_DIR="${ROOT}/data/demo"
+CONFIG_FILE="${ROOT}/configs/download/demo.toml"
 
 LONGOPTS='help,skip-env,skip-data,data-dir:,config:'
 ARGS=$(getopt --options '' --longoptions ${LONGOPTS} -- "${@}")
@@ -42,7 +41,7 @@ while true; do
         shift
         ;;
     (--skip-data)
-        DOWNLOAD_DATA=false
+        DOWNLOAD=false
         shift
         ;;
     (--data-dir)
@@ -50,7 +49,7 @@ while true; do
         shift
         ;;
     (--config)
-        CONFIG_FILE=$(realpath "${2}")
+        CONFIG_FILE=${2}
         shift
         ;;
     (--help)
@@ -86,51 +85,22 @@ if [[ $MAKE_ENV == true ]]; then
     source "${ROOT}/venv/bin/activate"
 
     JAX_RELEASE_URL=https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-    python -m pip download --dest=pkg_cache --find-links=${JAX_RELEASE_URL} "${ROOT}[profile,interactive]" || exit
+    python -m pip download --dest=pkg_cache --find-links=${JAX_RELEASE_URL} "${ROOT}[download,interactive,profile,train]" || exit
 
     # Install packages on a GPU node
     ACCOUNT=OGS23_PRACE_IT_0
     PARTITION=boost_usr_prod
     TIME=10
-    COMMAND="python -m pip install --no-build-isolation --no-index --find-links pkg_cache \
-             -e ${ROOT}[profile,interactive]"
-    srun --account ${ACCOUNT} --partition ${PARTITION} --ntasks=1 --cpus-per-task=8 --gres=gpu:1 --time=${TIME} \
-         ${COMMAND} || exit
+    COMMAND="python -m pip install --no-build-isolation --no-index --find-links pkg_cache -e ${ROOT}[download,interactive,profile,train]"
+    srun --account ${ACCOUNT} --partition ${PARTITION} --ntasks=1 --cpus-per-task=8 --gres=gpu:1 --time=${TIME} ${COMMAND} || exit
 
     deactivate
 fi
 
-if [[ $DOWNLOAD_DATA == true ]]; then
+if [[ $DOWNLOAD == true ]]; then
     mkdir -p "${DATA_DIR}"
-    cd "${DATA_DIR}" || exit
+    mkdir -p "${ROOT}/logs"
 
-    if [[ -d weatherbench2 ]]; then
-        echo "Target directory for weatherbench2 git repo already exists! Skipping."
-    else
-        module unload cineca-ai profile/deeplrn
-        module load python
-
-        WEATHERBENCH2_GIT_URL=https://github.com/google-research/weatherbench2.git
-        git clone ${WEATHERBENCH2_GIT_URL}
-
-        python -m venv --system-site-packages --upgrade-deps weatherbench2/venv
-        source weatherbench2/venv/bin/activate
-        python -m pip install google-cloud-storage gcsfs absl-py "./weatherbench2"
-    fi
-
-    # Download graphcast demo datasets, weights and stats from
-    # graphcast publicly available bucket on Google Cloud
-    if [[ -d dataset && -d params && -d stats ]]; then
-        echo "Target directories for GraphCast demo dataset already exists! Skipping."
-    else
-        sbatch "${ROOT}/leonardo/scripts/download_demo.slurm" "${DATA_DIR}/weatherbench2/venv" "${DATA_DIR}"
-    fi
-
-    # Download ERA5 dataset specified in $CONFIG_FILE from
-    # GCS (WeatherBench2) and eventually regrid the dataset
-    if [[ -d era5 ]]; then
-        echo "Target directory for ERA5 dataset already exist! Skipping."
-    else
-        sbatch "${ROOT}/leonardo/scripts/download_era5.slurm" "${DATA_DIR}/weatherbench2/venv" "${CONFIG_FILE}" "${DATA_DIR}"
-    fi
+    # Download graphcast demo datasets, weights and stats from GraphCast publicly available bucket on Google Cloud Storage
+    sbatch "${ROOT}/scripts/download_demo.slurm"
 fi

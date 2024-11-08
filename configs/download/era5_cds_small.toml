@@ -1,0 +1,32 @@
+[[datasets]]
+dataset = 'derived-era5-single-levels-daily-statistics'
+product_type = 'reanalysis'
+variable = ['10m_u_component_of_wind',
+            '10m_v_component_of_wind',
+            '2m_dewpoint_temperature',
+            '2m_temperature',
+            'sea_surface_temperature',
+            'total_precipitation',
+            'surface_latent_heat_flux',
+            'surface_net_solar_radiation',
+            'surface_net_thermal_radiation',
+            'evaporation',
+            'runoff']
+daily_statistic = 'daily_mean'
+time_zone = 'utc+00:00'
+frequency = '1_hourly'
+
+[postprocess.regrid]
+method = 'conservative'
+kwargs = {skipna = true, latitude_coord='latitude'}
+
+[postprocess.regrid.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.0
+resolution_lat = 1.0
+resolution_lon = 1.0
+
+[postprocess.chunk]
+time = 2

@@ -45,71 +45,52 @@ Kwargs = Mapping[str, Any]
 
 GNN = Callable[[jraph.GraphsTuple], jraph.GraphsTuple]
 
-# https://doi.org/10.25423/CMCC/MEDSEA_MULTIYEAR_PHY_006_004_E3R1
-# https://doi.org/10.25423/cmcc/medsea_multiyear_bgc_006_008_medbfm3
-MINIMUM_LONGITUDE = -5.541666507720947
-MAXIMUM_LONGITUDE = 36.29166793823242
-MINIMUM_LATITUDE = 30.1875
-MAXIMUM_LATITUDE = 45.97916793823242
-# Subset of available depths selected using depths[_range_subsample(124, 0.05)]
-DEPTHS_37 = (
-    1.0182366, 3.1657474, 7.9203773, 13.318384, 19.39821, 26.2004,
-    33.767673, 42.14504, 51.37986, 61.521957, 72.62369, 84.74004,
-    97.92873, 112.250206, 127.76784, 153.43285, 182.17535, 214.24716,
-    249.91585, 289.46478, 333.19315, 381.41544, 434.46106, 513.287,
-    602.1486, 701.92865, 813.53485, 937.8891, 1075.9143, 1269.0518,
-    1486.6678, 1730.3303, 2001.4166, 2301.0576, 2699.4736, 3141.0015,
-    3625.7039)
+# https://doi.org/10.48670/moi-00021
+DEPTHS_35 = (
+    0.494025, 1.541375, 2.645669, 3.819495, 5.078224, 6.440614, 7.92956,
+    9.572997, 11.405, 13.46714, 15.81007, 18.49556, 21.59882, 25.21141,
+    29.44473, 34.43415, 40.34405, 47.37369, 55.76429, 65.80727, 77.85385,
+    92.32607, 109.7293, 130.666, 155.8507, 186.1256, 222.4752, 266.0403,
+    318.1274, 380.213, 453.9377, 541.0889, 643.5668, 763.3331, 902.3393)
+
+DEPTHS_10 = (
+    0.494025, 5.078224, 11.405, 21.59882, 40.34405, 77.85385, 155.8507,
+    318.1274, 643.5668, 902.3393)
 
 DEPTH_LEVELS = {
-    37: DEPTHS_37,
+    35: DEPTHS_35,
+    10: DEPTHS_10
 }
 
 # The list of all possible atmospheric variables. Taken from:
-# https://confluence.ecmwf.int/display/CKB/ERA5%3A+data+documentation#ERA5:datadocumentation-Table9
+# https://catalogue.marine.copernicus.eu/documents/PUM/CMEMS-GLO-PUM-001-030.pdf
 ALL_VOLUME_VARS = (
-    "o2",
-    "nppv",
-    "ph",
-    "dissic",
-    "talk",
-    "no3",
-    "po4",
-    "nh4",
-    "phyc",
-    "chl",
+    "thetao",
+    "so",
     "uo",
     "vo",
-    "so",
-    "thetao"
 )
 ALL_SURFACE_VARS = (
-    "fpco2",
-    "spco2"
-)
+    "zos",
+    "mlotst",
+    "bottomT",
+    "siconc",
+    "sithick",
+    "usi",
+    "vsi")
 TARGET_SURFACE_VARS = (
-    "fpco2",
-    "spco2"
+    "zos",
 )
 TARGET_VOLUME_VARS = (
-    "o2",
-    "nppv",
-    "ph",
-    "dissic",
-    "talk",
-    "no3",
-    "po4",
-    "nh4",
-    "phyc",
-    "chl",
+    "thetao",
+    "so",
     "uo",
     "vo",
-    "so",
-    "thetao"
-    "temperature",
 )
 EXTERNAL_FORCING_SURFACE_VARS = (
     "toa_incident_solar_radiation",
+    "10m_v_component_of_wind",
+    "10m_u_component_of_wind",
 )
 EXTERNAL_FORCING_VOLUME_VARS = ()
 GENERATED_FORCING_VARS = (
@@ -123,6 +104,12 @@ STATIC_VARS = (
     "geopotential_at_surface",
     "land_sea_mask",
 )
+ALL_VARIABLES = ALL_SURFACE_VARS + \
+                ALL_VOLUME_VARS + \
+                EXTERNAL_FORCING_SURFACE_VARS + \
+                EXTERNAL_FORCING_VOLUME_VARS + \
+                GENERATED_FORCING_VARS + \
+                STATIC_VARS
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -141,7 +128,7 @@ TASK = TaskConfig(
             STATIC_VARS),
     target_variables=TARGET_SURFACE_VARS + TARGET_VOLUME_VARS,
     forcing_variables=FORCING_VARS,
-    pressure_levels=DEPTHS_37,
+    pressure_levels=DEPTHS_35,
     input_duration="1d",
 )
 

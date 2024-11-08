@@ -7,7 +7,6 @@ name = "graphcast"
 version = "0.1"
 dependencies = ["cartopy",
                 "chex",
-                "colabtools",
                 "dask",
                 "dm-haiku",
                 "dm-tree",
@@ -19,11 +18,12 @@ dependencies = ["cartopy",
                 "pandas",
                 "rtree",
                 "scipy",
-                "torch", 
+                "tqdm",
+                "torch",
                 "trimesh",
                 "typing_extensions",
                 "xarray",
-		"zarr"]
+		        "zarr"]
 requires-python = ">=3.11"
 authors = [{name = "DeepMind"}]
 description = "GraphCast: Learning skillful medium-range global weather forecasting"
@@ -40,8 +40,10 @@ classifiers = ["Development Status :: 3 - Alpha",
                "Topic :: Scientific/Engineering :: Physics"]
 
 [project.optional-dependencies]
+download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "h5netcdf", "xarray-regrid"]
+interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage"]
 profile = ["tensorboard_plugin_profile"]
-interactive = ["jupyterlab", "ipywidgets", "google-cloud-storage"]
+train = ["optax", "tensorboard"]
 
 [project.urls]
 Homepage = "https://github.com/deepmind/graphcast"

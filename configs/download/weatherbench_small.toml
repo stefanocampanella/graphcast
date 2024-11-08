@@ -1,0 +1,24 @@
+[[datasets]]
+url = 'gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr'
+
+[postprocess.chunks]
+time = 2
+
+[postprocess.regrid]
+method = 'conservative'
+kwargs = {latitude_coord='latitude'}
+
+[postprocess.regrid.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.0
+resolution_lat = 1.0
+resolution_lon = 1.0
+
+[postprocess.chunk]
+time = 2
+
+[rechunk]
+time = 4
+level = 5
