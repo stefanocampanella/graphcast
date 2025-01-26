@@ -29,8 +29,8 @@ from typing import Any, Callable, Mapping, Optional, Union, Iterable
 
 import chex
 from graphcast import deep_typed_graph_net
-from graphcast import grid_mesh_connectivity
-from graphcast import icosahedral_mesh
+from graphcast import mesh_connectivity
+from graphcast.mesh_graph import MultiMeshGraph, TriangleMesh, faces_to_edges
 from graphcast import losses
 from graphcast import model_utils
 from graphcast import predictor_base
@@ -56,6 +56,9 @@ DEPTHS_35 = (
 DEPTHS_10 = (
     0.494025, 5.078224, 11.405, 21.59882, 40.34405, 77.85385, 155.8507,
     318.1274, 643.5668, 902.3393)
+
+LEVELS_10 = (
+  0, 4, 8, 12, 16, 20, 24, 28, 32, 34)
 
 DEPTH_LEVELS = {
     35: DEPTHS_35,
@@ -119,7 +122,7 @@ class TaskConfig:
   # Target variables which the model is expected to predict.
   target_variables: tuple[str, ...]
   forcing_variables: tuple[str, ...]
-  pressure_levels: tuple[int, ...]
+  pressure_levels: tuple[float, ...]
   input_duration: str
 
 TASK = TaskConfig(
@@ -159,7 +162,7 @@ class ModelConfig:
   grid_lon: np.ndarray
   grid_mask: xarray.DataArray
   grid_weights: Optional[xarray.DataArray]
-  mesh_graph: icosahedral_mesh.MultiMeshGraph
+  mesh_graph: MultiMeshGraph
   latent_size: int
   gnn_msg_steps: int
   hidden_layers: int
@@ -292,6 +295,9 @@ class GraphCast(predictor_base.Predictor):
 
     # Obtain the query radius in absolute units for the unit-sphere for the
     # grid2mesh model, by rescaling the `radius_query_fraction_edge_length`.
+    # TODO: `_get_max_edge_distance` should return the maximum edge length in the finest mesh. However,
+    # after refactoring `_mesh_graph` is a multi-mesh graph including all edges. Recent fix should be
+    # backported into the main development branch.
     self._query_radius = (_get_max_edge_distance(self._mesh_graph)
                           * model_config.radius_query_fraction_edge_length)
     self._mesh2grid_edge_normalization_factor = (
@@ -357,7 +363,7 @@ class GraphCast(predictor_base.Predictor):
 
     # Create some edges according to distance between mesh and grid nodes.
     assert self._grid_lat is not None and self._grid_lon is not None
-    (grid_indices, mesh_indices) = grid_mesh_connectivity.radius_query_indices(
+    (grid_indices, mesh_indices) = mesh_connectivity.radius_query_indices(
       grid_latitude=self._grid_lat,
       grid_longitude=self._grid_lon,
       mesh=self._connected_mesh_graph,
@@ -407,7 +413,7 @@ class GraphCast(predictor_base.Predictor):
 
   def _init_connected_mesh_graph(self) -> typed_graph.TypedGraph:
 
-    # Work simply with the connected mesh nodes.
+    # Work just with the connected mesh nodes.
     senders, receivers = self._connected_mesh_graph.edges
 
     # Precompute structural node and edge features according to config options.
@@ -447,16 +453,12 @@ class GraphCast(predictor_base.Predictor):
 
     # Create some edges according to how the grid nodes are contained by
     # mesh triangles.
-    (grid_indices,
-     mesh_indices) = grid_mesh_connectivity.in_mesh_triangle_indices(
+    (senders,
+     receivers) = mesh_connectivity.get_grid_to_mesh_edges(
       grid_latitude=self._grid_lat,
       grid_longitude=self._grid_lon,
       mesh=self._connected_mesh_graph,
       mask=self._grid_mask)
-
-    # Edges sending info from mesh to grid.
-    senders = mesh_indices
-    receivers = grid_indices
 
     # Precompute structural node and edge features according to config options.
     assert self._connected_mesh_nodes_lat is not None and self._connected_mesh_nodes_lon is not None
@@ -493,17 +495,17 @@ class GraphCast(predictor_base.Predictor):
       nodes=nodes,
       edges=edges)
     return mesh2grid_graph
-  
+  # TODO: fix model to use new implementations
   def _get_connected_mesh_nodes(self):
     
-    (_, mesh_receivers) = grid_mesh_connectivity.radius_query_indices(
+    (_, mesh_receivers) = mesh_connectivity.radius_query_indices(
       grid_latitude=self._grid_lat,
       grid_longitude=self._grid_lon,
       mesh=self._mesh_graph,
       radius=self._query_radius,
       mask=self._grid_mask)
     
-    (_, mesh_senders) = grid_mesh_connectivity.in_mesh_triangle_indices(
+    (_, mesh_senders) = mesh_connectivity.get_grid_to_mesh_edges(
       grid_latitude=self._grid_lat,
       grid_longitude=self._grid_lon,
       mesh=self._mesh_graph,
@@ -537,7 +539,7 @@ class GraphCast(predictor_base.Predictor):
     faces = np.stack([update_indices(face) for face in self._mesh_graph.faces if all([v in connected_mesh_nodes for v in face])])
     old_senders, old_receivers = self._filter_edges(connected_mesh_nodes, self._mesh_graph.edges)
     edges = (update_indices(old_senders), update_indices(old_receivers))
-    connected_mesh_graph = icosahedral_mesh.MultiMeshGraph(vertices=vertices, faces=faces, edges=edges)
+    connected_mesh_graph = MultiMeshGraph(vertices=vertices, faces=faces, edges=edges)
 
     return connected_mesh_graph
 
@@ -796,13 +798,8 @@ def _add_batch_second_axis(data, batch_size):
   return data[:, None] * ones  # [leading_dim, batch, trailing_dim]
 
 
-def _get_max_edge_distance(mesh: Union[icosahedral_mesh.TriangularMesh, icosahedral_mesh.MultiMeshGraph]):
-  if isinstance(mesh, icosahedral_mesh.TriangularMesh):
-    senders, receivers = icosahedral_mesh.faces_to_edges(mesh.faces)
-  elif isinstance(mesh, icosahedral_mesh.MultiMeshGraph):
-    senders, receivers = mesh.edges
-  else:
-    raise TypeError(f"Unsupported mesh type: {type(mesh)}.")
+def _get_max_edge_distance(mesh: TriangleMesh | MultiMeshGraph):
+  senders, receivers = faces_to_edges(mesh.faces)
   edge_distances = np.linalg.norm(
       mesh.vertices[senders] - mesh.vertices[receivers], axis=-1)
   return edge_distances.max()

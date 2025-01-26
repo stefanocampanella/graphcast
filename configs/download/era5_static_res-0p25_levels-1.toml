@@ -1,0 +1,23 @@
+provider = 'gcs'
+type = 'static'
+
+[[datasets]]
+url = 'gs://weatherbench2/datasets/era5/1959-2023_01_10-wb13-6h-1440x721_with_derived_variables.zarr'
+variables = ['land_sea_mask', 'geopotential_at_surface']
+
+[[postprocess]]
+name = 'drop_vars'
+names = ['time', 'level']
+
+[[postprocess]]
+name = 'flip'
+dim = 'latitude'
+
+[[postprocess]]
+name = 'rename_coordinates'
+name_dict = {latitude = 'lat', longitude = 'lon'}
+
+[save]
+consolidated = true
+chunk = {lat = -1, lon = -1}
+compressor = {cname = 'lz4', clevel = 1}

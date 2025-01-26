@@ -32,6 +32,7 @@ def _get_mesh_spec(splits: int):
   return num_vertices, num_faces
 
 
+# Move test merge_meshes and faces_to_edges to mesh_graph_test.py
 class IcosahedralMeshTest(parameterized.TestCase):
 
   def test_icosahedron(self):

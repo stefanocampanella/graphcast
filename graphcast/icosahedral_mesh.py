@@ -13,66 +13,15 @@
 # limitations under the License.
 """Utils for creating icosahedral meshes."""
 
-import itertools
-import chex
-from typing import List, Sequence, Tuple
+from typing import List
 
 import numpy as np
 from scipy.spatial import transform
-
-
-@chex.dataclass(frozen=True, eq=True)
-class TriangularMesh:
-  """Data structure for triangular meshes.
-
-  Attributes:
-    vertices: spatial positions of the vertices of the mesh of shape
-        [num_vertices, num_dims].
-    faces: triangular faces of the mesh of shape [num_faces, 3]. Contains
-        integer indices into `vertices`.
-
-  """
-  vertices: np.ndarray
-  faces: np.ndarray
-
-
-@chex.dataclass(frozen=True, eq=True)
-class MultiMeshGraph(TriangularMesh):
-  """Data structure for multi-mesh graphs.
-
-  Attributes:
-    vertices: same as TriangularMesh.vertices.
-    faces: same as TriangularMesh.faces.
-    edges: cumulated edges of all the triangular meshes used in building the multi-mesh graph.
-
-  """
-  edges: tuple[np.ndarray, np.ndarray]
-
-
-def merge_meshes(
-    mesh_list: Sequence[TriangularMesh]) -> TriangularMesh:
-  """Merges all meshes into one. Assumes the last mesh is the finest.
-
-  Args:
-     mesh_list: Sequence of meshes, from coarse to fine refinement levels. The
-       vertices and faces may contain those from preceding, coarser levels.
-
-  Returns:
-     `TriangularMesh` for which the vertices correspond to the highest
-     resolution mesh in the hierarchy, and the faces are the join set of the
-     faces at all levels of the hierarchy.
-  """
-  for mesh_i, mesh_ip1 in itertools.pairwise(mesh_list):
-    num_nodes_mesh_i = mesh_i.vertices.shape[0]
-    assert np.allclose(mesh_i.vertices, mesh_ip1.vertices[:num_nodes_mesh_i])
-
-  return TriangularMesh(
-      vertices=mesh_list[-1].vertices,
-      faces=np.concatenate([mesh.faces for mesh in mesh_list], axis=0))
+from graphcast.mesh_graph import TriangleMesh
 
 
 def get_hierarchy_of_triangular_meshes_for_sphere(
-    splits: int) -> List[TriangularMesh]:
+    splits: int) -> List[TriangleMesh]:
   """Returns a sequence of meshes, each with triangularization sphere.
 
   Starting with a regular icosahedron (12 vertices, 20 faces, 30 edges) with
@@ -87,7 +36,7 @@ def get_hierarchy_of_triangular_meshes_for_sphere(
   Args:
      splits: How many times to split each triangle.
   Returns:
-     Sequence of `TriangularMesh`s of length `splits + 1` each with:
+     Sequence of `TriangleMesh`s of length `splits + 1` each with:
 
        vertices: [num_vertices, 3] vertex positions in 3D, all with unit norm.
        faces: [num_faces, 3] with triangular faces joining sets of 3 vertices.
@@ -103,7 +52,7 @@ def get_hierarchy_of_triangular_meshes_for_sphere(
   return output_meshes
 
 
-def get_icosahedron() -> TriangularMesh:
+def get_icosahedron() -> TriangleMesh:
   """Returns a regular icosahedral mesh with circumscribed unit sphere.
 
   See https://en.wikipedia.org/wiki/Regular_icosahedron#Cartesian_coordinates
@@ -113,7 +62,7 @@ def get_icosahedron() -> TriangularMesh:
   from the outside of the icosahedron.
 
   Returns:
-     TriangularMesh with:
+     TriangleMesh with:
 
      vertices: [num_vertices=12, 3] vertex positions in 3D, all with unit norm.
      faces: [num_faces=20, 3] with triangular faces joining sets of 3 vertices.
@@ -181,12 +130,12 @@ def get_icosahedron() -> TriangularMesh:
   rotation_matrix = rotation.as_matrix()
   vertices = np.dot(vertices, rotation_matrix)
 
-  return TriangularMesh(vertices=vertices.astype(np.float32),
+  return TriangleMesh(vertices=vertices.astype(np.float32),
                         faces=np.array(faces, dtype=np.int32))
 
 
 def _two_split_unit_sphere_triangle_faces(
-    triangular_mesh: TriangularMesh) -> TriangularMesh:
+    triangular_mesh: TriangleMesh) -> TriangleMesh:
   """Splits each triangular face into 4 triangles keeping the orientation."""
 
   # Every time we split a triangle into 4 we will be adding 3 extra vertices,
@@ -222,7 +171,7 @@ def _two_split_unit_sphere_triangle_faces(
                       [ind31, ind23, ind3],  # 3
                       [ind12, ind23, ind31],  # 4
                       ])
-  return TriangularMesh(vertices=new_vertices_builder.get_all_vertices(),
+  return TriangleMesh(vertices=new_vertices_builder.get_all_vertices(),
                         faces=np.array(new_faces, dtype=np.int32))
 
 
@@ -269,28 +218,3 @@ class _ChildVerticesBuilder(object):
   def get_all_vertices(self):
     """Returns an array with old vertices."""
     return np.array(self._all_vertices_list)
-
-
-def faces_to_edges(faces: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-  """Transforms polygonal faces to sender and receiver indices.
-
-  It does so by transforming every face into N_i edges. Such if the triangular
-  face has indices [0, 1, 2], three edges are added 0->1, 1->2, and 2->0.
-
-  If all faces have consistent orientation, and the surface represented by the
-  faces is closed, then every edge in a polygon with a certain orientation
-  is also part of another polygon with the opposite orientation. In this
-  situation, the edges returned by the method are always bidirectional.
-
-  Args:
-    faces: Integer array of shape [num_faces, 3]. Contains node indices
-        adjacent to each face.
-  Returns:
-    Tuple with sender/receiver indices, each of shape [num_edges=num_faces*3].
-
-  """
-  assert faces.ndim == 2
-  assert faces.shape[-1] == 3
-  senders = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
-  receivers = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
-  return senders, receivers

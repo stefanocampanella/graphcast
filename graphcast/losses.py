@@ -20,7 +20,6 @@ import numpy as np
 from typing_extensions import Protocol
 from typing import Optional
 import xarray
-import chex
 
 
 LossAndDiagnostics = tuple[xarray.DataArray, xarray.Dataset]

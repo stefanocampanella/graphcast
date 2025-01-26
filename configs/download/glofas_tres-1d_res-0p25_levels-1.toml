@@ -1,0 +1,54 @@
+# TODO: choose a good input chunk size for performance.
+provider = 'cds'
+type = 'timeseries'
+start = 1993-01-01T00:00:00
+end = 2021-07-02T00:00:00
+
+[temporary]
+step = '4 W'
+
+[slurm_array]
+step = '40 W'
+
+[[datasets]]
+dataset = 'cems-glofas-historical'
+system_version = ['version_4_0']
+hydrological_model = ['lisflood']
+product_type = ['consolidated']
+variable = ['river_discharge_in_the_last_24_hours']
+data_format = 'grib2'
+download_format = 'zip'
+
+[[postprocess]]
+name = 'chunk'
+time = 'auto'
+latitude = -1
+longitude = -1
+
+[[postprocess]]
+name = 'regrid'
+method = 'conservative'
+
+[postprocess.kwargs]
+skipna = true
+latitude_coord = 'latitude'
+output_chunks = {time = 'auto', latitude = -1, longitude = -1}
+
+[postprocess.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.75
+resolution_lat = 0.25
+resolution_lon = 0.25
+
+[[postprocess]]
+name = 'astype'
+casting = 'same_kind'
+dtype = 'float32'
+
+# TODO: choose a good output chunk size.
+[save]
+consolidated = true
+chunk = {time = 1, latitude = -1, longitude = -1}
+compressor = {cname = 'lz4', clevel = 1}

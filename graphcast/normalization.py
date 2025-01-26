@@ -84,7 +84,7 @@ class InputsAndResiduals(predictor_base.Predictor):
   This replaces `residual.Predictor` in the case where you want normalization
   that's based on the scales of the residuals.
 
-  Since we return the underlying predictor's loss on the normalized residuals,
+  As we return the underlying predictor's loss on the normalized residuals,
   if the underlying predictor is a sum of per-variable losses, the normalization
   will affect the relative weighting of the per-variable loss terms (hopefully
   in a good way).

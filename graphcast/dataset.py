@@ -1,0 +1,405 @@
+# TODO: add docstrings, implement compress and unpack functions. Also, download and merge phases can be fused.
+# Finally, postprocessing step should be called really preprocess, and passed as an argument to xr.open_dataset or
+# xr.open_mfdataset. However, how logging and performance would be affected by the latter?
+import logging
+import pathlib
+import pprint
+import tempfile
+import tomllib
+from contextlib import nullcontext
+from datetime import datetime
+
+import click
+import dask
+import xarray as xr
+from dask.diagnostics import ProgressBar
+from numcodecs.blosc import Blosc
+from zarr.storage import TempStore, ZipStore
+
+from graphcast.dataset_utils import (Configs,
+                                     DateIntervalsRange,
+                                     Process,
+                                     ProvidersRegistry,
+                                     check_coordinates,
+                                     check_date_range,
+                                     check_values)
+
+
+def bar(progress):
+  if progress:
+    return ProgressBar()
+  else:
+    return nullcontext()
+
+
+def _parse_timeseries_arguments(configs, output_path, start = None, end = None, array_id = None):
+  # For a time series, if the dataset is downloaded using SLURM arrays,
+  # the date interval is determined by the array ID, and so the output path.
+  start = start or configs.get('start', None)
+  end = end or configs.get('end', None)
+  if start is None or end is None:
+    raise ValueError("Start and end dates must be specified when downloading timeseries, either in the config file "
+                     "or as command line arguments. See --help for more information.")
+  if array_id is not None:
+    array_config = configs.get('slurm_array', {})
+    step = array_config.get('step', None)
+    if array_config and step is not None:
+      intervals_range = DateIntervalsRange(start=start, end=end, step=step)
+      if array_id >= len(intervals_range):
+        raise IndexError(f"Invalid array ID {array_id}. Must be between 0 and {len(intervals_range) - 1}.")
+      start = intervals_range[array_id].start
+      end = intervals_range[array_id + 1].start if array_id + 1 < len(intervals_range) else intervals_range.end
+      output_path = output_path / f"{start.strftime('%Y%m%d')}-{end.strftime('%Y%m%d')}"
+    else:
+      raise ValueError("Configs top table should contain the 'slurm_array' table specifying the 'step' key when "
+                       "downloading using SLURM arrays. See --help for more information.")
+  temporary_config = configs.get('temporary', {})
+  date_intervals = DateIntervalsRange(start=start, end=end, step=temporary_config.get('step', None))
+
+  return date_intervals, output_path
+
+
+@click.group()
+def cli():
+  pass
+
+
+@cli.command()
+@click.argument("config_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, file_okay=True, readable=True))
+@click.argument("output_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, dir_okay=True, writable=True))
+@click.option("--start",
+              help="Start of the date interval to download",
+              default=None,
+              type=click.DateTime())
+@click.option("--end",
+              help="End of the date interval to download",
+              default=None,
+              type=click.DateTime())
+@click.option("--array-id",
+              help="ID of the SLURM array to download",
+              default=None,
+              type=int)
+@click.option("--overwrite/--no-overwrite",
+              help="Whether to overwrite existing outputs",
+              default=False,
+              is_flag=True)
+@click.option("--progress/--no-progress",
+              "progress",
+              help="Whether to display a progress bar",
+              default=False,
+              is_flag=True)
+@click.option("--dry-run",
+              default=False,
+              is_flag=True)
+@click.option('--log-level',
+              default='info',
+              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
+def download(
+    config_path: pathlib.Path,
+    output_path: pathlib.Path,
+    array_id: int | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    dry_run: bool = False,
+    progress: bool = False,
+    logger: logging.Logger | None= None,
+    log_level: str = 'info',
+    overwrite: bool = False):
+
+  if logger is None:
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
+                        datefmt='%Y-%m-%dT%H:%M:%S',
+                        level=getattr(logging, log_level.upper()))
+
+  # Open the configuration file and load the TOML configs.
+  configs = Configs.read(config_path)
+
+  dataset_type = configs.get('type', None)
+  if dataset_type is None:
+    raise ValueError("Configs TOML top table should contain the 'type' key.")
+
+  # Check if time interval options are valid, and get the date intervals to process.
+  if dataset_type == 'static':
+    date_intervals = (None,)
+    logging.info("Processing static dataset")
+  elif dataset_type == 'timeseries':
+    date_intervals, output_path = _parse_timeseries_arguments(configs,
+                                                              output_path,
+                                                              start=start,
+                                                              end=end,
+                                                              array_id=array_id)
+    logging.info(f"Processing timeseries {date_intervals}")
+  else:
+    raise ValueError(f"The 'type' key value must be one of 'static' or 'timeseries'.")
+
+  # If destination exists and should not overwrite, raise and exit.
+  if output_path.exists() and not overwrite:
+    raise ValueError(f"Output destination {output_path} already exists")
+
+  if provider_name := configs.get('provider', {}):
+    if provider_name in ProvidersRegistry:
+      provider = ProvidersRegistry[provider_name](progress=progress, log_level=log_level, client_logger=logger)
+    else:
+      raise ValueError(f"The 'provider' key value must be one of {ProvidersRegistry.keys()}.")
+  else:
+    raise ValueError("Configs TOML top table should contain the 'provider' key.")
+
+  postprocess_configs = configs.get('postprocess')
+  postprocess = Process(steps=postprocess_configs)
+
+  with TempStore() as temporary_store:
+    is_first_fragment = True
+    # For each date_interval: download, postprocess, and append the dataset to a temporary Zarr
+    for date_interval in date_intervals:
+
+      def _download_step(**kwargs):
+        if date_interval is not None:
+          logging.info(f"Processing step {date_interval}")
+        # When downloading from Copernicus Marine Data Store or Climate Data Store, the typical case is a large dataset,
+        # spanning a long time period, with several sets of variables in different datasets (bio, phys, etc.),
+        # which needs to be downloaded one piece at a time. Hence, `datasets` array values in the TOML configuration file
+        # represent different pieces of the same dataset.
+        # When downloading from CDS, a temporary directory is needed to store partial netCDF files.
+        with tempfile.TemporaryDirectory() as tempdir:
+          fragment_datasets = []
+          for ds_conf in configs['datasets']:
+            ds = provider.open_dataset(date_interval, tempdir, **ds_conf)
+            ds = postprocess(ds)
+            fragment_datasets.append(ds)
+          fragment = xr.merge(fragment_datasets, join='exact')
+          # fragment = fragment.chunk(**{dim: -1 for dim in fragment.dims})
+          with bar(progress):
+            # Requires that fragment fits into memory
+            fragment = fragment.compute() if not dry_run else fragment
+        # Here we save the fragment to a temporary Zarr store using default parameters.
+        # Being fragment underlying data numpy arrays, the chunk size will be determined by zarr,
+        # which tend to produce small chunks (1MB without compression).
+        # This might be optimized, but as we are saving it fast local storage (SSD), it is probably fine.
+        for var in fragment.data_vars:
+          fragment[var].encoding['compressor'] = None
+        logging.info(f"Saving temporary dataset to {temporary_store.path}")
+        if not dry_run:
+          fragment.to_zarr(store=temporary_store, **kwargs)
+
+      if is_first_fragment:
+        _download_step(mode='w')
+        is_first_fragment = False
+      else:
+        _download_step(mode='a-', append_dim='time')
+
+    save_configs = configs.get('save', {})
+    output_suffix = ''.join(output_path.suffixes + ['.zip'])
+    output_path = output_path.absolute().with_suffix(output_suffix)
+    # Get the parent directory and create it if it doesn't exist
+    output_parent_dir = output_path.parent
+    if not dry_run:
+        output_parent_dir.mkdir(parents=True, exist_ok=True)
+    logging.info(f"Saving dataset to {output_path} with {save_configs}")
+    if not dry_run:
+      # Load the temporary Zarr, eventually rechunk and save to final destination.
+      dataset = xr.open_zarr(temporary_store, overwrite_encoded_chunks=True)
+      if rechunk_conf := save_configs.pop('chunk', {}):
+        dataset = dataset.chunk(**rechunk_conf)
+        # see: https://github.com/pydata/xarray/issues/4380
+        for var in dataset.data_vars:
+            del dataset[var].encoding['chunks']
+      if compressor_conf := save_configs.pop('compressor', {}):
+        for var in dataset.data_vars:
+          dataset[var].encoding['compressor'] = Blosc(**compressor_conf)
+      store = ZipStore(path=str(output_path), mode='w', compression=0, allowZip64=True)
+      with bar(progress):
+        dataset.to_zarr(store=store, compute=True, **save_configs)
+
+
+@cli.command()
+@click.argument("config_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, file_okay=True, readable=True))
+@click.option("--sbatch-flag/--no-sbatch-flag",
+              "sbatch_flag",
+              default=False,
+              is_flag=True)
+def slurm_array_range(config_path: pathlib.Path,
+                      start: datetime | None = None,
+                      end: datetime | None = None,
+                      sbatch_flag: bool = False):
+
+  with config_path.open('rb') as file:
+    configs = tomllib.load(file)
+
+  array_id = 0
+  slurm_array = []
+  while True:
+    try:
+      date_interval, _ = _parse_timeseries_arguments(configs, pathlib.Path(), start=start, end=end, array_id=array_id)
+      slurm_array.append(date_interval)
+      array_id += 1
+    except IndexError:
+      break
+
+  if sbatch_flag:
+    print(f"--array=0-{len(slurm_array) - 1}")
+  else:
+    pprint.pprint(slurm_array, compact=True)
+
+
+@cli.command()
+@click.argument("config_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, file_okay=True, readable=True))
+@click.argument("data_dir",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, dir_okay=True, readable=True))
+@click.argument("output_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, dir_okay=True, writable=True))
+@click.option("--array-id",
+              help="ID of the SLURM array to download",
+              default=None,
+              type=int)
+@click.option("--start",
+              "start_date",
+              help="Start of the date interval to download",
+              default=None,
+              type=click.DateTime())
+@click.option("--end",
+              "end_date",
+              help="End of the date interval to download",
+              default=None,
+              type = click.DateTime())
+@click.option("--overwrite/--no-overwrite",
+              help="Whether to overwrite existing outputs",
+              default=False,
+              is_flag=True)
+@click.option("--progress/--no-progress",
+              "progress",
+              help="Whether to display a progress bar",
+              default=False,
+              is_flag=True)
+@click.option('--log-level',
+              default='info',
+              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
+@click.option("--debug/--no-debug",
+              "debug",
+              help="Use synchronous Dask scheduler",
+              default=False,
+              is_flag=True)
+def merge(
+    config_path: pathlib.Path,
+    data_dir: pathlib.Path,
+    output_path: pathlib.Path,
+    array_id: int | None = None,
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    progress: bool = False,
+    log_level: str = 'info',
+    overwrite: bool = False,
+    debug: bool = False):
+  """
+  Merges multiple datasets into a single dataset.
+
+  The function reads dataset configurations, applies necessary preprocessing steps,
+  and saves the merged dataset to a Zarr store.
+  """
+
+  if debug:
+    dask.config.set(scheduler='synchronous')
+
+  logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
+                      datefmt='%Y-%m-%dT%H:%M:%S',
+                      level=getattr(logging, log_level.upper()))
+
+  # Open the configuration file and load the TOML configs.
+  configs = Configs.read(config_path)
+
+  # If destination exists and should not overwrite, raise and exit.
+  if output_path.exists() and not overwrite:
+    raise ValueError(f"Output destination {output_path} already exists")
+
+  date_intervals, output_path = _parse_timeseries_arguments(configs, output_path,
+                                                            start=start_date, end=end_date, array_id=array_id)
+  start_date = date_intervals.start
+  end_date = date_intervals.end
+
+  def reader(path, **kwargs):
+    logging.info(f"Reading {path}")
+    if path.is_dir():
+      path = list(path.glob('*.zip'))
+    else:
+      path = path.with_suffix('.zip')
+    # noinspection PyTypeChecker
+    ds = xr.open_mfdataset(path, engine='zarr', **kwargs)
+    return ds
+
+  datasets = []
+  for dataset_conf in configs.get('datasets', []):
+    if mask_conf := dataset_conf.get('mask'):
+      postprocess_mask_conf = mask_conf.get('postprocess')
+      mask_var = mask_conf['variable']
+
+      @check_coordinates
+      @check_values(variables=[mask_var])
+      def mask_reader(path, **kwargs):
+        ds = reader(path, **kwargs)
+        postprocess = Process(steps=postprocess_mask_conf)
+        ds = postprocess(ds)
+        return ds
+      mask_ds = mask_reader(data_dir / mask_conf['file'])
+      mask_da = mask_ds[mask_var]
+    else:
+      mask_ds = None
+      mask_da = None
+
+    postprocess_confs = dataset_conf.get('postprocess', {})
+
+    @check_coordinates
+    @check_date_range(start_date=start_date, end_date=end_date)
+    @check_values(mask=mask_da)
+    def dataset_reader(path, **kwargs):
+      # FIXME: we should have really done most of processing at download time...
+      ds = reader(path, **kwargs)
+      postprocess = Process(steps=postprocess_confs, mask=mask_da)
+      ds = postprocess(ds)
+      if mask_ds is not None:
+        ds = xr.merge([ds, mask_ds])
+      return ds
+
+    datasets.append(dataset_reader(data_dir / dataset_conf['file'], **dataset_conf.get('kwargs', {}))),
+
+  dataset = xr.merge(datasets, join='inner')
+  dataset = dataset.sel(time=slice(start_date, end_date))
+
+  # Save the dataset in a Zarr using sensible chunking and compression
+  save_configs = configs.get('save', {})
+  output_suffix = ''.join(output_path.suffixes + ['.zip'])
+  output_path = output_path.absolute().with_suffix(output_suffix)
+
+  # Get the parent directory and create it if it doesn't exist
+  output_parent_dir = output_path.parent
+  output_parent_dir.mkdir(parents=True, exist_ok=True)
+
+  logging.info(f"Saving merged dataset to {output_path} with {save_configs}")
+  if rechunk_conf := save_configs.pop('chunk', {}):
+    dataset = dataset.chunk(**rechunk_conf)
+    # see: https://github.com/pydata/xarray/issues/4380
+    for var in dataset.data_vars:
+      if dataset[var].encoding and dataset[var].encoding.get('chunks'):
+        del dataset[var].encoding['chunks']
+  if compressor_conf := save_configs.pop('compressor', {}):
+    for var in dataset.data_vars:
+      dataset[var].encoding['compressor'] = Blosc(**compressor_conf)
+  else:
+    for var in dataset.data_vars:
+      dataset[var].encoding['compressor'] = None
+  store = ZipStore(path=str(output_path), mode='w', compression=0, allowZip64=True)
+  with bar(progress):
+    dataset.to_zarr(store=store, compute=True, **save_configs)
+
+
+if __name__ == '__main__':
+  cli()

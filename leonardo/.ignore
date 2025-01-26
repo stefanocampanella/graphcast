@@ -1,0 +1,16 @@
+**/__pycache__
+**/.DS_Store
+.idea
+.venv
+.spack-venv
+.spack
+.pkg_cache
+.pytest_cache
+.ruff_cache
+.ipynb_checkpoints
+build
+graphcast.egg-info
+data
+runs
+logs
+scratch

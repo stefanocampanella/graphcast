@@ -1,0 +1,9 @@
+JAX_PLATFORMS=cuda,cpu
+JAX_TRACEBACK_FILTERING=off
+JAX_TRACEBACK_IN_LOCATIONS_LIMIT=-1
+XLA_FLAGS="--xla_gpu_enable_triton_softmax_fusion=true \
+           --xla_gpu_triton_gemm_any=True \
+           --xla_gpu_enable_async_collectives=true \
+           --xla_gpu_enable_latency_hiding_scheduler=true \
+           --xla_gpu_enable_highest_priority_async_stream=true"
+XLA_PYTHON_CLIENT_MEM_FRACTION=.75

@@ -1,5 +1,6 @@
 from typing import Optional, Any, Union
 from graphcast import icosahedral_mesh
+from graphcast.mesh_graph import merge_meshes, faces_to_edges, MultiMeshGraph
 from graphcast import model
 from graphcast import checkpoint
 import chex
@@ -44,9 +45,9 @@ def upgrade_legacy_model_config(old_model_config: ModelConfig, grid_mask: xarray
   meshes = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(
     splits=old_model_config.mesh_size)
   finest_mesh = meshes[-1]
-  merged_mesh = icosahedral_mesh.merge_meshes(meshes)
-  edges = icosahedral_mesh.faces_to_edges(merged_mesh.faces)
-  mesh_graph = icosahedral_mesh.MultiMeshGraph(vertices=finest_mesh.vertices, faces=finest_mesh.faces, edges=edges)
+  merged_mesh = merge_meshes(meshes)
+  edges = faces_to_edges(merged_mesh.faces)
+  mesh_graph = MultiMeshGraph(vertices=finest_mesh.vertices, faces=finest_mesh.faces, edges=edges)
   attributes_to_copy = [name for name in old_model_config.__dict__ if name in model.ModelConfig.__dataclass_fields__]
   unchanged_configs = {name: getattr(old_model_config, name) for name in attributes_to_copy}
   model_config = model.ModelConfig(

@@ -1,0 +1,20 @@
+#! /usr/bin/env bash
+
+# Notice: the activation script has to be sourced, not executed.
+
+# Load provided Leonardo modules (assume no other modules are loaded prior this point).
+module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
+
+ROOT=$(git rev-parse --show-toplevel)
+
+SPACK_VENV_DIR="${ROOT}/.spack-venv"
+SPACK_DIR="${ROOT}/.spack"
+VENV_DIR="${ROOT}/.venv"
+
+# Activate spack environment
+export SPACK_PYTHON="${SPACK_VENV_DIR}/bin/python3"
+source "${SPACK_DIR}/share/spack/setup-env.sh"
+spack env activate default
+
+# Activate python virtual environment
+source "${VENV_DIR}/bin/activate"

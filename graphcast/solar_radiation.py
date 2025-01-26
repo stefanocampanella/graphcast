@@ -23,7 +23,6 @@ https://codes.ecmwf.int/grib/param-db/?id=212.
 
 from collections.abc import Callable, Sequence
 import dataclasses
-import functools
 
 import chex
 import jax

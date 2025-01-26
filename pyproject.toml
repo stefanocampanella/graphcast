@@ -1,30 +1,51 @@
 [build-system]
-requires = ["setuptools >= 61.0"]
+# Minimum version required by gdal and jax
+requires = ["setuptools (>= 67.0,<81)"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "graphcast"
 version = "0.1"
-dependencies = ["cartopy",
-                "chex",
-                "dask",
-                "dm-haiku",
-                "dm-tree",
-                "gmsh",
-                "jax[cuda12_local]==v0.4.16",
-                "jraph",
-                "matplotlib",
-                "numpy",
-                "pandas",
-                "rtree",
-                "scipy",
-                "tqdm",
-                "torch",
-                "trimesh",
-                "typing_extensions",
-                "xarray",
-		        "zarr"]
-requires-python = ">=3.11"
+dependencies = [
+    "cartopy",
+    "chex",
+    "dask",
+    "dm-haiku",
+    "dm-tree",
+    # Versions listed here should agree with the one compiled in leonardo/setup.sh (v3.10.0 is the last one available on spack@23.1)
+    "gdal[numpy]==3.10.0 ; sys_platform == 'linux'",
+    "gdal-utils==3.10.0 ; sys_platform == 'linux'",
+    # On macOS, gdal is installed via brew and should be updated to the latest version
+    "gdal[numpy]==3.11.0 ; sys_platform == 'darwin'",
+    "gdal-utils==3.11.0 ; sys_platform == 'darwin'",
+    "gmsh",
+    # Install cuda using pip, building jaxlib from source is a pain in the neck...
+    "jax[cuda12] ; sys_platform == 'linux'",
+    # Get HW acceleration on macOS
+    "jax-metal ; sys_platform == 'darwin'",
+    "jraph",
+    "matplotlib",
+    "numpy",
+    # numcodecs v0.16 seems to make copernicusmarine import fail on Leonardo
+    "numcodecs<0.16",
+    "pandas",
+    "rtree",
+    "scipy",
+    # Install seamsh from PyPI on Leonardo
+    "seamsh ; sys_platform == 'linux'",
+    # Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work
+    "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.17 ; sys_platform == 'darwin'",
+    "tqdm",
+    "torch",
+    "trimesh",
+    "typing_extensions",
+    "xarray",
+    # TODO: Port to Zarr v3
+    "zarr>=2,<3",
+    "pandas-stubs==2.3.0.250703",
+    "scipy-stubs==1.16.0.2",
+]
+requires-python = ">=3.11, <3.12"
 authors = [{name = "DeepMind"}]
 description = "GraphCast: Learning skillful medium-range global weather forecasting"
 readme = {file = "README.md", content-type = "text/markdown"}
@@ -33,20 +54,23 @@ classifiers = ["Development Status :: 3 - Alpha",
                "Intended Audience :: Science/Research",
                "License :: OSI Approved :: Apache Software License",
                "Operating System :: POSIX :: Linux",
-               "Programming Language :: Python :: 3.10",
                "Programming Language :: Python :: 3.11",
                "Topic :: Scientific/Engineering :: Artificial Intelligence",
                "Topic :: Scientific/Engineering :: Atmospheric Science",
                "Topic :: Scientific/Engineering :: Physics"]
 
+[project.scripts]
+dataset = "graphcast.dataset:cli"
+ocean-mesh = "graphcast.ocean_mesh:cli"
+
 [project.optional-dependencies]
-download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "h5netcdf", "xarray-regrid"]
-interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage"]
+download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "h5netcdf", "cfgrib", "xarray-regrid[accel]", "pysocks", "cubed[diagnostics]", "flox"]
+interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage", "geopy", "papermill[all]", "hvplot", "geoviews"]
 profile = ["tensorboard_plugin_profile"]
-train = ["optax", "tensorboard"]
+train = ["optax", "tensorboard", "xbatcher[torch]"]
 
 [project.urls]
-Homepage = "https://github.com/deepmind/graphcast"
+Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [tool.setuptools]
 packages = ["graphcast"]

@@ -1,0 +1,9 @@
+#! /usr/bin/env bash
+#
+# Notice: the deactivation script should be sourced, not executed.
+
+# It should be enough to deactivate the python and then the spack environments, finally unload modules
+deactivate
+spack env deactivate
+
+module unload git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
