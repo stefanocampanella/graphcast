@@ -108,6 +108,15 @@ import tree
 import xarray
 
 
+# Types which we wrap with JaxArrayWrapper to allow creating xarray datatypes
+# from them.
+# Note this includes some non-Array types which jax sometimes needs to use as
+# leaves of pytrees, in order to ensure we can still use xarray datatypes as
+# internal pytree nodes in these cases.
+_WRAPPED_TYPES = (
+    jax.Array, jax.ShapeDtypeStruct, jax.stages.ArgInfo, jax.stages.OutInfo)
+
+
 def Variable(dims, data, **kwargs) -> xarray.Variable:  # pylint:disable=invalid-name
   """Like xarray.Variable, but can wrap JAX arrays."""
   return xarray.Variable(dims, wrap(data), **kwargs)
@@ -209,7 +218,7 @@ def Dataset(  # pylint:disable=invalid-name
   wrapped_data_vars = {}
   for name, var_like in data_vars.items():
     # xarray.Dataset accepts a few different formats for data_vars:
-    if isinstance(var_like, jax.Array):
+    if isinstance(var_like, _WRAPPED_TYPES):
       wrapped_data_vars[name] = wrap(var_like)
     elif isinstance(var_like, tuple):
       # Layout is (dims, data, ...). We wrap data.
@@ -350,7 +359,7 @@ def assign_jax_coords(
 
 def wrap(value):
   """Wraps JAX arrays for use in xarray, passing through other values."""
-  if isinstance(value, jax.Array):
+  if isinstance(value, _WRAPPED_TYPES):
     return JaxArrayWrapper(value)
   else:
     return value
@@ -672,7 +681,7 @@ def dims_change_on_unflatten(dims_change_fn: DimsChangeFn):
 
 
 def _flatten_variable(v: xarray.Variable) -> Tuple[
-    Tuple[jax.typing.ArrayLike], Tuple[Hashable, ...]]:
+    Tuple[jax.typing.ArrayLike], Tuple[Hashable, ...]]:  # pylint: disable=g-one-element-tuple
   """Flattens a Variable for jax.tree_util."""
   children = (unwrap_data(v),)
   aux = v.dims
@@ -681,7 +690,7 @@ def _flatten_variable(v: xarray.Variable) -> Tuple[
 
 def _unflatten_variable(
     aux: Tuple[Hashable, ...],
-    children: Tuple[jax.typing.ArrayLike]) -> xarray.Variable:
+    children: Tuple[jax.typing.ArrayLike]) -> xarray.Variable:  # pylint: disable=g-one-element-tuple
   """Unflattens a Variable for jax.tree_util."""
   dims = aux
   dims_change_fn = _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None)
@@ -705,7 +714,7 @@ def _split_static_and_jax_coords(
 
 def _drop_with_none_of_dims(
     coord_vars: Mapping[Hashable, xarray.Variable],
-    dims: Tuple[Hashable]) -> Mapping[Hashable, xarray.Variable]:
+    dims: Tuple[Hashable, ...]) -> Mapping[Hashable, xarray.Variable]:
   return {name: var for name, var in coord_vars.items()
           if set(var.dims) <= set(dims)}
 

@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for xarray_jax."""
 
 from absl.testing import absltest
 import chex
@@ -141,6 +140,16 @@ class XarrayJaxTest(absltest.TestCase):
       _ = function(inputs)
       outputs = function(inputs)
       self.assertEqual(outputs.dims, inputs.dims)
+
+  def test_jit_ahead_of_time_compile_with_xarray(self):
+    # This needs jax.stages.ArgInfo to be wrapped, since .lower maps the xarray
+    # to a pytree of ArgInfo under the hood.
+    function = jax.jit(lambda v: v + 1)
+    inputs = xarray_jax.Variable(
+        ('lat', 'lon'), jnp.ones((3, 4), dtype=np.float32))
+    compiled_function = function.lower(inputs).compile()
+    outputs = compiled_function(inputs)
+    self.assertEqual(outputs.dims, inputs.dims)
 
   def test_jit_problem_if_convert_to_plain_numpy_array(self):
     inputs = xarray_jax.DataArray(
@@ -521,6 +530,17 @@ class XarrayJaxTest(absltest.TestCase):
     )
     xarray.testing.assert_identical(expected[0], jax.device_get(result[0]))
     xarray.testing.assert_identical(expected[1], jax.device_get(result[1]))
+
+  def test_eval_shape_with_xarray(self):
+    # This needs jax.ShapeDtypeStruct to be wrappable inside xarray types.
+    function = jax.jit(lambda v: v + 1)
+    inputs = xarray_jax.Variable(
+        ('lat', 'lon'), jnp.ones((3, 4), dtype=np.float32))
+    output_shapes = jax.eval_shape(function, inputs)
+    self.assertIsInstance(output_shapes, xarray.Variable)
+    self.assertEqual(output_shapes.shape, (3, 4))
+    self.assertEqual(output_shapes.dtype, np.float32)
+
 
 if __name__ == '__main__':
   absltest.main()
