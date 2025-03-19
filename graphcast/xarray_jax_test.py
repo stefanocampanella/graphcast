@@ -236,6 +236,36 @@ class XarrayJaxTest(absltest.TestCase):
     self.assertEqual(inputs.bar.dims, outputs.bar.dims)
     chex.assert_trees_all_equal(outputs.coords, inputs.coords)
 
+  def test_jit_function_with_xarray_datatree_arguments_and_return(self):
+    parent_dataset = xarray_jax.Dataset(
+        jax_coords={'time': xarray_jax.Variable(('time',), np.arange(2))},
+        coords={'lon': xarray.Variable(('lon',), np.arange(4) * 10)})
+
+    bar = jnp.ones((2, 3, 4), dtype=np.float32)
+    child_dataset = xarray_jax.Dataset(
+        {'bar': (('time', 'lat', 'lon'), bar)},
+        coords={'lat': np.arange(3)})
+
+    inputs = xarray.DataTree(
+        dataset=parent_dataset,
+        children={'child': xarray.DataTree(dataset=child_dataset)})
+
+    @jax.jit
+    def fn(inputs):
+      return xarray.DataTree(
+          dataset=xarray_jax.assign_jax_coords(
+              inputs.to_dataset(), time=inputs.time + 1),
+          children={'child': xarray.DataTree(
+              dataset=inputs.children['child'].to_dataset() + 1)})
+
+    _ = fn(inputs)
+    outputs = fn(inputs)
+    self.assertEqual({'child'}, outputs.children.keys())
+    self.assertEqual({'time', 'lon'}, outputs.coords.keys())
+    self.assertIsInstance(
+        outputs.coords['time'].data, xarray_jax.JaxArrayWrapper)
+    self.assertEqual({'bar'}, outputs.child.data_vars.keys())
+
   def test_jit_function_with_dataset_and_jax_coords(self):
     foo = jnp.ones((3, 4), dtype=np.float32)
     bar = jnp.ones((2, 3, 4), dtype=np.float32)
@@ -332,6 +362,29 @@ class XarrayJaxTest(absltest.TestCase):
     self.assertEqual(aux, aux)
     roundtrip = xarray_jax._unflatten_dataset(aux, children)
     self.assertTrue(dataset.equals(roundtrip))
+
+  def test_flatten_unflatten_datatree(self):
+    # Coords to be inherited from the parent dataset, we include one jax
+    # coord and one not to check both code paths
+    parent_dataset = xarray_jax.Dataset(
+        jax_coords={'time': xarray_jax.Variable(('time',), np.arange(2))},
+        coords={'lon': xarray.Variable(('lon',), np.arange(4) * 10)})
+
+    bar = jnp.ones((2, 3, 4), dtype=np.float32)
+    child_dataset = xarray_jax.Dataset(
+        {'bar': (('time', 'lat', 'lon'), bar)},
+        coords={'lat': np.arange(3)})
+
+    datatree = xarray.DataTree(
+        dataset=parent_dataset,
+        children={'child': xarray.DataTree(dataset=child_dataset)})
+
+    children, aux = xarray_jax._flatten_datatree(datatree)
+    # Check auxiliary info is hashable/comparable (important for jax.jit):
+    hash(aux)
+    self.assertEqual(aux, aux)
+    roundtrip = xarray_jax._unflatten_datatree(aux, children)
+    self.assertTrue(datatree.equals(roundtrip))
 
   def test_flatten_unflatten_added_dim(self):
     data_array = xarray_jax.DataArray(

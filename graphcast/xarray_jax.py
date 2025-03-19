@@ -176,7 +176,7 @@ def DataArray(  # pylint:disable=invalid-name
 
 
 def Dataset(  # pylint:disable=invalid-name
-    data_vars,
+    data_vars=None,
     coords=None,
     attrs=None,
     jax_coords=None,
@@ -216,7 +216,7 @@ def Dataset(  # pylint:disable=invalid-name
     will be wrapped with JaxArrayWrapper.
   """
   wrapped_data_vars = {}
-  for name, var_like in data_vars.items():
+  for name, var_like in (data_vars or {}).items():
     # xarray.Dataset accepts a few different formats for data_vars:
     if isinstance(var_like, _WRAPPED_TYPES):
       wrapped_data_vars[name] = wrap(var_like)
@@ -784,13 +784,15 @@ def _unflatten_data_array(
   """Unflattens a DataArray for jax.tree_util."""
   variable, jax_coord_vars = children
   name, static_coord_vars = aux
-  # Drop static coords which have dims not present in any of the data_vars.
-  # These would generally be dims that were dropped by a dims_change_fn, but
-  # because static coordinates don't go through dims_change_fn on unflatten, we
-  # just drop them where this causes a problem.
-  # Since jax_coords go through the dims_change_fn on unflatten we don't need
-  # to do this for jax_coords.
-  static_coord_vars = _drop_with_none_of_dims(static_coord_vars, variable.dims)
+  if _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None):
+    # Drop static coords which have dims not present in any of the data_vars.
+    # These would generally be dims that were dropped by a dims_change_fn, but
+    # because static coordinates don't go through dims_change_fn on unflatten,
+    # we just drop them where this causes a problem.
+    # Since jax_coords go through the dims_change_fn on unflatten we don't need
+    # to do this for jax_coords.
+    static_coord_vars = _drop_with_none_of_dims(
+        static_coord_vars, variable.dims)
   return DataArray(
       variable, name=name, coords=static_coord_vars, jax_coords=jax_coord_vars)
 
@@ -820,11 +822,36 @@ def _unflatten_dataset(
   data_vars, jax_coord_vars = children
   static_coord_vars = aux
   dataset = xarray.Dataset(data_vars)
-  # Drop static coords which have dims not present in any of the data_vars.
-  # See corresponding comment in _unflatten_data_array.
-  static_coord_vars = _drop_with_none_of_dims(static_coord_vars, dataset.dims)  # pytype: disable=wrong-arg-types
+  if _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None):
+    # Drop static coords which have dims not present in any of the data_vars.
+    # See corresponding comment in _unflatten_data_array.
+    static_coord_vars = _drop_with_none_of_dims(
+        static_coord_vars, dataset.dims)  # pytype: disable=wrong-arg-types
   return assign_coords(
       dataset, coords=static_coord_vars, jax_coords=jax_coord_vars)
+
+
+def _flatten_datatree(datatree: xarray.DataTree) -> Tuple[
+    Tuple[Mapping[str, xarray.DataTree], xarray.Dataset], str | None]:
+  """Flattens a DataTree for jax.tree_util."""
+  # For simplicity we assume DataTrees will be flattened/unflattened from the
+  # root. If you give it a non-root-node, it will still work but any parents
+  # (and any coordinates inherited from them) will be lost.
+  node_dataset = datatree.to_dataset(inherit=False)
+  children = (dict(datatree.children), node_dataset)
+  aux = datatree.name
+  return children, aux
+
+
+def _unflatten_datatree(
+    aux: str | None,
+    children: Tuple[Mapping[str, xarray.DataTree], xarray.Dataset],
+) -> xarray.DataTree:
+  """Unflattens a DataTree for jax.tree_util."""
+  children_dict, node_dataset = children
+  name = aux
+  return xarray.DataTree(
+      dataset=node_dataset, children=children_dict, name=name)
 
 
 jax.tree_util.register_pytree_node(
@@ -838,3 +865,5 @@ jax.tree_util.register_pytree_node(
     xarray.DataArray, _flatten_data_array, _unflatten_data_array)
 jax.tree_util.register_pytree_node(
     xarray.Dataset, _flatten_dataset, _unflatten_dataset)
+jax.tree_util.register_pytree_node(
+    xarray.DataTree, _flatten_datatree, _unflatten_datatree)
