@@ -313,13 +313,25 @@ def assign_coords(
   for name, coord in jax_coords.items():
     if isinstance(coord, xarray.DataArray):
       coord = coord.variable
+
+    if isinstance(coord, list):
+      coord = np.array(coord)
+
     if isinstance(coord, xarray.Variable):
       coord = coord.copy(deep=False)  # Copy before mutating attrs.
-    else:
-      # Must wrap as Variable with the correct dims first if this has not
-      # already been done, otherwise xarray.Dataset will assume the dimension
-      # name is also __NONINDEX_{n}.
+    elif isinstance(coord, tuple):
+      # A tuple represents a pair of (dims, data).
+      dims, data = coord
+      coord = Variable(dims, data)
+    elif jnp.isscalar(coord):
+      # A scalar coord maps to a scalar Variable:
+      coord = Variable(dims=(), data=coord)
+    elif isinstance(coord, jax.typing.ArrayLike) and jnp.ndim(coord) == 1:
+      # A 1D array maps to a 1D Variable whose dimension is the same as the
+      # coordinate name:
       coord = Variable((name,), coord)
+    else:
+      raise ValueError(f'Unsupported value for coordinate {name}')
 
     # We set an attr on each jax_coord identifying it as such. These attrs on
     # the coord Variable gets reflected on the coord DataArray exposed too, and
@@ -633,6 +645,128 @@ def pmap(fn: Callable[..., Any],
       return jax.tree_util.tree_unflatten(output_treedef, flat_result)
 
   return result_fn
+
+
+def tree_map_variables(
+    func: Callable[[xarray.Variable], xarray.Variable],
+    tree_data: Any) -> Any:
+  """Like jax.tree.map but operates with Variables as leaves.
+
+  This will work with any jax.tree_util-registered PyTree containing xarray
+  datatypes. All jax data in xarray datatypes is exposed via xarray.Variable
+  nodes by our registered flatten/unflatten functions and hence here too. Note
+  static coordinate data will not be mapped over however.
+
+  This allows you to see the associated dimensions for each leaf, and to change
+  them. If you change them, it's your responsibility to ensure that when
+  unflattened back into DataArray/Dataset/DataTree the result still makes sense.
+  In particular that any updated shapes are consistent with the shapes of any
+  static (non-jax_coord) coordinates, since these will not be mapped over.
+
+  Args:
+    func: Function from xarray.Variable to xarray.Variable.
+    tree_data: PyTree to be mapped over.
+
+  Returns:
+    PyTree with the same structure as `tree_data` but where xarray.Variables
+    within xarray datatypes have been mapped over by `func`. Any leaves outside
+    of xarray datatypes will be unchanged.
+  """
+  return jax.tree.map(
+      lambda leaf: func(leaf) if isinstance(leaf, xarray.Variable) else leaf,
+      tree_data,
+      is_leaf=lambda x: isinstance(x, xarray.Variable))
+
+
+_Carry = TypeVar('_Carry')
+_X = TypeVar('_X')
+_Y = TypeVar('_Y')
+
+
+def scan(f: Callable[[_Carry, _X], tuple[_Carry, _Y]],
+         init: _Carry,
+         dim: str,
+         xs: _X | None = None,
+         length: int | None = None,
+         reverse: bool = False,
+         unroll: int | bool = 1,
+         ) -> tuple[_Carry, _Y]:
+  """Like jax.lax.scan but supports xarray data.
+
+  This can handle a jax.tree containing any mix of xarray and plain jax data.
+  It scans along the dimension `dim` for xarray data, and the leading axis for
+  any non-xarray data. These scanned-along dimensions must all be consistent in
+  size.
+
+  Static coordinates along `dim` in the `xs` will not be present on the `x`
+  argument to `f`, since they would be different on each iteration and we can't
+  pass them through as static data. jax_coords will be passed through correctly
+  however.
+
+  Static coordinates along `dim` on the `xs` will also not be present on the
+  resulting `ys`, you will need to copy these across yourself if desired.
+  (This one we may be able to fix in future.)
+
+  Args:
+    f: Function to apply at each step of the scan. This should map
+      (carry, x) -> (carry, y), where `x` is a slice of the `xs` along the `dim`
+      axis (with the `dim` axis and any coordinates using it dropped), and `y`
+      is a slice of the desired output along the `dim` axis, with no `dim` axis
+      itself.
+      x, y and carry can in general be trees, in which the above applies to
+      each leaf of the tree.
+    init: Initial value of the carry.
+    dim: The xarray dimension name to scan along, for xarray data.
+    xs: The input to be scanned. If not provided, will scan over `length`
+      iterations with None passed as the `x` argument to `f`.
+    length: The length of the scan, if `xs` are not provided.
+    reverse: Whether to scan in reverse order.
+    unroll: How many steps to unroll the scan, see jax.lax.scan.
+
+  Returns:
+    final_carry: The carry returned from the final step of the scan.
+    ys: Data corresponding to the `y` returned from `f` on each step of the
+      scan, concatenated along an extra leading dimension (named `dim` for
+      xarray data).
+  """
+  if xs is not None:
+    # Ensure `dim` is the leading axis on any xarray data in the `xs`. This is
+    # what jax.lax.scan will scan over. (Any non-array data it's on you to put
+    # the relevant axis first).
+    xs = tree_map_variables(lambda v: v.transpose(dim, ...), xs)
+    xs_leaves, xs_treedef = jax.tree.flatten(xs)
+  else:
+    xs_treedef = None
+    xs_leaves = None
+
+  y_treedef = None
+
+  def scan_fn(carry, x_leaves):
+    if x_leaves is None:
+      x = None
+    else:
+      with dims_change_on_unflatten(lambda dims: dims[1:]):
+        x = jax.tree.unflatten(xs_treedef, x_leaves)
+    carry, y = f(carry, x)
+
+    nonlocal y_treedef
+    y_leaves, y_treedef = jax.tree.flatten(y)
+    return carry, y_leaves
+
+  final_carry, ys_leaves = jax.lax.scan(
+      scan_fn,
+      init,
+      xs_leaves,
+      length=length,
+      reverse=reverse,
+      unroll=unroll)
+
+  assert isinstance(y_treedef, jax.tree_util.PyTreeDef)
+
+  with dims_change_on_unflatten(lambda dims: (dim,) + dims):
+    ys = jax.tree.unflatten(y_treedef, ys_leaves)
+
+  return final_carry, ys
 
 
 # Register xarray datatypes with jax.tree_util.

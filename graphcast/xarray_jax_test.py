@@ -594,6 +594,93 @@ class XarrayJaxTest(absltest.TestCase):
     self.assertEqual(output_shapes.shape, (3, 4))
     self.assertEqual(output_shapes.dtype, np.float32)
 
+  def test_scan(self):
+    def f(carry, x):
+      dataset_input, plain_jax_input = x
+      self.assertEqual(plain_jax_input.shape, ())
+      self.assertEqual(dataset_input.sizes, {'x': 2})  # No 'time' dimension.
+      carry = carry + 1
+      y = dataset_input + carry
+      return carry, y
+
+    dataset_inputs = xarray_jax.Dataset(
+        data_vars={
+            # Put the scan dimension (time) second to make sure it transposes
+            # the array appropriately for JAX which requires scan dim first.
+            'foo': (('x', 'time'), jnp.zeros((2, 5))),
+        },
+        coords={
+            'x': np.arange(2),
+            'time': np.arange(5) * 10,
+        },
+        jax_coords={
+            'time_extra': (('time',), np.arange(5)*2),
+        })
+    # These must have scan dimension first:
+    plain_jax_inputs = jnp.zeros((5,))
+
+    carry, result = xarray_jax.scan(f,
+                                    init=0,
+                                    xs=(dataset_inputs, plain_jax_inputs),
+                                    dim='time')
+    self.assertEqual(jax.device_get(carry), 5)
+    self.assertEqual(result.foo.sizes, {'x': 2, 'time': 5})
+    self.assertIn('x', result.coords)
+    # Unfortunately static coordinates along the dimension we scan over will
+    # not be preserved on the result:
+    self.assertNotIn('time', result.coords)
+    # The jax_coord along time will still be present though:
+    np.testing.assert_array_equal(
+        jax.device_get(result.foo.coords['time_extra'].data),
+        jax.device_get(dataset_inputs.coords['time_extra'].data))
+
+  def test_scan_no_inputs(self):
+    def f(carry, x):
+      assert x is None
+      carry = carry + 1
+      y = carry * 10
+      # Set a jax_coord on the output to check it maps through to the result
+      # correctly:
+      y = xarray_jax.assign_jax_coords(y, extra_coord=carry[0])
+      return carry, y
+
+    init = xarray_jax.DataArray(data=np.zeros(2), dims=('x',))
+    carry, result = xarray_jax.scan(f, init=init, length=5, dim='time')
+    np.testing.assert_array_equal(jax.device_get(carry), [5, 5])
+    self.assertEqual(result.sizes, {'x': 2, 'time': 5})
+    np.testing.assert_array_equal(jax.device_get(result.extra_coord.data),
+                                  [1, 2, 3, 4, 5])
+
+  def test_assign_coords_arg_types(self):
+    # Check we can assign coords with a variety of shorthands mirroring those
+    # supported by xarray's own APIs:
+    result = xarray_jax.assign_coords(
+        xarray_jax.Dataset(),
+        jax_coords={
+            'a': np.arange(2),
+            'b': jnp.arange(2),
+            'c': [0, 1],
+            'd': 123,
+            'e': xarray_jax.Variable(('e2',), np.arange(2)),
+            'f': xarray_jax.DataArray(data=np.arange(2), dims=('f2',)),
+            'g': (('g2',), np.arange(2)),
+        })
+    xarray.testing.assert_equal(
+        result.a.variable, xarray.Variable(('a',), np.arange(2)))
+    xarray.testing.assert_equal(
+        jax.device_get(result.b.variable),
+        xarray.Variable(('b',), np.arange(2)))
+    xarray.testing.assert_equal(
+        result.c.variable, xarray.Variable(('c',), np.arange(2)))
+    xarray.testing.assert_equal(
+        result.d.variable, xarray.Variable((), 123))
+    xarray.testing.assert_equal(
+        result.e.variable, xarray.Variable(('e2',), np.arange(2)))
+    xarray.testing.assert_equal(
+        result.f.variable, xarray.Variable(('f2',), np.arange(2)))
+    xarray.testing.assert_equal(
+        result.g.variable, xarray.Variable(('g2',), np.arange(2)))
+
 
 if __name__ == '__main__':
   absltest.main()
