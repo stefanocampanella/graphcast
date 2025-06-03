@@ -99,7 +99,8 @@ the coordinate, but that wasn't going to work with a jax array anyway.
 import collections
 import contextlib
 import contextvars
-from typing import Any, Callable, Hashable, Iterator, Mapping, Optional, Union, Tuple, TypeVar, cast
+from typing import Any, Callable, Iterator, Mapping, Optional, Union, Tuple, TypeVar, cast
+from typing import Hashable  # pylint: disable=deprecated-class
 
 import jax
 import jax.numpy as jnp
@@ -646,10 +647,12 @@ def pmap(fn: Callable[..., Any],
 
   return result_fn
 
+_PyTree = TypeVar('_PyTree')
+
 
 def tree_map_variables(
     func: Callable[[xarray.Variable], xarray.Variable],
-    tree_data: Any) -> Any:
+    tree_data: _PyTree) -> _PyTree:
   """Like jax.tree.map but operates with Variables as leaves.
 
   This will work with any jax.tree_util-registered PyTree containing xarray
@@ -676,6 +679,63 @@ def tree_map_variables(
       lambda leaf: func(leaf) if isinstance(leaf, xarray.Variable) else leaf,
       tree_data,
       is_leaf=lambda x: isinstance(x, xarray.Variable))
+
+
+def tree_map_with_dims(
+    func: Callable[[jax.typing.ArrayLike, tuple[str, ...] | None],
+                   jax.typing.ArrayLike],
+    data: _PyTree,
+) -> _PyTree:
+  """Like jax.tree.map but also passes in xarray dimensions where known.
+
+  This is convenient when applying logic to every jax array in some xarray data
+  structure, which wants to be sensitive to the xarray dimension names.
+  Typical examples of this would be jax operations relating to sharding where
+  you may want to map xarray dimension names to sharding axis names.
+
+  This only supports changing array shapes in limited situations (see below).
+
+  Unlike tree_map_variables above, this will also map over plain jax arrays
+  that don't occur within xarray.Variable nodes; these will be passed to func
+  with dims=None.
+
+  Args:
+    func: A function from (jax_array, dims) -> jax_array. dims will correspond
+      to the dimension names of the xarray.Variable containing the jax_array
+      where it occurs within an xarray.Variable, note this includes arrays
+      within xarray.Dataset and xarray.DataArray too. For plain jax arrays that
+      don't occur within an xarray.Variable, dims will be None.
+      The returned jax array should generally be of the same shape as the input.
+      However you can get away with changing the shape of a particular dimension
+      in limited circumstances: when there are no explicit coordinates involving
+      that dimension, or when the only coordinates involving that dimension are
+      jax_coords and you modify their shapes too in a consistent fashion.
+      You are not allowed to change the dimension order, add or remove
+      dimensions.
+    data: Any pytree with jax ArrayLike leaves suitable for use with
+      `jax.tree.map`. Thanks to xarray_jax such pytrees may include xarray
+      datatypes.
+
+  Returns:
+    A pytree of the same structure as data, with the result of applying func
+    to each jax array found.
+  """
+  # All jax arrays within xarray.Dataset, xarray.DataArray (including
+  # jax_coord arrays) will be exposed via xarray.Variable internal nodes by
+  # xarray_jax's pytree registrations. So to find xarray dimension metadata
+  # it's sufficient to stop descending at xarray.Variable nodes:
+  def is_leaf(x):
+    return isinstance(x, xarray.Variable)
+
+  def wrapped_func(x):
+    if isinstance(x, xarray.Variable):
+      array = unwrap(x.data)
+      array = func(array, x.dims)
+      return Variable(dims=x.dims, data=array)
+    else:
+      return func(x, None)
+
+  return jax.tree_util.tree_map(wrapped_func, data, is_leaf=is_leaf)
 
 
 _Carry = TypeVar('_Carry')
