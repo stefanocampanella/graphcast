@@ -110,6 +110,40 @@ name = 'rename_coordinates'
 name_dict = {latitude = 'lat', longitude = 'lon'}
 
 [[datasets]]
+name = 'waverys'
+file = 'waverys_tres-1d_res-0p25_levels-1'
+kwargs = {parallel = true}
+
+[datasets.mask]
+file = 'waverys_static_res-0p25_levels-1'
+variable = 'waverys_mask'
+
+[[datasets.mask.postprocess]]
+name = 'get_land_mask'
+variable = 'deptho'
+mask_name = 'waverys_mask'
+
+[[datasets.mask.postprocess]]
+name = 'rename'
+name_dict = {deptho = 'waverys_deptho'}
+
+[[datasets.mask.postprocess]]
+name = 'rename_coordinates'
+name_dict = {latitude = 'lat', longitude = 'lon'}
+
+[[datasets.postprocess]]
+name = 'rename_coordinates'
+name_dict = {latitude = 'lat', longitude = 'lon'}
+
+[[datasets.postprocess]]
+name = 'fill'
+variables = ['vhm0', 'vtm02', 'vmdr', 'vsdx', 'vsdy']
+
+[[datasets.postprocess]]
+name = 'clip_negative'
+variables = ['vhm0', 'vtm02']
+
+[[datasets]]
 name = 'era_static'
 file = 'era5_static_res-0p25_levels-1'
 variables = ['land_sea_mask', 'geopotential_at_surface']
