@@ -79,7 +79,7 @@ WORKDIR="/leonardo_scratch/large/userexternal/${USER}/xcast"
 
 # Determine config file and output paths using the remaining arguments
 CONFIG_PATH="${PROJECTROOT}/configs/merge/${1}.toml"
-DATA_DIR="${PROJECTROOT}/data/dataset"
+DATA_DIR="${WORKDIR}/data/dataset"
 OUTPUT_PATH="${WORKDIR}/data/dataset/${1}"
 
 source leonardo/environment/activate

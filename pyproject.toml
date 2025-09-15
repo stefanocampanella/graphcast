@@ -62,6 +62,7 @@ classifiers = ["Development Status :: 3 - Alpha",
 [project.scripts]
 dataset = "graphcast.dataset:cli"
 ocean-mesh = "graphcast.ocean_mesh:cli"
+stats = "graphcast.stats:cli"
 
 [project.optional-dependencies]
 download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "h5netcdf", "cfgrib", "xarray-regrid[accel]", "pysocks", "cubed[diagnostics]", "flox"]
