@@ -135,20 +135,7 @@ if [[ ! -d "${OUTPUT_DIR}" ]]; then
     mkdir -p "${OUTPUT_DIR}"
 fi
 
-# Run averaging
 python -m graphcast.stats compute ${FLAGS} -- "${INPUT_PATH}" "${OUTPUT_PATH}" "${BASENAME_PREFIX}"
-AVG_EXIT_CODE=$?
-
-if [[ ${AVG_EXIT_CODE} -eq 0 ]]; then
-    echo "----------------------------------------"
-    echo "Dataset average completed successfully."
-else
-    echo "----------------------------------------"
-    echo "Dataset average failed with exit code: ${AVG_EXIT_CODE}"
-    echo "Job failed. Re-submitting..."
-    scontrol requeue $SLURM_JOB_ID
-    exit ${AVG_EXIT_CODE}
-fi
 
 # Deactivate all environments (useless when run in a SLURM job)
 source leonardo/environment/deactivate

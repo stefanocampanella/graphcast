@@ -9,6 +9,7 @@ version = "0.1"
 dependencies = [
     "cartopy",
     "chex",
+    "click",
     "dask",
     "dm-haiku",
     "dm-tree",
@@ -22,7 +23,7 @@ dependencies = [
     # Install cuda using pip, building jaxlib from source is a pain in the neck...
     "jax[cuda12] ; sys_platform == 'linux'",
     # Get HW acceleration on macOS
-    "jax-metal ; sys_platform == 'darwin'",
+    "jax ; sys_platform == 'darwin'",
     "jraph",
     "matplotlib",
     "numpy",
@@ -36,7 +37,6 @@ dependencies = [
     # Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work
     "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.17 ; sys_platform == 'darwin'",
     "tqdm",
-    "torch",
     "trimesh",
     "typing_extensions",
     "xarray",
@@ -65,10 +65,10 @@ ocean-mesh = "graphcast.ocean_mesh:cli"
 stats = "graphcast.stats:cli"
 
 [project.optional-dependencies]
-download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "h5netcdf", "cfgrib", "xarray-regrid[accel]", "pysocks", "cubed[diagnostics]", "flox"]
+download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "h5netcdf", "cfgrib", "cftime", "xarray-regrid[accel]", "pysocks", "flox"]
 interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage", "geopy", "papermill[all]", "hvplot", "geoviews"]
 profile = ["tensorboard_plugin_profile"]
-train = ["optax", "tensorboard", "xbatcher[torch]"]
+train = ["optax", "orbax-checkpoint", "tensorboard", "grain", "tensorboard", "matplotlib"]
 
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/graphcast"

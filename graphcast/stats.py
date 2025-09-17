@@ -1,6 +1,7 @@
 import logging
 import pathlib
 from contextlib import nullcontext
+from typing import Union
 
 import click
 import dask
@@ -64,6 +65,11 @@ def cli():
               default=True,
               help="Whether to compute the climatology.",
               show_default=True)
+@click.option("--exact/--no-exact",
+              "exact",
+              default=False,
+              help="Whether to compute the exact average.",
+              show_default=True)
 @click.option("--time-dim",
               default="time",
               help="Name of the time dimension to average over.",
@@ -93,6 +99,7 @@ def compute(input_path: pathlib.Path,
             output_dir: pathlib.Path,
             basename_prefix: str,
             climatology: bool = True,
+            exact: bool = False,
             time_dim: str = "time",
             climatology_dim: str = "dayofyear",
             skipna: bool = False,
@@ -142,10 +149,15 @@ def compute(input_path: pathlib.Path,
 
   logger.info(f"Computing averages over dimension '{time_dim}' (skipna={skipna})")
   stats = {}
-  stats["mean"] = dataset.mean(dim=time_dim, keep_attrs=True, skipna=skipna)
-  stats["std"] = dataset.std(dim=time_dim, keep_attrs=True, skipna=skipna)
-  stats["diff_std"] = dataset.diff(dim=time_dim).std(dim=time_dim, keep_attrs=True, skipna=skipna)
 
+  # Computing the climatology beforehand could be a source of optimization for large datasets, but it introduces a small numerical error.
+  # Say you have a collection of values {x_i} and labels {l_i} so that each label corresponds to multiple values.
+  # Then you can compute the mean of the whole collection x_mean, or the mean of the averages for each label x_clim_mean.
+  # If the number of values for each label is the same, then the two quantities are strictly equal. But it's not true in general.
+  # Indeed, in the case of a daily climatology, the two would differ because of leap years, which would introduce a relative error of
+  # the order of 1/365. Finally, the dataset might not start on the 1st of January or end before the 31 of December,
+  # which would further distort the results. However, the quantities computed here are used to standardize the input features, and
+  # therefore such approximations are reasonably acceptable.
   if climatology:
     time_coord = dataset[time_dim]
     if not (hasattr(time_coord, 'dt') and hasattr(time_coord.dt, 'dayofyear')):
@@ -154,11 +166,36 @@ def compute(input_path: pathlib.Path,
         f"Found dtype={time_coord.dtype}."
       )
     logger.info(f"Computing daily climatology grouped by '{time_dim}.dayofyear' (skipna={skipna})")
-    clim_ds = dataset.groupby(f"{time_dim}.dayofyear").mean(keep_attrs=True, skipna=skipna)
-    # Optionally rename the climatology dimension
+    # Here we handle leap years.
+    # See: https://github.com/pydata/xarray/issues/1844#issuecomment-417855365
+    clim_ds = dataset.convert_calendar('365_day')
+    clim_ds = clim_ds.groupby(f"{time_dim}.dayofyear")
+    clim_ds = clim_ds.mean(keep_attrs=True, skipna=skipna)
+    # Optionally rename the climatology dimension.
     if climatology_dim != 'dayofyear' and 'dayofyear' in clim_ds.dims:
       clim_ds = clim_ds.rename({'dayofyear': climatology_dim})
     stats["climatology"] = clim_ds
+
+  if climatology and not exact:
+    stats["mean"] = stats["climatology"].mean(dim=climatology_dim, keep_attrs=True, skipna=skipna)
+  else:
+    stats["mean"] = dataset.mean(dim=time_dim, keep_attrs=True, skipna=skipna)
+
+  # There is no easy way to pass the mean to std, one should open an issue to XArray
+  def std_from_mean(ds: xr.Dataset, mean: Union[xr.Dataset, float], **kwargs) -> xr.Dataset:
+    ds = ds - mean
+    var = (ds * ds).mean(**kwargs)
+    return xr.ufuncs.sqrt(var)
+
+  stats["std"] = std_from_mean(dataset, stats["mean"], dim=time_dim, keep_attrs=True, skipna=skipna)
+  # Given a sequence {x_i}_{i = 1, ..., N} the mean of the diffs {x_i - x_{i-1}} is proportional to the sum of a
+  # telescopic series and equal to (x_N - x_1) / N, which becomes negligible for large N.
+  # Also, Graphcast computes the increment between the present and next system state rescaled by diff_std.
+  # This accounts to standardizing the targets. Whatever the rationale, one can reasonably approximate here the mean with zero.
+  if exact:
+    stats["diff_std"] = dataset.diff(dim=time_dim).std(dim=time_dim, keep_attrs=True, skipna=skipna)
+  else:
+    stats["diff_std"] = std_from_mean(dataset.diff(dim=time_dim), 0.0, dim=time_dim, keep_attrs=True, skipna=skipna)
 
   # Ensure parent dir exists
   delayed_saves = []
