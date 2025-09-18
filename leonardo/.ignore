@@ -8,6 +8,8 @@
 .pytest_cache
 .ruff_cache
 .ipynb_checkpoints
+.run
+.git
 build
 graphcast.egg-info
 data

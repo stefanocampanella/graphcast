@@ -8,19 +8,22 @@
 
 absl-py==2.3.1
     # via
+    #   array-record
     #   chex
     #   dm-haiku
     #   dm-tree
+    #   grain
     #   optax
+    #   orbax-checkpoint
     #   tensorboard
+aiofiles==24.1.0
+    # via orbax-checkpoint
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.14
     # via gcsfs
 aiosignal==1.4.0
     # via aiohttp
-aiostream==0.7.0
-    # via cubed
 annotated-types==0.7.0
     # via pydantic
 ansicolors==1.1.8
@@ -35,8 +38,8 @@ argon2-cffi==25.1.0
     # via jupyter-server
 argon2-cffi-bindings==21.2.0
     # via argon2-cffi
-array-api-compat==1.12.0
-    # via cubed
+array-record==0.8.1
+    # via grain
 arrow==1.3.0
     # via isoduration
 asciitree==0.3.3
@@ -100,6 +103,7 @@ certifi==2025.7.14
     # via
     #   httpcore
     #   httpx
+    #   netcdf4
     #   pyproj
     #   requests
 cffi==1.17.1
@@ -111,6 +115,10 @@ cffi==1.17.1
     #   pynacl
 cfgrib==0.9.15.0
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+cftime==1.6.4.post1
+    # via
+    #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+    #   netcdf4
 charset-normalizer==3.4.2
     # via requests
 cheroot==10.0.1
@@ -126,12 +134,13 @@ click==8.2.1
     #   copernicusmarine
     #   dask
     #   distributed
+    #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   papermill
 cloudpickle==3.1.1
     # via
-    #   cubed
     #   dask
     #   distributed
+    #   grain
 colabtools==0.0.1
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 colorcet==3.1.0
@@ -154,8 +163,6 @@ cryptography==45.0.5
     #   azure-storage-blob
     #   msal
     #   pyjwt
-cubed[diagnostics]==0.22.0
-    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 cycler==0.12.1
     # via matplotlib
 dask[distributed]==2025.7.0
@@ -164,7 +171,6 @@ dask[distributed]==2025.7.0
     #   distributed
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   xarray-regrid
-    #   xbatcher
 debugpy==1.8.15
     # via ipykernel
 decorator==5.2.1
@@ -182,9 +188,9 @@ distributed==2025.7.0
 dm-haiku==0.0.14
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 dm-tree==0.1.9
-    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
-donfig==0.8.1.post1
-    # via cubed
+    # via
+    #   grain
+    #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 eccodes==2.42.0
     # via cfgrib
 ecmwf-datastores-client==0.2.0
@@ -192,15 +198,17 @@ ecmwf-datastores-client==0.2.0
 entrypoints==0.4
     # via papermill
 etils[epath,epy]==1.13.0
-    # via xprof
+    # via
+    #   array-record
+    #   grain
+    #   orbax-checkpoint
+    #   xprof
 executing==2.2.0
     # via stack-data
 fasteners==0.19
     # via zarr
 fastjsonschema==2.21.1
     # via nbformat
-filelock==3.18.0
-    # via torch
 findlibs==0.1.1
     # via eccodes
 flox==0.10.4
@@ -217,11 +225,9 @@ frozenlist==1.7.0
     #   aiosignal
 fsspec==2025.7.0
     # via
-    #   cubed
     #   dask
     #   etils
     #   gcsfs
-    #   torch
     #   xprof
 gcsfs==2025.7.0
     # via
@@ -272,8 +278,8 @@ google-resumable-media==2.7.2
     # via google-cloud-storage
 googleapis-common-protos==1.70.0
     # via google-api-core
-graphviz==0.21
-    # via cubed
+grain==0.2.12
+    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 grpcio==1.73.1
     # via tensorboard
 gviz-api==1.10.0
@@ -294,6 +300,8 @@ httpcore==1.0.9
     # via httpx
 httpx==0.28.1
     # via jupyterlab
+humanize==4.13.0
+    # via orbax-checkpoint
 hvplot==0.11.3
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 idna==3.10
@@ -329,6 +337,7 @@ jax[cuda12]==0.6.2 ; sys_platform == "linux"
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   jraph
     #   optax
+    #   orbax-checkpoint
 jax-cuda12-pjrt==0.6.2
     # via jax-cuda12-plugin
 jax-cuda12-plugin[with-cuda]==0.6.2
@@ -344,13 +353,11 @@ jedi==0.19.2
 jinja2==3.1.6
     # via
     #   bokeh
-    #   cubed
     #   distributed
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
     #   nbconvert
-    #   torch
 jmespath==1.0.1
     # via
     #   boto3
@@ -424,7 +431,6 @@ markdown-it-py==3.0.0
     # via
     #   mdit-py-plugins
     #   panel
-    #   rich
 markupsafe==3.0.2
     # via
     #   jinja2
@@ -433,9 +439,7 @@ markupsafe==3.0.2
 matplotlib==3.10.3
     # via
     #   cartopy
-    #   cubed
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
-    #   seaborn
 matplotlib-inline==0.1.7
     # via
     #   ipykernel
@@ -450,12 +454,14 @@ ml-dtypes==0.5.1
     # via
     #   jax
     #   jaxlib
+    #   tensorstore
 more-itertools==10.7.0
     # via
     #   cheroot
+    #   grain
     #   jaraco-functools
-mpmath==1.3.0
-    # via sympy
+mpi4py==4.1.0
+    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 msal==1.32.3
     # via
     #   azure-identity
@@ -463,7 +469,9 @@ msal==1.32.3
 msal-extensions==1.3.1
     # via azure-identity
 msgpack==1.1.1
-    # via distributed
+    # via
+    #   distributed
+    #   orbax-checkpoint
 multidict==6.6.3
     # via
     #   aiohttp
@@ -471,9 +479,7 @@ multidict==6.6.3
 multiurl==0.3.6
     # via ecmwf-datastores-client
 mypy-extensions==1.1.0
-    # via
-    #   black
-    #   cubed
+    # via black
 narwhals==1.48.0
     # via bokeh
 nbclient==0.10.2
@@ -488,14 +494,12 @@ nbformat==5.10.4
     #   nbclient
     #   nbconvert
     #   papermill
-ndindex==1.10.0
-    # via cubed
 nest-asyncio==1.6.0
-    # via ipykernel
-networkx==3.5
     # via
-    #   cubed
-    #   torch
+    #   ipykernel
+    #   orbax-checkpoint
+netcdf4==1.7.2
+    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 notebook-shim==0.2.4
     # via jupyterlab
 numba==0.61.2
@@ -509,16 +513,17 @@ numpy==2.2.6
     #   bokeh
     #   cartopy
     #   cfgrib
+    #   cftime
     #   chex
     #   contourpy
     #   copernicusmarine
-    #   cubed
     #   dm-haiku
     #   dm-tree
     #   eccodes
     #   flox
     #   gdal
     #   geoviews
+    #   grain
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   h5py
     #   holoviews
@@ -529,22 +534,23 @@ numpy==2.2.6
     #   jraph
     #   matplotlib
     #   ml-dtypes
+    #   netcdf4
     #   numba
     #   numcodecs
     #   numpy-groupies
     #   optax
+    #   orbax-checkpoint
     #   pandas
     #   pandas-stubs
     #   scipy
-    #   seaborn
     #   seamsh
     #   shapely
     #   sparse
     #   tensorboard
+    #   tensorstore
     #   trimesh
     #   xarray
     #   xarray-regrid
-    #   xbatcher
     #   zarr
 numpy-groupies==0.11.3
     # via flox
@@ -591,6 +597,8 @@ optax==0.2.5
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 optype==0.12.2
     # via scipy-stubs
+orbax-checkpoint==0.11.25
+    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 overrides==7.7.0
     # via jupyter-server
 packaging==25.0
@@ -620,13 +628,11 @@ pandas==2.3.1
     # via
     #   arcosparse
     #   bokeh
-    #   cubed
     #   flox
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   holoviews
     #   hvplot
     #   panel
-    #   seaborn
     #   xarray
 pandas-stubs==2.3.0.250703
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
@@ -677,12 +683,13 @@ protobuf==6.31.1
     # via
     #   google-api-core
     #   googleapis-common-protos
+    #   grain
+    #   orbax-checkpoint
     #   proto-plus
     #   tensorboard
     #   xprof
 psutil==7.0.0
     # via
-    #   cubed
     #   distributed
     #   ipykernel
 ptyprocess==0.7.0
@@ -707,8 +714,6 @@ pydantic==2.11.7
     # via copernicusmarine
 pydantic-core==2.33.2
     # via pydantic
-pydot==4.0.1
-    # via cubed
 pygithub==2.6.1
     # via papermill
 pygments==2.19.2
@@ -716,7 +721,6 @@ pygments==2.19.2
     #   ipython
     #   ipython-pygments-lexers
     #   nbconvert
-    #   rich
 pyjwt[crypto]==2.10.1
     # via
     #   msal
@@ -725,17 +729,13 @@ pyjwt[crypto]==2.10.1
 pynacl==1.5.0
     # via pygithub
 pyparsing==3.2.3
-    # via
-    #   matplotlib
-    #   pydot
+    # via matplotlib
 pyproj==3.7.1
     # via
     #   cartopy
     #   geoviews
 pyshp==2.3.1
     # via cartopy
-pysocks==1.7.1
-    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 pystac==1.13.0
     # via
     #   arcosparse
@@ -764,8 +764,8 @@ pyyaml==6.0.2
     #   bokeh
     #   dask
     #   distributed
-    #   donfig
     #   jupyter-events
+    #   orbax-checkpoint
     #   papermill
 pyzmq==27.0.0
     # via
@@ -807,8 +807,6 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rfc3987-syntax==1.1.0
     # via jsonschema
-rich==14.0.0
-    # via cubed
 rpds-py==0.26.0
     # via
     #   jsonschema
@@ -829,8 +827,6 @@ scipy==1.16.0
     #   xarray-regrid
 scipy-stubs==1.16.0.2
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
-seaborn==0.13.2
-    # via cubed
 seamsh==0.4.17 ; sys_platform == "linux"
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 semver==3.0.4
@@ -841,6 +837,8 @@ shapely==2.1.1
     # via
     #   cartopy
     #   geoviews
+simplejson==3.20.1
+    # via orbax-checkpoint
 six==1.17.0
     # via
     #   azure-core
@@ -858,22 +856,20 @@ sparse==0.17.0
     # via xarray-regrid
 stack-data==0.6.3
     # via ipython
-sympy==1.14.0
-    # via torch
 tabulate==0.9.0
     # via dm-haiku
 tblib==3.1.0
     # via distributed
 tenacity==9.1.2
-    # via
-    #   cubed
-    #   papermill
+    # via papermill
 tensorboard==2.20.0
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 tensorboard-data-server==0.7.2
     # via tensorboard
 tensorboard-plugin-profile==2.20.4
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+tensorstore==0.1.76
+    # via orbax-checkpoint
 terminado==0.18.1
     # via
     #   jupyter-server
@@ -883,15 +879,10 @@ tinycss2==1.4.0
 toolz==1.0.0
     # via
     #   chex
-    #   cubed
     #   dask
     #   distributed
     #   flox
     #   partd
-torch==2.7.1+cpu
-    # via
-    #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
-    #   xbatcher
 tornado==6.5.1
     # via
     #   bokeh
@@ -906,7 +897,6 @@ tqdm==4.67.1
     #   arcosparse
     #   cdsapi
     #   copernicusmarine
-    #   cubed
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   multiurl
     #   panel
@@ -935,7 +925,6 @@ types-pytz==2025.2.0.20250516
 typing-extensions==4.14.1
     # via
     #   aiosignal
-    #   aiostream
     #   anyio
     #   azure-core
     #   azure-identity
@@ -947,12 +936,12 @@ typing-extensions==4.14.1
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   ipython
     #   optype
+    #   orbax-checkpoint
     #   panel
     #   pydantic
     #   pydantic-core
     #   pygithub
     #   referencing
-    #   torch
     #   typing-inspection
 typing-inspection==0.4.1
     # via pydantic
@@ -993,10 +982,7 @@ xarray==2025.7.1
     #   copernicusmarine
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   xarray-regrid
-    #   xbatcher
 xarray-regrid[accel]==0.4.1
-    # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
-xbatcher[torch]==0.4.0
     # via graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 xprof==2.20.4
     # via tensorboard-plugin-profile
@@ -1009,7 +995,6 @@ yarl==1.20.1
 zarr==2.18.7
     # via
     #   copernicusmarine
-    #   cubed
     #   graphcast (/leonardo_work/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 zict==3.0.0
     # via distributed
