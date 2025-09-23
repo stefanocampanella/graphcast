@@ -44,6 +44,7 @@ dependencies = [
     "zarr>=2,<3",
     "pandas-stubs==2.3.0.250703",
     "scipy-stubs==1.16.0.2",
+    "graphviz>=0.21",
 ]
 requires-python = ">=3.11, <3.12"
 authors = [{name = "DeepMind"}]
@@ -65,7 +66,7 @@ ocean-mesh = "graphcast.ocean_mesh:cli"
 stats = "graphcast.stats:cli"
 
 [project.optional-dependencies]
-download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "netCDF4", "h5netcdf", "cfgrib", "cftime", "xarray-regrid[accel]", "flox", "mpi4py"]
+download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "netCDF4", "h5netcdf", "cfgrib", "cftime", "xarray-regrid[accel]", "flox", "mpi4py", "dask_mpi"]
 interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage", "geopy", "papermill[all]", "hvplot", "geoviews"]
 profile = ["tensorboard_plugin_profile"]
 train = ["optax", "orbax-checkpoint", "tensorboard", "grain", "tensorboard", "matplotlib"]

@@ -740,6 +740,15 @@ distributed = [
 ]
 
 [[package]]
+name = "dask-mpi"
+version = "2022.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/15/61/abe46bb685d46c8bc598a963689b6af4794247149d5a7a2b97c7c37bf2b5/dask-mpi-2022.4.0.tar.gz", hash = "sha256:0a04f1d7d35a06cdff506593330d4414ea242c9172498ce191f5742eac499e17", size = 25515, upload-time = "2022-04-13T16:38:47.571Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/a5/195604b42f504aa9b133d28114ad8a3fd503acd1c36acaff2dd3b1d9568b/dask_mpi-2022.4.0-py3-none-any.whl", hash = "sha256:fa3a76512291ce22923c83085cc3d9b115aaa5a325a607d505754d3d7c5879b2", size = 11137, upload-time = "2022-04-13T16:38:46.581Z" },
+]
+
+[[package]]
 name = "datapi"
 version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1298,6 +1307,7 @@ dependencies = [
     { name = "gdal-utils", version = "3.10.0.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
     { name = "gdal-utils", version = "3.11.0.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "gmsh" },
+    { name = "graphviz" },
     { name = "jax", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "jax", extra = ["cuda12"], marker = "sys_platform == 'linux'" },
     { name = "jraph" },
@@ -1324,6 +1334,7 @@ download = [
     { name = "cfgrib" },
     { name = "cftime" },
     { name = "copernicusmarine" },
+    { name = "dask-mpi" },
     { name = "flox" },
     { name = "gcsfs" },
     { name = "google-cloud-storage" },
@@ -1364,6 +1375,7 @@ requires-dist = [
     { name = "colabtools", marker = "extra == 'interactive'" },
     { name = "copernicusmarine", marker = "extra == 'download'" },
     { name = "dask" },
+    { name = "dask-mpi", marker = "extra == 'download'" },
     { name = "dm-haiku" },
     { name = "dm-tree" },
     { name = "flox", marker = "extra == 'download'" },
@@ -1378,6 +1390,7 @@ requires-dist = [
     { name = "google-cloud-storage", marker = "extra == 'download'" },
     { name = "google-cloud-storage", marker = "extra == 'interactive'" },
     { name = "grain", marker = "extra == 'train'" },
+    { name = "graphviz", specifier = ">=0.21" },
     { name = "h5netcdf", marker = "extra == 'download'" },
     { name = "hvplot", marker = "extra == 'interactive'" },
     { name = "ipywidgets", marker = "extra == 'interactive'" },
@@ -1411,6 +1424,15 @@ requires-dist = [
     { name = "zarr", specifier = ">=2,<3" },
 ]
 provides-extras = ["download", "interactive", "profile", "train"]
+
+[[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
+]
 
 [[package]]
 name = "grpcio"

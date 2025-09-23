@@ -7,6 +7,9 @@ cd "${LOCAL_ROOT}" || exit
 source "leonardo/.env"
 REMOTE_ROOT=${LEONARDO_USER}@${LEONARDO_DATAMOVER}:${LEONARDO_CODE_ROOT}
 
+# Common SSH options (avoid host key strict checking)
+SSH_OPTS="-o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+
 if [[ ${1} = 'pull' ]]; then
   SOURCE="${REMOTE_ROOT}/"
   DESTINATION="./"
@@ -18,4 +21,4 @@ else
   exit 1
 fi
 
-rsync -av --exclude-from='leonardo/.ignore' "${@:2}" "${SOURCE}" "${DESTINATION}"
+rsync -av -e "ssh ${SSH_OPTS}" --exclude-from='leonardo/.ignore' "${@:2}" "${SOURCE}" "${DESTINATION}"

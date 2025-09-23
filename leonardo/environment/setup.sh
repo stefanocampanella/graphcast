@@ -41,7 +41,7 @@ DESCRIPTION
     Setup options
         --clear                                 Clear all local environment files.
         --skip-spack                            Do not setup spack.
-	    --skip-venv                             Do not setup Python virtual environment (implies --skip-venv-compile, --skip-venv-download, --skip-venv-install).
+	--skip-venv                             Do not setup Python virtual environment (implies --skip-venv-compile, --skip-venv-download, --skip-venv-install).
         --skip-venv-compile                     Do not compile requirements.txt.
         --skip-venv-download                    Do not download packages from PyPI.
         --skip-venv-install                     Do not install downloaded packages.
@@ -114,7 +114,7 @@ done
 
 # Load provided Leonardo modules.
 # Notice: **don't** load other modules beforehand (e.g. cmake), in tests bugged pigz/tar will make the build fail.
-module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
+module load git/2.45.1 gcc/12.2.0
 
 ROOT=$(git rev-parse --show-toplevel)
 SPACK_VENV_DIR="${ROOT}/.spack-venv"
@@ -185,8 +185,10 @@ if [[ $BUILD_SPACK == true ]]; then
     patch "${SPACK_DIR}/var/spack/environments/default/spack.yaml" "${ROOT}/leonardo/environment/spack.yaml.patch"
 
     # Add gdal to the environment, then install
-    spack add python@3.11 %gcc@12.2.0
-    spack add gdal@3.10.0 %gcc@12.2.0
+    spack add python@3.11
+    spack add gdal@3.10.0
+    spack add openmpi@4.1: ^ucx +thread_multiple
+
 
     spack concretize || exit 1
 
