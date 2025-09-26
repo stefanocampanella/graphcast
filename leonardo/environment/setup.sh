@@ -41,7 +41,7 @@ DESCRIPTION
     Setup options
         --clear                                 Clear all local environment files.
         --skip-spack                            Do not setup spack.
-	--skip-venv                             Do not setup Python virtual environment (implies --skip-venv-compile, --skip-venv-download, --skip-venv-install).
+        --skip-venv                             Do not setup Python virtual environment (implies --skip-venv-compile, --skip-venv-download, --skip-venv-install).
         --skip-venv-compile                     Do not compile requirements.txt.
         --skip-venv-download                    Do not download packages from PyPI.
         --skip-venv-install                     Do not install downloaded packages.
@@ -114,7 +114,7 @@ done
 
 # Load provided Leonardo modules.
 # Notice: **don't** load other modules beforehand (e.g. cmake), in tests bugged pigz/tar will make the build fail.
-module load git/2.45.1 gcc/12.2.0
+module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
 
 ROOT=$(git rev-parse --show-toplevel)
 SPACK_VENV_DIR="${ROOT}/.spack-venv"
@@ -184,11 +184,19 @@ if [[ $BUILD_SPACK == true ]]; then
     # Patch the spack.yaml file to allow multiple versions of the same package (unify: when_possible)
     patch "${SPACK_DIR}/var/spack/environments/default/spack.yaml" "${ROOT}/leonardo/environment/spack.yaml.patch"
 
-    # Add gdal to the environment, then install
+    # When using the infiniband interface, dask_mpi fails to launch a cluster due to an error which appears to be solved
+    # when using a version of ucx compiled with +thread_multiple.
+    # spack add openmpi@4.1: fabrics=ucx schedulers=slurm ^ucx +thread_multiple ^slurm@23.11.10
+    # However, it's then very hard to get a functioning version of slurm and openmpi,
+    # hence it's better to use the system one and fall back to ethernet interface.
+
+    # Is it useful to add gcc and openmpi externals to the current environment? E.g.
+    # spack compiler find
+    # spack external find --not-buildable gcc openmpi
+
+    # Add python and gdal to the environment, then install
     spack add python@3.11
     spack add gdal@3.10.0
-    spack add openmpi@4.1: ^ucx +thread_multiple
-
 
     spack concretize || exit 1
 
