@@ -162,7 +162,7 @@ class DateIntervalsRange(Iterable):
       self.delta = timedelta(days=1)
 
   def __repr__(self):
-    return f"from {self.start.isoformat()} to {(self.end - self.delta).isoformat()} (included)"
+    return f"from {self.start.isoformat()} to {(self.last_valid_date).isoformat()} (included)"
 
   def __iter__(self):
 
@@ -179,6 +179,10 @@ class DateIntervalsRange(Iterable):
 
   def __getitem__(self, item):
     return list(self)[item]
+
+  @property
+  def last_valid_date(self):
+    return self.end - self.delta
 
   def __len__(self ):
     return sum(1 for _ in self)

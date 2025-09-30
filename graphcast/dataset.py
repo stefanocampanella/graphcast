@@ -323,8 +323,13 @@ def merge(
 
   date_intervals, output_path = _parse_timeseries_arguments(configs, output_path,
                                                             start=start_date, end=end_date, array_id=array_id)
+
+  # The `date_intervals` return value of `_parse_timeseries_arguments` is used within the download command to iterate
+  # through dates segments, which when joined contains all dates between date_intervals.start and
+  # date_intervals.last_valid_date, i.e. date_intervals.end - date_intervals.delta (included).
+  # Here we process all valid dates at ones, hence end_date is date_intervals.last_valid_date, and **not** date_intervals.end.
   start_date = date_intervals.start
-  end_date = date_intervals.end
+  end_date = date_intervals.last_valid_date
 
   def reader(path, **kwargs):
     logging.info(f"Reading {path}")
