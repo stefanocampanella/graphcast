@@ -1,34 +1,32 @@
 #! /usr/bin/env bash
-#SBATCH --account=OGS_test2528_0
+#SBATCH --account=OGS23_PRACE_IT_1
 #SBATCH --partition=dcgp_usr_prod
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=112
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=28
+#SBATCH --cpus-per-task=4
 #SBATCH --exclusive
-#SBATCH --time=500
-#SBATCH --gres=tmpfs:10G
+#SBATCH --time=300
+#SBATCH --gres=tmpfs:3T
 #SBATCH --requeue
 
 usage() {
     more <<EOF
 average_dataset.slurm
-    This script computes the time average and daily climatology of a Zarr dataset.
+    This script computes daily stats from a Zarr dataset.
 
 SYNOPSIS
     usage: $0 --help
-    usage: $0 [options] dataset_name
+    usage: $0 [options] stats dataset_name
 
 DESCRIPTION
     Positional arguments
+        stats                                   Which stats to compute, must be one of (climatology, mean, std, diff_std)
         dataset_name                            Name of the input dataset
 
     Options
         --overwrite                             Whether to overwrite destination (default false).
-        --progress                              Whether to display a progress bar (default false).
         --skipna                                Skip NaNs when averaging (default false).
-        --no-climatology                        Do not compute daily climatology.
         --time-dim DIM                          Name of the time dimension (default: time).
-        --climatology-dim DIM                   Name of the climatology time dimension in the outputs (default: dayofyear).
-        --workers N                             Max Dask workers to use (default: SLURM_CPUS_PER_TASK or 4).
         --log-level LEVEL                       Logging level (debug, info, warning, error, critical). Default: info.
         --help                                  Shows this help.
 EOF
@@ -36,16 +34,14 @@ EOF
 
 # Default options
 OVERWRITE=false
-PROGRESS=false
 SKIPNA=false
 CLIMATOLOGY=true
 TIME_DIM="time"
 CLIMATOLOGY_DIM="dayofyear"
-WORKERS=${SLURM_CPUS_PER_TASK:-4}
 LOG_LEVEL="info"
 
 # Parse command line options
-ARGS=$(getopt --options '' --longoptions "overwrite,progress,skipna,no-climatology,time-dim:,climatology-dim:,workers:,log-level:,help" --name "$0" -- "${@}")
+ARGS=$(getopt --options '' --longoptions "overwrite,skipna,no-climatology,time-dim:,climatology-dim:,log-level:,help" --name "$0" -- "${@}")
 if [[ ${?} -ne 0 ]]; then
     usage
     exit 1
@@ -56,8 +52,6 @@ while true; do
     case "$1" in
         (--overwrite)
             OVERWRITE=true; shift ;;
-        (--progress)
-            PROGRESS=true; shift ;;
         (--skipna)
             SKIPNA=true; shift ;;
         (--no-climatology)
@@ -66,8 +60,6 @@ while true; do
             TIME_DIM="$2"; shift 2 ;;
         (--climatology-dim)
             CLIMATOLOGY_DIM="$2"; shift 2 ;;
-        (--workers)
-            WORKERS="$2"; shift 2 ;;
         (--log-level)
             LOG_LEVEL="$2"; shift 2 ;;
         (--help)
@@ -82,16 +74,16 @@ while true; do
 done
 
 # Remaining args: input_path and output_path
-if [[ $# -lt 1 ]]; then
-    echo "Error: missing required argument dataset name" >&2
+if [[ $# -lt 2 ]]; then
+    echo "Error: missing required arguments stats and dataset name" >&2
     usage
     exit 1
 fi
 
 DATADIR="/leonardo_scratch/large/userexternal/${USER}/xcast/data"
-INPUT_PATH="${DATADIR}/dataset/$1"
-OUTPUT_PATH="${DATADIR}/stats"
-BASENAME_PREFIX="$1"
+INPUT_PATH="${DATADIR}/dataset/$2"
+OUTPUT_PATH="${DATADIR}/stats/$2_$1.nc"
+STATS="$1"
 
 PROJECTROOT=$(git rev-parse --show-toplevel)
 cd "${PROJECTROOT}" || exit 1
@@ -99,22 +91,13 @@ cd "${PROJECTROOT}" || exit 1
 # Activate environment
 source leonardo/environment/activate
 
-# Cap Dask concurrency to limit memory usage
-export DASK_NUM_WORKERS="${WORKERS}"
-
 # Build flags for CLI
-FLAGS="--time-dim=${TIME_DIM} --climatology-dim=${CLIMATOLOGY_DIM} --log-level=${LOG_LEVEL}"
+FLAGS="--time-dim=${TIME_DIM} --log-level=${LOG_LEVEL} --chunks=time:256,level:1,lat:-1,lon:-1"
 
 if [[ ${OVERWRITE} == true ]]; then
     FLAGS="${FLAGS} --overwrite"
 else
     FLAGS="${FLAGS} --no-overwrite"
-fi
-
-if [[ ${PROGRESS} == true ]]; then
-    FLAGS="${FLAGS} --progress"
-else
-    FLAGS="${FLAGS} --no-progress"
 fi
 
 if [[ ${SKIPNA} == true ]]; then
@@ -123,19 +106,29 @@ else
     FLAGS="${FLAGS} --no-skipna"
 fi
 
-if [[ ${CLIMATOLOGY} == true ]]; then
-    FLAGS="${FLAGS} --climatology"
-else
-    FLAGS="${FLAGS} --no-climatology"
-fi
-
 # Ensure output directory exists
 OUTPUT_DIR=$(dirname "${OUTPUT_PATH}")
 if [[ ! -d "${OUTPUT_DIR}" ]]; then
     mkdir -p "${OUTPUT_DIR}"
 fi
 
-python -m graphcast.stats compute ${FLAGS} -- "${INPUT_PATH}" "${OUTPUT_PATH}" "${BASENAME_PREFIX}"
+# see:
+# https://bitbucket.org/mpi4py/mpi4py/issues/80/mpi_thread_multiple-vs-mpi_thread_single
+# https://github.com/open-mpi/ompi/issues/6240
+# https://github.com/open-mpi/ompi/issues/9763
+# https://developer.skao.int/projects/ska-sdp-exec-iotest/en/latest/content/mpi_settings.html#slurm-specific-settings
+# https://docs.nvidia.com/networking/display/hpcxv211/hcoll
+
+export OMPI_MCA_btl_tcp_if_exclude=enp1s0,ib0,lo,virbr0
+export OMPI_MCA_coll=^hcoll
+export DASK_MPI__INTERFACE=brmgt
+export DASK_MPI__PROTOCOL=tcp
+export DASK_MPI__NTHREADS=${SLURM_CPUS_PER_TASK}
+export DASK_MPI__LOCAL_DIRECTORY=${TMPDIR}
+export DASK_MPI__LOG_DIR="${PROJECTROOT}/logs/dask"
+
+mkdir -p DASK_MPI_LOG_DIR
+srun -n ${SLURM_NTASKS} python -m graphcast.stats compute ${FLAGS} -- ${STATS} "${INPUT_PATH}" "${OUTPUT_PATH}"
 
 # Deactivate all environments (useless when run in a SLURM job)
 source leonardo/environment/deactivate

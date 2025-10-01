@@ -1,5 +1,5 @@
 #! /usr/bin/env bash
-#SBATCH --account=OGS_test2528_0
+#SBATCH --account=OGS23_PRACE_IT_1
 #SBATCH --partition=dcgp_usr_prod
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=14
