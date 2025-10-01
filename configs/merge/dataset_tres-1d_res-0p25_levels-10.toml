@@ -154,5 +154,5 @@ land_sea_mask = {dtype = 'bool', casting = 'unsafe'}
 
 [save]
 consolidated = true
-chunk = {time = 1, level = -1, lat = -1, lon = -1}
+chunk = {time = 1, level = 1, lat = -1, lon = -1}
 compressor = {cname = 'lz4', clevel = 1}
