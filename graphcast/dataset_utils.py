@@ -805,6 +805,7 @@ def check_values(variables: None | Sequence[str] = None, mask: None | xr.DataArr
   return decorator
 
 
+# FIXME: this is probaby broken, and should be integrated by
 def check_date_range(start_date: datetime, end_date: datetime):
   """
   Decorator to check that all dates in a dataset are within the specified range
@@ -921,6 +922,91 @@ def open_dataset_wo_static(path: pathlib.Path, time_dim: str = "time", chunks=No
   return ds
 
 
+def open_mfdataset(paths: Sequence[str | pathlib.Path], time_dim: str = "time", chunks=None) -> xr.Dataset:
+  """
+  Open multiple zipped Zarr datasets and combine them as xarray.open_mfdataset would, with a
+  specific behavior for static variables (those without the provided time dimension):
+
+  - Time-varying variables (containing `time_dim` among their dimensions) are merged along
+    coordinates (typically along the time dimension) using xarray.open_mfdataset(combine='by_coords').
+  - Static variables (that do not contain `time_dim`) are expected to be identical across the
+    input datasets if duplicated; they are validated and included once, as-is, in the output.
+
+  Parameters
+  ---------
+  paths: Sequence[str | pathlib.Path]
+      List of paths to zipped Zarr stores (.zip). They must exist. The function does not support
+      directories; pass individual .zip paths instead.
+  time_dim: str
+      Name of the time dimension. Variables that do not include this dimension are considered static.
+  chunks: Any
+      Chunking specification forwarded to xarray open calls. Use None to keep existing chunking.
+
+  Returns
+  -------
+  xr.Dataset
+      Dataset obtained by combining the time-varying variables by coordinates and adding the static
+      variables (validated to be equal across inputs) unchanged.
+  """
+  if not isinstance(paths, (list, tuple)):
+    raise TypeError("paths must be a sequence of path-like strings pointing to zipped Zarr stores")
+  if len(paths) == 0:
+    raise ValueError("paths cannot be empty")
+
+  str_paths = [str(pathlib.Path(p)) for p in paths]
+  for p in str_paths:
+    if not pathlib.Path(p).exists():
+      raise ValueError(f"Input path {p} does not exist")
+
+  # Phase 1: scan inputs to collect and validate static variables (no `time_dim`).
+  static_vars: dict[str, xr.DataArray] = {}
+
+  def _collect_and_validate_static(ds: xr.Dataset):
+    nonlocal static_vars
+    for name, var in ds.data_vars.items():
+      if time_dim not in var.dims:
+        if name in static_vars:
+          # Ensure equality (values and coordinates). Attributes are ignored.
+          if not var.equals(static_vars[name]):
+            raise ValueError(
+              f"Static variable '{name}' differs across inputs. All static variables must be identical.")
+        else:
+          static_vars[name] = var
+
+  # Open each dataset quickly to inspect static variables. Keep inline_array=False to avoid huge graphs.
+  for p in str_paths:
+    ds = xr.open_dataset(p, engine="zarr", inline_array=False, chunks=chunks)
+    try:
+      _collect_and_validate_static(ds)
+    finally:
+      ds.close()
+
+  # Phase 2: combine time-varying variables by coordinates using open_mfdataset
+  def _drop_static(ds: xr.Dataset) -> xr.Dataset:
+    to_drop = [name for name, var in ds.data_vars.items() if time_dim not in var.dims]
+    if to_drop:
+      # Drop only those present to avoid errors if some files lack certain static vars
+      ds = ds.drop_vars(to_drop, errors="ignore")
+    return ds
+
+  ds_dynamic = xr.open_mfdataset(
+    str_paths,
+    engine="zarr",
+    combine="by_coords",
+    preprocess=_drop_static,
+    inline_array=False,
+    chunks=chunks,
+  )
+
+  # Merge back the validated static variables (if any)
+  if static_vars:
+    static_ds = xr.Dataset({k: v for k, v in static_vars.items()})
+    # xr.merge will align coordinates as needed; prefer dynamic attrs
+    ds_dynamic = xr.merge([ds_dynamic, static_ds], combine_attrs="override")
+
+  return ds_dynamic
+
+
 def save_to_zarr(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False, precompute=False, compressor_kwargs=None):
   compressor_kwargs = compressor_kwargs or {}
 
@@ -939,3 +1025,70 @@ def save_to_zarr(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False
 
   # Notice that parallel writes to Zarr using zip store are (apparently) not supported.
   dataset.to_zarr(output_path, compute=True, consolidated=True, mode='w')
+
+
+def valid_datetime_index(idx: pd.DatetimeIndex) -> bool:
+  # Check that the following implementation works for both DateTimeIndex and CFTimeIndex
+  if idx.has_duplicates:
+    dups = idx[idx.duplicated()]
+    dup_values = pd.DatetimeIndex(dups.unique())
+    preview = ", ".join(str(ts) for ts in dup_values[:5])
+    more = "" if len(dup_values) <= 5 else f" and {len(dup_values) - 5} more"
+    warnings.warn(f"Duplicate timestamps found in time coordinate: {preview}{more}")
+    return False
+
+  if len(idx) > 0:
+    # noinspection PyTypeChecker
+    expected = pd.date_range(start=idx[0], periods=len(idx), freq="D", tz=getattr(idx, "tz", None))
+    if not idx.equals(expected):
+      # Report missing or irregular timestamps for easier debugging
+      # Compute missing by comparing against the sorted unique expected sequence
+      sorted_idx = idx.sort_values()
+      expected_full = pd.date_range(start=sorted_idx[0], end=sorted_idx[-1], freq="D", tz=getattr(sorted_idx, "tz", None))
+      missing = expected_full.difference(sorted_idx)
+      preview = ", ".join(str(ts) for ts in missing[:5])
+      more = "" if len(missing) <= 5 else f" and {len(missing) - 5} more"
+      warnings.warn(f"Missing or irregular dates detected: {preview}{more}")
+      return False
+
+  return True
+
+
+def valid_cftime_index(idx: xr.CFTimeIndex) -> bool:
+  # Equivalent checks for xarray.CFTimeIndex (cftime-based calendars)
+  # Duplicates check
+  if idx.has_duplicates:
+    dups = idx[idx.duplicated()]
+    dup_values = dups.unique()  # CFTimeIndex of unique duplicate timestamps
+    preview = ", ".join(str(ts) for ts in dup_values[:5])
+    more = "" if len(dup_values) <= 5 else f" and {len(dup_values) - 5} more"
+    warnings.warn(f"Duplicate timestamps found in time coordinate: {preview}{more}")
+    return False
+
+  # Regularity check (daily frequency across CF calendars)
+  if len(idx) > 0:
+    calendar = getattr(idx, "calendar", None)
+    # Build expected daily sequence with same calendar
+    expected = xr.cftime_range(start=idx[0], periods=len(idx), freq="D", calendar=calendar)
+    if not idx.equals(expected):
+      # Compute missing days between min and max dates for helpful diagnostics
+      sorted_idx = idx.sort_values()
+      expected_full = xr.cftime_range(start=sorted_idx[0], end=sorted_idx[-1], freq="D", calendar=calendar)
+      missing = expected_full.difference(sorted_idx)
+      preview = ", ".join(str(ts) for ts in missing[:5])
+      more = "" if len(missing) <= 5 else f" and {len(missing) - 5} more"
+      warnings.warn(f"Missing or irregular dates detected: {preview}{more}")
+      return False
+
+  return True
+
+
+def valid_time_coordinate(dataset: xr.Dataset, time_dim: str = "time") -> bool:
+  idx = dataset[time_dim].to_index()
+  if isinstance(idx, pd.DatetimeIndex):
+    passed = valid_datetime_index(idx)
+  elif isinstance(idx, xr.CFTimeIndex):
+    passed = valid_cftime_index(idx)
+  else:
+    raise ValueError(f"Unexpected index type: {type(idx).__name__}")
+  return passed

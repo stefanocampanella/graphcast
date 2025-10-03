@@ -1,6 +1,12 @@
-# TODO: add docstrings, implement compress and unpack functions. Also, download and merge phases can be fused.
-# Finally, postprocessing step should be called really preprocess, and passed as an argument to xr.open_dataset or
-# xr.open_mfdataset. However, how logging and performance would be affected by the latter?
+# TODO:
+#   1. Documentation is missing, fix it.
+#   2. Download and merge phases could, and should, be fused together.
+#   3. Postprocessing step should be called really preprocess, and passed as an argument to
+#      xr.open_dataset or xr.open_mfdataset. However, how logging and performance would be affected by the latter?
+#   4. Download and merge phases should use Dask MPI.
+#   5. Download and merge should use the function save_to_zarr from utils, which in turn should be extended to support
+#      them.
+#   6. Progress bars should be dropped.
 import logging
 import pathlib
 import pprint
@@ -16,13 +22,18 @@ from dask.diagnostics import ProgressBar
 from numcodecs.blosc import Blosc
 from zarr.storage import TempStore, ZipStore
 
+from graphcast.cli_utils import DictParamType
 from graphcast.dataset_utils import (Configs,
                                      DateIntervalsRange,
                                      Process,
                                      ProvidersRegistry,
                                      check_coordinates,
                                      check_date_range,
-                                     check_values)
+                                     check_values,
+                                     open_mfdataset,
+                                     save_to_zarr,
+                                     valid_time_coordinate)
+from graphcast.distributed_utils import get_client
 
 
 def bar(progress):
@@ -404,6 +415,113 @@ def merge(
   store = ZipStore(path=str(output_path), mode='w', compression=0, allowZip64=True)
   with bar(progress):
     dataset.to_zarr(store=store, compute=True, **save_configs)
+
+
+@cli.command()
+@click.argument("input_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, dir_okay=True, readable=True))
+@click.argument("output_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, dir_okay=True, writable=True))
+@click.option("--time-dim",
+              help="Time dimension name used in the input dataset",
+              default="time")
+@click.option("--start",
+              "start_date",
+              help="Override start of the date interval",
+              default=None,
+              type=click.DateTime())
+@click.option("--end",
+              "end_date",
+              help="Override end of the date interval",
+              default=None,
+              type=click.DateTime())
+@click.option("--chunks",
+              default=None,
+              show_default=True,
+              type=DictParamType(),
+              help="String containing chunking specs used when reading.")
+@click.option("--compressor-name",
+              "cname",
+              default="lz4",
+              show_default=True,
+              help="Name of the compressor to use.")
+@click.option("--compressor-level",
+              "clevel",
+              default=1,
+              show_default=True,
+              help="Compressor level to use.")
+@click.option("--overwrite/--no-overwrite",
+              help="Whether to overwrite existing outputs",
+              default=False,
+              is_flag=True)
+@click.option("--local/--no-local",
+              default=False,
+              help="Whether to use Dask LocalCluster.",
+              show_default=True)
+@click.option("--debug/--no-debug",
+              default=False,
+              help="Use synchronous Dask scheduler",
+              is_flag=True)
+@click.option('--log-level',
+              default='info',
+              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
+def unpack(
+    input_path: pathlib.Path,
+    output_path: pathlib.Path,
+    time_dim: str = 'time',
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+    chunks: dict | None = None,
+    cname: str = "lz4",
+    clevel: int = 1,
+    overwrite: bool = False,
+    local: bool = False,
+    debug: bool = False,
+    log_level: str = 'info'):
+  """
+  Unpack a collection of zipped Zarr datasets into a single directory Zarr store.
+
+  The command reads zipped Zarr fragments with xarray.open_mfdataset(engine='zarr'),
+  optionally slices the time range, rechunks, and saves to a DirectoryStore at the
+  given output path.
+  """
+
+  logger = logging.getLogger(__name__)
+  logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
+                      datefmt='%Y-%m-%dT%H:%M:%S',
+                      level=getattr(logging, log_level.upper()))
+  client = get_client(logger=logger, debug=debug, local=local)
+
+  # If destination exists and should not overwrite, raise and exit.
+  if output_path.exists() and not overwrite:
+    raise ValueError(f"Output destination {output_path} already exists")
+
+  def build_paths(path: pathlib.Path):
+    if path.is_dir():
+      return sorted(path.glob('*.zip'))
+    else:
+      return [path.with_suffix('.zip')]
+
+  paths = build_paths(input_path)
+  logging.info(f"Reading {len(paths)} zipped Zarrs from {input_path}")
+
+  # noinspection PyTypeChecker
+  dataset = open_mfdataset(paths, chunks=chunks)
+  if not valid_time_coordinate(dataset, time_dim=time_dim):
+    raise ValueError(f"Time coordinate {time_dim} is not valid (contains duplicates or missing dates)")
+  dataset = dataset.sel(time=slice(start_date, end_date))
+  dataset = dataset.chunk({dim: (1 if dim == 'time' else -1) for dim in dataset.dims})
+
+  output_path = output_path.absolute()
+  # Ensure parent directory exists
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  logging.info(f"Saving unpacked dataset to directory Zarr at {output_path}")
+
+  save_to_zarr(dataset, output_path, compressor_kwargs=dict(cname=cname, clevel=clevel))
+
+  client.close()
 
 
 if __name__ == '__main__':
