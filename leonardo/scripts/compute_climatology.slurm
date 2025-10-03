@@ -1,24 +1,30 @@
 #! /usr/bin/env bash
 #SBATCH --account=OGS23_PRACE_IT_1
 #SBATCH --partition=dcgp_usr_prod
-#SBATCH --nodes=4
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=4
 #SBATCH --exclusive
-#SBATCH --time=120
+#SBATCH --time=60
 #SBATCH --gres=tmpfs:3T
 #SBATCH --requeue
 
-# TODO: The current script computes both the climatology and other stats (mean, std, std_diff). However, there should
-#  really be two separate scripts. Computing the other stats scales well, and these can be computed one after the other
-#  in a short job on, say, 4 nodes. The climatology does not scale due to communications, hence it would make more sense
-#  to have a longer job using a LocalCluster (one node), thus reducing the communication time.
-#
+# TODO: The current script used to compute both the climatology and other stats (mean, std, std_diff). However,
+#   computing the stats scales well, and these can be computed one after the other in a short job on, say, 4 nodes.
+#   Instead, the climatology does not scale due to communications, hence it would make more sense
+#   to have a longer job running on a single node and using a LocalCluster (one node) with the  inproc:// protocol,
+#   thus reducing the communication time.
+#   However, it turns out that this way there is a single core very busy, while the rest of the node sits idle. This is
+#   Probably due to the rading from zipped Zar files happening serially. Things to try next:
+#       1. Use a Dask-MPI cluster, as with other stats, but using the loopback interface to speedup communications.
+#       2. Create another version of the dataset, using the `365_day` calendar, and then read from it using a chunk size
+#           of 365 elements along the time dimension. This should avoid some communication due to chunk shuffling.
+#   Apparently, the first attempt was sufficient.
 
 usage() {
     more <<EOF
 average_dataset.slurm
-    This script computes daily stats from a Zarr dataset.
+    This script computes daily climatology from a Zarr dataset.
 
 SYNOPSIS
     usage: $0 --help
@@ -86,7 +92,7 @@ cd "${PROJECTROOT}" || exit 1
 source leonardo/environment/activate
 
 # Build flags for CLI
-FLAGS="--time-dim=${TIME_DIM} --log-level=${LOG_LEVEL} --chunks=time:256,level:1,lat:-1,lon:-1"
+FLAGS=" --time-dim=${TIME_DIM} --log-level=${LOG_LEVEL} --chunks=time:32,level:1,lat:-1,lon:-1"
 
 if [[ ${OVERWRITE} == true ]]; then
     FLAGS="${FLAGS} --overwrite"
@@ -113,9 +119,9 @@ fi
 # https://developer.skao.int/projects/ska-sdp-exec-iotest/en/latest/content/mpi_settings.html#slurm-specific-settings
 # https://docs.nvidia.com/networking/display/hpcxv211/hcoll
 
-export OMPI_MCA_btl_tcp_if_exclude=brmgt,enp1s0,lo,virbr0
+export OMPI_MCA_btl_tcp_if_exclude=brmgt,enp1s0,ib0,virbr0
 export OMPI_MCA_coll=^hcoll
-export DASK_MPI__INTERFACE=ib0
+export DASK_MPI__INTERFACE=lo
 export DASK_MPI__PROTOCOL="tcp://"
 export DASK_MPI__NTHREADS=${SLURM_CPUS_PER_TASK}
 export DASK_MPI__LOCAL_DIRECTORY=${TMPDIR}
@@ -124,12 +130,9 @@ export DASK_MPI__LOG_DIR="${PROJECTROOT}/logs/dask"
 mkdir -p DASK_MPI_LOG_DIR
 
 DATADIR="${SCRATCH}/xcast/data"
-ALL_STATS=(mean std diff_std)
-for STATS in "${ALL_STATS[@]}"; do
-    INPUT_PATH="${DATADIR}/dataset/$1"
-    OUTPUT_PATH="${DATADIR}/stats/$1_${STATS}"
-    srun -n ${SLURM_NTASKS} python -m graphcast.stats compute ${FLAGS} -- ${STATS} "${INPUT_PATH}" "${OUTPUT_PATH}"
-done
+INPUT_PATH="${DATADIR}/dataset/$1"
+OUTPUT_PATH="${DATADIR}/stats/$1_climatology"
+srun -n ${SLURM_NTASKS} python -m graphcast.stats compute ${FLAGS} -- climatology "${INPUT_PATH}" "${OUTPUT_PATH}"
 
 # Deactivate all environments (useless when run in a SLURM job)
 source leonardo/environment/deactivate

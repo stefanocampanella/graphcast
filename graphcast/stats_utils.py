@@ -113,9 +113,10 @@ def open_dataset(path: pathlib.Path, time_dim: str = "time", chunks=None) -> xr.
   return ds
 
 
-def write_dataset_serial(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False, compressor_kwargs=None):
+def write_dataset(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False, precompute=False, compressor_kwargs=None):
   compressor_kwargs = compressor_kwargs or {}
-  dataset = dataset.compute()
+  if precompute:
+    dataset = dataset.compute()
   for var in dataset.data_vars:
     if 'chunks' in dataset[var].encoding:
       del dataset[var].encoding['chunks']
@@ -123,11 +124,8 @@ def write_dataset_serial(dataset: xr.Dataset, output_path: pathlib.Path, overwri
   for var in dataset.data_vars:
     dataset[var].encoding['compressor'] = Blosc(**compressor_kwargs)
 
-  if output_path.exists():
-    if overwrite:
-      output_path.unlink()
-    else:
-      raise ValueError(f"Output path {output_path} already exists")
+  if output_path.exists() and not overwrite:
+    raise ValueError(f"Output path {output_path} already exists")
   # Notice that parallel writes to Zarr using zip store are (apparently) not supported.
   dataset.to_zarr(output_path, compute=True, consolidated=True, mode='w')
 
@@ -190,6 +188,7 @@ def compute_climatology(dataset: xr.Dataset, time_dim: str = "time", climatology
       avg += (value - avg) / float(counter)
     else:
       break
+  avg = avg.chunk({climatology_dim: 1})
   return avg
 
 Stats = Literal["climatology", "mean", "std", "diff_std"]

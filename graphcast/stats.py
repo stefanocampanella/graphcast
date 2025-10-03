@@ -30,14 +30,13 @@
 # [1]: mean could be computed, using a reasonable approximation, as the mean of the climatology, and the std could reuse
 # the value of the mean.
 import logging
-import os
 import pathlib
 import socket
 
 import click
 import dask
 
-from graphcast.stats_utils import open_dataset, write_dataset_serial, Stats, StatsRegistry, DictParamType
+from graphcast.stats_utils import open_dataset, write_dataset, Stats, StatsRegistry, DictParamType
 
 
 @click.group()
@@ -54,7 +53,7 @@ def cli():
                 type=click.Path(path_type=pathlib.Path, file_okay=True, dir_okay=True, exists=True, readable=True))
 @click.argument("output",
                 required=True,
-                type=click.Path(path_type=pathlib.Path, file_okay=True, dir_okay=False, writable=True))
+                type=click.Path(path_type=pathlib.Path, file_okay=True, dir_okay=True, writable=True))
 @click.option("--local/--no-local",
               default=False,
               help="Whether to use Dask LocalCluster.",
@@ -145,27 +144,17 @@ def compute(stats: Stats,
     client = DummyClient()
     logger.info("Using synchronous Dask scheduler.")
   elif local:
-    # FIXME: Local cluster logging is not working as intended.
+    # FIXME: LocalCluster logging is not working as intended.
     from dask.distributed import Client, LocalCluster
-    from graphcast.distributed_utils import set_distributed_log_handler
-    set_distributed_log_handler(log_name="local_cluster")
-    from dask.distributed import LocalCluster
+    from graphcast.distributed_utils import LocalCluster
     cluster = LocalCluster()
     client = Client(cluster)
     logger.info("Using local Dask cluster")
   else:
     from dask.distributed import Client
-    from graphcast.distributed_utils import set_distributed_log_handler, dask_mpi_initialize
-    job_name = os.getenv("SLURM_JOB_NAME")
-    job_id = os.getenv("SLURM_JOB_ID")
-    if job_name is not None and job_id is not None:
-      log_name = f"{job_name}_{job_id}"
-    else:
-      log_name = None
-    set_distributed_log_handler(log_name=log_name)
+    from graphcast.distributed_utils import dask_mpi_initialize
     dask_mpi_initialize()
     client = Client()
-    # FIXME: move the code to display the dashboard address to distributed_utils.py
     host = client.run_on_scheduler(socket.gethostname)
     port = client.scheduler_info()['services']['dashboard']
     logger.info(f"Using dask_mpi, Dask dashboard available at {host}:{port}")
@@ -193,7 +182,7 @@ def compute(stats: Stats,
   stats_ds = StatsRegistry[stats](dataset, time_dim=time_dim, skipna=skipna, keep_attrs=True)
   # At the beginning of `write_dataset_serial`, stats_ds is computed, meaning that there must be enough memory
   # available to the client process to hold stats_ds in memory. This could be a problem for climatology in some cases.
-  write_dataset_serial(stats_ds, output, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
+  write_dataset(stats_ds, output, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
 
   client.close()
 
