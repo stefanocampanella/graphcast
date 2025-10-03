@@ -519,7 +519,7 @@ def unpack(
   output_path.parent.mkdir(parents=True, exist_ok=True)
   logging.info(f"Saving unpacked dataset to directory Zarr at {output_path}")
 
-  save_to_zarr(dataset, output_path, compressor_kwargs=dict(cname=cname, clevel=clevel))
+  save_to_zarr(dataset, output_path, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
 
   client.close()
 

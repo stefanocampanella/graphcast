@@ -76,7 +76,7 @@ def set_log_handler(logger_name=None,
   else:
     raise ValueError("logger_name must be specified")
 
-  if log_name is not None:
+  if log_name is None:
     job_name = os.getenv("SLURM_JOB_NAME")
     job_id = os.getenv("SLURM_JOB_ID")
     if job_name is not None and job_id is not None:
@@ -84,11 +84,11 @@ def set_log_handler(logger_name=None,
     else:
       log_name = None
 
-  if log_dir is not None:
+  if log_dir is None:
+    log_dir = pathlib.Path.cwd()
+  else:
     log_dir = pathlib.Path(log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
-  else:
-    log_dir = pathlib.Path.cwd()
 
   logger.propagate = False
   logger.handlers.clear()
