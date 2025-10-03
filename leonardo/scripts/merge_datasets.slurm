@@ -75,7 +75,7 @@ while true; do
 done
 
 PROJECTROOT=$(git rev-parse --show-toplevel)
-WORKDIR="/leonardo_scratch/large/userexternal/${USER}/xcast"
+WORKDIR="${SCRATCH}/xcast"
 
 # Determine config file and output paths using the remaining arguments
 CONFIG_PATH="${PROJECTROOT}/configs/merge/${1}.toml"

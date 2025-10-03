@@ -64,12 +64,11 @@ while true; do
 done
 
 PROJECTROOT=$(git rev-parse --show-toplevel)
-ARCHIVE="/leonardo_store/DRES_EchoArch/${USER}"
 cd "${PROJECTROOT}" || exit 1
 
 # Determine config file and output paths using the remaining argument
 CONFIG_PATH="${PROJECTROOT}/configs/download/${1}.toml"
-OUTPUT_PATH="${ARCHIVE}/data/dataset/${1}"
+OUTPUT_PATH="${SCRATCH}/xcast/data/dataset/${1}"
 
 source leonardo/environment/activate
 
