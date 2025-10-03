@@ -9,12 +9,6 @@
 #SBATCH --gres=tmpfs:3T
 #SBATCH --requeue
 
-# TODO: The current script computes both the climatology and other stats (mean, std, std_diff). However, there should
-#  really be two separate scripts. Computing the other stats scales well, and these can be computed one after the other
-#  in a short job on, say, 4 nodes. The climatology does not scale due to communications, hence it would make more sense
-#  to have a longer job using a LocalCluster (one node), thus reducing the communication time.
-#
-
 usage() {
     more <<EOF
 average_dataset.slurm

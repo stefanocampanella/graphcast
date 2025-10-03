@@ -30,6 +30,7 @@ import pandas as pd
 import requests
 import xarray as xr
 import xarray_regrid
+from numcodecs import Blosc
 from scipy.ndimage import gaussian_filter
 from xarray.core.types import InterpOptions
 
@@ -880,3 +881,61 @@ def check_coordinates(reader):
     return ds
 
   return decorated
+
+
+# FIXME: the code should handle both Zarr (using a DirectoryStore or a ZipStore) and NetCDF files.
+def open_dataset_wo_static(path: pathlib.Path, time_dim: str = "time", chunks=None) -> xr.Dataset:
+  """
+  Open a dataset from a single Zarr file/store or a directory containing multiple Zarr zip files.
+
+  - If `path` is a directory with one or more .zip files, open all of them via xarray.open_mfdataset(engine='zarr').
+  - In all other cases, open it via xarray.open_dataset(engine='zarr').
+
+  Returns a xarray.Dataset filtered to only data variables that include the provided time dimension.
+  """
+  path = pathlib.Path(path)
+  if not path.exists():
+    raise ValueError(f"Input path {path} does not exist")
+
+  def _drop_static_vars(ds: xr.Dataset, time_dim: str) -> xr.Dataset:
+    ds = ds.drop_vars([name for (name, var) in ds.data_vars.items() if time_dim not in var.dims])
+    return ds
+
+  # As the Dask graph tends to be huge it's important to avoid inline_array=True,
+  # see: https://docs.dask.org/en/latest/generated/dask.array.from_array.html#dask.array.from_array
+  if path.is_dir():
+    zip_files = sorted(p for p in path.glob("*.zip"))
+    if zip_files:
+      # noinspection PyTypeChecker
+      ds = xr.open_mfdataset([str(p) for p in zip_files],
+                             preprocess=lambda ds: _drop_static_vars(ds, time_dim),
+                             engine="zarr",
+                             combine="by_coords",
+                             inline_array=False,
+                             chunks=chunks)
+      return ds
+
+  ds = xr.open_dataset(str(path), engine="zarr", inline_array=False, chunks=chunks)
+  ds = _drop_static_vars(ds, time_dim)
+
+  return ds
+
+
+def save_to_zarr(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False, precompute=False, compressor_kwargs=None):
+  compressor_kwargs = compressor_kwargs or {}
+
+  if precompute:
+    dataset = dataset.compute()
+
+  for var in dataset.data_vars:
+    if 'chunks' in dataset[var].encoding:
+      del dataset[var].encoding['chunks']
+
+  for var in dataset.data_vars:
+    dataset[var].encoding['compressor'] = Blosc(**compressor_kwargs)
+
+  if output_path.exists() and not overwrite:
+    raise ValueError(f"Output path {output_path} already exists")
+
+  # Notice that parallel writes to Zarr using zip store are (apparently) not supported.
+  dataset.to_zarr(output_path, compute=True, consolidated=True, mode='w')

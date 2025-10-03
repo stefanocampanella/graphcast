@@ -31,12 +31,13 @@
 # the value of the mean.
 import logging
 import pathlib
-import socket
 
 import click
-import dask
 
-from graphcast.stats_utils import open_dataset, write_dataset, Stats, StatsRegistry, DictParamType
+from graphcast.distributed_utils import get_client
+from graphcast.dataset_utils import open_dataset_wo_static, save_to_zarr
+from graphcast.stats_utils import Stats, StatsRegistry
+from graphcast.cli_utils import DictParamType
 
 
 @click.group()
@@ -66,7 +67,7 @@ def cli():
               default=None,
               show_default=True,
               type=DictParamType(),
-              help="JSON string containing chunking specs used when reading.")
+              help="String containing chunking specs used when reading.")
 @click.option("--compressor-name",
               "cname",
               default="lz4",
@@ -133,31 +134,7 @@ def compute(stats: Stats,
     datefmt='%Y-%m-%dT%H:%M:%S',
     level=getattr(logging, log_level.upper()))
 
-  if debug:
-    dask.config.set(scheduler="synchronous")
-
-    class DummyClient:
-
-      def close(self):
-        pass
-
-    client = DummyClient()
-    logger.info("Using synchronous Dask scheduler.")
-  elif local:
-    # FIXME: LocalCluster logging is not working as intended.
-    from dask.distributed import Client, LocalCluster
-    from graphcast.distributed_utils import LocalCluster
-    cluster = LocalCluster()
-    client = Client(cluster)
-    logger.info("Using local Dask cluster")
-  else:
-    from dask.distributed import Client
-    from graphcast.distributed_utils import dask_mpi_initialize
-    dask_mpi_initialize()
-    client = Client()
-    host = client.run_on_scheduler(socket.gethostname)
-    port = client.scheduler_info()['services']['dashboard']
-    logger.info(f"Using dask_mpi, Dask dashboard available at {host}:{port}")
+  client = get_client(logger=logger, debug=debug, local=local)
 
   if not input.exists():
     raise ValueError(f"Input path {input} does not exist")
@@ -167,7 +144,7 @@ def compute(stats: Stats,
 
   logger.info(f"Opening input dataset from {input} with chunks={chunks}")
   # What is the effect (performance-wise) of chunking at all?
-  dataset = open_dataset(input, time_dim=time_dim, chunks=chunks)
+  dataset = open_dataset_wo_static(input, time_dim=time_dim, chunks=chunks)
 
   # Computing the climatology beforehand could be a source of optimization for large datasets, but it introduces a small numerical error.
   # Say you have a collection of values {x_i} and labels {l_i} so that each label corresponds to multiple values.
@@ -182,7 +159,7 @@ def compute(stats: Stats,
   stats_ds = StatsRegistry[stats](dataset, time_dim=time_dim, skipna=skipna, keep_attrs=True)
   # At the beginning of `write_dataset_serial`, stats_ds is computed, meaning that there must be enough memory
   # available to the client process to hold stats_ds in memory. This could be a problem for climatology in some cases.
-  write_dataset(stats_ds, output, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
+  save_to_zarr(stats_ds, output, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
 
   client.close()
 
