@@ -131,26 +131,28 @@ def get_line_collection(wgs_graph: WGSGraph, **kwargs) ->  mc.LineCollection:
   return line_collection
 
 
-def _wrap(da: xarray.DataArray, longitudes: np.ndarray):
-  """ Wraps around longitude dimension. It assumes that longitude is the last dimension."""
-  size = longitudes.size
-  dayline_index = np.argmax(longitudes > 180.0)
-  data = da.data
+def _wrap(da: xarray.DataArray, longitude_dim='lon'):
+  """ Wraps around longitude dimension."""
+  longitudes = da[longitude_dim].to_numpy()
+  size = len(longitudes)
+  dayline_index = int(np.argwhere(longitudes > 180.0)[0])
   wrapped = da.copy()
-  wrapped.data[..., :(size - dayline_index)] = data[..., dayline_index:]
-  wrapped.data[..., (size - dayline_index):] = data[..., :dayline_index]
+  wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[{longitude_dim: slice(dayline_index, None)}].to_numpy()
+  wrapped[{longitude_dim: slice(size - dayline_index, None)}] = da[{longitude_dim: slice(None, dayline_index)}].to_numpy()
   return wrapped
 
 
-def _fix_longitude(da: xarray.DataArray):
-  longitude = da.coords['longitude'].copy()
-  da_wrapped = _wrap(da, longitude.to_numpy())
-  lon_wrapped = _wrap(longitude, longitude.to_numpy())
+def _fix_longitude(da: xarray.DataArray, longitude_dim: str = 'lon'):
+  da_wrapped = _wrap(da, longitude_dim=longitude_dim)
+  longitude_orig = da[longitude_dim].to_numpy()
+  longitude_orig = xarray.DataArray(data=longitude_orig, coords={longitude_dim: longitude_orig},
+                                    dims=longitude_dim, name=longitude_dim + '_orig')
+  lon_wrapped = _wrap(longitude_orig, longitude_dim=longitude_dim)
   lon_wrapped = lon_wrapped.to_numpy()
   lon_wrapped = np.where(lon_wrapped <= 180.0, lon_wrapped, lon_wrapped - 360.0)
-  lon_wrapped = xarray.DataArray(data=lon_wrapped, coords={'longitude': lon_wrapped}, dims='longitude',
-                             name='longitude')
-  da_wrapped = da_wrapped.assign_coords(longitude=lon_wrapped)
+  lon_wrapped = xarray.DataArray(data=lon_wrapped, coords={longitude_dim: lon_wrapped}, dims=longitude_dim,
+                             name=longitude_dim)
+  da_wrapped = da_wrapped.assign_coords({longitude_dim: lon_wrapped})
   return da_wrapped
 
 

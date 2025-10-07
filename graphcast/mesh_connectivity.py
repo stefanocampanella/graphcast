@@ -16,13 +16,13 @@
 
 from typing import Union, Iterable
 from graphcast.typed_graph import Context, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, TypedGraph
-from graphcast.mesh_graph import TriangleMesh, MultiMeshGraph, faces_to_edges
+from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges
 import numpy as np
 import scipy
 import trimesh
 import xarray
 
-Mesh = Union[TriangleMesh, MultiMeshGraph]
+Mesh = Union[TriangleMesh, MeshGraph]
 
 
 def _grid_lat_lon_to_coordinates(
@@ -229,7 +229,7 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
 
 
 #TODO: add tests
-def mask_multimesh(connected_mesh_vertices: Iterable[int], mesh: MultiMeshGraph) -> MultiMeshGraph:
+def mask_multimesh(connected_mesh_vertices: Iterable[int], mesh: MeshGraph) -> MeshGraph:
   """Filters the mesh to include only vertices connected to a valid grid point or belonging to a triangle with at least
   one vertex with that property.
 
@@ -268,7 +268,7 @@ def mask_multimesh(connected_mesh_vertices: Iterable[int], mesh: MultiMeshGraph)
   edges = _filter_edges(mesh.edges)
   faces = np.vstack([[valid_vertices_map[vertex] for vertex in face] for face in valid_faces])
 
-  return MultiMeshGraph(vertices=vertices, edges=edges, faces=faces)
+  return MeshGraph(vertices=vertices, edges=edges, faces=faces)
 
 
 # TODO: add tests

@@ -68,7 +68,7 @@ class TriangleMesh:
 
 
 @chex.dataclass(frozen=True, eq=True)
-class MultiMeshGraph:
+class MeshGraph:
   """Data structure for multi-mesh graphs in 3D.
 
   Attributes:
@@ -83,7 +83,7 @@ class MultiMeshGraph:
 
 
 def merge_meshes(
-    mesh_list: Sequence[TriangleMesh]) -> MultiMeshGraph:
+    mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
   """Merges all meshes into one. Assumes the last mesh is the finest.
 
   Args:
@@ -104,7 +104,7 @@ def merge_meshes(
   finest_mesh_vertices = mesh_list[-1].vertices
   finest_mesh_faces = mesh_list[-1].faces
 
-  return MultiMeshGraph(
+  return MeshGraph(
     vertices=finest_mesh_vertices,
     edges=all_edges,
     faces=finest_mesh_faces)
@@ -179,7 +179,7 @@ def graph_to_wgs(graph: Graph, unit_sphere: bool = False) -> WGSGraph:
 
 
 # TODO: add tests
-def mesh_to_wgs(mesh: TriangleMesh | MultiMeshGraph, unit_sphere: bool = False) -> WGSGraph:
+def mesh_to_wgs(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> WGSGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D mesh.
 
   Args:

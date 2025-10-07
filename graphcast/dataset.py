@@ -1,7 +1,7 @@
 # TODO:
 #   1. Documentation is missing, fix it.
 #   2. Download and merge phases could, and should, be fused together.
-#   3. Postprocessing step should be called really preprocess, and passed as an argument to
+#   3. Postprocessing step should be renamed preprocess, and passed as an argument to
 #      xr.open_dataset or xr.open_mfdataset. However, how logging and performance would be affected by the latter?
 #   4. Download and merge phases should use Dask MPI.
 #   5. Download and merge should use the function save_to_zarr from utils, which in turn should be extended to support

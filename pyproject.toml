@@ -67,7 +67,7 @@ stats = "graphcast.stats:cli"
 
 [project.optional-dependencies]
 download = ["google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "netCDF4", "h5netcdf", "cfgrib", "cftime", "xarray-regrid[accel]", "flox", "mpi4py", "dask_mpi"]
-interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage", "geopy", "papermill[all]", "hvplot", "geoviews"]
+interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage", "geopy", "papermill[all]", "hvplot", "geoviews", "networkx"]
 profile = ["tensorboard_plugin_profile"]
 train = ["optax", "orbax-checkpoint", "tensorboard", "grain", "tensorboard", "matplotlib"]
 
