@@ -39,10 +39,11 @@ longitude = -1
 [[postprocess]]
 name = 'regrid'
 method = 'conservative'
+latitude_dim = 'latitude'
+longitude_dim = 'longitude'
 
 [postprocess.kwargs]
 skipna = true
-latitude_coord = 'latitude'
 output_chunks = {time = 'auto', depth = -1, latitude = -1, longitude = -1}
 
 [postprocess.grid]

@@ -7,10 +7,11 @@ url = 'https://confluence.ecmwf.int/download/attachments/242067380/uparea_glofas
 [[postprocess]]
 name = 'regrid'
 method = 'conservative'
+latitude_dim = 'latitude'
+longitude_dim = 'longitude'
 
 [postprocess.kwargs]
 skipna = true
-latitude_coord = 'latitude'
 
 [postprocess.grid]
 south = -90.0

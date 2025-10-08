@@ -36,7 +36,8 @@ from xarray.core.types import InterpOptions
 
 
 class Configs(dict):
-  """A simple dict that can be read from a TOML file and whose tables can be accessed using dot syntax."""
+  """A simple dict that can be read from a TOML file and whose tables can be accessed using dot syntax using the get
+  method. Notice, __getitem__ does not accept the dot syntax."""
 
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
@@ -481,7 +482,7 @@ class Process:
     mask (xr.DataArray): Values on which to apply the processing step.
   """
 
-  def __init__(self, steps: Sequence[Configs] | None, mask: xr.DataArray | None = None):
+  def __init__(self, steps: Sequence[Configs] | None = None, mask: xr.DataArray | None = None):
     """
     Initializes the Postprocess object.
 
@@ -534,7 +535,8 @@ class Process:
       ds = ds.transpose(*dims, **kwargs)
     return ds
 
-  def regrid(self, ds: xr.Dataset, grid=None, **kwargs) -> xr.Dataset:
+  def regrid(self, ds: xr.Dataset, grid=None, latitude_dim='latitude', longitude_dim='longitude', **kwargs) \
+      -> xr.Dataset:
     """
     Regrids the dataset to a new grid using xarray-regrid (default using nearest neighbor algorithm).
 
@@ -554,11 +556,13 @@ class Process:
       warnings.warn('Grid must be specified')
     else:
       new_grid = xarray_regrid.Grid(**grid)
-      target_dataset = new_grid.create_regridding_dataset()
+      target_dataset = new_grid.create_regridding_dataset(lat_name=latitude_dim, lon_name=longitude_dim)
       method = kwargs.get('method', 'nearest')
-      target_dataset = target_dataset.assign_coords(latitude=target_dataset.latitude.astype(np.float32),
-                                                    longitude=target_dataset.longitude.astype(np.float32))
+      target_dataset = target_dataset.assign_coords({latitude_dim: target_dataset[latitude_dim].astype(np.float32),
+                                                     longitude_dim: target_dataset[longitude_dim].astype(np.float32)})
       regrid_conf = kwargs.get('kwargs', {})
+      if method == 'conservative':
+        regrid_conf |= dict(latitude_coord=latitude_dim)
       ds = getattr(ds.regrid, method)(target_dataset, **regrid_conf)
     return ds
 
@@ -569,7 +573,7 @@ class Process:
 
     Args:
       ds (xr.Dataset): The input dataset.
-      **kwargs: Arguments for resampling, must include 'reduce' specifying the reduction method.
+      **kwargs: Arguments for resampling, it must include 'reduce' specifying the reduction method.
 
     Returns:
       xr.Dataset: The resampled dataset.

@@ -14,9 +14,9 @@
 """Tools for converting from regular grids on a sphere, to triangular meshes."""
 # TODO: change type annotations to use multimesh_graph types
 
-from typing import Union, Iterable
+from typing import Union, Iterable, Literal, Tuple
 from graphcast.typed_graph import Context, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, TypedGraph
-from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges
+from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges, merge_meshes, mesh_to_wgs
 import numpy as np
 import scipy
 import trimesh
@@ -229,46 +229,65 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
 
 
 #TODO: add tests
-def mask_multimesh(connected_mesh_vertices: Iterable[int], mesh: MeshGraph) -> MeshGraph:
-  """Filters the mesh to include only vertices connected to a valid grid point or belonging to a triangle with at least
-  one vertex with that property.
+def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 'all'] = 'any') -> Mesh:
+  """Filters the mesh to include only vertices belonging to triangles with at least one marked vertex (when `mode='any'`),
+  or with all marked vertices (when `mode='all'`).
 
   Args:
-    connected_mesh_vertices: Set of vertices connected to a valid grid point.
-    mesh: MultiMeshGraph object.
+    marked_vertices: Set of vertices connected to a valid grid point.
+    mesh: MeshGraph object.
   Returns:
     Masked multimesh graph.
   """
   num_vertices, _ = mesh.vertices.shape
   num_faces, _ = mesh.faces.shape
-  valid_faces = list(filter(lambda face: any(vertex in connected_mesh_vertices for vertex in face),
+  predicate = any if mode == 'any' else all
+  valid_faces = list(filter(lambda face: predicate(vertex in marked_vertices for vertex in face),
                             [mesh.faces[n, :] for n in range(num_faces)]))
   valid_vertices = np.unique(np.hstack(valid_faces))
-  valid_vertices_set = set(valid_vertices)
   valid_vertices_map = {v: i for (i, v) in enumerate(valid_vertices)}
 
-  def _filter_edges(edges):
-
-    all_senders, all_receivers = edges
-    num_edges = len(all_senders)
-
-    valid_edges = map(lambda edge: edge[0] in valid_vertices_set and edge[1] in valid_vertices_set,
-                      zip(all_senders, all_receivers))
-    valid_edges = np.fromiter(valid_edges, dtype=bool, count=num_edges)
-    num_valid_edges = np.sum(valid_edges)
-
-    senders = map(lambda vertex: valid_vertices_map[vertex], all_senders[valid_edges])
-    senders = np.fromiter(senders, dtype=int, count=num_valid_edges)
-    receivers = map(lambda vertex: valid_vertices_map[vertex], all_receivers[valid_edges])
-    receivers = np.fromiter(receivers, dtype=int, count=num_valid_edges)
-
-    return senders, receivers
-
   vertices = mesh.vertices[valid_vertices, :]
-  edges = _filter_edges(mesh.edges)
   faces = np.vstack([[valid_vertices_map[vertex] for vertex in face] for face in valid_faces])
 
-  return MeshGraph(vertices=vertices, edges=edges, faces=faces)
+  if isinstance(mesh, MeshGraph):
+    valid_vertices_set = set(valid_vertices)
+
+    def _filter_edges(edges):
+      all_senders, all_receivers = edges
+      num_edges = len(all_senders)
+
+      valid_edges = map(lambda edge: edge[0] in valid_vertices_set and edge[1] in valid_vertices_set,
+                        zip(all_senders, all_receivers))
+      valid_edges = np.fromiter(valid_edges, dtype=bool, count=num_edges)
+      num_valid_edges = np.sum(valid_edges)
+
+      senders = map(lambda vertex: valid_vertices_map[vertex], all_senders[valid_edges])
+      senders = np.fromiter(senders, dtype=int, count=num_valid_edges)
+      receivers = map(lambda vertex: valid_vertices_map[vertex], all_receivers[valid_edges])
+      receivers = np.fromiter(receivers, dtype=int, count=num_valid_edges)
+
+      return senders, receivers
+
+    edges = _filter_edges(mesh.edges)
+    masked_mesh = MeshGraph(vertices=vertices, edges=edges, faces=faces)
+  else:
+    masked_mesh = TriangleMesh(vertices=vertices, faces=faces)
+
+  return masked_mesh
+
+
+def get_mesh_within_box(mesh: Mesh, box: Tuple[float, float, float, float]):
+
+  def within_bounds(lat, lon):
+    lon_min, lon_max, lat_min, lat_max = box
+    return (lat_min < lat < lat_max) and (lon_min < lon < lon_max)
+
+  wgs_graph = mesh_to_wgs(mesh)
+  vertices_within_bounds = np.array([within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
+  marked_vertices = np.nonzero(vertices_within_bounds)[0]
+  new_mesh = mask_mesh(marked_vertices, mesh, mode='all')
+  return new_mesh
 
 
 # TODO: add tests

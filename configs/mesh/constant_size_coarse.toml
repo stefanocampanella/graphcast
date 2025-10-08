@@ -7,7 +7,7 @@ mesh_size = 10_000.0
 
 [field]
 name = "ConstantField"
-value = 100_000.0
+value = 150_000.0
 
 [save]
 projection = "cartesian"

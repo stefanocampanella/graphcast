@@ -1,26 +1,20 @@
 # TODO:
-#   1. get_ocean_mesh should and all notebooks should be refactored to use this module. In particular,
-#      a gmsh file containing the actual ocean mesh should be considered a precondition for those. In other terms,
-#      the code responsible for mesh generation should be restricted to be placed here, and get_ocean_mesh should
-#      really just convert from a gmsh file to a TriangleMesh.
-#   2. Some StereoMeshSizeField derived classes have a pending implementation. These correspond to criterion fields
+#   1. Some StereoMeshSizeField derived classes have a pending implementation. These correspond to criterion fields
 #      based on the bathymetry (in case of drag waves) and standard error analysis tools. At the end, it should be
 #      possible to reproduce exactly the same mesh as in https://doi.org/10.1007/s10236-008-0148-3
-#   3. Some StereoMeshSizeField classes require several samples to average otherwise noisy criterion fields. These are
+#   2. Some StereoMeshSizeField classes require several samples to average otherwise noisy criterion fields. These are
 #      The one based on the hessian norm (SST might be a good target) and the one leveraging the
 #      Courant–Friedrichs–Lewy condition. These require both to be implemented and some other machinery (a command in
 #      ocean_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
 #      field object can be instantiated.
 import functools
 import pathlib
-import shutil
-import tempfile
+from typing import Literal
 
 import gmsh
 import numpy as np
 import seamsh
 import xarray as xr
-from typing import Literal, Callable
 from osgeo import osr
 from pyproj import Transformer
 from scipy.interpolate import RegularGridInterpolator
@@ -228,31 +222,19 @@ def compute_alpha(ds: xr.Dataset, eps: float = 1.0e-10, longitude_dim: str = 'lo
   return ds
 
 
-def get_ocean_mesh(domain: seamsh.geometry.Domain, mesh_size: Callable, target_srs=None, save_mesh=None, **kwargs) \
-    -> TriangleMesh:
-  """Returns the TriangleMesh corresponding to the given domain and mesh size, obtained via seamsh.
+def read_mesh(mesh_path: pathlib.Path | str) -> TriangleMesh:
+  """Returns the TriangleMesh corresponding to the given mesh file.
 
   Args:
-    domain: domain to mesh
-    mesh_size: callable returning the target mesh element size
-    target_srs: Target spatial reference system (default cartesian)
-    save_mesh: whether to save the mesh to disk, if not None (default None)
-    kwargs: keyword arguments to pass to mesh_size
+    mesh_path: path to the gmsh file containing the mesh.
   Returns:
     The computed TriangleMesh
 
     """
-
-  if target_srs is None:
-    target_srs = osr.SpatialReference()
-    target_srs.ImportFromProj4("+ellps=WGS84 +proj=cart +units=m +x_0=0 +y_0=0")
-
-  with tempfile.TemporaryDirectory() as tmpdir:
-    seamsh.gmsh.mesh(domain, tmpdir + "/natural_earth.msh", mesh_size(**kwargs), output_srs=domain._projection)
-    seamsh.gmsh.reproject(tmpdir + "/natural_earth.msh", domain._projection, tmpdir + "/natural_earth_cart.msh", target_srs)
-    gmsh.open(tmpdir + "/natural_earth_cart.msh")
-    if save_mesh is not None:
-      shutil.copy(tmpdir + "/natural_earth_cart.msh", save_mesh)
+  mesh_path = pathlib.Path(mesh_path)
+  if not mesh_path.exists():
+    raise ValueError(f"Input path {mesh_path} does not exist")
+  gmsh.open(str(mesh_path.absolute()))
 
   node_tags, node_coords, _ = gmsh.model.mesh.get_nodes()
   node_tags_map = {tag: tag - 1 for tag in node_tags}
