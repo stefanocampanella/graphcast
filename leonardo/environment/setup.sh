@@ -116,6 +116,10 @@ done
 # Notice: **don't** load other modules beforehand (e.g. cmake), in tests bugged pigz/tar will make the build fail.
 module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
 
+# FIXME: if "fatal: not a git repository ..." exit with failure.
+#  Also, all the script use the same approach of finding the root of the project by means of git. Remote working
+#  directory are synced using rsync (leonardo/bin/sync.sh), can this lead to a corrupted git repository?
+#  The right choice seems to avoid syncing the .git folder, but then approach above has to be revised.
 ROOT=$(git rev-parse --show-toplevel)
 SPACK_VENV_DIR="${ROOT}/.spack-venv"
 SPACK_DIR="${ROOT}/.spack"

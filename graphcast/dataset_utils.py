@@ -665,6 +665,7 @@ class Process:
                                   template=da)
     return ds
 
+  # FIXME: poor choice of the name, misleading. Rename it to `not_null_mask`, and revise toml configuration files accordingly
   def get_land_mask(self, ds: xr.Dataset, variable=None, mask_name=None) -> xr.Dataset:
 
     if variable is None:
