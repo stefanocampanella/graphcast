@@ -10,14 +10,27 @@ import pathlib
 
 PathLike = Union[str, pathlib.Path]
 
+@chex.dataclass(frozen=True, eq=True)
+class TaskConfig:
+  """Legacy version of model.TaskConfig.
+
+  Properties different from model.TaskConfig:
+    levels (added): Number of levels."""
+  input_variables: tuple[str, ...]
+  # Target variables which the model is expected to predict.
+  target_variables: tuple[str, ...]
+  forcing_variables: tuple[str, ...]
+  pressure_levels: tuple[int, ...]
+  input_duration: str
+
 
 @chex.dataclass(frozen=True, eq=True)
 class ModelConfig:
   """Legacy version of model.ModelConfig.
 
   Properties different from model.ModelConfig:
-    resolution: The resolution of the data, in degrees (e.g. 0.25 or 1.0).
-    mesh_size: How many refinements to do on the multi-mesh.
+    resolution (removed): The resolution of the data, in degrees (e.g. 0.25 or 1.0).
+    mesh_size (removed): How many refinements to do on the multi-mesh.
   """
   resolution: float
   mesh_size: int
@@ -33,7 +46,7 @@ class CheckPoint:
   """Legacy version of model.CheckPoint"""
   params: dict[str, Any]
   model_config: ModelConfig
-  task_config: model.TaskConfig
+  task_config: TaskConfig
   description: str
   license: str
 

@@ -1079,58 +1079,24 @@ wheels = [
 
 [[package]]
 name = "gdal"
-version = "3.10"
+version = "3.11.4"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform == 'linux'",
-]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/86/1c4b3eb5b3d31584ebc694cd54b04e8cdba0d71018bbe65d4faefa489a9f/gdal-3.10.tar.gz", hash = "sha256:98fed53baca2b6ec35daa56773facf425a64cd9d1293eb8be28ef9458ea24820", size = 848086, upload-time = "2024-11-06T15:20:32.923Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/e0/1840d476bfd2d1e8c22dacb612027a16ad1dfba60d5d4379bdaaf6a1545f/gdal-3.11.4.tar.gz", hash = "sha256:c28cd5ffda3df98555e21083d922762b0a095d8f10292e2ec60ee0d55651d74a", size = 878351, upload-time = "2025-09-11T09:28:00.097Z" }
 
 [package.optional-dependencies]
 numpy = [
-    { name = "numpy", marker = "sys_platform == 'linux'" },
-]
-
-[[package]]
-name = "gdal"
-version = "3.11.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform == 'darwin'",
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3d/45/8aec2bd5493067525a73a85847aab45cfed8d58be120ffcb8b11e9672339/gdal-3.11.0.tar.gz", hash = "sha256:ac59ccfe291d3ce4f6a9a3eed17da3777bc3bae970ce27217d4fa85db98650f8", size = 877693, upload-time = "2025-05-09T16:08:01.52Z" }
-
-[package.optional-dependencies]
-numpy = [
-    { name = "numpy", marker = "sys_platform == 'darwin'" },
+    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 
 [[package]]
 name = "gdal-utils"
-version = "3.10.0.0"
+version = "3.11.4.0"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform == 'linux'",
-]
 dependencies = [
-    { name = "gdal", version = "3.10", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "gdal", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/96/12/0921aa59ea5d8637a04e4626bad3fa7905662721a0a5eaaa57c029cd2c2c/gdal_utils-3.10.0.0-py3-none-any.whl", hash = "sha256:65ee65e30aeb5a79aa0690befd3ff4ec07ad08b3d8b3f83e4dc25dc6a6254fb1", size = 281036, upload-time = "2024-11-06T15:21:20.034Z" },
-]
-
-[[package]]
-name = "gdal-utils"
-version = "3.11.0.0"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "gdal", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/ad/60/572909a9bb0c3d4ac1a1bfcb633e39efc3d5cccb61ebdafdf4308556260f/gdal_utils-3.11.0.0-py3-none-any.whl", hash = "sha256:2013c816712d917797fab771f7b049da68d7303410eb21939ddf279034d5c001", size = 282447, upload-time = "2025-05-09T16:08:56.087Z" },
+    { url = "https://files.pythonhosted.org/packages/52/46/ba94ab927597eb13871e6d04fa95e7feef40eb73dfcf8b44eec5ad144298/gdal_utils-3.11.4.0-py3-none-any.whl", hash = "sha256:5ab8a325215c37e0c8305b1ea608a2afbf4cd93c9b305ca8c870e8c2a2d5115f", size = 282592, upload-time = "2025-09-11T09:28:48.399Z" },
 ]
 
 [[package]]
@@ -1329,10 +1295,8 @@ dependencies = [
     { name = "dask" },
     { name = "dm-haiku" },
     { name = "dm-tree" },
-    { name = "gdal", version = "3.10", source = { registry = "https://pypi.org/simple" }, extra = ["numpy"], marker = "sys_platform == 'linux'" },
-    { name = "gdal", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, extra = ["numpy"], marker = "sys_platform == 'darwin'" },
-    { name = "gdal-utils", version = "3.10.0.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
-    { name = "gdal-utils", version = "3.11.0.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "gdal", extra = ["numpy"], marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "gdal-utils", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "gmsh" },
     { name = "graphviz" },
     { name = "jax", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
@@ -1346,8 +1310,8 @@ dependencies = [
     { name = "rtree" },
     { name = "scipy" },
     { name = "scipy-stubs" },
-    { name = "seamsh", version = "0.1", source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.17#3f4eaafef0acc82e02f606c20fa108bb6381698d" }, marker = "sys_platform == 'darwin'" },
-    { name = "seamsh", version = "0.4.17", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "seamsh", version = "0.1", source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }, marker = "sys_platform == 'darwin'" },
+    { name = "seamsh", version = "0.4.18", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "typing-extensions" },
@@ -1410,10 +1374,10 @@ requires-dist = [
     { name = "dm-tree" },
     { name = "flox", marker = "extra == 'download'" },
     { name = "gcsfs", marker = "extra == 'download'" },
-    { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'darwin'", specifier = "==3.11.0" },
-    { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'linux'", specifier = "==3.10.0" },
-    { name = "gdal-utils", marker = "sys_platform == 'darwin'", specifier = "==3.11.0" },
-    { name = "gdal-utils", marker = "sys_platform == 'linux'", specifier = "==3.10.0" },
+    { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'darwin'", specifier = "==3.11.4" },
+    { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'linux'", specifier = "==3.11.4" },
+    { name = "gdal-utils", marker = "sys_platform == 'darwin'", specifier = "==3.11.4" },
+    { name = "gdal-utils", marker = "sys_platform == 'linux'", specifier = "==3.11.4" },
     { name = "geopy", marker = "extra == 'interactive'" },
     { name = "geoviews", marker = "extra == 'interactive'" },
     { name = "gmsh" },
@@ -1445,8 +1409,8 @@ requires-dist = [
     { name = "s3fs", marker = "extra == 'download'" },
     { name = "scipy" },
     { name = "scipy-stubs", specifier = "==1.16.0.2" },
-    { name = "seamsh", marker = "sys_platform == 'darwin'", git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.17" },
-    { name = "seamsh", marker = "sys_platform == 'linux'" },
+    { name = "seamsh", marker = "sys_platform == 'darwin'", git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18" },
+    { name = "seamsh", marker = "sys_platform == 'linux'", specifier = "==0.4.18" },
     { name = "tensorboard", marker = "extra == 'train'" },
     { name = "tensorboard-plugin-profile", marker = "extra == 'profile'" },
     { name = "tqdm" },
@@ -3604,12 +3568,12 @@ wheels = [
 [[package]]
 name = "seamsh"
 version = "0.1"
-source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.17#3f4eaafef0acc82e02f606c20fa108bb6381698d" }
+source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }
 resolution-markers = [
     "sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "gdal", version = "3.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "gdal", marker = "sys_platform == 'darwin'" },
     { name = "gmsh", marker = "sys_platform == 'darwin'" },
     { name = "numpy", marker = "sys_platform == 'darwin'" },
     { name = "scipy", marker = "sys_platform == 'darwin'" },
@@ -3617,20 +3581,20 @@ dependencies = [
 
 [[package]]
 name = "seamsh"
-version = "0.4.17"
+version = "0.4.18"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "gdal", version = "3.10", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "gdal", marker = "sys_platform == 'linux'" },
     { name = "gmsh", marker = "sys_platform == 'linux'" },
     { name = "numpy", marker = "sys_platform == 'linux'" },
     { name = "scipy", marker = "sys_platform == 'linux'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/da/a6/5da0b9ac3917a938cf2c2f24e589ade29f648475afebfed54f7177bdaf15/seamsh-0.4.17.tar.gz", hash = "sha256:0ca1785db360929c03686e95fc90e6f45fa9f23798d86df573858994f094150b", size = 67503, upload-time = "2025-01-17T09:44:12.814Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/13/ca/190e7ac8bc9f22654a34792eb4418fdbc74fdd73ae1aa971794fae9471d4/seamsh-0.4.18.tar.gz", hash = "sha256:31aa024dcefe9cb960e531a2c8034992a546671a8a8245bc272eda7d528ab302", size = 67542, upload-time = "2025-09-19T16:10:52.093Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/7b/c08766513ad2ade119282d7cc106fb0292bfd6c914357c58b5d47e327ba8/seamsh-0.4.17-py3-none-manylinux1_x86_64.whl", hash = "sha256:fcedec78be81fa17c0baaf4cf3bfeea95415abed7a1d70f5501496a0a2b31a92", size = 401239, upload-time = "2025-01-17T09:44:09.143Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/b9/e3c5d8fe9d8fb1bc8220cff1a72b987a8ad3f0242679d19ac4a63c7fa8a8/seamsh-0.4.18-py3-none-manylinux1_x86_64.whl", hash = "sha256:2564540f56cfb47699557da0ad1ddd6ff1a931007691d1091c0dea544d4bc3c2", size = 401259, upload-time = "2025-09-19T16:10:48.232Z" },
 ]
 
 [[package]]

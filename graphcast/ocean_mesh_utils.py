@@ -19,6 +19,7 @@ from osgeo import osr
 from pyproj import Transformer
 from scipy.interpolate import RegularGridInterpolator
 
+from graphcast.constants import EARTH_RADIUS
 from graphcast.mesh_graph import TriangleMesh
 
 osr.UseExceptions()
@@ -116,7 +117,7 @@ class StereoMeshSizeField:
     if not platecarree_proj.IsSame(projection):
       transform = get_transform(projection, stereographic_proj)
       x = transform(x)
-    earth_radius_squared = stereographic_proj.GetSemiMajor() * stereographic_proj.GetSemiMinor()
+    earth_radius_squared = EARTH_RADIUS * EARTH_RADIUS
     stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
     return mesh_size / stereo_factor
 

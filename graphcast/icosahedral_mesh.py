@@ -13,7 +13,7 @@
 # limitations under the License.
 """Utils for creating icosahedral meshes."""
 
-from typing import List
+from typing import List, Literal
 
 import numpy as np
 from scipy.spatial import transform
@@ -21,7 +21,7 @@ from graphcast.mesh_graph import TriangleMesh
 
 
 def get_hierarchy_of_triangular_meshes_for_sphere(
-    splits: int) -> List[TriangleMesh]:
+    splits: int, radius: Literal['unit'] | float = 'unit') -> List[TriangleMesh]:
   """Returns a sequence of meshes, each with triangularization sphere.
 
   Starting with a regular icosahedron (12 vertices, 20 faces, 30 edges) with
@@ -45,10 +45,19 @@ def get_hierarchy_of_triangular_meshes_for_sphere(
            (counterclock-wise when looking from the outside).
   """
   current_mesh = get_icosahedron()
-  output_meshes = [current_mesh]
+  unit_sphere_meshes = [current_mesh]
   for _ in range(splits):
     current_mesh = _two_split_unit_sphere_triangle_faces(current_mesh)
-    output_meshes.append(current_mesh)
+    unit_sphere_meshes.append(current_mesh)
+
+  if radius == 'unit':
+    output_meshes = unit_sphere_meshes
+  else:
+    output_meshes = []
+    for mesh in unit_sphere_meshes:
+      vertices = mesh.vertices * radius
+      output_meshes.append(TriangleMesh(vertices=vertices, faces=mesh.faces))
+
   return output_meshes
 
 

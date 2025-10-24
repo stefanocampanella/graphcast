@@ -14,11 +14,11 @@ dependencies = [
     "dm-haiku",
     "dm-tree",
     # Versions listed here should agree with the one compiled in leonardo/setup.sh (v3.10.0 is the last one available on spack@23.1)
-    "gdal[numpy]==3.10.0 ; sys_platform == 'linux'",
-    "gdal-utils==3.10.0 ; sys_platform == 'linux'",
+    "gdal[numpy]==3.11.4 ; sys_platform == 'linux'",
+    "gdal-utils==3.11.4 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
-    "gdal[numpy]==3.11.0 ; sys_platform == 'darwin'",
-    "gdal-utils==3.11.0 ; sys_platform == 'darwin'",
+    "gdal[numpy]==3.11.4 ; sys_platform == 'darwin'",
+    "gdal-utils==3.11.4 ; sys_platform == 'darwin'",
     "gmsh",
     # Install cuda using pip, building jaxlib from source is a pain in the neck...
     "jax[cuda12] ; sys_platform == 'linux'",
@@ -33,9 +33,9 @@ dependencies = [
     "rtree",
     "scipy",
     # Install seamsh from PyPI on Leonardo
-    "seamsh ; sys_platform == 'linux'",
+    "seamsh==0.4.18 ; sys_platform == 'linux'",
     # Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work
-    "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.17 ; sys_platform == 'darwin'",
+    "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.18 ; sys_platform == 'darwin'",
     "tqdm",
     "trimesh",
     "typing_extensions",

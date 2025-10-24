@@ -162,7 +162,7 @@ if [[ $BUILD_SPACK == true ]]; then
     # Finally, notice that default user credentials have to be installed on the system beforehand.
 
     # Create a local installation of spack
-    git clone -c feature.manyFiles --depth=2 --branch=releases/v0.23 https://github.com/spack/spack.git .spack
+    git clone -c feature.manyFiles --depth=2 https://github.com/spack/spack.git .spack
 
     # Setup spack (now SPACK_PYTHON should point to the .spack-venv python)
     # Probably, defining spack="${SPACK_DIR}/bin/spack" might be enough. 
@@ -175,7 +175,7 @@ if [[ $BUILD_SPACK == true ]]; then
     spack --insecure bootstrap now
    
     if [[ $ADD_SPACK_MIRRORS == true ]]; then 
-        spack mirror add v0.23.1 https://binaries.spack.io/v0.23.1
+        spack mirror add develop https://binaries.spack.io/develop
         # spack mirror add google_binary_cache gs://spack/latest
     fi
     
@@ -200,7 +200,7 @@ if [[ $BUILD_SPACK == true ]]; then
 
     # Add python and gdal to the environment, then install
     spack add python@3.11
-    spack add gdal@3.10.0
+    spack add gdal@3.11.4
 
     spack concretize || exit 1
 

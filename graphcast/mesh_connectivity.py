@@ -16,7 +16,8 @@
 
 from typing import Union, Iterable, Literal, Tuple
 from graphcast.typed_graph import Context, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, TypedGraph
-from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges, merge_meshes, mesh_to_wgs
+from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges, mesh_to_wgs
+from graphcast.constants import EARTH_RADIUS
 import numpy as np
 import scipy
 import trimesh
@@ -25,6 +26,8 @@ import xarray
 Mesh = Union[TriangleMesh, MeshGraph]
 
 
+# TODO: update tests and usage in notebooks (e.g. mesh_comparison.ipynb) to take into account that radius of the Earth
+#  is now used (no longer unit sphere)
 def _grid_lat_lon_to_coordinates(
     grid_latitude: np.ndarray, grid_longitude: np.ndarray) -> np.ndarray:
   """Lat [num_lat] lon [num_lon] to 3d coordinates [num_lat, num_lon, 3]."""
@@ -37,10 +40,11 @@ def _grid_lat_lon_to_coordinates(
   # [num_latitude_points, num_longitude_points, 3]
   # Note this assumes unit radius, since for now we model the earth as a
   # sphere of unit radius, and keep any vertical dimension as a regular grid.
-  return np.stack(
+  coordinates_on_unit_sphere = np.stack(
       [np.cos(phi_grid)*np.sin(theta_grid),
        np.sin(phi_grid)*np.sin(theta_grid),
        np.cos(theta_grid)], axis=-1)
+  return EARTH_RADIUS * coordinates_on_unit_sphere
 
 
 def radius_query_indices(
@@ -49,7 +53,8 @@ def radius_query_indices(
     grid_longitude: np.ndarray,
     mesh: Mesh,
     radius: float,
-    mask: xarray.DataArray) -> tuple[np.ndarray, np.ndarray]:
+    mask: None | xarray.DataArray = None,
+    workers: int = 1) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
   Args:
@@ -68,6 +73,10 @@ def radius_query_indices(
     * mesh_indices: Indices of shape [num_edges], that index into mesh.vertices.
   """
 
+  if mask is not None:
+    assert np.array_equal(mask['lat'].to_numpy(), grid_latitude)
+    assert np.array_equal(mask['lon'].to_numpy(), grid_longitude)
+
   # [num_grid_points=num_lat_points * num_lon_points, 3]
   grid_positions = _grid_lat_lon_to_coordinates(
       grid_latitude, grid_longitude).reshape([-1, 3])
@@ -79,12 +88,12 @@ def radius_query_indices(
   # [num_grid_points, num_mesh_points_per_grid_point]
   # Note `num_mesh_points_per_grid_point` is not constant, so this is a list
   # of arrays, rather than a 2d array.
-  query_indices = kd_tree.query_ball_point(x=grid_positions, r=radius)
+  query_indices = kd_tree.query_ball_point(x=grid_positions, r=radius, workers=workers)
   grid_edge_indices = []
   mesh_edge_indices = []
   for grid_index, mesh_neighbors in enumerate(query_indices):
     latitude_index, longitude_index = np.unravel_index(grid_index, (grid_latitude.shape[0], grid_longitude.shape[0]))
-    mask_value = mask.sel(lat=mask.lat[latitude_index], lon=mask.lon[longitude_index]).item()
+    mask_value = mask.isel(lat=latitude_index, lon=longitude_index).item()
     if mask_value:
       grid_edge_indices.append(np.repeat(grid_index, len(mesh_neighbors)))
       mesh_edge_indices.append(mesh_neighbors)
@@ -192,7 +201,8 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
                              grid_lon: np.ndarray,
                              mesh_graph: Mesh,
                              grid_mask: xarray.DataArray,
-                             query_radius: float) -> set[int]:
+                             query_radius: float,
+                             workers: int = 1) -> set[int]:
   """Returns the set of mesh vertices connected to a valid grid point.
 
   It does so by excluding the mesh vertices that are not connected to a valid grid point by at least one edge of the
@@ -213,7 +223,8 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
     grid_longitude=grid_lon,
     mesh=mesh_graph,
     radius=query_radius,
-    mask=grid_mask)
+    mask=grid_mask,
+    workers=workers)
 
   (_, mesh_senders) = get_grid_to_mesh_edges(
     grid_latitude=grid_lat,
