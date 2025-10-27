@@ -223,13 +223,15 @@ def compute_alpha(ds: xr.Dataset, eps: float = 1.0e-10, longitude_dim: str = 'lo
   return ds
 
 
-def read_mesh(mesh_path: pathlib.Path | str) -> TriangleMesh:
-  """Returns the TriangleMesh corresponding to the given mesh file.
+def read_mesh(mesh_path: pathlib.Path | str) -> tuple[TriangleMesh, np.ndarray]:
+  """Returns the TriangleMesh and the list of boundary node indices.
 
   Args:
     mesh_path: path to the gmsh file containing the mesh.
   Returns:
-    The computed TriangleMesh
+    A tuple (mesh, boundary_nodes) where:
+      - mesh is the computed TriangleMesh
+      - boundary_nodes is a 1D numpy array of unique 0-based node indices that lie on the boundary.
 
     """
   mesh_path = pathlib.Path(mesh_path)
@@ -237,19 +239,49 @@ def read_mesh(mesh_path: pathlib.Path | str) -> TriangleMesh:
     raise ValueError(f"Input path {mesh_path} does not exist")
   gmsh.open(str(mesh_path.absolute()))
 
+  # Get all nodes
   node_tags, node_coords, _ = gmsh.model.mesh.get_nodes()
-  node_tags_map = {tag: tag - 1 for tag in node_tags}
+  node_tags_map = {int(tag): int(tag) - 1 for tag in node_tags}
   node_coords = node_coords.reshape(-1, 3)
 
+  # Get triangular elements (type=2)
   element_tags, _ = gmsh.model.mesh.get_elements_by_type(2)
   element_nodes = []
   for element_tag in element_tags:
-    _, element_node_tags, _, _ = gmsh.model.mesh.get_element(element_tag)
-    element_node_indices = np.array([node_tags_map[tag] for tag in element_node_tags], dtype=int)
+    _, element_node_tags, _, _ = gmsh.model.mesh.get_element(int(element_tag))
+    element_node_indices = np.array([node_tags_map[int(tag)] for tag in element_node_tags], dtype=int)
     element_nodes.append(element_node_indices)
-  element_nodes = np.vstack(element_nodes)
+  element_nodes = np.vstack(element_nodes) if element_nodes else np.empty((0, 3), dtype=int)
 
-  return TriangleMesh(vertices=node_coords, faces=element_nodes)
+  # Determine boundary nodes from 1D elements (lines). All 1D elements in a 2D surface mesh are boundary edges.
+  boundary_node_indices: np.ndarray
+  try:
+    line_element_tags, line_node_tags = gmsh.model.mesh.get_elements_by_type(1)
+    if line_element_tags.size > 0:
+      # line_node_tags is a flat array of size 2 * num_lines
+      boundary_node_indices = np.unique([node_tags_map[int(tag)] for tag in line_node_tags])
+    else:
+      boundary_node_indices = np.array([], dtype=int)
+  except Exception:
+    # TODO: this should be tested
+    # Fallback: compute boundary from faces by finding edges that appear only once
+    if element_nodes.size == 0:
+      boundary_node_indices = np.array([], dtype=int)
+    else:
+      f = element_nodes
+      edges = np.vstack([
+        np.sort(f[:, [0, 1]], axis=1),
+        np.sort(f[:, [1, 2]], axis=1),
+        np.sort(f[:, [2, 0]], axis=1),
+      ])
+      # Count occurrences
+      edges_view = edges.view([('a', edges.dtype), ('b', edges.dtype)])
+      unique_edges, counts = np.unique(edges_view, return_counts=True)
+      boundary_edges = unique_edges[counts == 1].view(edges.dtype).reshape(-1, 2)
+      boundary_node_indices = np.unique(boundary_edges.flatten())
+
+  mesh = TriangleMesh(vertices=node_coords, faces=element_nodes)
+  return mesh, boundary_node_indices
 
 
 def load_domain(path: pathlib.Path, physical_name_field: str = 'featurecla',

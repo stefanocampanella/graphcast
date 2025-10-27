@@ -14,7 +14,7 @@
 """Tools for converting from regular grids on a sphere, to triangular meshes."""
 # TODO: change type annotations to use multimesh_graph types
 
-from typing import Union, Iterable, Literal, Tuple
+from typing import Union, Iterable, Literal, Tuple, Dict
 from graphcast.typed_graph import Context, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, TypedGraph
 from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges, mesh_to_wgs
 from graphcast.constants import EARTH_RADIUS
@@ -240,7 +240,7 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
 
 
 #TODO: add tests
-def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 'all'] = 'any') -> Mesh:
+def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 'all'] = 'any') -> Tuple[Mesh, Dict[int, int]]:
   """Filters the mesh to include only vertices belonging to triangles with at least one marked vertex (when `mode='any'`),
   or with all marked vertices (when `mode='all'`).
 
@@ -248,7 +248,7 @@ def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', '
     marked_vertices: Set of vertices connected to a valid grid point.
     mesh: MeshGraph object.
   Returns:
-    Masked multimesh graph.
+    Tuple containint a masked multimesh graph, and a mapping from the old vertex indices to the new vertex indices.
   """
   num_vertices, _ = mesh.vertices.shape
   num_faces, _ = mesh.faces.shape
@@ -285,7 +285,9 @@ def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', '
   else:
     masked_mesh = TriangleMesh(vertices=vertices, faces=faces)
 
-  return masked_mesh
+  # The np.unique function can return an array containing additional information, i.e. made of tuples. This confuses the type checker.
+  # noinspection PyTypeChecker
+  return masked_mesh, valid_vertices_map
 
 
 def get_mesh_within_box(mesh: Mesh, box: Tuple[float, float, float, float]):
@@ -297,8 +299,8 @@ def get_mesh_within_box(mesh: Mesh, box: Tuple[float, float, float, float]):
   wgs_graph = mesh_to_wgs(mesh)
   vertices_within_bounds = np.array([within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
   marked_vertices = np.nonzero(vertices_within_bounds)[0]
-  new_mesh = mask_mesh(marked_vertices, mesh, mode='all')
-  return new_mesh
+  new_mesh, vertices_map = mask_mesh(marked_vertices, mesh, mode='all')
+  return new_mesh, vertices_map
 
 
 # TODO: add tests
