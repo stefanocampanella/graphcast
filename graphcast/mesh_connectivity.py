@@ -28,6 +28,7 @@ Mesh = Union[TriangleMesh, MeshGraph]
 
 # TODO: update tests and usage in notebooks (e.g. mesh_comparison.ipynb) to take into account that radius of the Earth
 #  is now used (no longer unit sphere)
+# FIXME: implement this using pyproj
 def _grid_lat_lon_to_coordinates(
     grid_latitude: np.ndarray, grid_longitude: np.ndarray) -> np.ndarray:
   """Lat [num_lat] lon [num_lon] to 3d coordinates [num_lat, num_lon, 3]."""
@@ -73,36 +74,35 @@ def radius_query_indices(
     * mesh_indices: Indices of shape [num_edges], that index into mesh.vertices.
   """
 
+  # FIXME: the following can probably have a more straightforward implementation, the crucial point is to be consistent
+  #  with the order of lat/lon dimensions and indexing
+  # [num_grid_points=num_lat_points * num_lon_points, 3]
+  meshgrid_positions = _grid_lat_lon_to_coordinates(
+      grid_latitude, grid_longitude).reshape([-1, 3])
+  meshgrid_latitude_indices, meshgrid_longitude_indices = (
+    np.unravel_index(np.arange(meshgrid_positions.shape[0], dtype=int),
+                     (grid_latitude.shape[0], grid_longitude.shape[0])))
+
   if mask is not None:
     assert np.array_equal(mask['lat'].to_numpy(), grid_latitude)
     assert np.array_equal(mask['lon'].to_numpy(), grid_longitude)
-
-  # [num_grid_points=num_lat_points * num_lon_points, 3]
-  grid_positions = _grid_lat_lon_to_coordinates(
-      grid_latitude, grid_longitude).reshape([-1, 3])
+    mask_data = mask.transpose('lat', 'lon').to_numpy()
+  else:
+    mask_data = np.ones_like(meshgrid_positions, dtype=bool)
 
   # [num_mesh_points, 3]
   mesh_positions = mesh.vertices
   kd_tree = scipy.spatial.cKDTree(mesh_positions)
-
   # [num_grid_points, num_mesh_points_per_grid_point]
   # Note `num_mesh_points_per_grid_point` is not constant, so this is a list
   # of arrays, rather than a 2d array.
-  query_indices = kd_tree.query_ball_point(x=grid_positions, r=radius, workers=workers)
-  grid_edge_indices = []
-  mesh_edge_indices = []
-  for grid_index, mesh_neighbors in enumerate(query_indices):
-    latitude_index, longitude_index = np.unravel_index(grid_index, (grid_latitude.shape[0], grid_longitude.shape[0]))
-    mask_value = mask.isel(lat=latitude_index, lon=longitude_index).item()
-    if mask_value:
-      grid_edge_indices.append(np.repeat(grid_index, len(mesh_neighbors)))
-      mesh_edge_indices.append(mesh_neighbors)
+  query_indices = kd_tree.query_ball_point(x=meshgrid_positions, r=radius, workers=workers)
+  mask_values = mask_data[meshgrid_latitude_indices, meshgrid_longitude_indices]
+  valid_query_indices = query_indices[mask_values]
+  grid_senders_indices = np.repeat(mask_values.nonzero()[0], np.array(list(map(len, valid_query_indices))))
+  mesh_receivers_indices = np.concatenate(valid_query_indices, axis=0).astype(int)
 
-  # [num_edges]
-  grid_edge_indices = np.concatenate(grid_edge_indices, axis=0).astype(int)
-  mesh_edge_indices = np.concatenate(mesh_edge_indices, axis=0).astype(int)
-
-  return grid_edge_indices, mesh_edge_indices
+  return grid_senders_indices, mesh_receivers_indices
 
 
 def get_grid_to_mesh_edges(
@@ -202,11 +202,12 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
                              mesh_graph: Mesh,
                              grid_mask: xarray.DataArray,
                              query_radius: float,
+                             mode: Literal['union', 'intersection'] = 'union',
                              workers: int = 1) -> set[int]:
   """Returns the set of mesh vertices connected to a valid grid point.
 
   It does so by excluding the mesh vertices that are not connected to a valid grid point by at least one edge of the
-  Grid2Mesh or Mesh2Grid-like graphs described in the GraphCast paper.
+  Grid2Mesh and/or the Mesh2Grid-like graphs described in the GraphCast paper.
 
   Args:
     grid_lat: Latitude values for the grid [num_lat_points]
@@ -234,7 +235,10 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
 
   grid2mesh_connected_mesh_vertices = set(mesh_receivers)
   mesh2grid_connected_mesh_vertices = set(mesh_senders)
-  connected_mesh_vertices = set.union(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
+  if mode == 'intersection':
+    connected_mesh_vertices = set.intersection(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
+  else:
+    connected_mesh_vertices = set.union(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
 
   return connected_mesh_vertices
 
