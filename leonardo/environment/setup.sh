@@ -128,6 +128,7 @@ VENV_DIR="${ROOT}/.venv"
 
 SLURM_ACCOUNT=OGS23_PRACE_IT_0
 SLURM_PARTITION=boost_usr_prod
+SLURM_QOS=boost_qos_dbg
 # TODO: Is word splitting a problem here? Nobody really understands bash, everybody writes bash scripts...
 SLURM_INSTALL_JAXLIB="pip install --no-index --no-cache-dir --find-links=${PKG_CACHE_DIR} jaxlib"
 SLURM_TIME=10
@@ -248,7 +249,7 @@ if [[ $BUILD_VENV == true ]]; then
 	python -c "from osgeo import gdal_array" || exit 1
 
     # Afterwards, install jaxlib on a GPU node (apparently requires CUDA drivers)
-	srun --account=${SLURM_ACCOUNT} --partition=${SLURM_PARTITION} --time=${SLURM_TIME} --ntasks=1 --cpus-per-task=8 --gres=gpu:1 ${SLURM_INSTALL_JAXLIB} || exit 1
+	srun --qos=${SLURM_QOS} --account=${SLURM_ACCOUNT} --partition=${SLURM_PARTITION} --time=${SLURM_TIME} --ntasks=1 --cpus-per-task=8 --gres=gpu:1 ${SLURM_INSTALL_JAXLIB} || exit 1
 
 	# Finally, install the remaining packages
 	pip install --no-index --find-links="${PKG_CACHE_DIR}" -e "${ROOT}[download,interactive,profile,train]" || exit 1
