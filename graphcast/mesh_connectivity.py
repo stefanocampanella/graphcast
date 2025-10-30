@@ -14,7 +14,7 @@
 """Tools for converting from regular grids on a sphere, to triangular meshes."""
 # TODO: change type annotations to use multimesh_graph types
 
-from typing import Union, Iterable, Literal, Tuple, Dict
+from typing import Union, Iterable, Literal, Tuple, Dict, NamedTuple
 from graphcast.typed_graph import Context, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, TypedGraph
 from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges, mesh_to_wgs
 from graphcast.constants import EARTH_RADIUS
@@ -22,6 +22,14 @@ import numpy as np
 import scipy
 import trimesh
 import xarray
+
+
+class Box(NamedTuple):
+  lat_min: float
+  lat_max: float
+  lon_min: float
+  lon_max: float
+
 
 Mesh = Union[TriangleMesh, MeshGraph]
 
@@ -94,8 +102,8 @@ def radius_query_indices(
   mesh_positions = mesh.vertices
   kd_tree = scipy.spatial.cKDTree(mesh_positions)
   # [num_grid_points, num_mesh_points_per_grid_point]
-  # Note `num_mesh_points_per_grid_point` is not constant, so this is a list
-  # of arrays, rather than a 2d array.
+  # Notice: the number of grid points per mesh point is not constant, so `query_ball_point` return an array of arrays, rather than a 2d array.
+  # Notice: the ball is in 3D space, so the distances are not geodesic.
   query_indices = kd_tree.query_ball_point(x=meshgrid_positions, r=radius, workers=workers)
   mask_values = mask_data[meshgrid_latitude_indices, meshgrid_longitude_indices]
   valid_query_indices = query_indices[mask_values]
@@ -110,7 +118,7 @@ def get_grid_to_mesh_edges(
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
     mesh: Mesh,
-    mask: xarray.DataArray) -> tuple[np.ndarray, np.ndarray]:
+    mask: None | xarray.DataArray = None) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for grid points contained in mesh triangles.
 
   Args:
@@ -135,6 +143,7 @@ def get_grid_to_mesh_edges(
   mesh_trimesh = trimesh.Trimesh(vertices=mesh.vertices, faces=mesh.faces)
 
   # [num_grid_points] with mesh face indices for each grid point.
+  # Notice: there is no guarantee that faces contain the grid point specified by `grid_positions`.
   _, _, query_face_indices = trimesh.proximity.closest_point(
       mesh_trimesh, grid_positions)
 
@@ -148,9 +157,10 @@ def get_grid_to_mesh_edges(
 
   # Filter masked points.
   # [num_edges=num_grid_points, 3]
-  flat_mask = mask.transpose('lat', 'lon').data.reshape([-1])
-  mesh_edge_indices = mesh_edge_indices[flat_mask, :]
-  grid_edge_indices = grid_edge_indices[flat_mask, :]
+  if mask is not None:
+    flat_mask = mask.transpose('lat', 'lon').to_numpy().reshape([-1])
+    mesh_edge_indices = mesh_edge_indices[flat_mask, :]
+    grid_edge_indices = grid_edge_indices[flat_mask, :]
   
   # Flatten to get a regular list.
   # [num_edges=num_grid_points*3]
@@ -202,7 +212,6 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
                              mesh_graph: Mesh,
                              grid_mask: xarray.DataArray,
                              query_radius: float,
-                             mode: Literal['union', 'intersection'] = 'union',
                              workers: int = 1) -> set[int]:
   """Returns the set of mesh vertices connected to a valid grid point.
 
@@ -235,10 +244,7 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
 
   grid2mesh_connected_mesh_vertices = set(mesh_receivers)
   mesh2grid_connected_mesh_vertices = set(mesh_senders)
-  if mode == 'intersection':
-    connected_mesh_vertices = set.intersection(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
-  else:
-    connected_mesh_vertices = set.union(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
+  connected_mesh_vertices = set.intersection(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
 
   return connected_mesh_vertices
 
@@ -256,36 +262,24 @@ def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', '
   """
   num_vertices, _ = mesh.vertices.shape
   num_faces, _ = mesh.faces.shape
-  predicate = any if mode == 'any' else all
-  valid_faces = list(filter(lambda face: predicate(vertex in marked_vertices for vertex in face),
-                            [mesh.faces[n, :] for n in range(num_faces)]))
-  valid_vertices = np.unique(np.hstack(valid_faces))
-  valid_vertices_map = {v: i for (i, v) in enumerate(valid_vertices)}
-
-  vertices = mesh.vertices[valid_vertices, :]
-  faces = np.vstack([[valid_vertices_map[vertex] for vertex in face] for face in valid_faces])
+  predicate = np.any if mode == 'any' else np.all
+  if isinstance(marked_vertices, set):
+    marked_vertices = list(marked_vertices)
+  valid_faces_mask = predicate(np.isin(mesh.faces, marked_vertices), axis=1)
+  valid_faces = mesh.faces[valid_faces_mask, :]
+  if len(valid_faces) > 0:
+    valid_vertices = np.unique(np.concatenate(valid_faces))
+    vertices = mesh.vertices[valid_vertices, :]
+    valid_vertices_map = {v: i for (i, v) in enumerate(valid_vertices)}
+    valid_vertices_map_f = np.vectorize(valid_vertices_map.get)
+    faces = valid_vertices_map_f(valid_faces)
+  else:
+    valid_vertices_map = dict()
+    faces = np.empty((0, 3), dtype=int)
+    vertices = np.empty((0, 3), dtype=float)
 
   if isinstance(mesh, MeshGraph):
-    valid_vertices_set = set(valid_vertices)
-
-    def _filter_edges(edges):
-      all_senders, all_receivers = edges
-      num_edges = len(all_senders)
-
-      valid_edges = map(lambda edge: edge[0] in valid_vertices_set and edge[1] in valid_vertices_set,
-                        zip(all_senders, all_receivers))
-      valid_edges = np.fromiter(valid_edges, dtype=bool, count=num_edges)
-      num_valid_edges = np.sum(valid_edges)
-
-      senders = map(lambda vertex: valid_vertices_map[vertex], all_senders[valid_edges])
-      senders = np.fromiter(senders, dtype=int, count=num_valid_edges)
-      receivers = map(lambda vertex: valid_vertices_map[vertex], all_receivers[valid_edges])
-      receivers = np.fromiter(receivers, dtype=int, count=num_valid_edges)
-
-      return senders, receivers
-
-    edges = _filter_edges(mesh.edges)
-    masked_mesh = MeshGraph(vertices=vertices, edges=edges, faces=faces)
+    masked_mesh = MeshGraph(vertices=vertices, edges=faces_to_edges(faces), faces=faces)
   else:
     masked_mesh = TriangleMesh(vertices=vertices, faces=faces)
 
@@ -294,14 +288,13 @@ def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', '
   return masked_mesh, valid_vertices_map
 
 
-def get_mesh_within_box(mesh: Mesh, box: Tuple[float, float, float, float]):
+def get_mesh_within_box(mesh: Mesh, box: Box):
 
-  def within_bounds(lat, lon):
-    lon_min, lon_max, lat_min, lat_max = box
-    return (lat_min < lat < lat_max) and (lon_min < lon < lon_max)
+  def _is_within_bounds(lat, lon):
+    return (box.lat_min < lat < box.lat_max) and (box.lon_min < lon < box.lon_max)
 
   wgs_graph = mesh_to_wgs(mesh)
-  vertices_within_bounds = np.array([within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
+  vertices_within_bounds = np.array([_is_within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
   marked_vertices = np.nonzero(vertices_within_bounds)[0]
   new_mesh, vertices_map = mask_mesh(marked_vertices, mesh, mode='all')
   return new_mesh, vertices_map

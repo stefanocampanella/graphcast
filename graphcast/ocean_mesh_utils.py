@@ -7,73 +7,17 @@
 #      Courant–Friedrichs–Lewy condition. These require both to be implemented and some other machinery (a command in
 #      ocean_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
 #      field object can be instantiated.
-import functools
 import pathlib
-from typing import Literal
 
 import gmsh
 import numpy as np
 import seamsh
 import xarray as xr
 from osgeo import osr
-from pyproj import Transformer
 from scipy.interpolate import RegularGridInterpolator
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.mesh_graph import TriangleMesh
-
-osr.UseExceptions()
-stereographic_proj = osr.SpatialReference("+proj=stere +ellps=WGS84 +lat_0=90")
-cartesian_proj = osr.SpatialReference("+proj=cart +ellps=WGS84 +units=m +x_0=0 +y_0=0")
-platecarree_proj = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
-
-ProjectionRegistry = {'stereographic': stereographic_proj, 'cartesian': cartesian_proj, 'platecarree': platecarree_proj}
-Projection = Literal['stereographic', 'cartesian', 'platecarree']
-
-def unpack_points(func, pack_back=True):
-  """Decorator to unpack points in 2D or 3D space, apply a function and eventually pack the result back."""
-  @functools.wraps(func)
-  def wrapper(points: np.ndarray):
-    # We assume that the coordinate dimension is the last one.
-    if points.shape[-1] == 2:
-      xx = points[..., 0]
-      yy = points[..., 1]
-      zz = None
-    elif points.shape[-1] == 3:
-      xx = points[..., 0]
-      yy = points[..., 1]
-      zz = points[..., 2]
-    else:
-      raise ValueError(f"Trailing dimension must be 2 or 3, got {points.shape[-1]}")
-    result = func(xx, yy, zz)
-    if pack_back:
-      result = np.stack(result, axis=-1)
-    return result
-
-  return wrapper
-
-
-def get_transform(source: osr.SpatialReference, destination: osr.SpatialReference, pack_back=True):
-  """Gets a function that transforms points from one projection to another."""
-  transformer = Transformer.from_proj(source.ExportToProj4(), destination.ExportToProj4())
-  transform = unpack_points(transformer.transform, pack_back=pack_back)
-  return transform
-
-
-def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat') -> xr.DataArray:
-  """Maps a function expecting points on a regular grid in plate carree projection."""
-  grid = grid.transpose(longitude_dim, latitude_dim)
-  xx, yy = np.meshgrid(grid[longitude_dim], grid[latitude_dim], indexing='ij')
-  xx = np.where(grid.astype(bool), xx, 0.0)
-  yy = np.where(grid.astype(bool), yy, 0.0)
-  xx = xx.flatten()
-  yy = yy.flatten()
-  points = np.stack([xx, yy], axis=-1)
-  values = func(points, platecarree_proj)
-  values = values.reshape(grid.shape)
-  values = xr.DataArray(values, dims=grid.dims, coords=grid.coords)
-
-  return values
+from graphcast.mesh_graph import TriangleMesh, cartesian_proj, platecarree_proj, stereographic_proj, Projection, ProjectionRegistry, get_transform
 
 
 class StereoMeshSizeField:
@@ -254,34 +198,26 @@ def read_mesh(mesh_path: pathlib.Path | str) -> tuple[TriangleMesh, np.ndarray]:
   element_nodes = np.vstack(element_nodes) if element_nodes else np.empty((0, 3), dtype=int)
 
   # Determine boundary nodes from 1D elements (lines). All 1D elements in a 2D surface mesh are boundary edges.
-  boundary_node_indices: np.ndarray
-  try:
-    line_element_tags, line_node_tags = gmsh.model.mesh.get_elements_by_type(1)
-    if line_element_tags.size > 0:
-      # line_node_tags is a flat array of size 2 * num_lines
-      boundary_node_indices = np.unique([node_tags_map[int(tag)] for tag in line_node_tags])
-    else:
-      boundary_node_indices = np.array([], dtype=int)
-  except Exception:
-    # TODO: this should be tested
-    # Fallback: compute boundary from faces by finding edges that appear only once
-    if element_nodes.size == 0:
-      boundary_node_indices = np.array([], dtype=int)
-    else:
-      f = element_nodes
-      edges = np.vstack([
-        np.sort(f[:, [0, 1]], axis=1),
-        np.sort(f[:, [1, 2]], axis=1),
-        np.sort(f[:, [2, 0]], axis=1),
-      ])
-      # Count occurrences
-      edges_view = edges.view([('a', edges.dtype), ('b', edges.dtype)])
-      unique_edges, counts = np.unique(edges_view, return_counts=True)
-      boundary_edges = unique_edges[counts == 1].view(edges.dtype).reshape(-1, 2)
-      boundary_node_indices = np.unique(boundary_edges.flatten())
+  line_element_tags, line_node_tags = gmsh.model.mesh.get_elements_by_type(1)
+  if line_element_tags.size > 0:
+    # line_node_tags is a flat array of size 2 * num_lines
+    boundary_nodes_indices = np.unique([node_tags_map[int(tag)] for tag in line_node_tags])
+  else:
+    boundary_nodes_indices = np.array([], dtype=int)
 
+  # Meshes produced with seamsh might contain isolated points. Their existence, number and location are determined by
+  # the resolution of the shapefile containing the coastlines, and the target mesh size used when coarsening the
+  # coastlines. Here we remove those points: the mesh is valid only if all nodes are used by at least one element.
+  valid_nodes = np.unique(element_nodes.reshape(-1))
+  valid_nodes_mask = np.isin(range(node_coords.shape[0]), valid_nodes)
+  valid_node_map = {v: n for (n, v) in enumerate(valid_nodes)}
+  valid_node_map_f = np.vectorize(valid_node_map.get)
+  node_coords = node_coords[valid_nodes_mask, :]
+  element_nodes = valid_node_map_f(element_nodes)
+  boundary_nodes_indices = boundary_nodes_indices[np.isin(boundary_nodes_indices, valid_nodes)]
+  boundary_nodes_indices = valid_node_map_f(boundary_nodes_indices)
   mesh = TriangleMesh(vertices=node_coords, faces=element_nodes)
-  return mesh, boundary_node_indices
+  return mesh, boundary_nodes_indices
 
 
 def load_domain(path: pathlib.Path, physical_name_field: str = 'featurecla',
