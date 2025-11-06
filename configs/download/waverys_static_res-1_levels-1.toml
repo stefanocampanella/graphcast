@@ -1,0 +1,45 @@
+provider = 'cm'
+type = 'static'
+
+[[datasets]]
+dataset_id = 'cmems_mod_glo_wav_my_0.2deg_static'
+dataset_version = '202311'
+variables = ['deptho']
+dataset_part = 'bathy'
+service = 'static-arco'
+
+[[postprocess]]
+name = 'transpose'
+dims = ['latitude', 'longitude']
+
+[[postprocess]]
+name = 'chunk'
+latitude = -1
+longitude = -1
+
+[[postprocess]]
+name = 'regrid'
+method = 'conservative'
+latitude_dim = 'latitude'
+longitude_dim = 'longitude'
+
+[postprocess.kwargs]
+skipna = true
+
+[postprocess.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.0
+resolution_lat = 1.0
+resolution_lon = 1.0
+
+[[postprocess]]
+name = 'astype'
+dtype = 'float32'
+casting='same_kind'
+
+[save]
+consolidated = true
+chunk = {latitude = -1, longitude = -1}
+compressor = {cname = 'lz4', clevel = 1}

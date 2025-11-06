@@ -1,0 +1,68 @@
+provider = 'cm'
+type = 'timeseries'
+start = 1993-01-01T00:00:00
+end = 2021-07-01T00:00:00
+
+[temporary]
+step = '10 W'
+
+[slurm_array]
+step = '40 W'
+
+[[datasets]]
+dataset_id = 'cmems_mod_glo_wav_my_0.2deg_PT3H-i'
+dataset_version = '202411'
+variables = ['VHM0', 'VTM02', 'VMDR', 'VSDX', 'VSDY']
+dataset_part = 'default'
+service = 'arco-geo-series'
+
+[[postprocess]]
+name = 'rename'
+name_dict = {VHM0 = 'vhm0', VMDR = 'vmdr', VTM02 = 'vtm02', VSDX = 'vsdx', VSDY = 'vsdy'}
+
+[[postprocess]]
+name = 'clip_negative'
+variables = ['vhm0', 'vtm02']
+
+[[postprocess]]
+name = 'transpose'
+dims = ['time', 'latitude', 'longitude']
+
+[[postprocess]]
+name = 'resample'
+time = '1 D'
+reduce = 'mean'
+
+[[postprocess]]
+name = 'chunk'
+time = 'auto'
+latitude = -1
+longitude = -1
+
+[[postprocess]]
+name = 'regrid'
+method = 'conservative'
+latitude_dim = 'latitude'
+longitude_dim = 'longitude'
+
+[postprocess.kwargs]
+skipna = true
+output_chunks = {time = 'auto', latitude = -1, longitude = -1}
+
+[postprocess.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.0
+resolution_lat = 1.0
+resolution_lon = 1.0
+
+[[postprocess]]
+name = 'astype'
+casting = 'same_kind'
+dtype = 'float32'
+
+[save]
+consolidated = true
+chunk = {time = 1, latitude = -1, longitude = -1}
+compressor = {cname = 'lz4', clevel = 1}

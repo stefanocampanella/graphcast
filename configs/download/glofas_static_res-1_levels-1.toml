@@ -1,0 +1,36 @@
+provider = 'url'
+type = 'static'
+
+[[datasets]]
+url = 'https://confluence.ecmwf.int/download/attachments/242067380/uparea_glofas_v4_0.nc'
+
+[[postprocess]]
+name = 'regrid'
+method = 'conservative'
+latitude_dim = 'latitude'
+longitude_dim = 'longitude'
+
+[postprocess.kwargs]
+skipna = true
+
+[postprocess.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.0
+resolution_lat = 1.0
+resolution_lon = 1.0
+
+[[postprocess]]
+name = 'rename_coordinates'
+name_dict = {latitude = 'lat', longitude = 'lon'}
+
+[[postprocess]]
+name = 'astype'
+elevation = {dtype = 'float32', casting='same_kind'}
+uparea = {dtype = 'float32', casting='same_kind'}
+
+[save]
+consolidated = true
+chunk = {lat = -1, lon = -1}
+compressor = {cname = 'lz4', clevel = 1}
