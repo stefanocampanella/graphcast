@@ -15,8 +15,21 @@
 
 The Top-Of-the-Atmosphere (TOA) incident solar radiation is available in the
 ERA5 dataset as the parameter `toa_incident_solar_radiation` (or `tisr`). This
-represents the TOA solar radiation flux integrated over a period of one hour
-ending at the timestamp given by the `datetime` coordinate. See
+represents the TOA solar radiation flux integrated over a configurable period
+(default one hour).
+
+By default, integration is performed ending at the provided timestamp (i.e.,
+over the interval `[timestamp - period, timestamp]`). When `forward=True`,
+integration is performed forward in time (i.e., over
+`[timestamp, timestamp + period]`).
+
+This module provides:
+- Utilities to load Total Solar Irradiance (TSI) time series consistent with ERA5.
+- Vectorized/JAX-compatible routines to compute instantaneous and integrated
+  TOA radiation, with an optional JIT-compiled path (`use_jit=True`).
+- Xarray-friendly wrappers that preserve coordinates and dimension names.
+
+See also:
 https://confluence.ecmwf.int/display/CKB/ERA5%3A+data+documentation and
 https://codes.ecmwf.int/grib/param-db/?id=212.
 """
@@ -447,6 +460,7 @@ def get_toa_incident_solar_radiation(
     integration_period: _TimedeltaLike = _DEFAULT_INTEGRATION_PERIOD,
     num_integration_bins: int = _DEFAULT_NUM_INTEGRATION_BINS,
     use_jit: bool = False,
+    forward: bool = False,
 ) -> chex.Array:
   """Computes the solar radiation incident at the top of the atmosphere.
 
@@ -457,6 +471,12 @@ def get_toa_incident_solar_radiation(
   the ERA5 dataset, set `integration_period` to one hour (default). See
   https://confluence.ecmwf.int/display/CKB/ERA5%3A+data+documentation and
   https://codes.ecmwf.int/grib/param-db/?id=212.
+
+  Integration window:
+  - If `forward` is False (default), values are integrated over
+    `[t - integration_period, t]` for each timestamp `t`.
+  - If `forward` is True, values are integrated over
+    `[t, t + integration_period]`.
 
   Args:
     timestamps: Timestamps for which to compute the solar radiation.
@@ -477,11 +497,13 @@ def get_toa_incident_solar_radiation(
       may work to improve performance and reduce memory usage.
     use_jit: Set to True to use the jitted implementation, or False (default) to
       use the non-jitted one.
+    forward: If True, integrate forward in time from each timestamp; otherwise
+      integrate ending at each timestamp.
 
   Returns:
-    An 3D array with dimensions (time, lat, lon) containing the total
-    top of atmosphere solar radiation integrated for the `integration_period`
-    up to each timestamp.
+    A 3D array with dimensions `(time, lat, lon)` containing the total
+    top-of-atmosphere solar radiation flux integrated over the
+    `integration_period` for each timestamp in J⋅m⁻².
   """
   # Add a trailing dimension to latitude to get dimensions (lat, lon).
   lat = jnp.radians(latitude).reshape((-1, 1))
@@ -507,7 +529,8 @@ def get_toa_incident_solar_radiation(
   for idx, timestamp in enumerate(timestamps):
     results.append(
         fn(
-            j2000_days=jnp.array(_get_j2000_days(pd.Timestamp(timestamp))),
+            j2000_days=jnp.array(_get_j2000_days(
+              pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp))),
             sin_latitude=sin_lat,
             cos_latitude=cos_lat,
             longitude=lon,
@@ -525,14 +548,21 @@ def get_toa_incident_solar_radiation_for_xarray(
     integration_period: _TimedeltaLike = _DEFAULT_INTEGRATION_PERIOD,
     num_integration_bins: int = _DEFAULT_NUM_INTEGRATION_BINS,
     use_jit: bool = False,
+    forward: bool = False
 ) -> xa.DataArray:
   """Computes the solar radiation incident at the top of the atmosphere.
 
-  This method is a wrapper for `get_toa_incident_solar_radiation` using
-  coordinates from an Xarray and returning an Xarray.
+  Xarray wrapper around `get_toa_incident_solar_radiation` that reads the
+  `time`/`datetime`, `lat`, and `lon` coordinates from the input and returns
+  an `xa.DataArray` with matching dimensions and copied coordinates.
+
+  Integration window:
+  - If `forward` is False (default), values are integrated over
+    `[t - integration_period, t]` for each timestamp `t`.
+  - If `forward` is True, values are integrated over `[t, t + integration_period]`.
 
   Args:
-    data_array_like: A xa.Dataset or xa.DataArray from which to take the time
+    data_array_like: A `xa.Dataset` or `xa.DataArray` from which to take the time
       and spatial coordinates for which to compute the solar radiation. It must
       contain `lat` and `lon` spatial dimensions with corresponding coordinates.
       If a `time` dimension is present, the `datetime` coordinate should be a
@@ -553,13 +583,16 @@ def get_toa_incident_solar_radiation_for_xarray(
       may work to improve performance and reduce memory usage.
     use_jit: Set to True to use the jitted implementation, or False to use the
       non-jitted one.
+    forward: If True, integrate forward in time from each timestamp; otherwise
+      integrate ending at each timestamp.
 
   Returns:
-    xa.DataArray with dimensions `(time, lat, lon)` if `data_array_like` had
-    a `time` dimension; or dimensions `(lat, lon)` otherwise. The `datetime`
-    coordinates and those for the dimensions are copied to the returned array.
-    The array contains the total top of atmosphere solar radiation integrated
-    for `integration_period` up to the corresponding `datetime`.
+    xa.DataArray (units: J⋅m⁻²) with dimensions `(time, lat, lon)` if
+    `data_array_like` had a `time` dimension; or dimensions `(lat, lon)`
+    otherwise. The `datetime` coordinate and the coordinates for the dimensions
+    are copied to the returned array. Values represent the total top-of-
+    atmosphere solar radiation integrated over `integration_period` for the
+    corresponding `datetime` and integration direction.
 
   Raises:
     ValueError: If there are missing coordinates or dimensions.
@@ -589,6 +622,7 @@ def get_toa_incident_solar_radiation_for_xarray(
       integration_period=integration_period,
       num_integration_bins=num_integration_bins,
       use_jit=use_jit,
+      forward=forward,
   )
 
   if "time" in data_array_like.dims:

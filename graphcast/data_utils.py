@@ -24,7 +24,8 @@ from torch.utils.data import Dataset, DataLoader as TorchDataLoader, RandomSampl
 import numpy as np
 import pandas as pd
 import xarray
-import jax
+
+from graphcast import solar_radiation
 
 TimedeltaLike = Any  # Something convertible to pd.Timedelta.
 TimedeltaStr = str  # A string convertible to pd.Timedelta.
@@ -51,7 +52,7 @@ _DERIVED_VARS = {
     f"{YEAR_PROGRESS}_sin",
     f"{YEAR_PROGRESS}_cos",
 }
-TISR = "toa_incident_solar_radiation"
+_DEFAULT_TISR_NAME = "toa_incident_solar_radiation"
 
 
 def get_year_progress(seconds_since_epoch: np.ndarray) -> np.ndarray:
@@ -89,7 +90,7 @@ def get_day_progress(
     longitude: 1D array of longitudes at which day progress is computed.
 
   Returns:
-    2D array of day progress values normalized to be in the [0, 1) inverval
+    2D array of day progress values normalized to be in the [0, 1) interval
       for each time point at each longitude.
   """
 
@@ -184,17 +185,43 @@ def add_derived_vars(data: xarray.Dataset) -> None:
     )
 
 
-def add_tisr_var(data: xarray.Dataset) -> None:
-  """Adds TISR feature to `data` in place if missing.
+def add_tisr_var(data: xarray.Dataset,
+                 tisr_name: str = _DEFAULT_TISR_NAME,
+                 integration_period: TimedeltaLike = solar_radiation._DEFAULT_INTEGRATION_PERIOD,
+                 forward=False) -> None:
+  """Adds ERA5-compatible TISR to `data` in place if missing.
+
+  Computes top-of-atmosphere incident solar radiation integrated over a
+  configurable period and adds it as a new variable to the dataset if it does
+  not already exist.
+
+  Integration window semantics (delegated to
+  `solar_radiation.get_toa_incident_solar_radiation_for_xarray`):
+  - If `forward` is False (default), integrate over `[t - integration_period, t]`.
+  - If `forward` is True, integrate over `[t, t + integration_period]`.
+
+  Notes:
+  - Units of the added variable are J⋅m⁻² (energy integrated over time).
+  - Output dimensions follow the input: `(time, lat, lon)` (and `batch` if
+    present with size 1; we squeeze and re-expand a singleton batch dimension).
+  - Uses the JAX JIT path for performance (`use_jit=True`).
 
   Args:
-    data: Xarray dataset to which TISR feature will be added.
+    data: Xarray Dataset to which the TISR variable will be added. Must contain
+      coordinates `datetime`, `lat`, and `lon`. If a `batch` dimension exists,
+      it must have size 1.
+    tisr_name: Name to use for the created TISR variable (default:
+      `"toa_incident_solar_radiation"`).
+    integration_period: Timedelta-like defining the integration window length
+      (default: one hour), matching ERA5 when set to 1h.
+    forward: If True, integrates forward in time from each `datetime`; otherwise
+      integrates ending at each `datetime`.
 
   Raises:
-    ValueError if `datetime`, 'lat', or `lon` are not in `data` coordinates.
+    ValueError: If required coordinates (`datetime`, `lat`, `lon`) are missing.
   """
 
-  if TISR in data.data_vars:
+  if tisr_name in data.data_vars:
     return
 
   for coord in ("datetime", "lat", "lon"):
@@ -206,13 +233,13 @@ def add_tisr_var(data: xarray.Dataset) -> None:
   data_no_batch = data.squeeze("batch") if "batch" in data.dims else data
 
   tisr = solar_radiation.get_toa_incident_solar_radiation_for_xarray(
-      data_no_batch, use_jit=True
+      data_no_batch, use_jit=True, integration_period=integration_period, forward=forward
   )
 
   if "batch" in data.dims:
     tisr = tisr.expand_dims("batch", axis=0)
 
-  data.update({TISR: tisr})
+  data.update({tisr_name: tisr})
 
 
 def extract_input_target_times(
@@ -285,6 +312,8 @@ def extract_input_target_times(
   dataset = dataset.assign_coords(time=time + target_duration - time[-1])
 
   # Slice out targets:
+  # Notice: the variables without a time dimension will be selected as well, this allows not discriminating
+  # between forcings and static variables.
   targets = dataset.sel({"time": target_lead_times})
 
   input_duration = pd.Timedelta(input_duration)
@@ -330,7 +359,10 @@ def extract_inputs_targets_forcings(
     forcing_variables: Tuple[str, ...],
     pressure_levels: Tuple[int, ...],
     input_duration: TimedeltaLike,
+    tisr_name: str = _DEFAULT_TISR_NAME,
+    integration_period: TimedeltaLike,
     target_lead_times: TargetLeadTimes,
+    forward: bool = False
     ) -> Tuple[xarray.Dataset, xarray.Dataset, xarray.Dataset]:
   """Extracts inputs, targets and forcings according to requirements."""
   dataset = dataset.sel(level=list(pressure_levels))
@@ -340,8 +372,8 @@ def extract_inputs_targets_forcings(
   # computed manually for the target lead times. Compute the requested ones.
   if set(forcing_variables) & _DERIVED_VARS:
     add_derived_vars(dataset)
-  if set(forcing_variables) & {TISR}:
-    add_tisr_var(dataset)
+  if set(forcing_variables) & {tisr_name}:
+    add_tisr_var(dataset, tisr_name=tisr_name, integration_period=integration_period, forward=forward)
 
   # `datetime` is needed by add_derived_vars but breaks autoregressive rollouts.
   dataset = dataset.drop_vars("datetime")
