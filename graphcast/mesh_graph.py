@@ -61,8 +61,12 @@ def unpack_points(func, pack_back=True):
   return wrapper
 
 
-def get_transform(source: osr.SpatialReference, destination: osr.SpatialReference, pack_back=True):
+def get_transform(source: str | osr.SpatialReference, destination: str | osr.SpatialReference, pack_back=True):
   """Gets a function that transforms points from one projection to another."""
+  if isinstance(source, str):
+    source = ProjectionRegistry[source]
+  if isinstance(destination, str):
+    destination = ProjectionRegistry[destination]
   transformer = Transformer.from_proj(source.ExportToProj4(), destination.ExportToProj4())
   transform = unpack_points(transformer.transform, pack_back=pack_back)
   return transform
