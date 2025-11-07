@@ -113,7 +113,7 @@ def radius_query_indices(
   return grid_senders_indices, mesh_receivers_indices
 
 
-def get_grid_to_mesh_edges(
+def get_mesh_to_grid_edges(
     *,
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
@@ -167,7 +167,7 @@ def get_grid_to_mesh_edges(
   mesh_edge_indices = mesh_edge_indices.reshape([-1])
   grid_edge_indices = grid_edge_indices.reshape([-1])
 
-  return grid_edge_indices, mesh_edge_indices
+  return mesh_edge_indices, grid_edge_indices
 
 
 # TODO: add tests
@@ -236,7 +236,7 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
     mask=grid_mask,
     workers=workers)
 
-  (_, mesh_senders) = get_grid_to_mesh_edges(
+  (mesh_senders, _) = get_mesh_to_grid_edges(
     grid_latitude=grid_lat,
     grid_longitude=grid_lon,
     mesh=mesh_graph,

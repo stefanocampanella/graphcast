@@ -64,7 +64,7 @@ class GridMeshConnectivityTest(absltest.TestCase):
     grid_longitude = np.arange(12) * 30.
     mesh = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(
         splits=3)[-1]
-    mesh_connectivity.get_grid_to_mesh_edges(
+    mesh_connectivity.get_mesh_to_grid_edges(
         grid_latitude=grid_latitude,
         grid_longitude=grid_longitude,
         mesh=mesh)
