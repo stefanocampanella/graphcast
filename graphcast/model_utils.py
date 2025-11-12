@@ -19,7 +19,7 @@ import numpy as np
 from scipy.spatial import transform
 import xarray
 
-
+# TODO: compute features by solving the related inverse problems (proj/geod)
 def get_graph_spatial_features(
     *, node_lat: np.ndarray, node_lon: np.ndarray,
     senders: np.ndarray, receivers: np.ndarray,
@@ -182,6 +182,7 @@ def spherical_to_lat_lon(phi: np.ndarray,
   return lat, lon
 
 
+# TODO: deprecate this. It assumes unit radius!
 def cartesian_to_spherical(x: np.ndarray,
                            y: np.ndarray,
                            z: np.ndarray,
