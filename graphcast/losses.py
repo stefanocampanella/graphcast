@@ -53,19 +53,20 @@ class LossFunction(Protocol):
         batch before logging.
     """
 
-#TODO: The loss could use spatial weights instead of a mask.
+#TODO: The loss could also make use spatial weights.
 def weighted_mse_per_level(
     predictions: xarray.Dataset,
     targets: xarray.Dataset,
     per_variable_weights: Mapping[str, float],
-    mask: Optional[xarray.DataArray]=None
-) -> LossAndDiagnostics:
+    mask: Optional[xarray.DataArray]=None,
+    levels_normalization_coord: str = 'level',
+    ) -> LossAndDiagnostics:
   """Latitude- and pressure-level-weighted MSE loss."""
   def loss(prediction, target):
     loss = (prediction - target)**2
     loss *= normalized_latitude_weights(target).astype(loss.dtype)
     if 'level' in target.dims:
-      loss *= normalized_level_weights(target).astype(loss.dtype)
+      loss *= normalized_level_weights(target, coord=levels_normalization_coord).astype(loss.dtype)
     return _mean_preserving_batch(loss, mask=mask)
 
   losses = xarray_tree.map_structure(loss, predictions, targets)
@@ -98,10 +99,11 @@ def sum_per_variable_losses(
   return total, per_variable_losses  # pytype: disable=bad-return-type
 
 
-def normalized_level_weights(data: xarray.DataArray) -> xarray.DataArray:
-  """Weights proportional to pressure at each level."""
-  level = data.coords['level']
-  return level / level.mean(skipna=False)
+def normalized_level_weights(data: xarray.DataArray, coord: str = 'level') -> xarray.DataArray:
+  """Weights proportional to `coord` at each level."""
+  weights = data.coords[coord]
+  weights = (weights - weights.min()) / (weights.max() - weights.min())
+  return weights / weights.sum()
 
 
 def normalized_latitude_weights(data: xarray.DataArray) -> xarray.DataArray:
