@@ -238,14 +238,14 @@ class DataUtilsTest(parameterized.TestCase):
 
     data_utils.add_tisr_var(data)
 
-    self.assertIn(data_utils.TISR, set(data.variables))
+    self.assertIn(data_utils._DEFAULT_TISR_NAME, set(data.variables))
 
   def test_add_tisr_var_existing_var_not_overridden(self):
     dims = ["time", "lat", "lon"]
     data = xa.Dataset(
         data_vars={
             "var1": (dims, np.full((2, 2, 2), 8.0)),
-            data_utils.TISR: (dims, np.full((2, 2, 2), 1200.0)),
+            data_utils._DEFAULT_TISR_NAME: (dims, np.full((2, 2, 2), 1200.0)),
         },
         coords={
             "lat": np.array([2.0, 1.0]),
@@ -259,7 +259,7 @@ class DataUtilsTest(parameterized.TestCase):
 
     data_utils.add_derived_vars(data)
 
-    np.testing.assert_allclose(data[data_utils.TISR], 1200.0)
+    np.testing.assert_allclose(data[data_utils._DEFAULT_TISR_NAME], 1200.0)
 
   def test_add_tisr_var_works_with_batch_dim_size_one(self):
     data = xa.Dataset(
@@ -281,7 +281,7 @@ class DataUtilsTest(parameterized.TestCase):
 
     data_utils.add_tisr_var(data)
 
-    self.assertIn(data_utils.TISR, set(data.variables))
+    self.assertIn(data_utils._DEFAULT_TISR_NAME, set(data.variables))
 
   def test_add_tisr_var_fails_with_batch_dim_size_greater_than_one(self):
     data = xa.Dataset(

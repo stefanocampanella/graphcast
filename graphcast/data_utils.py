@@ -11,16 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Dataset utilities."""
-import pathlib
-import dataclasses
+"""Dataset utilities for extracting inputs, targets, and forcings."""
 
 from typing import Any, Mapping, Sequence, Tuple, Union
 
-from graphcast import solar_radiation
-from graphcast import model
-from graphcast import xarray_jax
-from torch.utils.data import Dataset, DataLoader as TorchDataLoader, RandomSampler, BatchSampler
 import numpy as np
 import pandas as pd
 import xarray
@@ -326,7 +320,7 @@ def extract_input_target_times(
 
 
 def _process_target_lead_times_and_get_duration(
-    target_lead_times: TargetLeadTimes) -> TimedeltaLike:
+    target_lead_times: TargetLeadTimes) -> Tuple[Any, TimedeltaLike]:
   """Returns the minimum duration for the target lead times."""
   if isinstance(target_lead_times, slice):
     # A slice of lead times. xarray already accepts timedelta-like values for
@@ -357,15 +351,55 @@ def extract_inputs_targets_forcings(
     input_variables: Tuple[str, ...],
     target_variables: Tuple[str, ...],
     forcing_variables: Tuple[str, ...],
-    pressure_levels: Tuple[int, ...],
+    levels: Tuple[int, ...],
     input_duration: TimedeltaLike,
-    tisr_name: str = _DEFAULT_TISR_NAME,
-    integration_period: TimedeltaLike,
     target_lead_times: TargetLeadTimes,
+    tisr_name: str = _DEFAULT_TISR_NAME,
+    integration_period: TimedeltaLike = "1d",
     forward: bool = False
     ) -> Tuple[xarray.Dataset, xarray.Dataset, xarray.Dataset]:
-  """Extracts inputs, targets and forcings according to requirements."""
-  dataset = dataset.sel(level=list(pressure_levels))
+  """Extracts inputs, targets, and forcings from a batch.
+
+  This helper slices the time dimension of an `xarray.Dataset`
+  into an input window and requested target lead times, and constructs a
+  "forcings" dataset containing any requested derived variables:
+  - Day/year progress features (and sin/cos transforms) via `add_derived_vars`.
+  - Top-of-atmosphere incident solar radiation (TISR) via `add_tisr_var` when
+    `tisr_name` is included in `forcing_variables`.
+  The last element of the dataset time coordinate will correspond to the
+  greatest lead time of targets and forcings. Input times are selected starting
+  from lead time 0 in the backward time direction. Hence, the dataset has to be
+  at least `input_duration + target_duration` long.
+
+  TISR is integrated over `[t - integration_period, t]` if `forward=False` and `[t, t + integration_period]` otherwise.
+
+  Args:
+    dataset: Dataset with dims including `batch`, `time`, `level`, `lat`, `lon`. The
+    coordinate `datetime` is required when computing TISR.
+    input_variables: Variables to include in the inputs dataset.
+    target_variables: Variables to include in the targets dataset.
+    forcing_variables: Variables to compute/collect as forcings (may include
+      derived vars like `day_progress_*`, `year_progress_*`, and `tisr_name`).
+    levels: Pressure levels to select.
+    input_duration: Duration of the contiguous input window ending at lead time
+      0.
+    target_lead_times: A single lead time, a slice of lead times (inclusive), or
+      a sequence of lead times relative to the final input timestep.
+    tisr_name: Name under which to add TISR if requested in `forcing_variables`.
+    integration_period: Time span over which to integrate TISR energy.
+    forward: Whether to compute TISR forward from each timestamp (`True`) or
+      ending at each timestamp (`False`).
+
+  Returns:
+    A tuple `(inputs, targets, forcings)` where:
+    - `inputs` has times ending at lead time 0;
+    - `targets` has times equal to requested `target_lead_times`;
+    - `forcings` contains requested derived variables over the target period.
+
+  Raises:
+    ValueError: If `forcing_variables` overlaps with `target_variables`.
+  """
+  dataset = dataset.sel(level=list(levels))
 
   # "Forcings" include derived variables that do not exist in the original ERA5
   # or HRES datasets, as well as other variables (e.g. tisr) that need to be
@@ -395,112 +429,3 @@ def extract_inputs_targets_forcings(
   targets = targets[list(target_variables)]
 
   return inputs, targets, forcings
-
-class FakeGraphcastDemoDataset(Dataset):
-
-  def __init__(self, dataset_path: pathlib.Path, task_config: model.TaskConfig, fake_len: int = 16, steps: int = 1):
-    self.dataset_path = dataset_path
-    self.task_config = task_config
-    self.fake_len = fake_len
-    self.steps = steps
-
-    with self.dataset_path.open("rb") as dataset_file:
-      example_batch = xarray.load_dataset(dataset_file).compute()
-
-    assert example_batch.sizes["time"] >= 3  # 2 for input, >=1 for targets
-
-    self.example_batch = example_batch
-  
-  def __len__(self):
-    return self.fake_len
-
-  def __getitem__(self, idx):
-    inputs, targets, forcings = extract_inputs_targets_forcings(
-      self.example_batch, target_lead_times=slice("6h", f"{self.steps * 6}h"),
-      **dataclasses.asdict(self.task_config))
-    return inputs, targets, forcings
-
-
-class ERA5Dataset(Dataset):
-
-  def __init__(self, dataset_path: Union[pathlib.Path, str], task_config: model.TaskConfig, steps: int = 1):
-    self.dataset_path = dataset_path
-    self.task_config = task_config
-    self.steps = steps
-
-    ds = xarray.open_zarr(dataset_path)
-    assert ds.sizes["time"] >= 3  # at least 2 for input, >=1 for targets
-    
-    ds = ds.drop_vars(var for var in ds.data_vars.keys() if var not in task_config.input_variables)
-    ds = ds.expand_dims(dim='batch', axis=0)
-    ds = ds.assign_coords({'datetime': ds['time'].expand_dims(dim='batch', axis=0)})
-    ds['time'] = ds['time'] - ds['time'][0]
-
-    ds = ds.swap_dims(latitude='lat', longitude='lon')
-    ds = ds.rename_vars(latitude='lat', longitude='lon')
-    ds = ds.set_index(lat='lat', lon='lon', level='level', time='time')
-    #TODO: The code should comply with the usual convention for longitudes. 
-    # However, this would require retraining of original GraphCast weights.
-    #ds['lon'] = np.where(ds.lon <= 180, ds.lon, ds.lon - 360)
-
-    #TODO: Find out why transpose in accord to demo data breaks experiments.
-    # ds = ds.transpose("batch", "time", "level", "lat", "lon")
-    self.dataset = ds
-
-
-  def __len__(self):
-    return self.dataset.sizes["time"] - 2
-
-
-  def __getitem__(self, idx):
-    ds = self.dataset.sel(time=self.dataset.time[idx:])
-    inputs, targets, forcings = extract_inputs_targets_forcings(ds, 
-                                           target_lead_times=slice("6h", f"{self.steps * 6}h"),
-                                           **dataclasses.asdict(self.task_config))
-    return inputs, targets, forcings
-
-
-def device_put(ds, *args, **kwargs):
-
-  def _move_data_array(var, name=None, jax_coords=None):
-    return xarray_jax.DataArray(jax.device_put(var.data, *args, **kwargs),
-                                coords=var.coords,
-                                dims=var.dims,
-                                name=name,
-                                attrs=var.attrs,
-                                jax_coords=jax_coords)
-  
-  data_variables_names = set(ds.variables.keys()) - set(ds.coords.keys())
-  variables = {name: _move_data_array(ds[name], name=name) for name in data_variables_names}
-  return xarray_jax.Dataset(variables, coords=ds.coords, attrs=ds.attrs)  
-
-
-def default_collate_fn(batch):
-  if len(batch) > 1:
-    data = map(lambda datasets: xarray.concat(datasets, dim='batch'), zip(*batch))
-  else:
-    data = batch[0]
-  inputs, targets, forcings = map(lambda ds: ds.compute(), data)
-  return inputs, targets, forcings
-
-
-class DataLoader(TorchDataLoader):
-
-  def __init__(self, dataset: Dataset, batch_size=None, num_samples=None, sharding=None, collate_fn=default_collate_fn, **kwargs):
-    sampler = RandomSampler(dataset, replacement=True, num_samples=num_samples * batch_size, generator=kwargs.get('generator'))
-    batch_sampler = BatchSampler(sampler=sampler, batch_size=batch_size, drop_last=True)
-    kwargs.update({'shuffle': None, 'drop_last': None, 'sampler': None, 'batch_sampler': batch_sampler})
-    super().__init__(dataset, collate_fn=collate_fn, **kwargs)
-    self.sharding = sharding
-
-  def __next__(self):
-    next_elem = super().__next__()
-    if self.sharding is None:
-      inputs, targets, forcings = next_elem
-    else:
-      inputs, targets, forcings = map(lambda x: device_put(x, self.sharding), next_elem)
-    return inputs, targets, forcings
-
-  @property
-  def random_item(self):
-    return next(iter(self))
