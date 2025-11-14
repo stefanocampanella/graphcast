@@ -227,6 +227,24 @@ def Dataset(  # pylint:disable=invalid-name
   return assign_coords(result, coords=coords, jax_coords=jax_coords)
 
 
+def to_jax(dataset: xarray.Dataset) -> xarray.Dataset:
+  """Converts a XArray dataset to another where data is a wrapped JAX array."""
+  dataset_jax = Dataset(
+    data_vars={var: (data.dims, jax.numpy.asarray(data.data)) for (var, data) in dataset.data_vars.items()},
+    coords=dataset.coords,
+    attrs=dataset.attrs)
+  return dataset_jax
+
+
+def to_np(dataset: xarray.Dataset) -> xarray.Dataset:
+  """Converts a XArray dataset to another where data is a plain numpy array."""
+  dataset_np = xarray.Dataset(
+    data_vars={var: (dataset[var].dims, np.asarray(data)) for (var, data) in unwrap_vars(dataset).items()},
+    coords=dataset.coords,
+    attrs=dataset.attrs)
+  return dataset_np
+
+
 DatasetOrDataArray = TypeVar(
     'DatasetOrDataArray', xarray.Dataset, xarray.DataArray)
 
