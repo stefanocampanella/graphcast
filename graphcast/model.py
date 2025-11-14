@@ -40,7 +40,6 @@ from graphcast import model_utils
 from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
-from graphcast.mesh_connectivity import get_connected_mesh_nodes, mask_mesh
 from graphcast.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges, get_transform
 
 Kwargs = Mapping[str, Any]
@@ -158,7 +157,7 @@ TASK = TaskConfig(
     target_variables=TARGET_VARS,
     forcing_variables=FORCING_VARS,
     levels=LEVELS_10,
-    input_duration="1d",
+    input_duration="2d",
 )
 
 
@@ -351,6 +350,9 @@ class GraphCast(predictor_base.Predictor):
     self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
     self._mesh_graph_structure = self._init_mesh_graph()
     self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
+
+    # FIXME: This should really be configured using ModelConfig
+    self._per_variable_weights = {}
 
   def _init_mesh_properties(self):
     """Initializes static properties that have to do with mesh nodes."""
@@ -551,6 +553,7 @@ class GraphCast(predictor_base.Predictor):
       inputs: xarray.Dataset,
       targets: xarray.Dataset,
       forcings: xarray.Dataset,
+      **kwargs,
       ) -> tuple[predictor_base.LossAndDiagnostics, xarray.Dataset]:
     # Forward pass.
     predictions = self(
@@ -560,21 +563,8 @@ class GraphCast(predictor_base.Predictor):
     # during the model initialization is probably better to keep it just a `numpy.ndarray` Fix this.
     loss = losses.weighted_mse_per_level(
         predictions, targets,
-        per_variable_weights={
-            # Any variables not specified here are weighted as 1.0.
-            # A single-level variable, but an important headline variable
-            # and also one which we have struggled to get good performance
-            # on at short lead times, so leaving it weighted at 1.0, equal
-            # to the multi-level variables:
-            "2m_temperature": 1.0,
-            # New single-level variables, which we don't weight too highly
-            # to avoid hurting performance on other variables.
-            "10m_u_component_of_wind": 0.1,
-            "10m_v_component_of_wind": 0.1,
-            "mean_sea_level_pressure": 0.1,
-            "total_precipitation_6hr": 0.1,
-        },
-        mask=self._grid_mask)
+        per_variable_weights=self._per_variable_weights,
+        **kwargs)
     return loss, predictions  # pytype: disable=bad-return-type  # jax-ndarray
 
   def loss(  # pytype: disable=signature-mismatch  # jax-ndarray
@@ -582,8 +572,9 @@ class GraphCast(predictor_base.Predictor):
       inputs: xarray.Dataset,
       targets: xarray.Dataset,
       forcings: xarray.Dataset,
+      **kwargs,
       ) -> predictor_base.LossAndDiagnostics:
-    loss, _ = self.loss_and_predictions(inputs, targets, forcings)
+    loss, _ = self.loss_and_predictions(inputs, targets, forcings, **kwargs)
     return loss  # pytype: disable=bad-return-type  # jax-ndarray
 
   def _run_grid2mesh_gnn(self, grid_node_features: chex.Array,
