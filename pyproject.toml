@@ -42,8 +42,8 @@ dependencies = [
     "xarray",
     # TODO: Port to Zarr v3
     "zarr>=2,<3",
-    "pandas-stubs==2.3.0.250703",
-    "scipy-stubs==1.16.0.2",
+    "pandas-stubs~=2.2.3",
+    "scipy-stubs~=1.15.2",
     "graphviz>=0.21",
 ]
 requires-python = ">=3.11, <3.12"
