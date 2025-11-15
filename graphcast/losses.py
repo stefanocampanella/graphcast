@@ -98,8 +98,17 @@ def sum_per_variable_losses(
           'variable', skipna=False)
   return total, per_variable_losses  # pytype: disable=bad-return-type
 
+
 def normalized_level_weights(data: xarray.DataArray, coord: str = 'level', w_min=1e-2) -> xarray.DataArray:
-  """Weights proportional to `coord` at each level."""
+  """Compute weights from `coord` at each level.
+
+  We ask that the weights are such that:
+    1. w_i >= w_min >= 0.
+    2. sum(w_i) = 1.
+    3. w_i >= w_j iff coord_i >= coord_j
+
+  Among all the possible ways to assign such weights, we choose `w_i = a * coord_i + b` with `min(w_i) = w_min`.
+  """
   weights = data.coords[coord]
   assert 0 <= w_min < 1 / len(weights), 'w_min must be in (0, 1/len(coord))'
   weights = (weights - weights.min()) / (weights.max() - weights.min())
