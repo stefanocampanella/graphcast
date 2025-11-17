@@ -1,0 +1,5 @@
+dataset = "dataset/dataset_tres-1d_res-1_levels-10_arco"
+mean = "stats/dataset_tres-1d_res-1_levels-10_mean"
+std = "stats/dataset_tres-1d_res-1_levels-10_std"
+diff_std = "stats/dataset_tres-1d_res-1_levels-10_diff_std"
+dtype = "float32"

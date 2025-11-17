@@ -17,6 +17,7 @@ from datetime import datetime
 
 import click
 import dask
+import numpy as np
 import xarray as xr
 from dask.diagnostics import ProgressBar
 from numcodecs.blosc import Blosc
@@ -415,6 +416,126 @@ def merge(
   store = ZipStore(path=str(output_path), mode='w', compression=0, allowZip64=True)
   with bar(progress):
     dataset.to_zarr(store=store, compute=True, **save_configs)
+
+
+@cli.command()
+@click.argument("config_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, file_okay=True, readable=True))
+@click.argument("output_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path, dir_okay=True, writable=True))
+@click.option("--data-prefix",
+              "data_path_prefix",
+              help="Prefix to prepend to data paths.",
+              default=None,
+              type=click.Path(path_type=pathlib.Path, dir_okay=True, readable=True))
+@click.option("--overwrite/--no-overwrite",
+              help="Whether to overwrite existing outputs",
+              default=False,
+              is_flag=True)
+@click.option("--progress/--no-progress",
+              "progress",
+              help="Whether to display a progress bar",
+              default=False,
+              is_flag=True)
+@click.option('--log-level',
+              default='info',
+              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
+@click.option("--debug/--no-debug",
+              "debug",
+              help="Use synchronous Dask scheduler",
+              default=False,
+              is_flag=True)
+def normalization(
+    config_path: pathlib.Path,
+    output_path: pathlib.Path,
+    data_path_prefix: pathlib.Path | None = None,
+    progress: bool = False,
+    log_level: str = 'info',
+    overwrite: bool = False,
+    debug: bool = False):
+  """
+  Computes normalization artifacts for the target dataset (location/scale per variable, and residuals' scale) using precomputed statistics listed in the configuration, and saves them as a DataTree Zarr.
+  """
+
+  if debug:
+    dask.config.set(scheduler='synchronous')
+
+  logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
+                      datefmt='%Y-%m-%dT%H:%M:%S',
+                      level=getattr(logging, log_level.upper()))
+
+  # Open the configuration file and load the TOML configs.
+  configs = Configs.read(config_path)
+
+  # If destination exists and should not overwrite, raise and exit.
+  if output_path.exists() and not overwrite:
+    raise ValueError(f"Output destination {output_path} already exists")
+
+  def open_dataset(name: str) -> xr.Dataset:
+    path = pathlib.Path(configs[name])
+    path = path if data_path_prefix is None else data_path_prefix / path
+    logging.info(f"Loading {name} from {path}")
+    return xr.open_dataset(path, engine='zarr')
+
+  # Load dataset and statistics
+  dataset = open_dataset('dataset')
+  mean = open_dataset('mean')
+  std = open_dataset('std')
+  diff_std = open_dataset('diff_std')
+  assert set(mean.data_vars) == set(std.data_vars) == set(diff_std.data_vars), \
+    "The precomputed stats do not contain the same variables."
+  assert np.array_equal(mean.coords, std.coords) and np.array_equal(mean.coords, diff_std.coords), \
+    "The precomputed stats do not contain the same dimensions."
+
+  # Identify variables
+  boolean_variables = set(var for (var, data) in dataset.data_vars.items() if np.isdtype(data.dtype, np.bool_))
+  missing_normalization_variables = set(dataset.data_vars) - set(mean.data_vars)
+
+  # Build working datasets
+  normal_vars = list(missing_normalization_variables - boolean_variables)
+  normalization_dataset = dataset[normal_vars] if normal_vars else xr.Dataset()
+  template_dataset = dataset[list(missing_normalization_variables)] if missing_normalization_variables else xr.Dataset()
+
+  # Compute per-variable scale/location for non-boolean vars and add defaults for booleans
+  if normalization_dataset.data_vars:
+    inputs_scale = normalization_dataset.max(skipna=True) - normalization_dataset.min(skipna=True)
+    inputs_location = normalization_dataset.min(skipna=True) / inputs_scale
+  else:
+    inputs_scale = xr.Dataset()
+    inputs_location = xr.Dataset()
+
+  def get_typed_value(value):
+    return np.float64(value).astype(configs['dtype'])
+
+  inputs_location = xr.merge([
+    inputs_location,
+    xr.Dataset(data_vars={var: ((), get_typed_value(0.0)) for var in boolean_variables})
+  ])
+  inputs_scale = xr.merge([
+      inputs_scale,
+      xr.Dataset(data_vars={var: ((), get_typed_value(1.0)) for var in boolean_variables})
+  ])
+
+  # Extend the level-wise stats with per-variable location/scale
+  inputs_location = xr.merge([mean, xr.zeros_like(template_dataset) + inputs_location])
+  inputs_scale = xr.merge([std, xr.ones_like(template_dataset) * inputs_scale])
+
+  common_coordinates = set(dataset.coords) & set(inputs_location.coords)
+  common_coordinates = list(common_coordinates)
+  # Build datatree with coordinates from the merged dataset
+  dt = xr.DataTree.from_dict({
+      '/': xr.Dataset(coords={name: dataset.coords[name] for name in common_coordinates}),
+      '/inputs/location': inputs_location.drop_vars(common_coordinates),
+      '/inputs/scale': inputs_scale.drop_vars(common_coordinates),
+      '/residuals/scale': diff_std.drop_vars(common_coordinates),
+  })
+
+  # Save the DataTree to a Zarr store
+  logging.info(f"Saving normalization datatree to {output_path}")
+  with bar(progress):
+    dt.to_zarr(store=output_path, mode="w" if overwrite else "w-", compute=True)
 
 
 @cli.command()
