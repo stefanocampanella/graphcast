@@ -312,10 +312,8 @@ class GraphCast(predictor_base.Predictor):
     # TODO: The model should be intitialized upon first call (as in the original GraphCast implementation, using `_maybe_init`).
     # This way, one can more easily fine-tune the same model using different datasets (i.e. with different grid and mesh graphs).
     self._mesh_graph = model_config.mesh_graph
-    self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
     self._grid_mask = model_config.grid_mask
-    self._grid_lat = model_config.grid_lat
-    self._grid_lon = model_config.grid_lon
+    self._boundary_nodes = model_config.boundary_nodes
 
     # Obtain the query radius in absolute units for the unit-sphere for the
     # grid2mesh model, by rescaling the `radius_query_fraction_edge_length`.
@@ -328,7 +326,7 @@ class GraphCast(predictor_base.Predictor):
         model_config.mesh2grid_edge_normalization_factor
     )
 
-    # Initialize remaining properties.
+    # Initialize remaining properties. All properties but _num_mesh_nodes are used in init functions.
     # Within "_init_mesh_properties":
     #   self._mesh_graph # MeshGraph
     #   self._num_mesh_nodes
@@ -347,6 +345,7 @@ class GraphCast(predictor_base.Predictor):
     self._init_mesh_properties()
     self._init_grid_properties(
       grid_lat=model_config.grid_lat, grid_lon=model_config.grid_lon)
+
     self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
     self._mesh_graph_structure = self._init_mesh_graph()
     self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
@@ -445,6 +444,7 @@ class GraphCast(predictor_base.Predictor):
       node_lon=self._mesh_nodes_lon,
       senders=senders,
       receivers=receivers,
+      boundary_nodes=self._boundary_nodes,
       **self._spatial_features_kwargs,
     )
 

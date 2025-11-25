@@ -23,6 +23,7 @@ import xarray
 def get_graph_spatial_features(
     *, node_lat: np.ndarray, node_lon: np.ndarray,
     senders: np.ndarray, receivers: np.ndarray,
+    boundary_nodes: Optional[np.ndarray],
     add_node_positions: bool,
     add_node_latitude: bool,
     add_node_longitude: bool,
@@ -74,6 +75,12 @@ def get_graph_spatial_features(
 
   # Computing some node features.
   node_features = []
+
+  if boundary_nodes is not None:
+    boundary_mask = np.zeros(num_nodes, dtype=np.float32)
+    boundary_mask[boundary_nodes] = 1.
+    node_features.append(boundary_mask)
+
   if add_node_positions:
     # Already in [-1, 1.] range.
     node_features.extend(spherical_to_cartesian(node_phi, node_theta))
