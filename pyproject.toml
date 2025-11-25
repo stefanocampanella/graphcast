@@ -17,8 +17,8 @@ dependencies = [
     "gdal[numpy]==3.11.4 ; sys_platform == 'linux'",
     "gdal-utils==3.11.4 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
-    "gdal[numpy]==3.11.4 ; sys_platform == 'darwin'",
-    "gdal-utils==3.11.4 ; sys_platform == 'darwin'",
+    "gdal[numpy]==3.12.0.post1 ; sys_platform == 'darwin'",
+    "gdal-utils==3.12.0.0 ; sys_platform == 'darwin'",
     "gmsh",
     # Install cuda using pip, building jaxlib from source is a pain in the neck...
     "jax[cuda12] ; sys_platform == 'linux'",
