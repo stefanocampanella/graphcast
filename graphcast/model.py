@@ -326,21 +326,29 @@ class GraphCast(predictor_base.Predictor):
         model_config.mesh2grid_edge_normalization_factor
     )
 
-    # Initialize remaining properties. All properties but _num_mesh_nodes are used in init functions.
-    # Within "_init_mesh_properties":
+    # The `_init_*_properties` methods initialize remaining properties, that is:
+    # within `_init_mesh_properties`
     #   self._mesh_graph # MeshGraph
     #   self._num_mesh_nodes
     #   self._mesh_nodes # [num_mesh_nodes, 3]
     #   self._mesh_nodes_lat # [num_mesh_nodes]
     #   self._mesh_nodes_lon # [num_mesh_nodes]
-    # Within "_init_grid_properties":
+    # and within `_init_grid_properties`:
     #   self._grid_lat # [num_lat_points]
     #   self._grid_lon # [num_lon_points]
     #   self._num_grid_nodes # num_lat_points * num_lon_points
     #   self._grid_nodes_lat # [num_grid_nodes]
     #   self._grid_nodes_lon # [num_grid_nodes]
-    # Within "_init_{grid2mesh,mesh,mesh2grid}_graph"
+    # The graphs are instantiated within `_init_{grid2mesh,mesh,mesh2grid}_graph` and saved as attributes
     #   self._{grid2mesh,mesh,mesh2grid}_graph_structure
+
+    # TODO: Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
+    #  grid nodes. Therefore, it should be moved outside the model constructor in a future refactoring. This would
+    #  allow fingerprinting the model by the graph (in case of multiple experiments with different graphs). Also, this
+    #  will require serializing the TypedGraph objects. Notice that all properties but `_num_mesh_nodes` are used only
+    #  in the graph init functions, while `_num_mesh_nodes` is used in the `__call__` function as well. Hence it is
+    #  reasonable to drop these attributes and let the external graph constructor compute them on the fly from
+    #  grid_lat, grid_lon, mesh_graph, and mask.
 
     self._init_mesh_properties()
     self._init_grid_properties(

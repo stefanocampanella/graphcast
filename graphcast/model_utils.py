@@ -19,6 +19,7 @@ import numpy as np
 from scipy.spatial import transform
 import xarray
 
+# TODO: this implementation should be updated to include the distance from the coast as a feature
 # TODO: compute features by solving the related inverse problems (proj/geod)
 def get_graph_spatial_features(
     *, node_lat: np.ndarray, node_lon: np.ndarray,
@@ -114,7 +115,7 @@ def get_graph_spatial_features(
         longitude_local_coordinates=relative_longitude_local_coordinates
         )
 
-    # Note this is L2 distance in 3d space, rather than geodesic distance.
+    # FIXME: this is L2 distance in 3d space, rather than geodesic distance.
     relative_edge_distances = np.linalg.norm(
         relative_position, axis=-1, keepdims=True)
 
@@ -368,6 +369,7 @@ def rotate_with_matrices(rotation_matrices: np.ndarray, positions: np.ndarray
   return np.einsum("bji,bi->bj", rotation_matrices, positions)
 
 
+# TODO: this implementation should be updated to include the distance from the coast as a feature
 def get_bipartite_graph_spatial_features(
     *,
     senders_node_lat: np.ndarray,
