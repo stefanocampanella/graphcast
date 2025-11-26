@@ -168,8 +168,6 @@ class ModelConfig:
   """Defines the architecture of the GraphCast neural network architecture.
 
   Properties:
-    mesh_graph: Graph structure used by the processor.
-    grid_mask: Mask telling which grid nodes to include/exclude.
     gnn_msg_steps: How many Graph Network message passing steps to do.
     latent_size: How many latent features to include in the various MLPs.
     hidden_layers: How many hidden layers for each MLP.
@@ -184,16 +182,12 @@ class ModelConfig:
         This supports using pre-trained model weights with a different graph
         structure to what it was trained on.
   """
-  grid_lat: np.ndarray
-  grid_lon: np.ndarray
-  grid_mask: xarray.DataArray
-  mesh_graph: MeshGraph
-  boundary_nodes: np.ndarray
   latent_size: int
   gnn_msg_steps: int
   hidden_layers: int
   radius_query_fraction_edge_length: float
   mesh2grid_edge_normalization_factor: Optional[float] = None
+  per_variable_weights: Optional[dict] = None
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -235,20 +229,32 @@ class GraphCast(predictor_base.Predictor):
 
   """
 
-  def __init__(self, model_config: ModelConfig, task_config: TaskConfig):
+  def __init__(self,
+               model_config: ModelConfig,
+               task_config: TaskConfig,
+               grid_lat: np.ndarray,
+               grid_lon: np.ndarray,
+               grid_mask: xarray.DataArray,
+               mesh_graph: MeshGraph,
+               boundary_nodes: np.ndarray):
     """Initializes the predictor."""
-    self._spatial_features_kwargs = dict(
-        add_node_positions=False,
-        add_node_latitude=True,
-        add_node_longitude=True,
-        add_relative_positions=True,
-        relative_longitude_local_coordinates=True,
-        relative_latitude_local_coordinates=True,
-    )
+
+    #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
+    #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
+    #  outside a Haiku transform and then serialized. Notice that this requires serializing, among other things,
+    #  TypedGraph objects. In the case of graphs, current options are:
+    #    1. Extend the TypedGraph class with methods to serialize and deserialize its objects.
+    #    2. Register TypedGraph as a pytree and use Orbax.
+    #    3. Convert TypedGraph to an object that can be serialized with `graphcast.checkpoint`
+    #    4. Use pickle or cloudpickle.
+    #  Another use of creating and saving the graphs is for fingerprinting the model (in case of multiple
+    #  experiments with different graphs).
+    #  When serializing graphs (or the whole model) to avoid repetitive time-consuming tasks, and not
+    #  for reproducibility, pickling should be enough.
 
     # Encoder, which moves data from the grid to the mesh with a single message
     # passing step.
-    self._grid2mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(
+    self._grid2mesh_gnn_kwargs = dict(
         embed_nodes=True,  # Embed raw features of the grid and mesh nodes.
         embed_edges=True,  # Embed raw features of the grid2mesh edges.
         edge_latent_size=dict(grid2mesh=model_config.latent_size),
@@ -263,11 +269,10 @@ class GraphCast(predictor_base.Predictor):
         activation="swish",
         f32_aggregation=True,
         aggregate_normalization=None,
-        name="grid2mesh_gnn",
-    )
+        name="grid2mesh_gnn")
 
     # Processor, which performs message passing on the multi-mesh.
-    self._mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(
+    self._mesh_gnn_kwargs = dict(
         embed_nodes=False,  # Node features already embdded by previous layers.
         embed_edges=True,  # Embed raw features of the multi-mesh edges.
         node_latent_size=dict(mesh_nodes=model_config.latent_size),
@@ -279,8 +284,7 @@ class GraphCast(predictor_base.Predictor):
         include_sent_messages_in_node_update=False,
         activation="swish",
         f32_aggregation=False,
-        name="mesh_gnn",
-    )
+        name="mesh_gnn")
 
     num_surface_vars = len(set(task_config.target_variables) & set(ALL_SURFACE_VARS))
     assert num_surface_vars == len(set(task_config.target_variables) - set(ALL_VOLUME_VARS))
@@ -290,7 +294,7 @@ class GraphCast(predictor_base.Predictor):
 
     # Decoder, which moves data from the mesh back into the grid with a single
     # message passing step.
-    self._mesh2grid_gnn = deep_typed_graph_net.DeepTypedGraphNet(
+    self._mesh2grid_gnn_kwargs = dict(
         # Require a specific node dimensionaly for the grid node outputs.
         node_output_size=dict(grid_nodes=num_outputs),
         embed_nodes=False,  # Node features already embdded by previous layers.
@@ -306,34 +310,18 @@ class GraphCast(predictor_base.Predictor):
         include_sent_messages_in_node_update=False,
         activation="swish",
         f32_aggregation=False,
-        name="mesh2grid_gnn",
-    )
-
-    # TODO: The model should be intitialized upon first call (as in the original GraphCast implementation, using `_maybe_init`).
-    # This way, one can more easily fine-tune the same model using different datasets (i.e. with different grid and mesh graphs).
-    self._mesh_graph = model_config.mesh_graph
-    self._grid_mask = model_config.grid_mask
-    self._boundary_nodes = model_config.boundary_nodes
-
-    # Obtain the query radius in absolute units for the unit-sphere for the
-    # grid2mesh model, by rescaling the `radius_query_fraction_edge_length`.
-    # TODO: `_get_max_edge_distance` should return the maximum edge length in the finest mesh. However,
-    # after refactoring `_mesh_graph` is a multi-mesh graph including all edges. Recent fix should be
-    # backported into the main development branch.
-    self._query_radius = (_get_max_edge_distance(self._mesh_graph)
-                          * model_config.radius_query_fraction_edge_length)
-    self._mesh2grid_edge_normalization_factor = (
-        model_config.mesh2grid_edge_normalization_factor
-    )
+        name="mesh2grid_gnn")
 
     # The `_init_*_properties` methods initialize remaining properties, that is:
     # within `_init_mesh_properties`
     #   self._mesh_graph # MeshGraph
-    #   self._num_mesh_nodes
+    #   self._boundary_nodes
+    #   self._num_mesh_nodes (used also in `__call__`)
     #   self._mesh_nodes # [num_mesh_nodes, 3]
     #   self._mesh_nodes_lat # [num_mesh_nodes]
     #   self._mesh_nodes_lon # [num_mesh_nodes]
     # and within `_init_grid_properties`:
+    #   self._grid_mask # [num_lat_points, num_lon_points]
     #   self._grid_lat # [num_lat_points]
     #   self._grid_lon # [num_lon_points]
     #   self._num_grid_nodes # num_lat_points * num_lon_points
@@ -342,27 +330,39 @@ class GraphCast(predictor_base.Predictor):
     # The graphs are instantiated within `_init_{grid2mesh,mesh,mesh2grid}_graph` and saved as attributes
     #   self._{grid2mesh,mesh,mesh2grid}_graph_structure
 
-    # TODO: Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
-    #  grid nodes. Therefore, it should be moved outside the model constructor in a future refactoring. This would
-    #  allow fingerprinting the model by the graph (in case of multiple experiments with different graphs). Also, this
-    #  will require serializing the TypedGraph objects. Notice that all properties but `_num_mesh_nodes` are used only
-    #  in the graph init functions, while `_num_mesh_nodes` is used in the `__call__` function as well. Hence it is
-    #  reasonable to drop these attributes and let the external graph constructor compute them on the fly from
-    #  grid_lat, grid_lon, mesh_graph, and mask.
+    self._init_mesh_properties(mesh_graph=mesh_graph,
+                               boundary_nodes=boundary_nodes)
+    self._init_grid_properties(grid_lat=grid_lat,
+                               grid_lon=grid_lon,
+                               grid_mask=grid_mask)
 
-    self._init_mesh_properties()
-    self._init_grid_properties(
-      grid_lat=model_config.grid_lat, grid_lon=model_config.grid_lon)
+    # TODO: `_get_max_edge_distance` should return the maximum edge length in the finest mesh. However, after
+    #  refactoring `mesh_graph` is possibly a multi-mesh graph including all edges.
+    # Obtain the query radius (on the geoid, not the unit-sphere) for the grid2mesh model, by rescaling the
+    # `radius_query_fraction_edge_length`.
+    self._query_radius = _get_max_edge_distance(mesh_graph) * model_config.radius_query_fraction_edge_length
+    self._mesh2grid_edge_normalization_factor = model_config.mesh2grid_edge_normalization_factor
 
+    if model_config.per_variable_weights is not None:
+      self._per_variable_weights = model_config.per_variable_weights
+    else:
+      self._per_variable_weights = {}
+
+    self._spatial_features_kwargs = dict(
+      add_node_positions=False,
+      add_node_latitude=True,
+      add_node_longitude=True,
+      add_relative_positions=True,
+      relative_longitude_local_coordinates=True,
+      relative_latitude_local_coordinates=True)
     self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
     self._mesh_graph_structure = self._init_mesh_graph()
     self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
 
-    # FIXME: This should really be configured using ModelConfig
-    self._per_variable_weights = {}
-
-  def _init_mesh_properties(self):
+  def _init_mesh_properties(self, mesh_graph, boundary_nodes):
     """Initializes static properties that have to do with mesh nodes."""
+    self._mesh_graph = mesh_graph
+    self._boundary_nodes = boundary_nodes
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
 
     cartesian2platecarree = get_transform("cartesian", "platecarree", pack_back=False)
@@ -372,8 +372,9 @@ class GraphCast(predictor_base.Predictor):
     self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)
     self._mesh_nodes_lon = mesh_nodes_lon.astype(np.float32)
 
-  def _init_grid_properties(self, grid_lat: np.ndarray, grid_lon: np.ndarray):
+  def _init_grid_properties(self, grid_lat: np.ndarray, grid_lon: np.ndarray, grid_mask: Optional[xarray.DataArray] = None):
     """Initializes static properties that have to do with grid nodes"""
+    self._grid_mask = grid_mask
     self._grid_lat = grid_lat.astype(np.float32)
     self._grid_lon = grid_lon.astype(np.float32)
     # Initialized the counters.
@@ -635,8 +636,10 @@ class GraphCast(predictor_base.Predictor):
             "mesh_nodes": new_mesh_nodes
         })
 
+    # Create the GNN.
+    grid2mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._grid2mesh_gnn_kwargs)
     # Run the GNN.
-    grid2mesh_out = self._grid2mesh_gnn(input_graph)
+    grid2mesh_out = grid2mesh_gnn(input_graph)
     latent_mesh_nodes = grid2mesh_out.nodes["mesh_nodes"].features
     latent_grid_nodes = grid2mesh_out.nodes["grid_nodes"].features
     return latent_mesh_nodes, latent_grid_nodes
@@ -673,8 +676,10 @@ class GraphCast(predictor_base.Predictor):
     input_graph = mesh_graph._replace(
         edges={mesh_edges_key: new_edges}, nodes={"mesh_nodes": nodes})
 
+    # Create the GNN.
+    mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh_gnn_kwargs)
     # Run the GNN.
-    return self._mesh_gnn(input_graph).nodes["mesh_nodes"].features
+    return mesh_gnn(input_graph).nodes["mesh_nodes"].features
 
   def _run_mesh2grid_gnn(self,
                          updated_latent_mesh_nodes: chex.Array,
@@ -709,8 +714,10 @@ class GraphCast(predictor_base.Predictor):
             "grid_nodes": new_grid_nodes
         })
 
+    # Create the GNN.
+    mesh2grid_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh2grid_gnn_kwargs)
     # Run the GNN.
-    output_graph = self._mesh2grid_gnn(input_graph)
+    output_graph = mesh2grid_gnn(input_graph)
     output_grid_nodes = output_graph.nodes["grid_nodes"].features
 
     return output_grid_nodes
