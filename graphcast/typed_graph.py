@@ -13,6 +13,7 @@
 # limitations under the License.
 """Data-structure for storing graphs with typed edges and nodes."""
 
+from jax.tree_util import register_pytree_node_class
 from typing import NamedTuple, Any, Union, Tuple, Mapping, TypeVar
 
 ArrayLike = Union[Any]  # np.ndarray, jnp.ndarray, tf.tensor
@@ -42,10 +43,22 @@ _T = TypeVar('_T')
 #   of graphs (how it is done in `jraph`).
 
 
+@register_pytree_node_class
 class NodeSet(NamedTuple):
   """Represents a set of nodes."""
   n_node: ArrayLike  # [num_flat_graphs]
   features: ArrayLikeTree  # Prev. `nodes`: [num_flat_nodes] + feature_shape
+
+  def tree_flatten(self) -> Tuple[ArrayLikeTree, ArrayLike]:
+    children = (self.features,)
+    aux_data = self.n_node
+    return (children, aux_data)
+
+  @classmethod
+  def tree_unflatten(cls, aux_data: ArrayLike, children: ArrayLikeTree):
+    n_node = aux_data
+    features = children[0]
+    return cls(n_node=n_node, features=features)
 
 
 class EdgesIndices(NamedTuple):
@@ -54,18 +67,42 @@ class EdgesIndices(NamedTuple):
   receivers: ArrayLike  # [num_flat_edges]
 
 
+@register_pytree_node_class
 class EdgeSet(NamedTuple):
   """Represents a set of edges."""
   n_edge: ArrayLike  # [num_flat_graphs]
   indices: EdgesIndices
   features: ArrayLikeTree  # Prev. `edges`: [num_flat_edges] + feature_shape
 
+  def tree_flatten(self) -> Tuple[ArrayLikeTree, Tuple[ArrayLike, EdgesIndices]]:
+    children = (self.features,)
+    aux_data = (self.n_edge, self.indices)
+    return (children, aux_data)
 
+  @classmethod
+  def tree_unflatten(cls, aux_data: Tuple[ArrayLike, EdgesIndices], children: ArrayLikeTree):
+    n_edge, indices = aux_data
+    features = children[0]
+    return cls(n_edge=n_edge, indices=indices, features=features)
+
+
+@register_pytree_node_class
 class Context(NamedTuple):
   # `n_graph` always contains ones but it is useful to query the leading shape
   # in case of graphs without any nodes or edges sets.
   n_graph: ArrayLike  # [num_flat_graphs]
   features: ArrayLikeTree  # Prev. `globals`: [num_flat_graphs] + feature_shape
+
+  def tree_flatten(self) -> Tuple[ArrayLike, ArrayLikeTree]:
+    children = (self.features,)
+    aux_data = self.n_graph
+    return (children, aux_data)
+
+  @classmethod
+  def tree_unflatten(cls, aux_data: ArrayLike, children: ArrayLikeTree):
+    n_graph = aux_data
+    features = children[0]
+    return cls(n_graph=n_graph, features=features)
 
 
 class EdgeSetKey(NamedTuple):
