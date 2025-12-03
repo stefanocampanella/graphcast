@@ -11,7 +11,7 @@ sampling = 5_000.0
 field_min = 0.0
 field_max = 500_000.0
 size_min = 30_000.0
-size_max = 200_000.0
+size_max = 150_000.0
 
 [save]
 projection = "cartesian"
