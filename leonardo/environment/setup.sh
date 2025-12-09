@@ -252,7 +252,7 @@ if [[ $BUILD_VENV == true ]]; then
 	srun --qos=${SLURM_QOS} --account=${SLURM_ACCOUNT} --partition=${SLURM_PARTITION} --time=${SLURM_TIME} --ntasks=1 --cpus-per-task=8 --gres=gpu:1 ${SLURM_INSTALL_JAXLIB} || exit 1
 
 	# Finally, install the remaining packages
-	pip install --no-index --find-links="${PKG_CACHE_DIR}" -e "${ROOT}[download,interactive,profile,train]" || exit 1
+	pip install --no-index --find-links="${PKG_CACHE_DIR}" -e "${ROOT}" || exit 1
 
     fi
 

@@ -4,75 +4,102 @@ requires = ["setuptools (>= 67.0,<81)"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "graphcast"
+name = "graphcast-ocean"
 version = "0.1"
 dependencies = [
     "cartopy",
+    "cdsapi",
+    "cfgrib",
+    "cftime",
     "chex",
     "click",
+    "colabtools",
+    "copernicusmarine",
     "dask",
+    "dask_mpi",
     "dm-haiku",
     "dm-tree",
+    "flox",
+    "gcsfs",
     # Versions listed here should agree with the one compiled in leonardo/setup.sh (v3.10.0 is the last one available on spack@23.1)
-    "gdal[numpy]==3.11.4 ; sys_platform == 'linux'",
     "gdal-utils==3.11.4 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
-    "gdal[numpy]==3.12.0.post1 ; sys_platform == 'darwin'",
     "gdal-utils==3.12.0.0 ; sys_platform == 'darwin'",
+    "gdal[numpy]==3.11.4 ; sys_platform == 'linux'",
+    "gdal[numpy]==3.12.0.post1 ; sys_platform == 'darwin'",
+    "geopy",
+    "geoviews",
     "gmsh",
+    "google-cloud-storage",
+    "grain >= 0.2.15",
+    "graphviz>=0.21",
+    "h5netcdf",
+    "hvplot",
+    "ipywidgets",
     # Install cuda using pip, building jaxlib from source is a pain in the neck...
     "jax[cuda12] ; sys_platform == 'linux'",
-    # Get HW acceleration on macOS
+    # Disable HW acceleration on macOS (jax-metal is unstable/early stage).
     "jax ; sys_platform == 'darwin'",
     "jraph",
+    "jupyterlab",
     "matplotlib",
-    "numpy",
+    "mpi4py",
+    "nc-time-axis",
+    "netCDF4",
+    "networkx",
     # numcodecs v0.16 seems to make copernicusmarine import fail on Leonardo
     "numcodecs<0.16",
+    "numpy",
+    "optax",
+    "orbax-checkpoint",
     "pandas",
+    "pandas-stubs~=2.2.3",
+    "papermill[all]",
     "rtree",
+    "s3fs",
     "scipy",
+    "scipy-stubs~=1.15.2",
     # Install seamsh from PyPI on Leonardo
     "seamsh==0.4.18 ; sys_platform == 'linux'",
     # Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work
     "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.18 ; sys_platform == 'darwin'",
+    "tensorboard",
+    "tensorboard",
+    "tensorboard_plugin_profile",
     "tqdm",
     "trimesh",
     "typing_extensions",
     "xarray",
+    "xarray-regrid[accel]",
     # TODO: Port to Zarr v3
     "zarr>=2,<3",
-    "pandas-stubs~=2.2.3",
-    "scipy-stubs~=1.15.2",
-    "graphviz>=0.21",
 ]
 requires-python = ">=3.11, <3.12"
-authors = [{name = "DeepMind"}]
-description = "GraphCast: Learning skillful medium-range global weather forecasting"
-readme = {file = "README.md", content-type = "text/markdown"}
-keywords = ["GraphCast", "Weather", "Prediction"]
+authors = [{name = "Stefano Campanella", email = "scampanella@ogs.it"}]
+description = "Data-driven global ocean circulation model based on Graphcast by Google DeepMind."
+readme = { file = "README.md", content-type = "text/markdown" }
+license = "Apache-2.0"
+keywords = ["GraphCast", "Ocean", "Prediction"]
 classifiers = ["Development Status :: 3 - Alpha",
-               "Intended Audience :: Science/Research",
-               "License :: OSI Approved :: Apache Software License",
-               "Operating System :: POSIX :: Linux",
-               "Programming Language :: Python :: 3.11",
-               "Topic :: Scientific/Engineering :: Artificial Intelligence",
-               "Topic :: Scientific/Engineering :: Atmospheric Science",
-               "Topic :: Scientific/Engineering :: Physics"]
+    "Intended Audience :: Science/Research",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Oceanography",
+    "Topic :: Scientific/Engineering :: Physics"]
 
 [project.scripts]
 dataset = "graphcast.dataset:cli"
 ocean-mesh = "graphcast.ocean_mesh:cli"
 stats = "graphcast.stats:cli"
 
-[project.optional-dependencies]
-download = ["s3fs", "google-cloud-storage", "gcsfs", "copernicusmarine", "cdsapi", "netCDF4", "h5netcdf", "cfgrib", "cftime", "xarray-regrid[accel]", "flox", "mpi4py", "dask_mpi"]
-interactive = ["jupyterlab", "ipywidgets", "colabtools", "google-cloud-storage", "geopy", "papermill[all]", "hvplot", "geoviews", "networkx", "nc-time-axis"]
-profile = ["tensorboard_plugin_profile"]
-train = ["optax", "orbax-checkpoint", "tensorboard", "grain", "tensorboard", "matplotlib"]
-
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [tool.setuptools]
 packages = ["graphcast"]
+
+[tool.uv]
+# Needed to fix google/grain#1045 as suggested in google/grain#1023
+override-dependencies = ["array_record<0.8 ; sys_platform == 'darwin'"]
+

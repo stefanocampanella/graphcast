@@ -7,6 +7,9 @@ resolution-markers = [
     "sys_platform != 'darwin' and sys_platform != 'linux'",
 ]
 
+[manifest]
+overrides = [{ name = "array-record", marker = "sys_platform == 'darwin'", specifier = "<0.8" }]
+
 [[package]]
 name = "absl-py"
 version = "2.2.2"
@@ -198,16 +201,14 @@ wheels = [
 
 [[package]]
 name = "array-record"
-version = "0.8.1"
+version = "0.7.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "absl-py" },
-    { name = "etils", extra = ["epath"] },
+    { name = "absl-py", marker = "sys_platform == 'darwin'" },
+    { name = "etils", extra = ["epath"], marker = "sys_platform == 'darwin'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/63/6f/76479068036d2d49d0d08ab86318075701beaae65606efbfb45dd8fbe6ae/array_record-0.8.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:e5e8e610f59f5a7958dd5672d4b8e505213195594150fdabb7cc0fa725518ed0", size = 1966788, upload-time = "2025-08-21T19:06:18.289Z" },
-    { url = "https://files.pythonhosted.org/packages/6c/0a/0582aebd05a10020c99047ee9007dfa8b6e03fff43de5373770a337f23ce/array_record-0.8.1-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:66516d7a9ef64a9f4c47e1d0d1cfe52b3a507c6835697ec43718ab6115ce8db5", size = 2408007, upload-time = "2025-08-21T19:06:19.612Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/cc/0c24c7325ecad65c114f03b765069b9ce45664148c4d39fa6e370d0e95c0/array_record-0.8.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:090d82858a931e3754e1062f5c62c20ae764f3e5f24e79ea9054393804383a8d", size = 2465489, upload-time = "2025-08-21T19:06:21.038Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/52/389e14107613c052dc5cf73281ba47bc7c7a07a7f6ba866692be2f30bea3/array_record-0.7.2-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:7d76c122702d5b73d9fc5f55a053d4eb88b96fd751d3473adb016cb7c2de6290", size = 1798254, upload-time = "2025-04-29T15:26:33.118Z" },
 ]
 
 [[package]]
@@ -1054,11 +1055,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/44/4b/e0cfc1a6f17e990f3e64b7d941ddc4acdc7b19d6edd51abf495f32b1a9e4/fsspec-2025.3.2-py3-none-any.whl", hash = "sha256:2daf8dc3d1dfa65b6aa37748d112773a7a08416f6c70d96b264c96476ecaf711", size = 194435, upload-time = "2025-03-31T15:27:07.028Z" },
 ]
 
-[package.optional-dependencies]
-gcs = [
-    { name = "gcsfs" },
-]
-
 [[package]]
 name = "gcsfs"
 version = "2025.3.2"
@@ -1081,22 +1077,56 @@ wheels = [
 name = "gdal"
 version = "3.11.4"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'linux'",
+]
 sdist = { url = "https://files.pythonhosted.org/packages/62/e0/1840d476bfd2d1e8c22dacb612027a16ad1dfba60d5d4379bdaaf6a1545f/gdal-3.11.4.tar.gz", hash = "sha256:c28cd5ffda3df98555e21083d922762b0a095d8f10292e2ec60ee0d55651d74a", size = 878351, upload-time = "2025-09-11T09:28:00.097Z" }
 
 [package.optional-dependencies]
 numpy = [
-    { name = "numpy", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "numpy", marker = "sys_platform == 'linux'" },
+]
+
+[[package]]
+name = "gdal"
+version = "3.12.0.post1"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'darwin'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/95/fc/9d187c4d280122b497c2d4c25a1c3b1ba50e5e1836924e49323685999c43/gdal-3.12.0.post1.tar.gz", hash = "sha256:d2b68361c7cf2ef7caa8cbb8549a315080301564e3f025d1842df71a4e406236", size = 902365, upload-time = "2025-11-07T23:40:07.734Z" }
+
+[package.optional-dependencies]
+numpy = [
+    { name = "numpy", marker = "sys_platform == 'darwin'" },
 ]
 
 [[package]]
 name = "gdal-utils"
 version = "3.11.4.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'linux'",
+]
 dependencies = [
-    { name = "gdal", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "gdal", version = "3.11.4", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/52/46/ba94ab927597eb13871e6d04fa95e7feef40eb73dfcf8b44eec5ad144298/gdal_utils-3.11.4.0-py3-none-any.whl", hash = "sha256:5ab8a325215c37e0c8305b1ea608a2afbf4cd93c9b305ca8c870e8c2a2d5115f", size = 282592, upload-time = "2025-09-11T09:28:48.399Z" },
+]
+
+[[package]]
+name = "gdal-utils"
+version = "3.12.0.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "sys_platform == 'darwin'",
+]
+dependencies = [
+    { name = "gdal", version = "3.12.0.post1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7b/be/3594895e3fa630f98709aee99260b6e6e17891bff3944f7eab15cbb8c216/gdal_utils-3.12.0.0-py3-none-any.whl", hash = "sha256:ed4af168a840b75f51d9cebbbd98b75758b859cbaf8f8e75e2e773c3ba8c7cb6", size = 270594, upload-time = "2025-10-31T15:24:14.804Z" },
 ]
 
 [[package]]
@@ -1266,161 +1296,147 @@ wheels = [
 
 [[package]]
 name = "grain"
-version = "0.2.11"
+version = "0.2.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "absl-py" },
-    { name = "array-record" },
+    { name = "array-record", marker = "sys_platform == 'darwin'" },
     { name = "cloudpickle" },
-    { name = "dm-tree" },
     { name = "etils", extra = ["epath", "epy"] },
-    { name = "more-itertools" },
     { name = "numpy" },
     { name = "protobuf" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5a/e5/7e241faa61ddfc20c0f7f48f324b5e0cc3659a548d5f3b6e4c33ca100f2b/grain-0.2.11-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:2e3721d9dbd49a16f393cae526c38c31ef90318129eb60536f0d9a57583ae2ea", size = 403683, upload-time = "2025-07-02T20:42:19.939Z" },
-    { url = "https://files.pythonhosted.org/packages/2f/7e/9f67a216fb5062789c754547cc8e3d79f0143974cec79b4f0889e2595688/grain-0.2.11-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:9838de9c482368637ee8619f70085c27618894b4d3e02b5f791296186a9aceca", size = 485742, upload-time = "2025-07-02T20:42:21.216Z" },
-    { url = "https://files.pythonhosted.org/packages/b4/3d/a286bd7d398db864418d8e2a5f47df0f4e4e35b3cfa425e86ca1a964626f/grain-0.2.11-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:6acbf237c1ac4fea8f3335aa977f5450237b9a9b8b4f572af6ed7de1c0d3ecea", size = 486642, upload-time = "2025-07-02T20:42:22.389Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/66/045ed6f44ec8bb1fff6070c9ea6dfc05812ed14d1530b2005b1dbe4526ca/grain-0.2.15-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:63b90d0719a97c25a8b30057e224436dfaf3ba975e5baadaf8b3417235a09631", size = 456073, upload-time = "2025-11-25T20:17:09.221Z" },
+    { url = "https://files.pythonhosted.org/packages/b5/49/fbeba469025a82872fd426d95304409351621db94c31175e4f8fc47d37d5/grain-0.2.15-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:60f5ded548e58251af4a7429779c472cdb5ab716a448c32e500e6eb79957c5e9", size = 505224, upload-time = "2025-11-25T20:17:10.866Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/d3/c837702f14e03235cfb4a48186fca966dda5d9a8d8b149bad210a5273137/grain-0.2.15-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:fcac68693f539f5421560250fe906c62b00daeb58a28a56ac7b8d9dad2ba7483", size = 506367, upload-time = "2025-11-25T20:17:12.516Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/74/1ce374a211b7f9a989a29303d6be973579297baf9bd34820072234e44f51/grain-0.2.15-cp311-cp311-win_amd64.whl", hash = "sha256:7e8d7114f079cb3cfa9953e699cb44a44b179e9fb2ca4f61e8b7ac8ca90c33ce", size = 444801, upload-time = "2025-11-25T20:17:14.006Z" },
 ]
 
 [[package]]
-name = "graphcast"
+name = "graphcast-ocean"
 version = "0.1"
 source = { editable = "." }
 dependencies = [
     { name = "cartopy" },
+    { name = "cdsapi" },
+    { name = "cfgrib" },
+    { name = "cftime" },
     { name = "chex" },
     { name = "click" },
+    { name = "colabtools" },
+    { name = "copernicusmarine" },
     { name = "dask" },
+    { name = "dask-mpi" },
     { name = "dm-haiku" },
     { name = "dm-tree" },
-    { name = "gdal", extra = ["numpy"], marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
-    { name = "gdal-utils", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+    { name = "flox" },
+    { name = "gcsfs" },
+    { name = "gdal", version = "3.11.4", source = { registry = "https://pypi.org/simple" }, extra = ["numpy"], marker = "sys_platform == 'linux'" },
+    { name = "gdal", version = "3.12.0.post1", source = { registry = "https://pypi.org/simple" }, extra = ["numpy"], marker = "sys_platform == 'darwin'" },
+    { name = "gdal-utils", version = "3.11.4.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "gdal-utils", version = "3.12.0.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "geopy" },
+    { name = "geoviews" },
     { name = "gmsh" },
+    { name = "google-cloud-storage" },
+    { name = "grain" },
     { name = "graphviz" },
+    { name = "h5netcdf" },
+    { name = "hvplot" },
+    { name = "ipywidgets" },
     { name = "jax", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
     { name = "jax", extra = ["cuda12"], marker = "sys_platform == 'linux'" },
     { name = "jraph" },
+    { name = "jupyterlab" },
     { name = "matplotlib" },
+    { name = "mpi4py" },
+    { name = "nc-time-axis" },
+    { name = "netcdf4" },
+    { name = "networkx" },
     { name = "numcodecs" },
     { name = "numpy" },
+    { name = "optax" },
+    { name = "orbax-checkpoint" },
     { name = "pandas" },
     { name = "pandas-stubs" },
+    { name = "papermill", extra = ["all"] },
     { name = "rtree" },
+    { name = "s3fs" },
     { name = "scipy" },
     { name = "scipy-stubs" },
     { name = "seamsh", version = "0.1", source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }, marker = "sys_platform == 'darwin'" },
     { name = "seamsh", version = "0.4.18", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "tensorboard" },
+    { name = "tensorboard-plugin-profile" },
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "typing-extensions" },
     { name = "xarray" },
-    { name = "zarr" },
-]
-
-[package.optional-dependencies]
-download = [
-    { name = "cdsapi" },
-    { name = "cfgrib" },
-    { name = "cftime" },
-    { name = "copernicusmarine" },
-    { name = "dask-mpi" },
-    { name = "flox" },
-    { name = "gcsfs" },
-    { name = "google-cloud-storage" },
-    { name = "h5netcdf" },
-    { name = "mpi4py" },
-    { name = "netcdf4" },
-    { name = "s3fs" },
     { name = "xarray-regrid", extra = ["accel"] },
-]
-interactive = [
-    { name = "colabtools" },
-    { name = "geopy" },
-    { name = "geoviews" },
-    { name = "google-cloud-storage" },
-    { name = "hvplot" },
-    { name = "ipywidgets" },
-    { name = "jupyterlab" },
-    { name = "nc-time-axis" },
-    { name = "networkx" },
-    { name = "papermill", extra = ["all"] },
-]
-profile = [
-    { name = "tensorboard-plugin-profile" },
-]
-train = [
-    { name = "grain" },
-    { name = "matplotlib" },
-    { name = "optax" },
-    { name = "orbax-checkpoint" },
-    { name = "tensorboard" },
+    { name = "zarr" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "cartopy" },
-    { name = "cdsapi", marker = "extra == 'download'" },
-    { name = "cfgrib", marker = "extra == 'download'" },
-    { name = "cftime", marker = "extra == 'download'" },
+    { name = "cdsapi" },
+    { name = "cfgrib" },
+    { name = "cftime" },
     { name = "chex" },
     { name = "click" },
-    { name = "colabtools", marker = "extra == 'interactive'" },
-    { name = "copernicusmarine", marker = "extra == 'download'" },
+    { name = "colabtools" },
+    { name = "copernicusmarine" },
     { name = "dask" },
-    { name = "dask-mpi", marker = "extra == 'download'" },
+    { name = "dask-mpi" },
     { name = "dm-haiku" },
     { name = "dm-tree" },
-    { name = "flox", marker = "extra == 'download'" },
-    { name = "gcsfs", marker = "extra == 'download'" },
-    { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'darwin'", specifier = "==3.11.4" },
+    { name = "flox" },
+    { name = "gcsfs" },
+    { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'darwin'", specifier = "==3.12.0.post1" },
     { name = "gdal", extras = ["numpy"], marker = "sys_platform == 'linux'", specifier = "==3.11.4" },
-    { name = "gdal-utils", marker = "sys_platform == 'darwin'", specifier = "==3.11.4" },
+    { name = "gdal-utils", marker = "sys_platform == 'darwin'", specifier = "==3.12.0.0" },
     { name = "gdal-utils", marker = "sys_platform == 'linux'", specifier = "==3.11.4" },
-    { name = "geopy", marker = "extra == 'interactive'" },
-    { name = "geoviews", marker = "extra == 'interactive'" },
+    { name = "geopy" },
+    { name = "geoviews" },
     { name = "gmsh" },
-    { name = "google-cloud-storage", marker = "extra == 'download'" },
-    { name = "google-cloud-storage", marker = "extra == 'interactive'" },
-    { name = "grain", marker = "extra == 'train'" },
+    { name = "google-cloud-storage" },
+    { name = "grain", specifier = ">=0.2.15" },
     { name = "graphviz", specifier = ">=0.21" },
-    { name = "h5netcdf", marker = "extra == 'download'" },
-    { name = "hvplot", marker = "extra == 'interactive'" },
-    { name = "ipywidgets", marker = "extra == 'interactive'" },
+    { name = "h5netcdf" },
+    { name = "hvplot" },
+    { name = "ipywidgets" },
     { name = "jax", marker = "sys_platform == 'darwin'" },
     { name = "jax", extras = ["cuda12"], marker = "sys_platform == 'linux'" },
     { name = "jraph" },
-    { name = "jupyterlab", marker = "extra == 'interactive'" },
+    { name = "jupyterlab" },
     { name = "matplotlib" },
-    { name = "matplotlib", marker = "extra == 'train'" },
-    { name = "mpi4py", marker = "extra == 'download'" },
-    { name = "nc-time-axis", marker = "extra == 'interactive'" },
-    { name = "netcdf4", marker = "extra == 'download'" },
-    { name = "networkx", marker = "extra == 'interactive'" },
+    { name = "mpi4py" },
+    { name = "nc-time-axis" },
+    { name = "netcdf4" },
+    { name = "networkx" },
     { name = "numcodecs", specifier = "<0.16" },
     { name = "numpy" },
-    { name = "optax", marker = "extra == 'train'" },
-    { name = "orbax-checkpoint", marker = "extra == 'train'" },
+    { name = "optax" },
+    { name = "orbax-checkpoint" },
     { name = "pandas" },
     { name = "pandas-stubs", specifier = "~=2.2.3" },
-    { name = "papermill", extras = ["all"], marker = "extra == 'interactive'" },
+    { name = "papermill", extras = ["all"] },
     { name = "rtree" },
-    { name = "s3fs", marker = "extra == 'download'" },
+    { name = "s3fs" },
     { name = "scipy" },
     { name = "scipy-stubs", specifier = "~=1.15.2" },
     { name = "seamsh", marker = "sys_platform == 'darwin'", git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18" },
     { name = "seamsh", marker = "sys_platform == 'linux'", specifier = "==0.4.18" },
-    { name = "tensorboard", marker = "extra == 'train'" },
-    { name = "tensorboard-plugin-profile", marker = "extra == 'profile'" },
+    { name = "tensorboard" },
+    { name = "tensorboard-plugin-profile" },
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "typing-extensions" },
     { name = "xarray" },
-    { name = "xarray-regrid", extras = ["accel"], marker = "extra == 'download'" },
+    { name = "xarray-regrid", extras = ["accel"] },
     { name = "zarr", specifier = ">=2,<3" },
 ]
-provides-extras = ["download", "interactive", "profile", "train"]
 
 [[package]]
 name = "graphviz"
@@ -3028,16 +3044,17 @@ wheels = [
 
 [[package]]
 name = "protobuf"
-version = "4.25.7"
+version = "6.33.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/74/63/84fdeac1f03864c2b8b9f0b7fe711c4af5f95759ee281d2026530086b2f5/protobuf-4.25.7.tar.gz", hash = "sha256:28f65ae8c14523cc2c76c1e91680958700d3eac69f45c96512c12c63d9a38807", size = 380612, upload-time = "2025-04-24T02:56:58.685Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/44/e49ecff446afeec9d1a66d6bbf9adc21e3c7cea7803a920ca3773379d4f6/protobuf-6.33.2.tar.gz", hash = "sha256:56dc370c91fbb8ac85bc13582c9e373569668a290aa2e66a590c2a0d35ddb9e4", size = 444296, upload-time = "2025-12-06T00:17:53.311Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/ed/9a58076cfb8edc237c92617f1d3744660e9b4457d54f3c2fdf1a4bbae5c7/protobuf-4.25.7-cp310-abi3-win32.whl", hash = "sha256:dc582cf1a73a6b40aa8e7704389b8d8352da616bc8ed5c6cc614bdd0b5ce3f7a", size = 392457, upload-time = "2025-04-24T02:56:40.798Z" },
-    { url = "https://files.pythonhosted.org/packages/28/b3/e00870528029fe252cf3bd6fa535821c276db3753b44a4691aee0d52ff9e/protobuf-4.25.7-cp310-abi3-win_amd64.whl", hash = "sha256:cd873dbddb28460d1706ff4da2e7fac175f62f2a0bebc7b33141f7523c5a2399", size = 413446, upload-time = "2025-04-24T02:56:44.199Z" },
-    { url = "https://files.pythonhosted.org/packages/60/1d/f450a193f875a20099d4492d2c1cb23091d65d512956fb1e167ee61b4bf0/protobuf-4.25.7-cp37-abi3-macosx_10_9_universal2.whl", hash = "sha256:4c899f09b0502eb39174c717ccf005b844ea93e31137c167ddcacf3e09e49610", size = 394248, upload-time = "2025-04-24T02:56:45.75Z" },
-    { url = "https://files.pythonhosted.org/packages/c8/b8/ea88e9857484a0618c74121618b9e620fc50042de43cdabbebe1b93a83e0/protobuf-4.25.7-cp37-abi3-manylinux2014_aarch64.whl", hash = "sha256:6d2f5dede3d112e573f0e5f9778c0c19d9f9e209727abecae1d39db789f522c6", size = 293717, upload-time = "2025-04-24T02:56:47.427Z" },
-    { url = "https://files.pythonhosted.org/packages/a7/81/d0b68e9a9a76804113b6dedc6fffed868b97048bbe6f1bedc675bdb8523c/protobuf-4.25.7-cp37-abi3-manylinux2014_x86_64.whl", hash = "sha256:d41fb7ae72a25fcb79b2d71e4247f0547a02e8185ed51587c22827a87e5736ed", size = 294636, upload-time = "2025-04-24T02:56:48.976Z" },
-    { url = "https://files.pythonhosted.org/packages/17/d7/1e7c80cb2ea2880cfe38580dcfbb22b78b746640c9c13fc3337a6967dc4c/protobuf-4.25.7-py3-none-any.whl", hash = "sha256:e9d969f5154eaeab41404def5dcf04e62162178f4b9de98b2d3c1c70f5f84810", size = 156468, upload-time = "2025-04-24T02:56:56.957Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/91/1e3a34881a88697a7354ffd177e8746e97a722e5e8db101544b47e84afb1/protobuf-6.33.2-cp310-abi3-win32.whl", hash = "sha256:87eb388bd2d0f78febd8f4c8779c79247b26a5befad525008e49a6955787ff3d", size = 425603, upload-time = "2025-12-06T00:17:41.114Z" },
+    { url = "https://files.pythonhosted.org/packages/64/20/4d50191997e917ae13ad0a235c8b42d8c1ab9c3e6fd455ca16d416944355/protobuf-6.33.2-cp310-abi3-win_amd64.whl", hash = "sha256:fc2a0e8b05b180e5fc0dd1559fe8ebdae21a27e81ac77728fb6c42b12c7419b4", size = 436930, upload-time = "2025-12-06T00:17:43.278Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/ca/7e485da88ba45c920fb3f50ae78de29ab925d9e54ef0de678306abfbb497/protobuf-6.33.2-cp39-abi3-macosx_10_9_universal2.whl", hash = "sha256:d9b19771ca75935b3a4422957bc518b0cecb978b31d1dd12037b088f6bcc0e43", size = 427621, upload-time = "2025-12-06T00:17:44.445Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/4f/f743761e41d3b2b2566748eb76bbff2b43e14d5fcab694f494a16458b05f/protobuf-6.33.2-cp39-abi3-manylinux2014_aarch64.whl", hash = "sha256:b5d3b5625192214066d99b2b605f5783483575656784de223f00a8d00754fc0e", size = 324460, upload-time = "2025-12-06T00:17:45.678Z" },
+    { url = "https://files.pythonhosted.org/packages/b1/fa/26468d00a92824020f6f2090d827078c09c9c587e34cbfd2d0c7911221f8/protobuf-6.33.2-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:8cd7640aee0b7828b6d03ae518b5b4806fdfc1afe8de82f79c3454f8aef29872", size = 339168, upload-time = "2025-12-06T00:17:46.813Z" },
+    { url = "https://files.pythonhosted.org/packages/56/13/333b8f421738f149d4fe5e49553bc2a2ab75235486259f689b4b91f96cec/protobuf-6.33.2-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:1f8017c48c07ec5859106533b682260ba3d7c5567b1ca1f24297ce03384d1b4f", size = 323270, upload-time = "2025-12-06T00:17:48.253Z" },
+    { url = "https://files.pythonhosted.org/packages/0e/15/4f02896cc3df04fc465010a4c6a0cd89810f54617a32a70ef531ed75d61c/protobuf-6.33.2-py3-none-any.whl", hash = "sha256:7636aad9bb01768870266de5dc009de2d1b936771b38a793f73cbbf279c91c5c", size = 170501, upload-time = "2025-12-06T00:17:52.211Z" },
 ]
 
 [[package]]
@@ -3573,7 +3590,7 @@ resolution-markers = [
     "sys_platform == 'darwin'",
 ]
 dependencies = [
-    { name = "gdal", marker = "sys_platform == 'darwin'" },
+    { name = "gdal", version = "3.12.0.post1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
     { name = "gmsh", marker = "sys_platform == 'darwin'" },
     { name = "numpy", marker = "sys_platform == 'darwin'" },
     { name = "scipy", marker = "sys_platform == 'darwin'" },
@@ -3587,7 +3604,7 @@ resolution-markers = [
     "sys_platform == 'linux'",
 ]
 dependencies = [
-    { name = "gdal", marker = "sys_platform == 'linux'" },
+    { name = "gdal", version = "3.11.4", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
     { name = "gmsh", marker = "sys_platform == 'linux'" },
     { name = "numpy", marker = "sys_platform == 'linux'" },
     { name = "scipy", marker = "sys_platform == 'linux'" },
@@ -3787,23 +3804,14 @@ wheels = [
 
 [[package]]
 name = "tensorboard-plugin-profile"
-version = "2.19.4"
+version = "2.21.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cheroot" },
-    { name = "etils", extra = ["epath"] },
-    { name = "fsspec", extra = ["gcs"] },
-    { name = "gviz-api" },
-    { name = "protobuf" },
-    { name = "setuptools" },
-    { name = "six" },
-    { name = "werkzeug" },
+    { name = "xprof" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/e4/3e7bd4226d7738d87558a4cc7c2c8b37de297db1f49cbd2d24f1bf677b0b/tensorboard_plugin_profile-2.19.4.tar.gz", hash = "sha256:d347f6da466c66159c99b4bfa94e6168a567154a2c617e28c8535f90887a8533", size = 5903891, upload-time = "2025-04-16T20:51:08.807Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d2/93/7ab054f4ef7dbbd11ef0417b25526124e51231f1a7e25994a66ddf894c17/tensorboard_plugin_profile-2.19.4-cp311-none-macosx_12_0_arm64.whl", hash = "sha256:9f99d0b3fb80a3a9ee5fe9394056affd59565933be7b7068cf639adbb8552e78", size = 14482931, upload-time = "2025-04-16T20:32:18.012Z" },
-    { url = "https://files.pythonhosted.org/packages/f7/b6/7e5ab65325c4be7c831a4b023ea111d1b596288cfcbe139ba554a46358e7/tensorboard_plugin_profile-2.19.4-cp311-none-manylinux2014_x86_64.whl", hash = "sha256:ae3489eb3e891b797c8be41360b300b2353b8482741a4b54e9542b839a67ca99", size = 12795850, upload-time = "2025-04-16T20:51:34.029Z" },
-    { url = "https://files.pythonhosted.org/packages/73/5c/fd9b958b4cadf2d0fb238947943a8e1ede3a0749e954897b1630dab31eb6/tensorboard_plugin_profile-2.19.4-cp311-none-win_amd64.whl", hash = "sha256:347f2b5527448354bab8d028b9afc3d968ec278ed5421a668d9dad0633b01466", size = 10972780, upload-time = "2025-04-16T20:37:56.349Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/1d/6b6973931d7ed05f9c78af94e83928a32017243588a2b9ee60bc357bd1fa/tensorboard_plugin_profile-2.21.3-cp311-none-macosx_12_0_arm64.whl", hash = "sha256:10a3def622620507a6762aeaa3e73cbf4bf80e76aba139f78bd519e3f2d9a619", size = 5797, upload-time = "2025-12-02T12:20:40.519Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/6c/8ed16cc8e8ed897c0b4761ee87684722aa8d5288009f87ac3d6835e0220e/tensorboard_plugin_profile-2.21.3-cp311-none-manylinux2014_x86_64.whl", hash = "sha256:13b04e9c66351dffe21eea9bfc4ad986bb7f776157c3c38a88960bd3957ee1fd", size = 5801, upload-time = "2025-12-02T14:06:36.163Z" },
 ]
 
 [[package]]
@@ -4095,6 +4103,26 @@ accel = [
     { name = "dask", extra = ["distributed"] },
     { name = "opt-einsum" },
     { name = "sparse" },
+]
+
+[[package]]
+name = "xprof"
+version = "2.21.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cheroot" },
+    { name = "etils", extra = ["epath"] },
+    { name = "fsspec" },
+    { name = "gcsfs" },
+    { name = "gviz-api" },
+    { name = "protobuf" },
+    { name = "setuptools" },
+    { name = "six" },
+    { name = "werkzeug" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2d/3d/20061022fcf2792a3461d3399e0c63b04c761dca88cb05367ba3df82bb33/xprof-2.21.3-cp311-none-macosx_12_0_arm64.whl", hash = "sha256:5fee47c11dfcf4f1f17304252bf2b89dee6b433f107ca61018c60c5190a702c6", size = 19147839, upload-time = "2025-12-02T12:20:37.253Z" },
+    { url = "https://files.pythonhosted.org/packages/78/86/30f65cda17d3114e3cc814d745a464aae36f5b37561dabee5f92069ca2f6/xprof-2.21.3-cp311-none-manylinux2014_x86_64.whl", hash = "sha256:72478cd6cd4965d7180dee9641e8bb9dcc3404bf28f4a1ecf5421c2e6f8848df", size = 21270174, upload-time = "2025-12-02T14:06:33.462Z" },
 ]
 
 [[package]]
