@@ -114,7 +114,7 @@ done
 
 # Load provided Leonardo modules.
 # Notice: **don't** load other modules beforehand (e.g. cmake), in tests bugged pigz/tar will make the build fail.
-module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
+module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2 cmake/3.27.9
 
 # FIXME: if "fatal: not a git repository ..." exit with failure.
 #  Also, all the script use the same approach of finding the root of the project by means of git. Remote working
@@ -197,11 +197,13 @@ if [[ $BUILD_SPACK == true ]]; then
 
     # Is it useful to add gcc and openmpi externals to the current environment? E.g.
     # spack compiler find
-    # spack external find --not-buildable gcc openmpi
+    spack external find --not-buildable gcc openmpi cmake
 
     # Add python and gdal to the environment, then install
-    spack add python@3.11
-    spack add gdal@3.11.4
+    spack add python@3.11%gcc@12.2.0
+    spack add gdal@3.11.4%gcc@12.2.0
+    # Build fails for proj@9.7.0
+    spack add proj@9.4.1%gcc@12.2.0
 
     spack concretize || exit 1
 
@@ -227,12 +229,12 @@ if [[ $BUILD_VENV == true ]]; then
 
     if [[ $COMPILE_VENV == true ]]; then
         # Freeze environment for later reuse
-        pip-compile --extra-index-url=https://download.pytorch.org/whl/cpu --no-strip-extras --all-build-deps --all-extras --output-file="${ROOT}/leonardo/environment/requirements.txt" "${ROOT}/pyproject.toml" || exit 1
+        pip-compile --no-strip-extras --all-build-deps --all-extras --output-file="${ROOT}/leonardo/environment/requirements.txt" "${ROOT}/pyproject.toml" || exit 1
     fi
     
     if [[ $DOWNLOAD_VENV == true ]]; then   
         # Download packages on login nodes (needs internet connection)
-        pip download --dest="${PKG_CACHE_DIR}" --extra-index-url=https://download.pytorch.org/whl/cpu -r "${ROOT}/leonardo/environment/requirements.txt"
+        pip download --dest="${PKG_CACHE_DIR}" -r "${ROOT}/leonardo/environment/requirements.txt"
     fi
 
     if [[ $INSTALL_VENV == true ]]; then

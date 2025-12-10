@@ -97,6 +97,7 @@ stats = "graphcast.stats:cli"
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [tool.setuptools]
+# How to override dependencies when using setuptools?
 packages = ["graphcast"]
 
 [tool.uv]

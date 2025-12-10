@@ -3,7 +3,7 @@
 # Notice: the activation script has to be sourced, not executed.
 
 # Load provided Leonardo modules (assume no other modules are loaded prior this point).
-module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2
+module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2 cmake/3.27.9
 
 ROOT=$(git rev-parse --show-toplevel)
 
