@@ -442,6 +442,7 @@ markdown-it-py==3.0.0
     # via
     #   mdit-py-plugins
     #   panel
+    #   rich
 markupsafe==3.0.2
     # via
     #   jinja2
@@ -738,6 +739,7 @@ pygments==2.19.2
     #   ipython
     #   ipython-pygments-lexers
     #   nbconvert
+    #   rich
 pyjwt[crypto]==2.10.1
     # via
     #   msal
@@ -825,6 +827,8 @@ rfc3986-validator==0.1.1
     #   jupyter-events
 rfc3987-syntax==1.1.0
     # via jsonschema
+rich==14.2.0
+    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 rpds-py==0.26.0
     # via
     #   jsonschema

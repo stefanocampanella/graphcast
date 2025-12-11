@@ -55,6 +55,8 @@ dependencies = [
     "pandas",
     "pandas-stubs~=2.2.3",
     "papermill[all]",
+    # Necessary to visualize array sharding in JAX
+    "rich",
     "rtree",
     "s3fs",
     "scipy",
