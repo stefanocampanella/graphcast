@@ -6,6 +6,7 @@ cd "${PROJECTROOT}" || exit 1
 # Activate environment
 source leonardo/environment/activate
 
+echo "Hostname: $(hostname -s)"
 jupyter lab --ip="$(hostname -i)" "${@}"
 
 source leonardo/environment/deactivate
