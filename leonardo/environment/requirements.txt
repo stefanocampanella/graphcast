@@ -890,8 +890,6 @@ tensorboard==2.20.0
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 tensorboard-data-server==0.7.2
     # via tensorboard
-tensorboard-plugin-profile==2.20.4
-    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 tensorstore==0.1.76
     # via orbax-checkpoint
 terminado==0.18.1
@@ -1010,7 +1008,7 @@ xarray==2025.7.1
 xarray-regrid[accel]==0.4.1
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 xprof==2.20.4
-    # via tensorboard-plugin-profile
+    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 xyzservices==2025.4.0
     # via
     #   bokeh

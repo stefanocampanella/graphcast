@@ -1369,12 +1369,12 @@ dependencies = [
     { name = "seamsh", version = "0.1", source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }, marker = "sys_platform == 'darwin'" },
     { name = "seamsh", version = "0.4.18", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
     { name = "tensorboard" },
-    { name = "tensorboard-plugin-profile" },
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "typing-extensions" },
     { name = "xarray" },
     { name = "xarray-regrid", extra = ["accel"] },
+    { name = "xprof" },
     { name = "zarr" },
 ]
 
@@ -1431,12 +1431,12 @@ requires-dist = [
     { name = "seamsh", marker = "sys_platform == 'darwin'", git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18" },
     { name = "seamsh", marker = "sys_platform == 'linux'", specifier = "==0.4.18" },
     { name = "tensorboard" },
-    { name = "tensorboard-plugin-profile" },
     { name = "tqdm" },
     { name = "trimesh" },
     { name = "typing-extensions" },
     { name = "xarray" },
     { name = "xarray-regrid", extras = ["accel"] },
+    { name = "xprof" },
     { name = "zarr", specifier = ">=2,<3" },
 ]
 
@@ -3815,18 +3815,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/7a/13/e503968fefabd4c6b2650af21e110aa8466fe21432cd7c43a84577a89438/tensorboard_data_server-0.7.2-py3-none-any.whl", hash = "sha256:7e0610d205889588983836ec05dc098e80f97b7e7bbff7e994ebb78f578d0ddb", size = 2356, upload-time = "2023-10-23T21:23:32.16Z" },
     { url = "https://files.pythonhosted.org/packages/b7/85/dabeaf902892922777492e1d253bb7e1264cadce3cea932f7ff599e53fea/tensorboard_data_server-0.7.2-py3-none-macosx_10_9_x86_64.whl", hash = "sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60", size = 4823598, upload-time = "2023-10-23T21:23:33.714Z" },
     { url = "https://files.pythonhosted.org/packages/73/c6/825dab04195756cf8ff2e12698f22513b3db2f64925bdd41671bfb33aaa5/tensorboard_data_server-0.7.2-py3-none-manylinux_2_31_x86_64.whl", hash = "sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530", size = 6590363, upload-time = "2023-10-23T21:23:35.583Z" },
-]
-
-[[package]]
-name = "tensorboard-plugin-profile"
-version = "2.21.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "xprof" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/1d/6b6973931d7ed05f9c78af94e83928a32017243588a2b9ee60bc357bd1fa/tensorboard_plugin_profile-2.21.3-cp311-none-macosx_12_0_arm64.whl", hash = "sha256:10a3def622620507a6762aeaa3e73cbf4bf80e76aba139f78bd519e3f2d9a619", size = 5797, upload-time = "2025-12-02T12:20:40.519Z" },
-    { url = "https://files.pythonhosted.org/packages/4a/6c/8ed16cc8e8ed897c0b4761ee87684722aa8d5288009f87ac3d6835e0220e/tensorboard_plugin_profile-2.21.3-cp311-none-manylinux2014_x86_64.whl", hash = "sha256:13b04e9c66351dffe21eea9bfc4ad986bb7f776157c3c38a88960bd3957ee1fd", size = 5801, upload-time = "2025-12-02T14:06:36.163Z" },
 ]
 
 [[package]]

@@ -66,13 +66,12 @@ dependencies = [
     # Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work
     "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.18 ; sys_platform == 'darwin'",
     "tensorboard",
-    "tensorboard",
-    "tensorboard_plugin_profile",
     "tqdm",
     "trimesh",
     "typing_extensions",
     "xarray",
     "xarray-regrid[accel]",
+    "xprof",
     # TODO: Port to Zarr v3
     "zarr>=2,<3",
 ]
