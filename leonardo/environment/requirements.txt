@@ -11,9 +11,11 @@ absl-py==2.3.1
     #   dm-haiku
     #   dm-tree
     #   grain
+    #   keras
     #   optax
     #   orbax-checkpoint
     #   tensorboard
+    #   tensorflow
 aiobotocore==2.24.1
     # via s3fs
 aiofiles==24.1.0
@@ -51,6 +53,8 @@ asciitree==0.3.3
     # via zarr
 asttokens==3.0.0
     # via stack-data
+astunparse==1.6.3
+    # via tensorflow
 async-lru==2.0.5
     # via jupyterlab
 attrs==25.3.0
@@ -218,6 +222,8 @@ fastjsonschema==2.21.1
     # via nbformat
 findlibs==0.1.1
     # via eccodes
+flatbuffers==25.12.19
+    # via tensorflow
 flox==0.10.4
     # via
     #   graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
@@ -237,6 +243,8 @@ fsspec==2025.7.0
     #   gcsfs
     #   s3fs
     #   xprof
+gast==0.7.0
+    # via tensorflow
 gcsfs==2025.7.0
     # via
     #   graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
@@ -282,6 +290,8 @@ google-crc32c==1.7.1
     # via
     #   google-cloud-storage
     #   google-resumable-media
+google-pasta==0.2.0
+    # via tensorflow
 google-resumable-media==2.7.2
     # via google-cloud-storage
 googleapis-common-protos==1.70.0
@@ -291,7 +301,9 @@ grain==0.2.15
 graphviz==0.21
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 grpcio==1.73.1
-    # via tensorboard
+    # via
+    #   tensorboard
+    #   tensorflow
 gviz-api==1.10.0
     # via xprof
 h11==0.16.0
@@ -301,7 +313,10 @@ h5netcdf==1.6.3
     #   copernicusmarine
     #   graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 h5py==3.14.0
-    # via h5netcdf
+    # via
+    #   h5netcdf
+    #   keras
+    #   tensorflow
 holoviews==1.21.0
     # via
     #   geoviews
@@ -422,10 +437,14 @@ jupyterlab-server==2.27.3
     # via jupyterlab
 jupyterlab-widgets==3.0.15
     # via ipywidgets
+keras==3.13.0
+    # via tensorflow
 kiwisolver==1.4.8
     # via matplotlib
 lark==1.2.2
     # via rfc3987-syntax
+libclang==18.1.1
+    # via tensorflow
 linkify-it-py==2.0.3
     # via panel
 llvmlite==0.44.0
@@ -467,6 +486,8 @@ ml-dtypes==0.5.1
     # via
     #   jax
     #   jaxlib
+    #   keras
+    #   tensorflow
     #   tensorstore
 more-itertools==10.7.0
     # via
@@ -493,6 +514,8 @@ multiurl==0.3.6
     # via ecmwf-datastores-client
 mypy-extensions==1.1.0
     # via black
+namex==0.1.0
+    # via keras
 narwhals==1.48.0
     # via bokeh
 nbclient==0.10.2
@@ -549,6 +572,7 @@ numpy==2.2.6
     #   jaxlib
     #   jmp
     #   jraph
+    #   keras
     #   matplotlib
     #   ml-dtypes
     #   nc-time-axis
@@ -565,6 +589,7 @@ numpy==2.2.6
     #   shapely
     #   sparse
     #   tensorboard
+    #   tensorflow
     #   tensorstore
     #   trimesh
     #   xarray
@@ -610,9 +635,12 @@ oauthlib==3.3.1
 opt-einsum==3.4.0
     # via
     #   jax
+    #   tensorflow
     #   xarray-regrid
 optax==0.2.5
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+optree==0.18.0
+    # via keras
 optype==0.12.2
     # via scipy-stubs
 orbax-checkpoint==0.11.25
@@ -636,10 +664,12 @@ packaging==25.0
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   keras
     #   matplotlib
     #   nbconvert
     #   panel
     #   tensorboard
+    #   tensorflow
     #   xarray
     #   xprof
 pandas==2.3.1
@@ -705,6 +735,7 @@ protobuf==6.31.1
     #   orbax-checkpoint
     #   proto-plus
     #   tensorboard
+    #   tensorflow
     #   xprof
 psutil==7.0.0
     # via
@@ -815,6 +846,7 @@ requests==2.32.4
     #   papermill
     #   pygithub
     #   requests-oauthlib
+    #   tensorflow
 requests-oauthlib==2.0.0
     # via google-auth-oauthlib
 rfc3339-validator==0.1.4
@@ -828,7 +860,9 @@ rfc3986-validator==0.1.1
 rfc3987-syntax==1.1.0
     # via jsonschema
 rich==14.2.0
-    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+    # via
+    #   graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+    #   keras
 rpds-py==0.26.0
     # via
     #   jsonschema
@@ -865,10 +899,13 @@ simplejson==3.20.1
     # via orbax-checkpoint
 six==1.17.0
     # via
+    #   astunparse
     #   azure-core
+    #   google-pasta
     #   gviz-api
     #   python-dateutil
     #   rfc3339-validator
+    #   tensorflow
     #   xprof
 sniffio==1.3.1
     # via anyio
@@ -887,11 +924,15 @@ tblib==3.1.0
 tenacity==9.1.2
     # via papermill
 tensorboard==2.20.0
-    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+    # via tensorflow
 tensorboard-data-server==0.7.2
     # via tensorboard
+tensorflow==2.20.0 ; sys_platform == "linux"
+    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 tensorstore==0.1.76
     # via orbax-checkpoint
+termcolor==3.2.0
+    # via tensorflow
 terminado==0.18.1
     # via
     #   jupyter-server
@@ -957,6 +998,7 @@ typing-extensions==4.14.1
     #   etils
     #   graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   ipython
+    #   optree
     #   optype
     #   orbax-checkpoint
     #   panel
@@ -964,6 +1006,7 @@ typing-extensions==4.14.1
     #   pydantic-core
     #   pygithub
     #   referencing
+    #   tensorflow
     #   typing-inspection
 typing-inspection==0.4.1
     # via pydantic
@@ -993,6 +1036,8 @@ werkzeug==3.1.3
     # via
     #   tensorboard
     #   xprof
+wheel==0.45.1
+    # via astunparse
 widgetsnbextension==4.0.14
     # via ipywidgets
 wrapt==1.17.2
@@ -1000,6 +1045,7 @@ wrapt==1.17.2
     #   aiobotocore
     #   deprecated
     #   dm-tree
+    #   tensorflow
 xarray==2025.7.1
     # via
     #   copernicusmarine

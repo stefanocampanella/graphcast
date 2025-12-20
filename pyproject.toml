@@ -65,7 +65,10 @@ dependencies = [
     "seamsh==0.4.18 ; sys_platform == 'linux'",
     # Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work
     "seamsh@git+https://git.immc.ucl.ac.be/jlambrechts/seamsh.git@v-0.4.18 ; sys_platform == 'darwin'",
-    "tensorboard",
+    # FIXME: find a way to have a functioning xprof and tensorboard on MacOS with ARM.
+    #   See: https://github.com/tensorflow/tensorflow/issues/99464 and
+    #   https://github.com/tensorflow/tensorflow/issues/98563#issuecomment-3536220032
+    "tensorflow ; sys_platform == 'linux'",
     "tqdm",
     "trimesh",
     "typing_extensions",

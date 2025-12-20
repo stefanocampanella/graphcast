@@ -12,6 +12,7 @@
 .git
 build
 graphcast.egg-info
+graphcast_ocean.egg-info
 data
 runs
 logs
