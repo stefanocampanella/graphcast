@@ -34,7 +34,7 @@ from graphcast.dataset_utils import (Configs,
                                      open_mfdataset,
                                      save_to_zarr,
                                      valid_time_coordinate)
-from graphcast.distributed_utils import get_client
+from graphcast.dask_distributed_utils import get_client
 
 
 def bar(progress):

@@ -28,7 +28,7 @@ from typing import Tuple
 
 import click
 import mpi4py
-from graphcast.distributed_utils import set_log_handler, dask_mpi_initialize
+from graphcast.dask_distributed_utils import set_log_handler, dask_mpi_initialize
 from distributed import Client
 from distributed.utils import TimeoutError as DaskTimeoutError
 

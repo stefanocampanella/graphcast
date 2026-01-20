@@ -34,7 +34,7 @@ import pathlib
 
 import click
 
-from graphcast.distributed_utils import get_client
+from graphcast.dask_distributed_utils import get_client
 from graphcast.dataset_utils import open_dataset_wo_static, save_to_zarr
 from graphcast.stats_utils import Stats, StatsRegistry
 from graphcast.cli_utils import DictParamType
