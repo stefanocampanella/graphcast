@@ -1,0 +1,107 @@
+seed = 42
+target_lead_times = "1d"
+description = """
+  GraphCast model for the ocean at 0.25deg resolution, with 10 depth levels. \
+  This model is trained on ARCO-OCEAN data from 1993 to 2021, \
+  and can be causally evaluated on 2022 and later years. \
+  It uses a global ocean mesh with uniform target mesh size of 300 km. \
+  GraphCast is described in the paper \
+  `GraphCast: Learning skillful medium-range global weather forecasting`(https://arxiv.org/abs/2212.12794). \
+  For a description of the ocean model, see README at \
+  https://github.com/stefanocampanella/graphcast.
+  """
+license = """
+  The model weights are licensed under the Creative Commons \
+  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
+  may obtain a copy of the License at: \
+  https://creativecommons.org/licenses/by-nc-sa/4.0/. \
+  The weights were trained on ARCO-OCEAN data, see README at \
+  https://github.com/inogs/arco-ocean \
+  for attribution statement. \
+  """
+
+[task]
+input_variables = [
+    "zos",
+    "mlotst",
+    "thetao",
+    "siconc",
+    "sithick",
+    "so",
+    "uo",
+    "usi",
+    "vo",
+    "vsi",
+    "deptho",
+    "z",
+    "glofas_mask",
+    "glorys_mask",
+    "lsm",
+    "uparea",
+    "waverys_deptho",
+    "waverys_mask",
+]
+target_variables = [
+    "zos",
+    "mlotst",
+    "thetao",
+    "siconc",
+    "sithick",
+    "so",
+    "uo",
+    "usi",
+    "vo",
+    "vsi",
+]
+forcing_variables = [
+    "10u",
+    "10v",
+    "2d",
+    "2t",
+    "dis24",
+    "sp",
+    "ssrd",
+    "strd",
+    "tp",
+    "swh",
+    "year_progress_sin",
+    "year_progress_cos",
+]
+levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
+input_duration = "2d"
+
+[model]
+latent_size = 512
+gnn_msg_steps = 16
+hidden_layers = 1
+radius_query_fraction_edge_length = 0.6
+per_variable_weights = {}
+
+[mesh]
+filepath = "data/geometry/uniform_mini.msh"
+radius_query_fraction_edge_length = 0.6
+description = """
+  Global ocean triangular mesh, \
+  with a target mesh size set to a uniform field with a value of 300km \
+  for the interior of the domain and 10km for coastlines. \
+  The mesh was then post-processed to remove vertices not connected to \
+  a sea point according to the GLORYS12 sea-land mask contained in ARCO-OCEAN, \
+  as documented in the code at https://github.com/stefanocampanella/graphcast. \
+  The code used the seamsh Python package by Jonathan Lambrechts \
+  and a description of the algorithm can be found at \
+  https://doi.org/10.1007/s10236-008-0148-3 \
+  The code uses coastline shapefiles, which are taken from \
+  NaturalEarth physical vector 1:10m coastline files \
+  (version 4.1.0, accessed on 21/01/2026).
+  """
+license = """
+  The mesh is licensed under the Creative Commons \
+  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
+  may obtain a copy of the License at: \
+  https://creativecommons.org/licenses/by-nc-sa/4.0/. \
+  Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com
+  """
+
+[dataset]
+filepath = "data/dataset/dataset_tres-1d_res-1_levels-10_arco"
+timesteps = 3

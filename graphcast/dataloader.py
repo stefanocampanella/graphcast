@@ -1,9 +1,18 @@
 import pathlib
+from collections import OrderedDict
 from typing import SupportsIndex
 
 import grain.python as grain
-import xarray as xr
+import jax
 import numpy as np
+import xarray as xr
+from grain.sharding import ShardOptions
+from jax.experimental import multihost_utils
+from jax.sharding import PartitionSpec, NamedSharding
+
+from graphcast import xarray_jax
+from graphcast.data_utils import extract_inputs_targets_forcings
+
 
 class ARCODataSource(grain.RandomAccessDataSource):
   """A data source for analysis-ready cloud-optimized datasets containing time-series."""
@@ -32,123 +41,118 @@ class ARCODataSource(grain.RandomAccessDataSource):
     return self._dataset[self._mask_name].isel(level=0, drop=True)
 
 
+class ToXarrayJax(grain.MapTransform):
+
+  def __init__(self, datetime_coord_name='datetime'):
+    self.datetime_coord_name = datetime_coord_name
+
+  def map(self, dataset: xr.Dataset) -> xr.Dataset:
+    datetime_coord = dataset[self.datetime_coord_name]
+    datetime_coord.data = datetime_coord.data.astype("datetime64[s]").astype(np.int64)
+    dataset = dataset.drop(self.datetime_coord_name)
+    dataset = xarray_jax.Dataset(data_vars={var: (data.dims, data.data) for var, data in dataset.data_vars.items()},
+                                 coords=dataset.coords,
+                                 jax_coords={self.datetime_coord_name: datetime_coord},
+                                 attrs=dataset.attrs)
+    return dataset
+
+
+class MakeArrayFromProcessLocalData(grain.MapTransform):
+  def __init__(self, sharding):
+    self.sharding = sharding
+
+  def map(self, dataset: xr.Dataset) -> xr.Dataset:
+    dataset = dataset.map(
+      lambda da: jax.tree_util.tree_map(
+        lambda xs: jax.make_array_from_process_local_data(sharding=self.sharding, local_data=xs),
+      da))
+    return dataset
+
+
 class AddLogDepthCoordinate(grain.MapTransform):
 
   def map(self, dataset: xr.Dataset) -> xr.Dataset:
     return dataset.assign_coords({'log-depth': - np.log(dataset['depth'])})
 
 
-# TODO: experiments in the past used the following torch dataloader, check that all features have been implemented.
-# from graphcast import solar_radiation
-# from graphcast import model
-# from graphcast import xarray_jax
-# from torch.utils.data import Dataset, DataLoader as TorchDataLoader, RandomSampler, BatchSampler
-#
-# class FakeGraphcastDemoDataset(Dataset):
-#
-#   def __init__(self, dataset_path: pathlib.Path, task_config: model.TaskConfig, fake_len: int = 16, steps: int = 1):
-#     self.dataset_path = dataset_path
-#     self.task_config = task_config
-#     self.fake_len = fake_len
-#     self.steps = steps
-#
-#     with self.dataset_path.open("rb") as dataset_file:
-#       example_batch = xarray.load_dataset(dataset_file).compute()
-#
-#     assert example_batch.sizes["time"] >= 3  # 2 for input, >=1 for targets
-#
-#     self.example_batch = example_batch
-#
-#   def __len__(self):
-#     return self.fake_len
-#
-#   def __getitem__(self, idx):
-#     inputs, targets, forcings = extract_inputs_targets_forcings(
-#       self.example_batch, target_lead_times=slice("6h", f"{self.steps * 6}h"),
-#       **dataclasses.asdict(self.task_config))
-#     return inputs, targets, forcings
-#
-#
-# class ERA5Dataset(Dataset):
-#
-#   def __init__(self, dataset_path: Union[pathlib.Path, str], task_config: model.TaskConfig, steps: int = 1):
-#     self.dataset_path = dataset_path
-#     self.task_config = task_config
-#     self.steps = steps
-#
-#     ds = xarray.open_zarr(dataset_path)
-#     assert ds.sizes["time"] >= 3  # at least 2 for input, >=1 for targets
-#
-#     ds = ds.drop_vars(var for var in ds.data_vars.keys() if var not in task_config.input_variables)
-#     ds = ds.expand_dims(dim='batch', axis=0)
-#     ds = ds.assign_coords({'datetime': ds['time'].expand_dims(dim='batch', axis=0)})
-#     ds['time'] = ds['time'] - ds['time'][0]
-#
-#     ds = ds.swap_dims(latitude='lat', longitude='lon')
-#     ds = ds.rename_vars(latitude='lat', longitude='lon')
-#     ds = ds.set_index(lat='lat', lon='lon', level='level', time='time')
-#     #TODO: The code should comply with the usual convention for longitudes.
-#     # However, this would require retraining of original GraphCast weights.
-#     #ds['lon'] = np.where(ds.lon <= 180, ds.lon, ds.lon - 360)
-#
-#     #TODO: Find out why transpose in accord to demo data breaks experiments.
-#     # ds = ds.transpose("batch", "time", "level", "lat", "lon")
-#     self.dataset = ds
-#
-#
-#   def __len__(self):
-#     return self.dataset.sizes["time"] - 2
-#
-#
-#   def __getitem__(self, idx):
-#     ds = self.dataset.sel(time=self.dataset.time[idx:])
-#     inputs, targets, forcings = extract_inputs_targets_forcings(ds,
-#                                            target_lead_times=slice("6h", f"{self.steps * 6}h"),
-#                                            **dataclasses.asdict(self.task_config))
-#     return inputs, targets, forcings
-#
-#
-# def device_put(ds, *args, **kwargs):
-#
-#   def _move_data_array(var, name=None, jax_coords=None):
-#     return xarray_jax.DataArray(jax.device_put(var.data, *args, **kwargs),
-#                                 coords=var.coords,
-#                                 dims=var.dims,
-#                                 name=name,
-#                                 attrs=var.attrs,
-#                                 jax_coords=jax_coords)
-#
-#   data_variables_names = set(ds.variables.keys()) - set(ds.coords.keys())
-#   variables = {name: _move_data_array(ds[name], name=name) for name in data_variables_names}
-#   return xarray_jax.Dataset(variables, coords=ds.coords, attrs=ds.attrs)
-#
-#
-# def default_collate_fn(batch):
-#   if len(batch) > 1:
-#     data = map(lambda datasets: xarray.concat(datasets, dim='batch'), zip(*batch))
-#   else:
-#     data = batch[0]
-#   inputs, targets, forcings = map(lambda ds: ds.compute(), data)
-#   return inputs, targets, forcings
-#
-#
-# class DataLoader(TorchDataLoader):
-#
-#   def __init__(self, dataset: Dataset, batch_size=None, num_samples=None, sharding=None, collate_fn=default_collate_fn, **kwargs):
-#     sampler = RandomSampler(dataset, replacement=True, num_samples=num_samples * batch_size, generator=kwargs.get('generator'))
-#     batch_sampler = BatchSampler(sampler=sampler, batch_size=batch_size, drop_last=True)
-#     kwargs.update({'shuffle': None, 'drop_last': None, 'sampler': None, 'batch_sampler': batch_sampler})
-#     super().__init__(dataset, collate_fn=collate_fn, **kwargs)
-#     self.sharding = sharding
-#
-#   def __next__(self):
-#     next_elem = super().__next__()
-#     if self.sharding is None:
-#       inputs, targets, forcings = next_elem
-#     else:
-#       inputs, targets, forcings = map(lambda x: device_put(x, self.sharding), next_elem)
-#     return inputs, targets, forcings
-#
-#   @property
-#   def random_item(self):
-#     return next(iter(self))
+class RestoreDatetimeCoordinate(grain.MapTransform):
+
+  def __init__(self, datetime_coord_name='datetime', gather_from_all_processes=True):
+    self.gather_from_all_processes = gather_from_all_processes
+    self.datetime_coord_name = datetime_coord_name
+
+  def map(self, dataset: xr.Dataset) -> xr.Dataset:
+    datetime_coordinate = dataset[self.datetime_coord_name]
+    # The datetime coordinate should be reverted to a simple coordinate (and not jax_coordinate with an underlying jax
+    # array spanning multiple processes/devices): this requires calling
+    # `jax.experimental.multihost_utils.process_allgather`, then unwrapping/converting to numpy.ndarray and calling
+    # `xarray_jax.Dataset`, and finally recasting to datetime64[ns] (the easy part).
+    if self.gather_from_all_processes:
+      datetime_coordinate = multihost_utils.process_allgather(datetime_coordinate)
+    datetime_coordinate = xarray_jax.unwrap(datetime_coordinate)
+    datetime_coordinate = datetime_coordinate.astype('datetime64[s]')
+    dataset = dataset.drop(self.datetime_coord_name)
+    dataset = dataset.assign_coords({self.datetime_coord_name: datetime_coordinate})
+    return dataset
+
+
+class FillNans(grain.MapTransform):
+
+  def map(self, dataset: xr.Dataset) -> xr.Dataset:
+    # Notice: as a side-effect, boolean variables get casted to float32 (which is useful)
+    dataset = dataset.fillna(value=jax.numpy.float32(0.0))
+    return dataset
+
+
+class ExtractInputsTargetsForcings(grain.MapTransform):
+
+  def __init__(self, task, target_lead_times="1d", derived_vars_device=None):
+    self.task = task
+    self.target_lead_times = target_lead_times
+    self.derived_vars_device = derived_vars_device
+
+  def map(self, dataset: xr.Dataset) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    inputs, targets, forcings = extract_inputs_targets_forcings(dataset=dataset,
+                                                                **self.task,
+                                                                target_lead_times=self.target_lead_times,
+                                                                to_jax=True,
+                                                                derived_vars_device=self.derived_vars_device)
+    return inputs, targets, forcings
+
+
+class DevicePut(grain.MapTransform):
+
+  def __init__(self, mesh, replicate_along_batch=False, batch_dim_name='batch'):
+
+    self.mesh = mesh
+    self.replicate_along_batch = replicate_along_batch
+    self.batch_dim_name = batch_dim_name
+
+  def map(self, dataset: xr.Dataset) -> xr.Dataset:
+    if self.replicate_along_batch:
+      sharding = NamedSharding(self.mesh, PartitionSpec())
+    else:
+      sharding = NamedSharding(self.mesh, PartitionSpec(self.batch_dim_name))
+
+    def _put_dataarray(data_array):
+      return jax.tree_util.tree_map(lambda xs: jax.device_put(xs, sharding), data_array)
+
+    return dataset.map(lambda da: _put_dataarray(da))
+
+
+class BatchParallelShardOptions(ShardOptions):
+
+  def __init__(self, sharding, batch_dim_name='batch', drop_remainder=False):
+
+    def addressable_device_mesh_indices_map(device):
+      global_shape = tuple(size for (_, size) in sharding.mesh.shape_tuple)
+      slices = sharding.addressable_devices_indices_map(global_shape)[device]
+      indices = OrderedDict((name, s.start) for (name, s) in zip(sharding.mesh.axis_names, slices))
+      return indices
+
+    local_device_batch_indices = [addressable_device_mesh_indices_map(device)[batch_dim_name]
+                                  for device in sharding.addressable_devices]
+    assert all(n == local_device_batch_indices[0] for n in local_device_batch_indices)
+    shard_index = local_device_batch_indices[0]
+    shard_count = sharding.mesh.shape[batch_dim_name]
+    super().__init__(shard_count=shard_count, shard_index=shard_index, drop_remainder=drop_remainder)

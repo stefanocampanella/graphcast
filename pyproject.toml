@@ -97,6 +97,7 @@ classifiers = ["Development Status :: 3 - Alpha",
 dataset = "graphcast.dataset:cli"
 ocean-mesh = "graphcast.ocean_mesh:cli"
 stats = "graphcast.stats:cli"
+training = "graphcast.training:cli"
 
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/graphcast"
