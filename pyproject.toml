@@ -71,6 +71,7 @@ dependencies = [
     "tensorflow ; sys_platform == 'linux'",
     "tqdm",
     "trimesh",
+    "treescope",
     "typing_extensions",
     "xarray",
     "xarray-regrid[accel]",
