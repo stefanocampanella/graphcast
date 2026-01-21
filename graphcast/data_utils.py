@@ -15,11 +15,15 @@
 
 from typing import Any, Mapping, Sequence, Tuple, Union
 
+import chex
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 import xarray
 
 from graphcast import solar_radiation
+from graphcast.xarray_jax import wrap
 
 TimedeltaLike = Any  # Something convertible to pd.Timedelta.
 TimedeltaStr = str  # A string convertible to pd.Timedelta.
@@ -102,7 +106,7 @@ def get_day_progress(
 
 
 def featurize_progress(
-    name: str, dims: Sequence[str], progress: np.ndarray
+    name: str, dims: Sequence[str], progress: chex.Array
 ) -> Mapping[str, xarray.Variable]:
   """Derives features used by ML models from the `progress` variable.
 
@@ -125,19 +129,28 @@ def featurize_progress(
         f"Number of feature dimensions ({len(dims)}) must be equal to the"
         f" number of data dimensions: {progress.ndim}."
     )
-  progress_phase = progress * (2 * np.pi)
+  if isinstance(progress, jax.Array):
+    progress_phase = progress * (2 * jnp.pi)
+    progress_sin = wrap(jnp.sin(progress_phase))
+    progress_cos = wrap(jnp.cos(progress_phase))
+  else:
+    progress_phase = progress * (2 * np.pi)
+    progress_sin = np.sin(progress_phase)
+    progress_cos = np.cos(progress_phase)
   return {
       name: xarray.Variable(dims, progress),
-      name + "_sin": xarray.Variable(dims, np.sin(progress_phase)),
-      name + "_cos": xarray.Variable(dims, np.cos(progress_phase)),
+      name + "_sin": xarray.Variable(dims, progress_sin),
+      name + "_cos": xarray.Variable(dims, progress_cos),
   }
 
 
-def add_derived_vars(data: xarray.Dataset) -> None:
+def add_derived_vars(data: xarray.Dataset, to_jax=False, device=None) -> None:
   """Adds year and day progress features to `data` in place if missing.
 
   Args:
     data: Xarray dataset to which derived features will be added.
+    to_jax: Boolean flag for adding progress features as (wrapped) JAX arrays.
+    device: JAX device where to put progress feature arrays to.
 
   Raises:
     ValueError if `datetime` or `lon` are not in `data` coordinates.
@@ -158,6 +171,8 @@ def add_derived_vars(data: xarray.Dataset) -> None:
   # Add year progress features if missing.
   if YEAR_PROGRESS not in data.data_vars:
     year_progress = get_year_progress(seconds_since_epoch)
+    if to_jax:
+      year_progress = jax.device_put(year_progress, device=device)
     data.update(
         featurize_progress(
             name=YEAR_PROGRESS,
@@ -170,6 +185,8 @@ def add_derived_vars(data: xarray.Dataset) -> None:
   if DAY_PROGRESS not in data.data_vars:
     longitude_coord = data.coords["lon"]
     day_progress = get_day_progress(seconds_since_epoch, longitude_coord.data)
+    if to_jax:
+      day_progress = jax.device_put(day_progress, device=device)
     data.update(
         featurize_progress(
             name=DAY_PROGRESS,
@@ -182,7 +199,8 @@ def add_derived_vars(data: xarray.Dataset) -> None:
 def add_tisr_var(data: xarray.Dataset,
                  tisr_name: str = _DEFAULT_TISR_NAME,
                  integration_period: TimedeltaLike = solar_radiation._DEFAULT_INTEGRATION_PERIOD,
-                 forward=False) -> None:
+                 forward=False,
+                 device=None) -> None:
   """Adds ERA5-compatible TISR to `data` in place if missing.
 
   Computes top-of-atmosphere incident solar radiation integrated over a
@@ -210,6 +228,7 @@ def add_tisr_var(data: xarray.Dataset,
       (default: one hour), matching ERA5 when set to 1h.
     forward: If True, integrates forward in time from each `datetime`; otherwise
       integrates ending at each `datetime`.
+    device: JAX device to use when adding TISR feature as a (wrapped) JAX array (not implemented).
 
   Raises:
     ValueError: If required coordinates (`datetime`, `lat`, `lon`) are missing.
@@ -229,6 +248,9 @@ def add_tisr_var(data: xarray.Dataset,
   tisr = solar_radiation.get_toa_incident_solar_radiation_for_xarray(
       data_no_batch, use_jit=True, integration_period=integration_period, forward=forward
   )
+
+  if device is not None:
+    raise ValueError("Sharding is not supported for TISR computation.")
 
   if "batch" in data.dims:
     tisr = tisr.expand_dims("batch", axis=0)
@@ -356,7 +378,9 @@ def extract_inputs_targets_forcings(
     target_lead_times: TargetLeadTimes,
     tisr_name: str = _DEFAULT_TISR_NAME,
     integration_period: TimedeltaLike = "1d",
-    forward: bool = False
+    forward: bool = False,
+    to_jax=False,
+    derived_vars_device=None,
     ) -> Tuple[xarray.Dataset, xarray.Dataset, xarray.Dataset]:
   """Extracts inputs, targets, and forcings from a batch.
 
@@ -389,6 +413,8 @@ def extract_inputs_targets_forcings(
     integration_period: Time span over which to integrate TISR energy.
     forward: Whether to compute TISR forward from each timestamp (`True`) or
       ending at each timestamp (`False`).
+    to_jax: Boolean flag to specify wether to use (wrapped) JAX arrays for derived vars or not.
+    derived_vars_device: Specify which JAX device to use for derived vars when `to_jax` is true.
 
   Returns:
     A tuple `(inputs, targets, forcings)` where:
@@ -405,9 +431,10 @@ def extract_inputs_targets_forcings(
   # or HRES datasets, as well as other variables (e.g. tisr) that need to be
   # computed manually for the target lead times. Compute the requested ones.
   if set(forcing_variables) & _DERIVED_VARS:
-    add_derived_vars(dataset)
+    add_derived_vars(dataset, to_jax=to_jax, device=derived_vars_device)
   if set(forcing_variables) & {tisr_name}:
-    add_tisr_var(dataset, tisr_name=tisr_name, integration_period=integration_period, forward=forward)
+    add_tisr_var(dataset, tisr_name=tisr_name, integration_period=integration_period, forward=forward,
+                 device=derived_vars_device)
 
   # `datetime` is needed by add_derived_vars but breaks autoregressive rollouts.
   dataset = dataset.drop_vars("datetime")

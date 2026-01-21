@@ -44,6 +44,7 @@ import numpy as np
 import pandas as pd
 import xarray as xa
 
+from graphcast.xarray_jax import wrap
 
 # Default value of the `integration_period` argument to be compatible with ERA5.
 _DEFAULT_INTEGRATION_PERIOD = pd.Timedelta(hours=1)
@@ -624,6 +625,7 @@ def get_toa_incident_solar_radiation_for_xarray(
       use_jit=use_jit,
       forward=forward,
   )
+  radiation = wrap(radiation)
 
   if "time" in data_array_like.dims:
     output = xa.DataArray(radiation, dims=("time", "lat", "lon"))
