@@ -90,9 +90,13 @@ TARGET_VARS = (
     "zos",
     "mlotst",
     "thetao",
+    "siconc",
+    "sithick",
     "so",
     "uo",
+    "usi",
     "vo",
+    "vsi",
 )
 EXTERNAL_FORCING_VARS = (
     "10u",
@@ -100,15 +104,11 @@ EXTERNAL_FORCING_VARS = (
     "2d",
     "2t",
     "dis24",
-    "siconc",
-    "sithick",
     "sp",
     "ssrd",
     "strd",
     "tp",
-    "usi",
     "swh",
-    "vsi",
 )
 GENERATED_FORCING_VARS = (
     "year_progress_sin",
@@ -127,9 +127,6 @@ STATIC_VARS = (
 )
 ALL_VARS = TARGET_VARS + FORCING_VARS + STATIC_VARS
 LEVELS_10 = (0, 4, 8, 12, 16, 20, 24, 28, 32, 34)
-LEVELS = {
-  10: LEVELS_10
-}
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -154,7 +151,7 @@ class TaskConfig:
 #  +-----------+-------+-----------+
 #
 # Hence, the inputs are TARGET_VARS + STATIC_VARS, and not TARGET_VARS + FORCING_VARS + STATIC_VARS as in GraphCast.
-TASK = TaskConfig(
+DEFAULT_TASK = TaskConfig(
     input_variables=TARGET_VARS + STATIC_VARS,
     target_variables=TARGET_VARS,
     forcing_variables=FORCING_VARS,
