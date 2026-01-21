@@ -143,6 +143,15 @@ class MeshGraph:
   edges: tuple[np.ndarray, np.ndarray]
 
 
+@chex.dataclass(frozen=True, eq=True)
+class MeshData:
+  """Data structure containing mesh graph and boundary nodes."""
+  mesh_graph: MeshGraph
+  boundary_nodes: np.ndarray
+  description: str
+  license: str
+
+
 def merge_meshes(
     mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
   """Merges all meshes into one. Assumes the last mesh is the finest.

@@ -40,7 +40,7 @@ from graphcast import model_utils
 from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
-from graphcast.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges, get_transform
+from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges, get_transform
 
 Kwargs = Mapping[str, Any]
 
@@ -195,6 +195,7 @@ class CheckPoint:
   params: dict[str, Any]
   model_config: ModelConfig
   task_config: TaskConfig
+  mesh_data: MeshData
   description: str
   license: str
 
