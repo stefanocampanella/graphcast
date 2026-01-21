@@ -1,3 +1,8 @@
+import logging
+import os
+import pathlib
+from typing import Callable
+
 import click
 
 
@@ -52,3 +57,43 @@ class DictParamType(click.ParamType):
       except Exception:
         self.fail(f"Value for key {key!r} must be an integer, got {val!r}.", param, ctx)
     return result
+
+
+def get_distributed_logger(logger_name: str | None = None,
+                           log_dir: pathlib.Path | None = None,
+                           log_name: str | None =None,
+                           log_suffix_fn: Callable | None = None,
+                           fmt='%(levelname)s - %(asctime)s: %(message)s',
+                           datefmt='%Y-%m-%dT%H:%M:%S') -> logging.Logger:
+
+  if logger_name is not None:
+    logger = logging.getLogger(logger_name)
+  else:
+    raise ValueError("logger_name must be specified")
+
+  if log_dir is None:
+    log_dir = pathlib.Path.cwd()
+  else:
+    log_dir = pathlib.Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+  if log_name is None:
+    job_name = os.getenv("SLURM_JOB_NAME")
+    job_id = os.getenv("SLURM_JOB_ID")
+    if job_name is not None and job_id is not None:
+      log_name = f"{job_name}-{job_id}"
+    else:
+      raise ValueError("log_name must be specified")
+
+  if log_suffix_fn is not None:
+    log_name = log_name + log_suffix_fn()
+
+  logger.propagate = False
+  logger.handlers.clear()
+  log_path = log_dir / log_name
+  filehandler = logging.FileHandler(log_path, mode="w")
+  formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
+  filehandler.setFormatter(formatter)
+  logger.addHandler(filehandler)
+
+  return logger
