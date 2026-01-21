@@ -28,10 +28,12 @@ a 2D mesh over latitudes and longitudes.
 from typing import Any, Callable, Mapping, Optional, Tuple
 
 import chex
+import jax
 import jax.numpy as jnp
 import jraph
 import numpy as np
 import xarray
+from jax.sharding import NamedSharding
 
 from graphcast import deep_typed_graph_net
 from graphcast import losses
@@ -238,7 +240,7 @@ class GraphCast(predictor_base.Predictor):
                grid_mask: xarray.DataArray,
                mesh_graph: MeshGraph,
                boundary_nodes: np.ndarray,
-               ensure_divisible_by: int = 1):
+               sharding: NamedSharding | None = None):
     """Initializes the predictor."""
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
@@ -350,15 +352,6 @@ class GraphCast(predictor_base.Predictor):
     else:
       self._per_variable_weights = {}
 
-    # We need to precompute the edges of the graphs, as they are needed to compute padding
-    grid2mesh_edges = self._get_grid2mesh_edges()
-    mesh_edges = self._get_mesh_edges()
-    mesh2grid_edges = self._get_mesh2grid_edges()
-    self._init_pad_sizes(grid2mesh_edges=grid2mesh_edges,
-                         mesh_edges=mesh_edges,
-                         mesh2grid_edges=mesh2grid_edges,
-                         ensure_divisible_by=ensure_divisible_by)
-
     self._spatial_features_kwargs = dict(
       add_node_positions=False,
       add_node_latitude=True,
@@ -366,9 +359,11 @@ class GraphCast(predictor_base.Predictor):
       add_relative_positions=True,
       relative_longitude_local_coordinates=True,
       relative_latitude_local_coordinates=True)
-    self._grid2mesh_graph_structure = self._init_grid2mesh_graph(grid2mesh_edges)
-    self._mesh_graph_structure = self._init_mesh_graph(mesh_edges)
-    self._mesh2grid_graph_structure = self._init_mesh2grid_graph(mesh2grid_edges)
+    self._grid2mesh_graph_structure = self._init_grid2mesh_graph()
+    self._mesh_graph_structure = self._init_mesh_graph()
+    self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
+
+    self._sharding = sharding
 
   def _init_mesh_properties(self, mesh_graph, boundary_nodes):
     """Initializes static properties that have to do with mesh nodes."""
@@ -405,7 +400,7 @@ class GraphCast(predictor_base.Predictor):
       mesh=self._mesh_graph,
       radius=self._query_radius,
       mask=self._grid_mask,
-      workers=-1)
+      workers=1)
     return grid_senders, mesh_receivers
 
   def _get_mesh_edges(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -420,33 +415,11 @@ class GraphCast(predictor_base.Predictor):
       mask=self._grid_mask)
     return mesh_senders, grid_receivers
 
-  def _init_pad_sizes(self, *, grid2mesh_edges, mesh_edges, mesh2grid_edges, ensure_divisible_by):
-    # Compute padding needed to ensure that feature tensors have the leading dimension (spanning on nodes/edges)
-    # divisible by `self._ensure_divisible_by`, so that we can eventually shard these tensors across multiple devices.
-    def get_pad_len(original_len):
-      remainder = original_len % ensure_divisible_by
-      return (ensure_divisible_by - remainder) % ensure_divisible_by
-
-
-    self._grid2mesh_edge_pad_size = get_pad_len(grid2mesh_edges[0].shape[0])
-    self._mesh_edge_pad_size = get_pad_len(mesh_edges[0].shape[0])
-    self._mesh2grid_edge_pad_size = get_pad_len(mesh2grid_edges[0].shape[0])
-
-    # If edge padding is needed, we'll need ghost nodes in senders and receivers.
-    # Notice: there is a corner case in which only the mesh_edge tensors need to be padded, and not the
-    # {grid2mesh,mesh2grid}_edge tensors. However, dealing with this case separately seems unnecessary.
-    if any([self._grid2mesh_edge_pad_size, self._mesh_edge_pad_size, self._mesh2grid_edge_pad_size]):
-      self._grid_pad_size = 1 + get_pad_len(self._num_grid_nodes + 1)
-      self._mesh_pad_size = 1 + get_pad_len(self._num_mesh_nodes + 1)
-    else:
-      self._grid_pad_size = get_pad_len(self._num_grid_nodes)
-      self._mesh_pad_size = get_pad_len(self._num_mesh_nodes)
-
-  def _init_grid2mesh_graph(self, grid2mesh_edges) -> typed_graph.TypedGraph:
+  def _init_grid2mesh_graph(self) -> typed_graph.TypedGraph:
     """Build Grid2Mesh graph."""
 
     # Edges sending info from grid to mesh.
-    senders, receivers = grid2mesh_edges
+    senders, receivers = self._get_grid2mesh_edges()
 
     # Precompute structural node and edge features according to config options.
     # Structural features are those that depend on the fixed values of the
@@ -463,17 +436,13 @@ class GraphCast(predictor_base.Predictor):
       **self._spatial_features_kwargs,
     )
 
-
-    edge_features = np.pad(edge_features, ((0, self._grid2mesh_edge_pad_size), (0, 0)))
-    senders = np.pad(senders, (0, self._grid2mesh_edge_pad_size), constant_values=self._num_grid_nodes)
-    receivers = np.pad(receivers, (0, self._grid2mesh_edge_pad_size), constant_values=self._num_mesh_nodes)
-    senders_node_features = np.pad(senders_node_features, ((0, self._grid_pad_size), (0, 0)))
-    receivers_node_features = np.pad(receivers_node_features, ((0, self._mesh_pad_size), (0, 0)))
-
-    # Infer n_{grid_node,mesh_node,edge} from feature tensors, as these might have been padded.
-    n_grid_node = np.array([senders_node_features.shape[0]])
-    n_mesh_node = np.array([receivers_node_features.shape[0]])
-    n_edge = np.array([senders_node_features.shape[0]])
+    # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
+    assert self._num_grid_nodes == senders_node_features.shape[0]
+    n_grid_node = np.array([self._num_grid_nodes])
+    assert self._num_mesh_nodes == receivers_node_features.shape[0]
+    n_mesh_node = np.array([self._num_mesh_nodes])
+    assert len(senders) == len(receivers) == edge_features.shape[0]
+    n_edge = np.array([len(senders)])
     grid_node_set = typed_graph.NodeSet(
       n_node=n_grid_node, features=senders_node_features)
     mesh_node_set = typed_graph.NodeSet(
@@ -493,10 +462,10 @@ class GraphCast(predictor_base.Predictor):
       edges=edges)
     return grid2mesh_graph
 
-  def _init_mesh_graph(self, mesh_edges) -> typed_graph.TypedGraph:
+  def _init_mesh_graph(self) -> typed_graph.TypedGraph:
 
     # Work just with the connected mesh nodes.
-    senders, receivers = mesh_edges
+    senders, receivers = self._get_mesh_edges()
 
     # Precompute structural node and edge features according to config options.
     # Structural features are those that depend on the fixed values of the
@@ -511,13 +480,11 @@ class GraphCast(predictor_base.Predictor):
       **self._spatial_features_kwargs,
     )
 
-    edge_features = np.pad(edge_features, ((0, self._mesh_edge_pad_size), (0, 0)))
-    senders = np.pad(senders, (0, self._mesh_edge_pad_size), constant_values=self._num_mesh_nodes)
-    receivers = np.pad(receivers, (0, self._mesh_edge_pad_size), constant_values=self._num_mesh_nodes)
-    node_features = np.pad(node_features, ((0, self._mesh_pad_size), (0, 0)))
-    # Infer n_{mesh_node,edge} from feature tensors, as these might have been padded.
-    n_mesh_node = np.array([node_features.shape[0]])
-    n_edge = np.array([edge_features.shape[0]])
+    # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
+    assert self._num_mesh_nodes == node_features.shape[0]
+    n_mesh_node = np.array([self._num_mesh_nodes])
+    assert len(senders) == len(receivers) == edge_features.shape[0]
+    n_edge = np.array([len(senders)])
     assert n_mesh_node == len(node_features)
     mesh_node_set = typed_graph.NodeSet(
       n_node=n_mesh_node, features=node_features)
@@ -536,12 +503,12 @@ class GraphCast(predictor_base.Predictor):
 
     return mesh_graph
 
-  def _init_mesh2grid_graph(self, mesh2grid_edges) -> typed_graph.TypedGraph:
+  def _init_mesh2grid_graph(self) -> typed_graph.TypedGraph:
     """Build Mesh2Grid graph."""
 
     # Create some edges according to how the grid nodes are contained by
     # mesh triangles.
-    senders, receivers = mesh2grid_edges
+    senders, receivers = self._get_mesh2grid_edges()
 
     # Precompute structural node and edge features according to config options.
     assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
@@ -557,16 +524,13 @@ class GraphCast(predictor_base.Predictor):
       **self._spatial_features_kwargs,
     )
 
-    edge_features = np.pad(edge_features, ((0, self._mesh2grid_edge_pad_size), (0, 0)))
-    senders = np.pad(senders, (0, self._mesh2grid_edge_pad_size), constant_values=self._num_grid_nodes)
-    receivers = np.pad(receivers, (0, self._mesh2grid_edge_pad_size), constant_values=self._num_mesh_nodes)
-    senders_node_features = np.pad(senders_node_features, ((0, self._mesh_pad_size), (0, 0)))
-    receivers_node_features = np.pad(receivers_node_features, ((0, self._grid_pad_size), (0, 0)))
-
-    # Infer n_{mesh_node,grid_node,edge} from feature tensors, as these might have been padded.
-    n_mesh_node = np.array([senders_node_features.shape[0]])
-    n_grid_node = np.array([receivers_node_features.shape[0]])
-    n_edge = np.array([edge_features.shape[0]])
+    # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
+    assert self._num_mesh_nodes == senders_node_features.shape[0]
+    n_mesh_node = np.array([self._num_mesh_nodes])
+    assert self._num_grid_nodes == receivers_node_features.shape[0]
+    n_grid_node = np.array([self._num_grid_nodes])
+    assert len(senders) == len(receivers) == edge_features.shape[0]
+    n_edge = np.array([len(senders)])
     grid_node_set = typed_graph.NodeSet(
       n_node=n_grid_node, features=receivers_node_features)
     mesh_node_set = typed_graph.NodeSet(
@@ -600,8 +564,7 @@ class GraphCast(predictor_base.Predictor):
 
     # Transfer data for the grid to the mesh,
     # [num_mesh_nodes, batch, latent_size], [num_grid_nodes, batch, latent_size]
-    (latent_mesh_nodes, latent_grid_nodes
-    ) = self._run_grid2mesh_gnn(grid_node_features)
+    latent_mesh_nodes, latent_grid_nodes = self._run_grid2mesh_gnn(grid_node_features)
 
     # Run message passing in the multimesh.
     # [num_mesh_nodes, batch, latent_size]
@@ -609,14 +572,12 @@ class GraphCast(predictor_base.Predictor):
 
     # Transfer data frome the mesh to the grid.
     # [num_grid_nodes, batch, output_size]
-    output_grid_nodes = self._run_mesh2grid_gnn(
-        updated_latent_mesh_nodes, latent_grid_nodes)
+    output_grid_nodes = self._run_mesh2grid_gnn(updated_latent_mesh_nodes, latent_grid_nodes)
 
     # Convert output flat vectors for the grid nodes to the format of the output.
     # [num_grid_nodes, batch, output_size] ->
     # xarray (batch, one time step, lat, lon, level, multiple vars)
-    return self._grid_node_outputs_to_prediction(
-        output_grid_nodes, targets_template)
+    return self._grid_node_outputs_to_prediction(output_grid_nodes, targets_template)
 
   def loss_and_predictions(  # pytype: disable=signature-mismatch  # jax-ndarray
       self,
@@ -659,36 +620,34 @@ class GraphCast(predictor_base.Predictor):
     grid_nodes = grid2mesh_graph.nodes["grid_nodes"]
     mesh_nodes = grid2mesh_graph.nodes["mesh_nodes"]
     new_grid_nodes = grid_nodes._replace(
-        features=jnp.concatenate([
-            grid_node_features,
-            _add_batch_second_axis(
-                grid_nodes.features.astype(grid_node_features.dtype),
-                batch_size)
-        ],
-                                 axis=-1))
+      features=jnp.concatenate(
+        [grid_node_features,
+         _add_batch_second_axis(grid_nodes.features.astype(grid_node_features.dtype),
+                                batch_size,
+                                sharding=self._sharding)],
+        axis=-1))
 
     # To make sure capacity of the embedded is identical for the grid nodes and
     # the mesh nodes, we also append some dummy zero input features for the
     # mesh nodes.
-    dummy_mesh_node_features = jnp.zeros(
-      (self._num_mesh_nodes + self._mesh_pad_size,) + grid_node_features.shape[1:],
-        dtype=grid_node_features.dtype)
+    dummy_mesh_node_features = jnp.zeros((self._num_mesh_nodes,) + grid_node_features.shape[1:],
+                                         dtype=grid_node_features.dtype,
+                                         device=self._sharding)
     new_mesh_nodes = mesh_nodes._replace(
-        features=jnp.concatenate([
-            dummy_mesh_node_features,
-            _add_batch_second_axis(
-                mesh_nodes.features.astype(dummy_mesh_node_features.dtype),
-                batch_size)
-        ],
-                                 axis=-1))
+        features=jnp.concatenate(
+          [dummy_mesh_node_features,
+           _add_batch_second_axis(mesh_nodes.features.astype(dummy_mesh_node_features.dtype), batch_size,
+                                 sharding=self._sharding)],
+          axis=-1))
 
     # Broadcast edge structural features to the required batch size.
     grid2mesh_edges_key = grid2mesh_graph.edge_key_by_name("grid2mesh")
     edges = grid2mesh_graph.edges[grid2mesh_edges_key]
 
     new_edges = edges._replace(
-        features=_add_batch_second_axis(
-            edges.features.astype(dummy_mesh_node_features.dtype), batch_size))
+        features=_add_batch_second_axis(edges.features.astype(dummy_mesh_node_features.dtype),
+                                        batch_size,
+                                        sharding=self._sharding))
 
     input_graph = self._grid2mesh_graph_structure._replace(
         edges={grid2mesh_edges_key: new_edges},
@@ -728,8 +687,9 @@ class GraphCast(predictor_base.Predictor):
     assert len(mesh_graph.edges) == 1, msg
 
     new_edges = edges._replace(
-        features=_add_batch_second_axis(
-            edges.features.astype(latent_mesh_nodes.dtype), batch_size))
+        features=_add_batch_second_axis(edges.features.astype(latent_mesh_nodes.dtype),
+                                        batch_size,
+                                        sharding=self._sharding))
 
     nodes = mesh_graph.nodes["mesh_nodes"]
     nodes = nodes._replace(features=latent_mesh_nodes)
@@ -740,7 +700,8 @@ class GraphCast(predictor_base.Predictor):
     # Create the GNN.
     mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh_gnn_kwargs)
     # Run the GNN.
-    return mesh_gnn(input_graph).nodes["mesh_nodes"].features
+    mesh_out = mesh_gnn(input_graph)
+    return mesh_out.nodes["mesh_nodes"].features
 
   def _run_mesh2grid_gnn(self,
                          updated_latent_mesh_nodes: chex.Array,
@@ -765,8 +726,9 @@ class GraphCast(predictor_base.Predictor):
     edges = mesh2grid_graph.edges[mesh2grid_key]
 
     new_edges = edges._replace(
-        features=_add_batch_second_axis(
-            edges.features.astype(latent_grid_nodes.dtype), batch_size))
+        features=_add_batch_second_axis(edges.features.astype(latent_grid_nodes.dtype),
+                                        batch_size,
+                                        sharding=self._sharding))
 
     input_graph = mesh2grid_graph._replace(
         edges={mesh2grid_key: new_edges},
@@ -778,8 +740,8 @@ class GraphCast(predictor_base.Predictor):
     # Create the GNN.
     mesh2grid_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh2grid_gnn_kwargs)
     # Run the GNN.
-    output_graph = mesh2grid_gnn(input_graph)
-    output_grid_nodes = output_graph.nodes["grid_nodes"].features
+    mesh2grid_out = mesh2grid_gnn(input_graph)
+    output_grid_nodes = mesh2grid_out.nodes["grid_nodes"].features
 
     return output_grid_nodes
 
@@ -803,7 +765,6 @@ class GraphCast(predictor_base.Predictor):
         stacked_inputs)
     grid_node_features = xarray_jax.unwrap(grid_xarray_lat_lon_leading.data).reshape(
         (-1,) + grid_xarray_lat_lon_leading.data.shape[2:])
-    grid_node_features = jnp.pad(grid_node_features, ((0, self._grid_pad_size), (0, 0), (0, 0)))
     return grid_node_features
 
   def _grid_node_outputs_to_prediction(
@@ -818,8 +779,8 @@ class GraphCast(predictor_base.Predictor):
     assert self._grid_lat is not None and self._grid_lon is not None
     grid_shape = (self._grid_lat.shape[0], self._grid_lon.shape[0])
     grid_node_outputs = grid_node_outputs[:self._num_grid_nodes, ...]
-    grid_outputs_lat_lon_leading = grid_node_outputs.reshape(
-        grid_shape + grid_node_outputs.shape[1:])
+    grid_outputs_lat_lon_leading = jax.lax.reshape(grid_node_outputs,
+        grid_shape + grid_node_outputs.shape[1:], out_sharding=self._sharding)
     dims = ("lat", "lon", "batch", "channels")
     grid_xarray_lat_lon_leading = xarray_jax.DataArray(
         data=grid_outputs_lat_lon_leading,
@@ -832,10 +793,10 @@ class GraphCast(predictor_base.Predictor):
         grid_xarray.variable, targets_template)
 
 
-def _add_batch_second_axis(data, batch_size):
+def _add_batch_second_axis(data, batch_size, sharding=None):
   # data [leading_dim, trailing_dim]
   assert data.ndim == 2
-  ones = jnp.ones([batch_size, 1], dtype=data.dtype)
+  ones = jnp.ones([batch_size, 1], dtype=data.dtype, device=sharding)
   return data[:, None] * ones  # [leading_dim, batch, trailing_dim]
 
 
