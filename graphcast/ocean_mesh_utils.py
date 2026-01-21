@@ -7,6 +7,7 @@
 #      Courant–Friedrichs–Lewy condition. These require both to be implemented and some other machinery (a command in
 #      ocean_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
 #      field object can be instantiated.
+#   3. Seamsh can ingest raster fields, use this feature to implement HessianField, BathymetryField and CourantField.
 import pathlib
 
 import gmsh
