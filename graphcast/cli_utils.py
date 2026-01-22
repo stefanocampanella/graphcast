@@ -4,6 +4,8 @@ import pathlib
 from typing import Callable
 
 import click
+import jax
+from jaxlib.xla_extension import CompiledMemoryStats
 
 
 class DictParamType(click.ParamType):
@@ -97,3 +99,37 @@ def get_distributed_logger(logger_name: str | None = None,
   logger.addHandler(filehandler)
 
   return logger
+
+
+def memory_usage_summary(compiled_stats: CompiledMemoryStats):
+  summary = {}
+  summary['argument_size'] = compiled_stats.argument_size_in_bytes
+  summary['output_size'] = compiled_stats.output_size_in_bytes
+  summary['temp_size'] = compiled_stats.temp_size_in_bytes
+  summary['total_size'] = compiled_stats.temp_size_in_bytes + compiled_stats.argument_size_in_bytes \
+      + compiled_stats.output_size_in_bytes - compiled_stats.alias_size_in_bytes
+  return summary
+
+def analysis_report(logger, func, *args, **kwargs):
+  func_jit = jax.jit(func)
+  func_jit_compiled = func_jit.lower(*args, **kwargs).compile()
+  memory_analysis = func_jit_compiled.memory_analysis()
+  cost_analysis = func_jit_compiled.cost_analysis()
+
+  if memory_analysis is not None:
+    summary = memory_usage_summary(memory_analysis)
+    try:
+      import humanize
+
+      summary = jax.tree_util.tree_map(lambda x: humanize.naturalsize(x, binary=True),
+                                       memory_usage_summary(memory_analysis))
+    except ImportError:
+      logger.debug("Package `humanize` not found, using bytes instead.")
+    logger.info(f"Memory usage: {summary}")
+  else:
+     logger.info("Memory usage: unknown")
+
+  if cost_analysis is not None:
+    logger.info(f"Cost: {cost_analysis['flops'] * 1e-12} TFLOPs")
+  else:
+    logger.info("Cost: unknown")
