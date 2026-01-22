@@ -1,8 +1,8 @@
 seed = 42
 target_lead_times = "1d"
 description = """
-  GraphCast model for the ocean at 1deg resolution, \
-  5 depth levels, and a reduced set of atmospheric forcing variables. \
+  GraphCast model for the ocean and sea-ice at 0.25deg resolution, \
+  10 depth levels, and a full set of atmospheric and hydrological forcing variables. \
   This model is trained on ARCO-OCEAN data from 1993 to 2021, \
   and can be causally evaluated on 2022 and later years. \
   It uses a global ocean mesh with uniform target mesh size of 300 km. \
@@ -24,18 +24,30 @@ license = """
 [task]
 input_variables = [
     "zos",
+    "mlotst",
     "thetao",
+    "siconc",
+    "sithick",
     "so",
     "uo",
     "usi",
     "vo",
     "vsi",
     "deptho",
+    "z",
+    "glofas_mask",
     "glorys_mask",
+    "lsm",
+    "uparea",
+    "waverys_deptho",
+    "waverys_mask",
 ]
 target_variables = [
     "zos",
+    "mlotst",
     "thetao",
+    "siconc",
+    "sithick",
     "so",
     "uo",
     "usi",
@@ -45,11 +57,18 @@ target_variables = [
 forcing_variables = [
     "10u",
     "10v",
+    "2d",
     "2t",
+    "dis24",
+    "sp",
+    "ssrd",
+    "strd",
+    "tp",
+    "swh",
     "year_progress_sin",
     "year_progress_cos",
 ]
-levels = [0, 4, 8, 12, 16]
+levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 input_duration = "2d"
 
 [model]
@@ -85,6 +104,5 @@ license = """
   """
 
 [dataset]
-filepath = "data/dataset/dataset_tres-1d_res-1_levels-10_arco"
+filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
 timesteps = 3
-mask_name = 'glorys_mask'

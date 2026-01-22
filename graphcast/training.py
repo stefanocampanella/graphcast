@@ -93,7 +93,9 @@ def init(config_path: pathlib.Path,
   target_lead_times = configs['target_lead_times']
 
   logger.info(f"Loading dataset from {dataset_path}")
-  datasource = ARCODataSource(dataset_path, timesteps=configs.get('dataset.timesteps', 3))
+  datasource = ARCODataSource(dataset_path,
+                              timesteps=configs.get('dataset.timesteps', 3),
+                              mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
   sampler = IndexSampler(num_records=len(datasource))
   operations = [ToXarrayJax(),
                 FillNans(),
@@ -132,7 +134,7 @@ def init(config_path: pathlib.Path,
     per_variable_weights=configs.get('model.per_variable_weights', {}))
 
   seed = configs['seed']
-  logger.info(f"Creating initializing parameters ({seed=})")
+  logger.info(f"Initializing parameters with {seed=}")
   predictor = GraphCast(model_config,
                         task_config,
                         grid_lat=datasource.mask['lat'].to_numpy(),
