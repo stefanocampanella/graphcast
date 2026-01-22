@@ -99,7 +99,7 @@ the coordinate, but that wasn't going to work with a jax array anyway.
 import collections
 import contextlib
 import contextvars
-from typing import Any, Callable, Iterator, Mapping, Optional, Union, Tuple, TypeVar, cast
+from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Union, Tuple, TypeVar, cast
 from typing import Hashable  # pylint: disable=deprecated-class
 
 import jax
@@ -237,11 +237,13 @@ def Dataset(  # pylint:disable=invalid-name
   return assign_coords(result, coords=coords, jax_coords=jax_coords)
 
 
-def to_jax(dataset: xarray.Dataset) -> xarray.Dataset:
+def to_xarray_jax(dataset: xarray.Dataset, jax_coords: Iterable[str] | None = None) -> xarray.Dataset:
   """Converts a XArray dataset to another where data is a wrapped JAX array."""
+  jax_coords = {} if jax_coords is None else set(jax_coords)
   dataset_jax = Dataset(
-    data_vars={var: (data.dims, jax.numpy.asarray(data.data)) for (var, data) in dataset.data_vars.items()},
-    coords=dataset.coords,
+    data_vars={var: (data.dims, data.data) for (var, data) in dataset.data_vars.items()},
+    coords={name: da for (name, da) in dataset.coords.items() if name not in jax_coords},
+    jax_coords={name: da for (name, da) in dataset.coords.items() if name in jax_coords},
     attrs=dataset.attrs)
   return dataset_jax
 
