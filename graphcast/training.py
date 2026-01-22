@@ -9,7 +9,7 @@ import jax
 from grain.python import IndexSampler, DataLoader
 
 from graphcast import checkpoint, cli_utils
-from graphcast.cli_utils import analysis_report
+from graphcast.cli_utils import run_analysis_and_report
 from graphcast.dataloader import ARCODataSource, ToXarrayJax, RestoreDatetimeCoordinate, FillNans, \
   ExtractInputsTargetsForcings
 from graphcast.dataset_utils import Configs
@@ -150,8 +150,9 @@ def init(config_path: pathlib.Path,
   params = run_forward.init(rng=key, inputs=inputs, targets_template=targets, forcings=forcings)
 
   if analysis:
-    analysis_report(logger, run_forward.apply,
-                    params=params, inputs=inputs, targets_template=targets, forcings=forcings)
+    logger.info("Running predictor memory and cost analysis")
+    run_analysis_and_report(logger, run_forward.apply, params=params, inputs=inputs, targets_template=targets,
+                            forcings=forcings)
 
   # noinspection PyTypeChecker
   graphcast_ckpt = CheckPoint(

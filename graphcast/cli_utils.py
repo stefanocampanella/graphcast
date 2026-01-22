@@ -110,7 +110,7 @@ def memory_usage_summary(compiled_stats: CompiledMemoryStats):
       + compiled_stats.output_size_in_bytes - compiled_stats.alias_size_in_bytes
   return summary
 
-def analysis_report(logger, func, *args, **kwargs):
+def run_analysis_and_report(logger, func, *args, **kwargs):
   func_jit = jax.jit(func)
   func_jit_compiled = func_jit.lower(*args, **kwargs).compile()
   memory_analysis = func_jit_compiled.memory_analysis()
