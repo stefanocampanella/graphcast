@@ -139,7 +139,7 @@ class DevicePut(grain.MapTransform):
 
     return dataset.map(lambda da: _put_dataarray(da))
 
-
+# FIXME: the following seems to be broken for a multi-host-each-with-multiple-devices setup.
 class BatchParallelShardOptions(ShardOptions):
 
   def __init__(self, sharding, batch_dim_name='batch', drop_remainder=False):
