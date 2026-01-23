@@ -7,16 +7,19 @@ import click
 import haiku as hk
 import jax
 from grain.python import IndexSampler, DataLoader
+from jax import checkpoint_policies as cp
 
 from graphcast import checkpoint, cli_utils
+from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import run_analysis_and_report
 from graphcast.dataloader import ARCODataSource, ToXarrayJax, RestoreDatetimeCoordinate, FillNans, \
   ExtractInputsTargetsForcings
 from graphcast.dataset_utils import Configs
-from graphcast.mesh_connectivity import get_connected_mesh_nodes, mask_mesh
 from graphcast.mesh_graph import MeshData, faces_to_edges, MeshGraph
-from graphcast.model import _get_max_edge_distance, TaskConfig, ModelConfig, GraphCast, CheckPoint
-from graphcast.ocean_mesh_utils import read_mesh
+from graphcast.model import TaskConfig, ModelConfig, GraphCast, CheckPoint
+from graphcast.ocean_mesh_utils import read_and_mask_mesh
+
+logger = logging.getLogger(__name__)
 
 
 @click.group()
@@ -73,10 +76,9 @@ def init(config_path: pathlib.Path,
     datefmt='%Y-%m-%dT%H:%M:%S',
     level=getattr(logging, log_level.upper()),
     force=True)
-  logger = logging.getLogger()
 
   if output_path.exists() and not overwrite:
-    raise ValueError(f"Output destination {output_path} already exists")
+    raise ValueError(f"Output destination {output_path} already exists.")
 
   logger.info(f"Loading configs from {config_path}")
   configs = Configs.read(config_path)
@@ -105,54 +107,57 @@ def init(config_path: pathlib.Path,
   dataloader = DataLoader(data_source=datasource, sampler=sampler, operations=operations)
   inputs, targets, forcings = next(iter(dataloader))
 
-  logger.info(f"Extracting inputs, targets and forcings from dataset")
-
   if (mesh_path := (data_path / configs.get('mesh.filepath'))) is None:
     raise ValueError("The mesh filepath must be specified in the config file.")
   logger.info(f"Loading mesh from {mesh_path}")
-  ocean_mesh, boundary_nodes = read_mesh(mesh_path)
+  ocean_mesh, boundary_nodes = read_and_mask_mesh(mesh_path=mesh_path,
+                                                  mask=datasource.mask,
+                                                  radius_query_fraction_edge_length=configs.get('mesh.radius_query_fraction_edge_length', 1.0))
   ocean_graph = MeshGraph(vertices=ocean_mesh.vertices, edges=faces_to_edges(ocean_mesh.faces), faces=ocean_mesh.faces)
-  query_radius = configs.get('mesh.radius_query_fraction_edge_length', 1.0) * _get_max_edge_distance(ocean_graph)
-  connected_mesh_nodes = get_connected_mesh_nodes(grid_lat=datasource.mask['lat'],
-                                                  grid_lon=datasource.mask['lon'],
-                                                  mesh_graph=ocean_graph,
-                                                  grid_mask=datasource.mask,
-                                                  query_radius=query_radius,
-                                                  workers=-1)
-  ocean_graph, _  = mask_mesh(connected_mesh_nodes, ocean_graph, mode='all')
+  logger.info(f"Mesh graph contains {ocean_graph.vertices.shape[0]} vertices and {ocean_graph.edges[0].shape[0]} edges.")
   mesh_data = MeshData(mesh_graph=ocean_graph,
                        boundary_nodes=boundary_nodes,
                        description=configs.get('mesh.description', ""),
                        license=configs.get('mesh.license', ""))
 
-  logger.info("Creating model")
   model_config = ModelConfig(
     latent_size=configs.get('model.latent_size'),
     gnn_msg_steps=configs.get('model.gnn_msg_steps'),
     hidden_layers=configs.get('model.hidden_layers'),
     radius_query_fraction_edge_length=configs.get('mesh.radius_query_fraction_edge_length'),
-    per_variable_weights=configs.get('model.per_variable_weights', {}))
+    per_variable_weights=configs.get('model.per_variable_weights'))
 
-  seed = configs['seed']
-  logger.info(f"Initializing parameters with {seed=}")
+  policy = cp.save_and_offload_only_these_names(
+    names_which_can_be_saved=[],  # No values stored on device
+    names_which_can_be_offloaded=["message_passing", "grid2mesh_gnn", "mesh_gnn", "mesh2grid_gnn"],
+    offload_src="device",  # Move from device memory
+    offload_dst="pinned_host"  # To pinned host memory
+  )
   predictor = GraphCast(model_config,
                         task_config,
                         grid_lat=datasource.mask['lat'].to_numpy(),
                         grid_lon=datasource.mask['lon'].to_numpy(),
                         grid_mask=datasource.mask,
                         mesh_graph=mesh_data.mesh_graph,
-                        boundary_nodes=mesh_data.boundary_nodes)
+                        boundary_nodes=mesh_data.boundary_nodes,
+                        remat=True,
+                        policy=policy,
+                        prevent_cse=False)
+  predictor = Bfloat16Cast(predictor)
+
   @hk.without_apply_rng
   @hk.transform
   def run_forward(inputs, targets_template, forcings):
     return predictor(inputs, targets_template=targets_template, forcings=forcings)
+
+  seed = configs['seed']
+  logger.info(f"Initializing parameters with {seed=}")
   key = jax.random.key(seed)
   params = run_forward.init(rng=key, inputs=inputs, targets_template=targets, forcings=forcings)
 
   if analysis:
     logger.info("Running predictor memory and cost analysis")
-    run_analysis_and_report(logger, run_forward.apply, params=params, inputs=inputs, targets_template=targets,
-                            forcings=forcings)
+    run_analysis_and_report(run_forward.apply, params, inputs=inputs, targets_template=targets, forcings=forcings)
 
   # noinspection PyTypeChecker
   graphcast_ckpt = CheckPoint(
@@ -164,7 +169,7 @@ def init(config_path: pathlib.Path,
     license=configs.get('license', ""))
 
   logger.info(f"Saving checkpoint to {output_path}")
-  if output_path.parent.exists() is False:
+  if not output_path.parent.exists():
     output_path.parent.mkdir(parents=True)
   with output_path.open('wb') as ckpt_file:
     checkpoint.dump(ckpt_file, graphcast_ckpt)

@@ -57,8 +57,8 @@ class LossFunction(Protocol):
 def weighted_mse_per_level(
     predictions: xarray.Dataset,
     targets: xarray.Dataset,
-    per_variable_weights: Mapping[str, float],
-    mask: Optional[xarray.DataArray]=None,
+    per_variable_weights: Optional[Mapping[str, float]] = None,
+    mask: Optional[xarray.DataArray] = None,
     levels_normalization_coord: str = 'level',
     ) -> LossAndDiagnostics:
   """Latitude- and pressure-level-weighted MSE loss."""
@@ -81,9 +81,10 @@ def _mean_preserving_batch(x: xarray.DataArray, mask: Optional[xarray.DataArray]
 
 def sum_per_variable_losses(
     per_variable_losses: Mapping[str, xarray.DataArray],
-    weights: Mapping[str, float],
+    weights: Optional[Mapping[str, float]] = None,
 ) -> LossAndDiagnostics:
   """Weighted sum of per-variable losses."""
+  weights = weights or {}
   if not set(weights.keys()).issubset(set(per_variable_losses.keys())):
     raise ValueError(
         'Passing a weight that does not correspond to any variable '

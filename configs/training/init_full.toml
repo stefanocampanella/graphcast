@@ -79,7 +79,7 @@ radius_query_fraction_edge_length = 0.6
 per_variable_weights = {}
 
 [mesh]
-filepath = "data/geometry/uniform_mini.msh"
+filepath = "data/geometry/uniform_fine.msh"
 radius_query_fraction_edge_length = 0.6
 description = """
   Global ocean triangular mesh, \

@@ -5,8 +5,8 @@ from typing import Callable
 
 import click
 import jax
-from jaxlib.xla_extension import CompiledMemoryStats
 
+logger = logging.getLogger(__name__)
 
 class DictParamType(click.ParamType):
   """Click ParamType that parses mappings like "a:1,b:2" into dict[str, int].
@@ -101,7 +101,7 @@ def get_distributed_logger(logger_name: str | None = None,
   return logger
 
 
-def memory_usage_summary(compiled_stats: CompiledMemoryStats):
+def memory_usage_summary(compiled_stats):
   summary = {}
   summary['argument_size'] = compiled_stats.argument_size_in_bytes
   summary['output_size'] = compiled_stats.output_size_in_bytes
@@ -110,9 +110,10 @@ def memory_usage_summary(compiled_stats: CompiledMemoryStats):
       + compiled_stats.output_size_in_bytes - compiled_stats.alias_size_in_bytes
   return summary
 
-def run_analysis_and_report(logger, func, *args, **kwargs):
+
+def run_analysis_and_report(func, *args, **kwargs):
   func_jit = jax.jit(func)
-  func_jit_compiled = func_jit.lower(*args, **kwargs).compile()
+  func_jit_compiled = func_jit.trace(*args, **kwargs).lower().compile()
   memory_analysis = func_jit_compiled.memory_analysis()
   cost_analysis = func_jit_compiled.cost_analysis()
 

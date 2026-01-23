@@ -62,7 +62,7 @@ def radius_query_indices(
     grid_longitude: np.ndarray,
     mesh: Mesh,
     radius: float,
-    mask: None | xarray.DataArray = None,
+    mask: xarray.DataArray | None = None,
     workers: int = 1) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
@@ -96,7 +96,7 @@ def radius_query_indices(
     assert np.array_equal(mask['lon'].to_numpy(), grid_longitude)
     mask_data = mask.transpose('lat', 'lon').to_numpy()
   else:
-    mask_data = np.ones_like(meshgrid_positions, dtype=bool)
+    mask_data = np.ones((grid_latitude.shape[0], grid_longitude.shape[0]), dtype=bool)
 
   # [num_mesh_points, 3]
   mesh_positions = mesh.vertices

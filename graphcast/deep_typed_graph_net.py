@@ -34,16 +34,17 @@ Generalization to TypedGraphs of the deep Graph Neural Network from:
 }
 """
 
+from functools import partial
 from typing import Mapping, Optional
 
-from graphcast import typed_graph
-from graphcast import typed_graph_net
-from functools import partial
-import numpy as np
 import haiku as hk
 import jax
 import jax.numpy as jnp
 import jraph
+from jax.ad_checkpoint import checkpoint_name, checkpoint
+
+from graphcast import typed_graph
+from graphcast import typed_graph_net
 
 
 class DeepTypedGraphNet(hk.Module):
@@ -93,6 +94,8 @@ class DeepTypedGraphNet(hk.Module):
                f32_aggregation: bool = False,
                aggregate_edges_for_nodes_fn: str = "segment_sum",
                aggregate_normalization: Optional[float] = None,
+               policy = None,
+               prevent_cse: bool = True,
                name: str = "DeepTypedGraphNet"):
     """Inits the model.
 
@@ -150,6 +153,8 @@ class DeepTypedGraphNet(hk.Module):
     self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(
         aggregate_edges_for_nodes_fn)
     self._aggregate_normalization = aggregate_normalization
+    self._policy = policy
+    self._prevent_cse = prevent_cse
 
     if aggregate_normalization:
       # using aggregate_normalization only makes sense with segment_sum.
@@ -298,23 +303,38 @@ class DeepTypedGraphNet(hk.Module):
     # Do `num_message_passing_steps` with each of the `self._processor_networks`
     # with unshared weights, and repeat that `self._num_processor_repetitions`
     # times.
-    # When running apply, we leverage scan to try reducing memory consumption when taking gradients.
+    # latent_graph = latent_graph_0
+    # for unused_repetition_i in range(self._num_processor_repetitions):
+    #   for processor_network in self._processor_networks:
+    #     latent_graph = self._process_step(processor_network, latent_graph)
+    # When running apply, we leverage scan to try reducing compilation times when taking gradients.
     if hk.running_init():
       latent_graph = latent_graph_0
       for unused_repetition_i in range(self._num_processor_repetitions):
         for processor_network in self._processor_networks:
           latent_graph = self._process_step(processor_network, latent_graph)
     else:
-      _msg_passing_steps = [partial(self._process_step, processor_network)
-                            for processor_network in self._processor_networks]
+      def _msg_passing_fn(processor_network):
+
+        @partial(hk.remat, policy=self._policy, prevent_cse=self._prevent_cse)
+        def _msg_passing_fn_inner(latent_graph_prev):
+          latent_graph_prev = jax.tree_util.tree_map(lambda g: checkpoint_name(g, "message_passing"),
+                                                     latent_graph_prev)
+          latent_graph_k = processor_network(latent_graph_prev)
+          return latent_graph_k
+
+        return _msg_passing_fn_inner
+
+      _msg_passing_fns = [_msg_passing_fn(processor_network) for processor_network in self._processor_networks]
+
       # The one-liner using scan is conceptually equivalent to, but terser than the following:
       # latent_graph = hk.fori_loop(0, self._num_processor_repetitions,
       #                             lambda _, init_graph:
       #                               hk.fori_loop(0, self._num_message_passing_steps,
-      #                                            lambda n, graph: hk.switch(n, _msg_passing_steps, graph),
+      #                                            lambda n, graph: hk.switch(n, _msg_passing_fns, graph),
       #                                            init_graph),
       #                             latent_graph_0)
-      latent_graph, _ = hk.scan(lambda graph, n: (hk.switch(n, _msg_passing_steps, graph), None),
+      latent_graph, _ = hk.scan(lambda graph, n: (hk.switch(n, _msg_passing_fns, graph), None),
                                 latent_graph_0,
                                 xs=jnp.tile(jnp.arange(self._num_message_passing_steps, dtype=int),
                                             self._num_processor_repetitions))
