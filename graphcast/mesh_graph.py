@@ -253,7 +253,8 @@ def mesh_to_wgs(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> WG
   return wgs_graph
 
 
-# TODO: add tests
+# TODO: add tests, in particular check that implementation works when computing graph stats (i.e. when considering
+#  'coarse2fine` and `fine2fine` graphs, in case of the latter that vertices are counted twice)
 def typed_to_wgs(graph: typed_graph.TypedGraph, edge_set_name: str) -> WGSGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges)
   from a particular edge-set of a typed graph in 3D.
@@ -264,16 +265,19 @@ def typed_to_wgs(graph: typed_graph.TypedGraph, edge_set_name: str) -> WGSGraph:
   Returns:
       Tuple with vertices and undirected edges between them.
   """
-  # FIXME: bugged implementation, consider for example the `fine` or `coarse` graphs. The vertices are counted twice!
   edge_set_key = graph.edge_key_by_name(edge_set_name)
   senders_nodes_name, receivers_nodes_name = edge_set_key.node_sets
   senders_nodes = graph.nodes[senders_nodes_name]
   receivers_nodes = graph.nodes[receivers_nodes_name]
-  vertices = np.concatenate((senders_nodes.features, receivers_nodes.features))
-  edge_set = graph.edges[edge_set_key]
-  senders, receivers = edge_set.indices
-  receivers = senders_nodes.n_node + receivers
-  edges = (senders, receivers)
+  if senders_nodes_name != receivers_nodes_name:
+    vertices = np.concatenate((senders_nodes.features, receivers_nodes.features))
+    edge_set = graph.edges[edge_set_key]
+    senders, receivers = edge_set.indices
+    receivers = len(senders_nodes.features) + receivers
+    edges = (senders, receivers)
+  else:
+    vertices = senders_nodes.features
+    edges = graph.edges[edge_set_key].indices
   graph = Graph(vertices=vertices, edges=edges)
   wgs_graph = graph_to_wgs(graph)
 
