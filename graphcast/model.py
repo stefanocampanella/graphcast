@@ -242,6 +242,7 @@ class GraphCast(predictor_base.Predictor):
                grid_mask: xarray.DataArray,
                mesh_graph: MeshGraph,
                boundary_nodes: np.ndarray,
+               mesh_size: np.ndarray,
                kdtree_workers: int = 1,
                remat: bool = False,
                policy: Callable[..., bool] | None = None,
@@ -253,7 +254,7 @@ class GraphCast(predictor_base.Predictor):
     #  refactoring `mesh_graph` is possibly a multi-mesh graph including all edges.
     #  Obtain the query radius (on the geoid, not the unit-sphere) for the grid2mesh model, by rescaling the
     #  `radius_query_fraction_edge_length`.
-    self._query_radius = _get_max_edge_distance(mesh_graph) * model_config.radius_query_fraction_edge_length
+    self._query_radius = model_config.radius_query_fraction_edge_length * mesh_size
     self._mesh2grid_edge_normalization_factor = model_config.mesh2grid_edge_normalization_factor
     self._per_variable_weights = model_config.per_variable_weights
     self._kdtree_workers = kdtree_workers

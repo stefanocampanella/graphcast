@@ -16,7 +16,7 @@
 """Utils for working with (multi-)mesh graphs and geospatial graphs."""
 import functools
 import itertools
-from typing import Literal
+from typing import Literal, Union
 from typing import Sequence, Tuple
 
 import chex
@@ -37,55 +37,6 @@ platecarree_proj = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
 
 ProjectionRegistry = {'stereographic': stereographic_proj, 'cartesian': cartesian_proj, 'platecarree': platecarree_proj}
 Projection = Literal['stereographic', 'cartesian', 'platecarree']
-
-def unpack_points(func, pack_back=True):
-  """Decorator to unpack points in 2D or 3D space, apply a function and eventually pack the result back."""
-  @functools.wraps(func)
-  def wrapper(points: np.ndarray):
-    # We assume that the coordinate dimension is the last one.
-    if points.shape[-1] == 2:
-      xx = points[..., 0]
-      yy = points[..., 1]
-      zz = None
-    elif points.shape[-1] == 3:
-      xx = points[..., 0]
-      yy = points[..., 1]
-      zz = points[..., 2]
-    else:
-      raise ValueError(f"Trailing dimension must be 2 or 3, got {points.shape[-1]}")
-    result = func(xx, yy, zz)
-    if pack_back:
-      result = np.stack(result, axis=-1)
-    return result
-
-  return wrapper
-
-
-def get_transform(source: str | osr.SpatialReference, destination: str | osr.SpatialReference, pack_back=True):
-  """Gets a function that transforms points from one projection to another."""
-  if isinstance(source, str):
-    source = ProjectionRegistry[source]
-  if isinstance(destination, str):
-    destination = ProjectionRegistry[destination]
-  transformer = Transformer.from_proj(source.ExportToProj4(), destination.ExportToProj4())
-  transform = unpack_points(transformer.transform, pack_back=pack_back)
-  return transform
-
-
-def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat') -> xr.DataArray:
-  """Maps a function expecting points on a regular grid in plate carree projection."""
-  grid = grid.transpose(longitude_dim, latitude_dim)
-  xx, yy = np.meshgrid(grid[longitude_dim], grid[latitude_dim], indexing='ij')
-  xx = np.where(grid.astype(bool), xx, 0.0)
-  yy = np.where(grid.astype(bool), yy, 0.0)
-  xx = xx.flatten()
-  yy = yy.flatten()
-  points = np.stack([xx, yy], axis=-1)
-  values = func(points, platecarree_proj)
-  values = values.reshape(grid.shape)
-  values = xr.DataArray(values, dims=grid.dims, coords=grid.coords)
-
-  return values
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -122,10 +73,12 @@ class TriangleMesh:
         [num_vertices, num_dims].
     faces: triangular faces of the mesh of shape [num_faces, 3]. Contains
         integer indices into `vertices`.
+    node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
 
   """
   vertices: np.ndarray
   faces: np.ndarray
+  node_tags: np.ndarray | None = None
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -136,11 +89,12 @@ class MeshGraph:
     vertices: same as TriangleMesh.vertices.
     faces: same as TriangleMesh.faces.
     edges: cumulated edges of all the triangular meshes used in building the multi-mesh graph.
-
+    node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
   """
   vertices: np.ndarray
   faces: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
+  node_tags: np.ndarray | None = None
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -148,8 +102,12 @@ class MeshData:
   """Data structure containing mesh graph and boundary nodes."""
   mesh_graph: MeshGraph
   boundary_nodes: np.ndarray
-  description: str
-  license: str
+  mesh_size: np.ndarray
+  description: list[str]
+  license: list[str]
+
+
+Mesh = Union[TriangleMesh, MeshGraph]
 
 
 def merge_meshes(
@@ -287,7 +245,8 @@ def typed_to_wgs(graph: typed_graph.TypedGraph, edge_set_name: str) -> WGSGraph:
 def wgs_to_nx(wgs_graph: WGSGraph) -> nx.DiGraph:
   graph = nx.DiGraph()
   latitudes, longitudes = wgs_graph.vertices
-  vertices = [(node, {'latitude': latitude, 'longitude': longitude}) for node, (latitude, longitude) in enumerate(zip(longitudes, latitudes))]
+  vertices = [(node, {'latitude': latitude, 'longitude': longitude}) for node, (latitude, longitude) in
+              enumerate(zip(longitudes, latitudes))]
   graph.add_nodes_from(vertices)
   senders, receivers = wgs_graph.edges
   edges = [(sender, receiver) for sender, receiver in zip(senders, receivers)]
@@ -297,9 +256,59 @@ def wgs_to_nx(wgs_graph: WGSGraph) -> nx.DiGraph:
 
 
 def graph_summary(graph: nx.Graph) -> str:
-  summary =  f"Nodes: {graph.number_of_nodes()}, " \
-             f"Edges: {graph.number_of_edges()}, " \
-             f"Average degree: {sum(d for _, d in graph.degree()) / graph.number_of_nodes()}"
+  summary = f"Nodes: {graph.number_of_nodes()}, " \
+            f"Edges: {graph.number_of_edges()}, " \
+            f"Average degree: {sum(d for _, d in graph.degree()) / graph.number_of_nodes()}"
 
   return summary
 
+
+def unpack_points(func, pack_back=True):
+  """Decorator to unpack points in 2D or 3D space, apply a function and eventually pack the result back."""
+
+  @functools.wraps(func)
+  def wrapper(points: np.ndarray):
+    # We assume that the coordinate dimension is the last one.
+    if points.shape[-1] == 2:
+      xx = points[..., 0]
+      yy = points[..., 1]
+      zz = None
+    elif points.shape[-1] == 3:
+      xx = points[..., 0]
+      yy = points[..., 1]
+      zz = points[..., 2]
+    else:
+      raise ValueError(f"Trailing dimension must be 2 or 3, got {points.shape[-1]}")
+    result = func(xx, yy, zz)
+    if pack_back:
+      result = np.stack(result, axis=-1)
+    return result
+
+  return wrapper
+
+
+def get_transform(source: str | osr.SpatialReference, destination: str | osr.SpatialReference, pack_back=True):
+  """Gets a function that transforms points from one projection to another."""
+  if isinstance(source, str):
+    source = ProjectionRegistry[source]
+  if isinstance(destination, str):
+    destination = ProjectionRegistry[destination]
+  transformer = Transformer.from_proj(source.ExportToProj4(), destination.ExportToProj4())
+  transform = unpack_points(transformer.transform, pack_back=pack_back)
+  return transform
+
+
+def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat') -> xr.DataArray:
+  """Maps a function expecting points on a regular grid in plate carree projection."""
+  grid = grid.transpose(longitude_dim, latitude_dim)
+  xx, yy = np.meshgrid(grid[longitude_dim], grid[latitude_dim], indexing='ij')
+  xx = np.where(grid.astype(bool), xx, 0.0)
+  yy = np.where(grid.astype(bool), yy, 0.0)
+  xx = xx.flatten()
+  yy = yy.flatten()
+  points = np.stack([xx, yy], axis=-1)
+  values = func(points, platecarree_proj)
+  values = values.reshape(grid.shape)
+  values = xr.DataArray(values, dims=grid.dims, coords=grid.coords)
+
+  return values

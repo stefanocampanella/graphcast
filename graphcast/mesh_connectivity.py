@@ -16,7 +16,6 @@
 
 import logging
 from functools import partial
-from typing import Union, Iterable, Literal, Tuple, Dict, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -25,20 +24,10 @@ import trimesh
 import xarray
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.mesh_graph import TriangleMesh, MeshGraph, faces_to_edges, mesh_to_wgs
-from graphcast.typed_graph import Context, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, TypedGraph
+from graphcast.mesh_graph import Mesh, TriangleMesh, faces_to_edges
+from graphcast.typed_graph import TypedGraph, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, Context
 
 logger = logging.getLogger(__name__)
-
-
-class Box(NamedTuple):
-  lat_min: float
-  lat_max: float
-  lon_min: float
-  lon_max: float
-
-
-Mesh = Union[TriangleMesh, MeshGraph]
 
 
 # TODO: update tests and usage in notebooks (e.g. mesh_comparison.ipynb) to take into account that radius of the Earth
@@ -50,16 +39,16 @@ def _grid_lat_lon_to_coordinates(
   # Convert to spherical coordinates phi and theta defined in the grid.
   # Each [num_latitude_points, num_longitude_points]
   phi_grid, theta_grid = np.meshgrid(
-      np.deg2rad(grid_longitude),
-      np.deg2rad(90 - grid_latitude))
+    np.deg2rad(grid_longitude),
+    np.deg2rad(90 - grid_latitude))
 
   # [num_latitude_points, num_longitude_points, 3]
   # Note this assumes unit radius, since for now we model the earth as a
   # sphere of unit radius, and keep any vertical dimension as a regular grid.
   coordinates_on_unit_sphere = np.stack(
-      [np.cos(phi_grid)*np.sin(theta_grid),
-       np.sin(phi_grid)*np.sin(theta_grid),
-       np.cos(theta_grid)], axis=-1)
+    [np.cos(phi_grid) * np.sin(theta_grid),
+     np.sin(phi_grid) * np.sin(theta_grid),
+     np.cos(theta_grid)], axis=-1)
   return EARTH_RADIUS * coordinates_on_unit_sphere
 
 
@@ -198,90 +187,6 @@ def get_mesh_to_points_edges(
   return senders, receivers
 
 
-# TODO: add tests
-def get_connected_mesh_nodes(grid_lat: np.ndarray,
-                             grid_lon: np.ndarray,
-                             mesh_graph: Mesh,
-                             mask: xarray.DataArray,
-                             query_radius: float | np.ndarray,
-                             workers: int = 1) -> set[int]:
-  """Returns the set of mesh vertices connected to a valid grid point.
-
-  It does so by excluding the mesh vertices that are not connected to a valid grid point by at least one edge of the
-  Grid2Mesh and/or the Mesh2Grid-like graphs described in the GraphCast paper.
-
-  Args:
-    grid_lat: Latitude values for the grid [num_lat_points]
-    grid_lon: Longitude values for the grid [num_lon_points]
-    mesh_graph: MultiMeshGraph or TriangleMesh object.
-    mask: Boolean mask of shape [num_lat_points, num_lon_points]
-    query_radius: Radius of connectivity in R3 for a sphere of unit radius.
-  Returns:
-    Set of indices of mesh vertices connected to a valid grid point.
-  """
-  if isinstance(query_radius, np.ndarray):
-    assert mesh_graph.vertices.shape[0] == query_radius.shape[0], \
-      "The number of vertices in the mesh graph must match the number of query radii."
-
-  (_, mesh_receivers) = radius_query_indices(
-    grid_latitude=grid_lat,
-    grid_longitude=grid_lon,
-    mesh=mesh_graph,
-    radius=query_radius,
-    mask=mask,
-    workers=workers)
-
-  (mesh_senders, _) = get_mesh_to_grid_edges(
-    grid_latitude=grid_lat,
-    grid_longitude=grid_lon,
-    mesh=mesh_graph,
-    mask=mask)
-
-  grid2mesh_connected_mesh_vertices = set(mesh_receivers)
-  mesh2grid_connected_mesh_vertices = set(mesh_senders)
-  connected_mesh_vertices = set.intersection(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
-
-  return connected_mesh_vertices
-
-
-# TODO: add tests
-# TODO: reimplement the following using get_masking_indices_fns
-def mask_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 'all'] = 'any') -> Tuple[Mesh, Dict[int, int]]:
-  """Filters the mesh to include only vertices belonging to triangles with at least one marked vertex (when `mode='any'`),
-  or with all marked vertices (when `mode='all'`).
-
-  Args:
-    marked_vertices: Set of vertices connected to a valid grid point.
-    mesh: MeshGraph object.
-  Returns:
-    Tuple containint a masked multimesh graph, and a mapping from the old vertex indices to the new vertex indices.
-  """
-  predicate = np.any if mode == 'any' else np.all
-  if isinstance(marked_vertices, set):
-    marked_vertices = list(marked_vertices)
-  valid_faces_mask = predicate(np.isin(mesh.faces, marked_vertices), axis=1)
-  valid_faces = mesh.faces[valid_faces_mask, :]
-  if len(valid_faces) > 0:
-    valid_vertices = np.unique(np.concatenate(valid_faces))
-    vertices = mesh.vertices[valid_vertices, :]
-    valid_vertices_map = {v: i for (i, v) in enumerate(valid_vertices)}
-    valid_vertices_map_f = np.vectorize(valid_vertices_map.get)
-    faces = valid_vertices_map_f(valid_faces)
-  else:
-    valid_vertices_map = dict()
-    faces = np.empty((0, 3), dtype=int)
-    vertices = np.empty((0, 3), dtype=float)
-
-  if isinstance(mesh, MeshGraph):
-    masked_mesh = MeshGraph(vertices=vertices, edges=faces_to_edges(faces), faces=faces)
-  else:
-    masked_mesh = TriangleMesh(vertices=vertices, faces=faces)
-
-  # The np.unique function can return an array containing additional information, i.e. made of tuples. This confuses the type checker.
-  # noinspection PyTypeChecker
-  return masked_mesh, valid_vertices_map
-
-
 def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True, default_value=-1):
   """Returns two functions that convert between masked and unmasked indices.
 
@@ -327,61 +232,6 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
         return default_value
 
   return unmasked_to_masked_fn, masked_to_unmasked_fn
-
-
-# FIXME: add docstring
-def mask_mesh_from_grid(ocean_mesh: TriangleMesh,
-                        boundary_nodes: np.ndarray,
-                        mask: xarray.DataArray,
-                        query_radius: float | np.ndarray,
-                        latitude_dim_name='lat',
-                        longitude_dim_name='lon',
-                        mode: Literal['all', 'any'] = 'all',
-                        workers: int = 1):
-
-  num_boundary_nodes = boundary_nodes.shape[0]
-  num_vertices = ocean_mesh.vertices.shape[0]
-  num_faces = ocean_mesh.faces.shape[0]
-  logger.info(f"Read mesh with {num_vertices} vertices, "
-              f"{num_boundary_nodes} boundary nodes, "
-              f"and {num_faces} faces")
-  if isinstance(query_radius, np.ndarray):
-    mean_radius = query_radius.mean()
-    logger.info("Looking for mesh vertices connected to the grid "
-                f"with an average search radius of {(mean_radius / 1e3):.2f} km.")
-  else:
-    logger.info("Looking for mesh vertices connected to the grid "
-                f"within a radius of {(query_radius / 1e3):.2f} km.")
-  connected_mesh_vertices = get_connected_mesh_nodes(grid_lat=mask[latitude_dim_name].to_numpy(),
-                                                     grid_lon=mask[longitude_dim_name].to_numpy(),
-                                                     mesh_graph=ocean_mesh,
-                                                     mask=mask,
-                                                     query_radius=query_radius,
-                                                     workers=workers)
-  logger.info(f"Extracted {len(connected_mesh_vertices)} mesh vertices connected to the grid.")
-  ocean_mesh_mskd, valid_vertices_map = mask_mesh(connected_mesh_vertices, ocean_mesh, mode=mode)
-  boundary_nodes_mskd = np.vectorize(lambda n: valid_vertices_map.get(n, -1), otypes=[np.int32])(boundary_nodes)
-  boundary_nodes_mskd = boundary_nodes_mskd[boundary_nodes_mskd >= 0]
-  num_boundary_nodes_mskd = boundary_nodes_mskd.shape[0]
-  num_vertices_mskd = ocean_mesh_mskd.vertices.shape[0]
-  num_faces_mskd = ocean_mesh_mskd.faces.shape[0]
-  logger.info(f"Masked mesh contains {num_vertices_mskd} vertices ({num_vertices_mskd / num_vertices:.2%}), "
-              f"{num_boundary_nodes_mskd} boundary nodes ({num_boundary_nodes_mskd / num_boundary_nodes:.2%}), "
-              f"and {num_faces_mskd} faces ({num_faces_mskd / num_faces:.2%}).")
-
-  return ocean_mesh_mskd, boundary_nodes_mskd
-
-
-def get_mesh_within_box(mesh: Mesh, box: Box):
-
-  def _is_within_bounds(lat, lon):
-    return (box.lat_min < lat < box.lat_max) and (box.lon_min < lon < box.lon_max)
-
-  wgs_graph = mesh_to_wgs(mesh)
-  vertices_within_bounds = np.array([_is_within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
-  marked_vertices = np.nonzero(vertices_within_bounds)[0]
-  new_mesh, vertices_map = mask_mesh(marked_vertices, mesh, mode='all')
-  return new_mesh, vertices_map
 
 
 # TODO: add tests
