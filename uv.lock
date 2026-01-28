@@ -1135,6 +1135,7 @@ version = "3.12.0.post1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "sys_platform == 'darwin'",
+    "sys_platform != 'darwin' and sys_platform != 'linux'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/95/fc/9d187c4d280122b497c2d4c25a1c3b1ba50e5e1836924e49323685999c43/gdal-3.12.0.post1.tar.gz", hash = "sha256:d2b68361c7cf2ef7caa8cbb8549a315080301564e3f025d1842df71a4e406236", size = 902365, upload-time = "2025-11-07T23:40:07.734Z" }
 
@@ -1426,8 +1427,7 @@ dependencies = [
     { name = "s3fs" },
     { name = "scipy" },
     { name = "scipy-stubs" },
-    { name = "seamsh", version = "0.1", source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }, marker = "sys_platform == 'darwin'" },
-    { name = "seamsh", version = "0.4.18", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
+    { name = "seamsh" },
     { name = "tensorflow", marker = "sys_platform == 'linux'" },
     { name = "tqdm" },
     { name = "treescope" },
@@ -1489,8 +1489,7 @@ requires-dist = [
     { name = "s3fs" },
     { name = "scipy" },
     { name = "scipy-stubs", specifier = "~=1.15.2" },
-    { name = "seamsh", marker = "sys_platform == 'darwin'", git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18" },
-    { name = "seamsh", marker = "sys_platform == 'linux'", specifier = "==0.4.18" },
+    { name = "seamsh", git = "https://github.com/stefanocampanella/seamsh.git?rev=graphcast" },
     { name = "tensorflow", marker = "sys_platform == 'linux'" },
     { name = "tqdm" },
     { name = "treescope" },
@@ -3768,33 +3767,14 @@ wheels = [
 [[package]]
 name = "seamsh"
 version = "0.1"
-source = { git = "https://git.immc.ucl.ac.be/jlambrechts/seamsh.git?rev=v-0.4.18#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }
-resolution-markers = [
-    "sys_platform == 'darwin'",
-]
-dependencies = [
-    { name = "gdal", version = "3.12.0.post1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "gmsh", marker = "sys_platform == 'darwin'" },
-    { name = "numpy", version = "2.1.3", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
-    { name = "scipy", marker = "sys_platform == 'darwin'" },
-]
-
-[[package]]
-name = "seamsh"
-version = "0.4.18"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "sys_platform == 'linux'",
-]
+source = { git = "https://github.com/stefanocampanella/seamsh.git?rev=graphcast#ca380b59fe4d2ea57ffbf08a7b0c70bdf7df1afb" }
 dependencies = [
     { name = "gdal", version = "3.11.4", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
-    { name = "gmsh", marker = "sys_platform == 'linux'" },
-    { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
-    { name = "scipy", marker = "sys_platform == 'linux'" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/13/ca/190e7ac8bc9f22654a34792eb4418fdbc74fdd73ae1aa971794fae9471d4/seamsh-0.4.18.tar.gz", hash = "sha256:31aa024dcefe9cb960e531a2c8034992a546671a8a8245bc272eda7d528ab302", size = 67542, upload-time = "2025-09-19T16:10:52.093Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/b9/e3c5d8fe9d8fb1bc8220cff1a72b987a8ad3f0242679d19ac4a63c7fa8a8/seamsh-0.4.18-py3-none-manylinux1_x86_64.whl", hash = "sha256:2564540f56cfb47699557da0ad1ddd6ff1a931007691d1091c0dea544d4bc3c2", size = 401259, upload-time = "2025-09-19T16:10:48.232Z" },
+    { name = "gdal", version = "3.12.0.post1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux'" },
+    { name = "gmsh" },
+    { name = "numpy", version = "2.1.3", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'darwin'" },
+    { name = "numpy", version = "2.2.5", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'darwin'" },
+    { name = "scipy" },
 ]
 
 [[package]]

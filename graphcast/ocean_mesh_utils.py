@@ -10,7 +10,6 @@
 #   3. Seamsh can ingest raster fields, use this feature to implement HessianField, BathymetryField and CourantField.
 import logging
 import pathlib
-from typing import Literal
 
 import gmsh
 import numpy as np
@@ -20,10 +19,8 @@ from osgeo import osr
 from scipy.interpolate import RegularGridInterpolator
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.mesh_connectivity import get_connected_mesh_nodes, mask_mesh
 from graphcast.mesh_graph import TriangleMesh, cartesian_proj, platecarree_proj, stereographic_proj, Projection, \
   ProjectionRegistry, get_transform
-from graphcast.model import _get_max_edge_distance
 
 logger = logging.getLogger(__name__)
 
@@ -247,43 +244,3 @@ def coarsen_boundaries(domain: seamsh.geometry.Domain,
   mesh_size_f = ConstantField(mesh_size)
   coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse
-
-
-# FIXME: add docstring
-def read_and_mask_mesh(mesh_path: str,
-                       mask: xr.DataArray,
-                       radius_query_fraction_edge_length: float,
-                       latitude_dim_name='lat',
-                       longitude_dim_name='lon',
-                       mode: Literal['all', 'any'] = 'all',
-                       workers: int = 1):
-
-  ocean_mesh, boundary_nodes = read_mesh(mesh_path)
-  num_boundary_nodes = boundary_nodes.shape[0]
-  num_vertices = ocean_mesh.vertices.shape[0]
-  num_faces = ocean_mesh.faces.shape[0]
-  logger.info(f"Read mesh with {num_vertices} vertices, "
-              f"{num_boundary_nodes} boundary nodes, "
-              f"and {num_faces} faces")
-  max_edge_distance = _get_max_edge_distance(ocean_mesh)
-  query_radius = radius_query_fraction_edge_length * max_edge_distance
-  logger.info(f"Looking for mesh vertices connected to the grid within a radius of {query_radius / 1e3:.2f} km"
-              f"(max edge length: {max_edge_distance / 1e3:.2f} km)")
-  connected_mesh_vertices = get_connected_mesh_nodes(grid_lat=mask[latitude_dim_name].to_numpy(),
-                                                  grid_lon=mask[longitude_dim_name].to_numpy(),
-                                                  mesh_graph=ocean_mesh,
-                                                  grid_mask=mask,
-                                                  query_radius=query_radius,
-                                                  workers=workers)
-  logger.info(f"Extracted {len(connected_mesh_vertices)} mesh vertices connected to the grid.")
-  ocean_mesh_mskd, valid_vertices_map = mask_mesh(connected_mesh_vertices, ocean_mesh, mode=mode)
-  boundary_nodes_mskd = np.vectorize(lambda n: valid_vertices_map.get(n, -1), otypes=[np.int32])(boundary_nodes)
-  boundary_nodes_mskd = boundary_nodes_mskd[boundary_nodes_mskd >= 0]
-  num_boundary_nodes_mskd = boundary_nodes_mskd.shape[0]
-  num_vertices_mskd = ocean_mesh_mskd.vertices.shape[0]
-  num_faces_mskd = ocean_mesh_mskd.faces.shape[0]
-  logger.info(f"Masked mesh contains {num_vertices_mskd} vertices ({num_vertices_mskd / num_vertices:.2%}), "
-              f"{num_boundary_nodes_mskd} boundary nodes ({num_boundary_nodes_mskd / num_boundary_nodes:.2%}), "
-              f"and {num_faces_mskd} edges ({num_faces_mskd / num_faces:.2%}).")
-
-  return ocean_mesh_mskd, boundary_nodes_mskd

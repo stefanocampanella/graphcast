@@ -1,3 +1,22 @@
+description = """
+  Global ocean triangular mesh, \
+  with a target mesh size set to a uniform field with a value of 150 km. \
+  All units are meters. \
+  The code used the seamsh Python package by Jonathan Lambrechts \
+  and a description of the algorithm can be found at \
+  https://doi.org/10.1007/s10236-008-0148-3 \
+  The code uses coastline shapefiles, which are taken from \
+  NaturalEarth physical vector 1:10m coastline files \
+  (version 4.1.0, accessed on 21/01/2026).
+  """
+license = """
+  The mesh is licensed under the Creative Commons \
+  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
+  may obtain a copy of the License at: \
+  https://creativecommons.org/licenses/by-nc-sa/4.0/. \
+  Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com
+  """
+
 [domain]
 physical_name_field = "featurecla"
 curve_type = "bspline"
@@ -8,6 +27,3 @@ mesh_size = 10_000.0
 [field]
 name = "ConstantField"
 value = 150_000.0
-
-[save]
-projection = "cartesian"
