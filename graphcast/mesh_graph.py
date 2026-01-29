@@ -16,7 +16,7 @@
 """Utils for working with (multi-)mesh graphs and geospatial graphs."""
 import functools
 import itertools
-from typing import Literal, Union
+from typing import Literal, Union, Optional
 from typing import Sequence, Tuple
 
 import chex
@@ -78,7 +78,7 @@ class TriangleMesh:
   """
   vertices: np.ndarray
   faces: np.ndarray
-  node_tags: np.ndarray | None = None
+  node_tags: Optional[np.ndarray] = None
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -94,9 +94,11 @@ class MeshGraph:
   vertices: np.ndarray
   faces: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
-  node_tags: np.ndarray | None = None
+  node_tags: Optional[np.ndarray] = None
 
 
+# FIXME: graphcast.checkpoint isn't able to deserialize a union with anything except None.
+#  However, it would be nice to have a way to store scalar mesh_size for backward compatibility with GraphCast for weather.
 @chex.dataclass(frozen=True, eq=True)
 class MeshData:
   """Data structure containing mesh graph and boundary nodes."""

@@ -79,30 +79,11 @@ radius_query_fraction_edge_length = 0.6
 per_variable_weights = {}
 
 [mesh]
-filepath = "data/geometry/uniform_fine.msh"
-radius_query_fraction_edge_length = 0.6
-description = """
-  Global ocean triangular mesh, \
-  with a target mesh size set to a uniform field with a value of 300km \
-  for the interior of the domain and 10km for coastlines. \
-  The mesh was then post-processed to remove vertices not connected to \
-  a sea point according to the GLORYS12 sea-land mask contained in ARCO-OCEAN, \
-  as documented in the code at https://github.com/stefanocampanella/graphcast. \
-  The code used the seamsh Python package by Jonathan Lambrechts \
-  and a description of the algorithm can be found at \
-  https://doi.org/10.1007/s10236-008-0148-3 \
-  The code uses coastline shapefiles, which are taken from \
-  NaturalEarth physical vector 1:10m coastline files \
-  (version 4.1.0, accessed on 21/01/2026).
-  """
-license = """
-  The mesh is licensed under the Creative Commons \
-  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
-  may obtain a copy of the License at: \
-  https://creativecommons.org/licenses/by-nc-sa/4.0/. \
-  Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com
-  """
+filepath = "data/geometry/shore_proximity.msh"
+mesh_size_tag_name = "MeshSize"
+step = 0
 
 [dataset]
 filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
 timesteps = 3
+mask_name = 'glorys_mask'
