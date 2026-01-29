@@ -8,6 +8,7 @@
 #      ocean_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
 #      field object can be instantiated.
 #   3. Seamsh can ingest raster fields, use this feature to implement HessianField, BathymetryField and CourantField.
+import atexit
 import logging
 import pathlib
 
@@ -23,6 +24,11 @@ from graphcast.mesh_graph import TriangleMesh, cartesian_proj, platecarree_proj,
   ProjectionRegistry, get_transform
 
 logger = logging.getLogger(__name__)
+
+@atexit.register
+def _gmsh_finalize():
+    logger.info(f"Finalize gmsh.")
+    gmsh.finalize()
 
 class StereoMeshSizeField:
   """

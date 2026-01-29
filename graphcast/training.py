@@ -42,8 +42,6 @@ from graphcast.ocean_mesh_utils import read_mesh
 
 logger = logging.getLogger(__name__)
 
-gmsh.initialize()
-
 @click.group()
 def cli():
   pass
@@ -98,6 +96,9 @@ def init(config_path: pathlib.Path,
     datefmt='%Y-%m-%dT%H:%M:%S',
     level=getattr(logging, log_level.upper()),
     force=True)
+
+  logger.info("Initialize gmsh.")
+  gmsh.initialize()
 
   if output_path.exists() and not overwrite:
     raise ValueError(f"Output destination {output_path} already exists.")

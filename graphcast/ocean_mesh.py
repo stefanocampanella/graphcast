@@ -26,8 +26,6 @@ from graphcast.ocean_mesh_utils import load_domain, coarsen_boundaries, ShorePro
 
 logger = logging.getLogger(__name__)
 
-gmsh.initialize()
-
 
 @click.group()
 def cli():
@@ -56,9 +54,13 @@ def make(config_path: pathlib.Path,
          output_path: pathlib.Path,
          overwrite: bool = False,
          log_level: str = 'info'):
+
   logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
                       datefmt='%Y-%m-%dT%H:%M:%S',
                       level=getattr(logging, log_level.upper()))
+
+  logger.info(f"Initialize gmsh.")
+  gmsh.initialize()
 
   # Open the configuration file and load the TOML configs.
   configs = Configs.read(config_path)
@@ -122,5 +124,3 @@ def make(config_path: pathlib.Path,
 
 if __name__ == "__main__":
   cli()
-
-gmsh.finalize()
