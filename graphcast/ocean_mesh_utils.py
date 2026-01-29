@@ -20,8 +20,9 @@ from osgeo import osr
 from scipy.interpolate import RegularGridInterpolator
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.mesh_graph import TriangleMesh, cartesian_proj, platecarree_proj, stereographic_proj, Projection, \
+from graphcast.gdal_utils import cartesian_proj, platecarree_proj, stereographic_proj, Projection, \
   ProjectionRegistry, get_transform
+from graphcast.mesh_graph import TriangleMesh
 
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,12 @@ class HessianField(StereoMeshSizeField):
 
 
 class BathymetryField(StereoMeshSizeField):
-  pass
+
+  def __init__(self, bathymetry: xr.DataArray, size_min, size_max, longitude_dim: str = 'lon', latitude_dim: str = 'lat'):
+    super().__init__(size_min, size_max)
+    self.bathymetry = bathymetry
+    self.bathymetry_min = np.nanmin(bathymetry)
+    self.bathymetry_max = np.nanmax(bathymetry)
 
 
 class CourantField(StereoMeshSizeField):

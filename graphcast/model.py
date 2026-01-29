@@ -44,7 +44,8 @@ from graphcast import model_utils
 from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
-from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges, get_transform
+from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
+from graphcast.gdal_utils import get_transform
 
 logger = logging.getLogger(__name__)
 

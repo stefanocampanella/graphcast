@@ -215,8 +215,13 @@ class DeepTypedGraphNet(hk.Module):
         embed_edge_fn=embed_edge_fn,
         embed_node_fn=embed_node_fn,
     )
-    self._embedder_network = typed_graph_net.GraphMapFeatures(
-        **embedder_kwargs)
+
+    @partial(hk.remat, policy=self._policy, prevent_cse=self._prevent_cse)
+    def _embedder_network(graph):
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "embedder"), graph)
+      return typed_graph_net.GraphMapFeatures(**embedder_kwargs)(graph)
+
+    self._embedder_network = _embedder_network
 
     if self._f32_aggregation:
       def aggregate_fn(data, *args, **kwargs):

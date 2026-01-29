@@ -14,29 +14,16 @@
 # TODO: move tests from icosahedral_mesh and add tests for new functions
 # TODO: switch from np.ndarray to chex.Array in type hints
 """Utils for working with (multi-)mesh graphs and geospatial graphs."""
-import functools
 import itertools
-from typing import Literal, Union, Optional
 from typing import Sequence, Tuple
+from typing import Union, Optional
 
 import chex
 import networkx as nx
 import numpy as np
-import xarray as xr
-from osgeo import osr
-from pyproj import Transformer
 
 from graphcast import typed_graph
-
-osr.UseExceptions()
-
-stereographic_proj = osr.SpatialReference("+proj=stere +ellps=WGS84 +lat_0=90")
-cartesian_proj = osr.SpatialReference("+proj=cart +ellps=WGS84 +units=m +x_0=0 +y_0=0")
-cartesian_unit_sphere_proj = osr.SpatialReference("+proj=cart +a=1 +b=1 +units=m +x_0=0 +y_0=0")
-platecarree_proj = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
-
-ProjectionRegistry = {'stereographic': stereographic_proj, 'cartesian': cartesian_proj, 'platecarree': platecarree_proj}
-Projection = Literal['stereographic', 'cartesian', 'platecarree']
+from graphcast.gdal_utils import cartesian_proj, cartesian_unit_sphere_proj, platecarree_proj
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -263,54 +250,3 @@ def graph_summary(graph: nx.Graph) -> str:
             f"Average degree: {sum(d for _, d in graph.degree()) / graph.number_of_nodes()}"
 
   return summary
-
-
-def unpack_points(func, pack_back=True):
-  """Decorator to unpack points in 2D or 3D space, apply a function and eventually pack the result back."""
-
-  @functools.wraps(func)
-  def wrapper(points: np.ndarray):
-    # We assume that the coordinate dimension is the last one.
-    if points.shape[-1] == 2:
-      xx = points[..., 0]
-      yy = points[..., 1]
-      zz = None
-    elif points.shape[-1] == 3:
-      xx = points[..., 0]
-      yy = points[..., 1]
-      zz = points[..., 2]
-    else:
-      raise ValueError(f"Trailing dimension must be 2 or 3, got {points.shape[-1]}")
-    result = func(xx, yy, zz)
-    if pack_back:
-      result = np.stack(result, axis=-1)
-    return result
-
-  return wrapper
-
-
-def get_transform(source: str | osr.SpatialReference, destination: str | osr.SpatialReference, pack_back=True):
-  """Gets a function that transforms points from one projection to another."""
-  if isinstance(source, str):
-    source = ProjectionRegistry[source]
-  if isinstance(destination, str):
-    destination = ProjectionRegistry[destination]
-  transformer = Transformer.from_proj(source.ExportToProj4(), destination.ExportToProj4())
-  transform = unpack_points(transformer.transform, pack_back=pack_back)
-  return transform
-
-
-def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat') -> xr.DataArray:
-  """Maps a function expecting points on a regular grid in plate carree projection."""
-  grid = grid.transpose(longitude_dim, latitude_dim)
-  xx, yy = np.meshgrid(grid[longitude_dim], grid[latitude_dim], indexing='ij')
-  xx = np.where(grid.astype(bool), xx, 0.0)
-  yy = np.where(grid.astype(bool), yy, 0.0)
-  xx = xx.flatten()
-  yy = yy.flatten()
-  points = np.stack([xx, yy], axis=-1)
-  values = func(points, platecarree_proj)
-  values = values.reshape(grid.shape)
-  values = xr.DataArray(values, dims=grid.dims, coords=grid.coords)
-
-  return values
