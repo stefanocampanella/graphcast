@@ -111,11 +111,9 @@ def memory_usage_summary(compiled_stats):
   return summary
 
 
-def run_analysis_and_report(func, *args, **kwargs):
-  func_jit = jax.jit(func)
-  func_jit_compiled = func_jit.trace(*args, **kwargs).lower().compile()
-  memory_analysis = func_jit_compiled.memory_analysis()
-  cost_analysis = func_jit_compiled.cost_analysis()
+def run_analysis_and_report(func_aot):
+  memory_analysis = func_aot.memory_analysis()
+  cost_analysis = func_aot.cost_analysis()
 
   if memory_analysis is not None:
     summary = memory_usage_summary(memory_analysis)
