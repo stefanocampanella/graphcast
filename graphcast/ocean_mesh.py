@@ -69,6 +69,9 @@ def make(config_path: pathlib.Path,
   if output_path.exists() and not overwrite:
     raise ValueError(f"Output destination {output_path} already exists")
 
+  if not output_path.parent.exists():
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
   # gmsh needs to be initialized before most seamsh functions can be used, so we do it here.
   gmsh.option.setNumber("General.Verbosity", 2)
   gmsh.option.setNumber("PostProcessing.SaveMesh", 1)
