@@ -591,6 +591,7 @@ numpy==2.2.6
     #   tensorboard
     #   tensorflow
     #   tensorstore
+    #   treescope
     #   trimesh
     #   xarray
     #   xarray-regrid
@@ -885,7 +886,7 @@ scipy==1.16.0
     #   xarray-regrid
 scipy-stubs==1.15.3.0
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
-seamsh==0.4.18 ; sys_platform == "linux"
+seamsh @ git+https://github.com/stefanocampanella/seamsh.git@graphcast
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 semver==3.0.4
     # via copernicusmarine
@@ -964,6 +965,7 @@ tqdm==4.67.1
     #   multiurl
     #   panel
     #   papermill
+    #   seamsh
 traitlets==5.14.3
     # via
     #   comm
@@ -979,6 +981,8 @@ traitlets==5.14.3
     #   nbclient
     #   nbconvert
     #   nbformat
+treescope==0.1.10
+    # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 trimesh==4.7.1
     # via graphcast-ocean (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 types-python-dateutil==2.9.0.20250708
