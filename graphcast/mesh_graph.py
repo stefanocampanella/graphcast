@@ -23,7 +23,7 @@ import networkx as nx
 import numpy as np
 
 from graphcast import typed_graph
-from graphcast.gdal_utils import cartesian_proj, cartesian_unit_sphere_proj, platecarree_proj
+from graphcast.gis_utils import cartesian_srs, cartesian_unit_sphere_srs, platecarree_srs, get_transform
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -172,8 +172,8 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 def graph_to_wgs(graph: Graph, unit_sphere: bool = False) -> WGSGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
-  transformer = get_transform(cartesian_unit_sphere_proj if unit_sphere else cartesian_proj,
-                              platecarree_proj, pack_back=False)
+  transformer = get_transform(cartesian_unit_sphere_srs if unit_sphere else cartesian_srs,
+                              platecarree_srs, pack_back=False)
   longitudes, latitudes, _ = transformer(graph.vertices)
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.

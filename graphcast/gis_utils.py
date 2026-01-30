@@ -12,13 +12,18 @@ GDFloatingPoint = int
 
 osr.UseExceptions()
 
-stereographic_proj = osr.SpatialReference("+proj=stere +ellps=WGS84 +lat_0=90")
-cartesian_proj = osr.SpatialReference("+proj=cart +ellps=WGS84 +units=m +x_0=0 +y_0=0")
-cartesian_unit_sphere_proj = osr.SpatialReference("+proj=cart +a=1 +b=1 +units=m +x_0=0 +y_0=0")
-platecarree_proj = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
+stereographic_srs = osr.SpatialReference("+proj=stere +ellps=WGS84 +lat_0=90")
+cartesian_srs = osr.SpatialReference("+proj=cart +ellps=WGS84 +units=m +x_0=0 +y_0=0")
+cartesian_unit_sphere_srs = osr.SpatialReference("+proj=cart +a=1 +b=1 +units=m +x_0=0 +y_0=0")
+platecarree_srs = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
+ecmwf_srs = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs +lon_wrap=180")
 
-ProjectionRegistry = {'stereographic': stereographic_proj, 'cartesian': cartesian_proj, 'platecarree': platecarree_proj}
-Projection = Literal['stereographic', 'cartesian', 'platecarree']
+SRSName = Literal['stereographic', 'cartesian', 'platecarree']
+SRSRegistry = {
+  'stereographic': stereographic_srs,
+  'cartesian': cartesian_srs,
+  'platecarree': platecarree_srs,
+  'ecmwf': ecmwf_srs}
 
 
 def unpack_points(func, pack_back=True):
@@ -48,9 +53,9 @@ def unpack_points(func, pack_back=True):
 def get_transform(source: str | osr.SpatialReference, destination: str | osr.SpatialReference, pack_back=True):
   """Gets a function that transforms points from one projection to another."""
   if isinstance(source, str):
-    source = ProjectionRegistry[source]
+    source = SRSRegistry[source]
   if isinstance(destination, str):
-    destination = ProjectionRegistry[destination]
+    destination = SRSRegistry[destination]
   transformer = Transformer.from_proj(source.ExportToProj4(), destination.ExportToProj4())
   transform = unpack_points(transformer.transform, pack_back=pack_back)
   return transform
@@ -65,7 +70,7 @@ def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat
   xx = xx.flatten()
   yy = yy.flatten()
   points = np.stack([xx, yy], axis=-1)
-  values = func(points, platecarree_proj)
+  values = func(points, platecarree_srs)
   values = values.reshape(grid.shape)
   values = xr.DataArray(values, dims=grid.dims, coords=grid.coords)
 
@@ -73,9 +78,9 @@ def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat
 
 
 def xarray_to_gdal_raster(da: xr.DataArray,
-                          srs: osr.SpatialReference = platecarree_proj,
-                          latitude_dim_name: str = 'lat',
-                          longitude_dim_name: str = 'lon',
+                          srs: osr.SpatialReference = platecarree_srs,
+                          latitude_dim: str = 'lat',
+                          longitude_dim: str = 'lon',
                           no_data_value: FloatingPoint | None = np.nan,
                           gdal_dtype: GDFloatingPoint = gdal.GDT_Float32) -> gdal.Dataset:
   """
@@ -94,12 +99,12 @@ def xarray_to_gdal_raster(da: xr.DataArray,
   Returns:
     In-memory GDAL raster dataset of type gdal.Dataset.
   """
-  assert da.dims == (latitude_dim_name, longitude_dim_name), \
-    f"Dataset must have dimensions ({latitude_dim_name}, {longitude_dim_name})"
-  da = da.transpose(latitude_dim_name, longitude_dim_name)
+  assert da.dims == (latitude_dim, longitude_dim), \
+    f"Dataset must have dimensions ({latitude_dim}, {longitude_dim})"
+  da = da.transpose(latitude_dim, longitude_dim)
   data = da.to_numpy()
-  lat = da[latitude_dim_name].to_numpy()
-  lon = da[longitude_dim_name].to_numpy()
+  lat = da[latitude_dim].to_numpy()
+  lon = da[longitude_dim].to_numpy()
 
   # Grid shape, and resolution
   num_lats, num_lons = data.shape
@@ -122,7 +127,8 @@ def xarray_to_gdal_raster(da: xr.DataArray,
   # Create GDAL dataset in memory
   driver = gdal.GetDriverByName("MEM")
   gdal_ds = driver.Create("", num_lons, num_lats, 1, gdal_dtype)
-  gdal_ds.SetGeoTransform(x_min, lon_res, 0.0, y_max, 0.0, lat_res)
+  geotransform = (x_min, lon_res, 0.0, y_max, 0.0, lat_res)
+  gdal_ds.SetGeoTransform(geotransform)
   gdal_ds.SetProjection(srs.ExportToWkt())
 
   # Write data

@@ -18,17 +18,48 @@ license = """
   Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com
   """
 
+[mesh]
+smoothness = 0.3
+
 [domain]
+filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
+sampling = 5_000.0
 
 [coarsen_boundaries]
 mesh_size = 10_000.0
 
-[field]
-name = "ShoreProximityField"
+# For bathymetry and its hessian fields, Lambrecths et al use 25 km as a minimum mesh size,
+# and 30 for the shore proximity criterium. However, this would result in a mesh too fine for our purposes.
+[[fields]]
+name = "shore_proximity"
+filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
+physical_name_field = "featurecla"
+curve_type = "bspline"
 sampling = 5_000.0
 field_min = 0.0
 field_max = 500_000.0
-size_min = 30_000.0
-size_max = 150_000.0
+size_min = 120_000.0
+size_max = 500_000.0
+
+[[fields]]
+name = "bathymetry"
+filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+var_name = "deptho"
+q_low = 0.1
+q_high = 0.9
+srs_name = 'ecmwf'
+size_min = 100_000.0
+size_max = 500_000.0
+
+[[fields]]
+name = "bathymetry_hessian"
+filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+var_name = "deptho"
+q_low = 0.1
+q_high = 0.9
+smoothing_kwargs = {kx = 3, ky = 3}
+srs_name = 'ecmwf'
+size_min = 100_000.0
+size_max = 500_000.0

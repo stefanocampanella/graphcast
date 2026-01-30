@@ -11,17 +11,18 @@
 import atexit
 import logging
 import pathlib
+from typing import Iterable, Union, Literal, Dict, Any, Tuple
 
 import gmsh
 import numpy as np
 import seamsh
 import xarray as xr
 from osgeo import osr
-from scipy.interpolate import RegularGridInterpolator
+from scipy.interpolate import RectBivariateSpline
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.gdal_utils import cartesian_proj, platecarree_proj, stereographic_proj, Projection, \
-  ProjectionRegistry, get_transform
+from graphcast.gis_utils import SRSName, SRSRegistry, stereographic_srs, cartesian_srs, platecarree_srs
+from graphcast.gis_utils import get_transform, xarray_to_gdal_raster
 from graphcast.mesh_graph import TriangleMesh
 
 logger = logging.getLogger(__name__)
@@ -33,23 +34,55 @@ def _gmsh_finalize():
 
 class StereoMeshSizeField:
   """
-  Base class that computes a mesh size field for a single criterion field in stereographic projection coordinates.
+  Base class that computes a mesh size field in stereographic projection coordinates.
 
   This object depends on the reference system in two ways:
-    1. how it interprets the coordinates of the points on which is evaluated,
+    1. how it interprets the coordinates of the points on which is evaluated, and
     2. whether the mesh size (which is an edge length) is defined on the stereographic plane or in 3D.
 
   As the point coordinates are represented by numpy arrays, not holding information of the reference system, all the
   methods take a projection argument specifying it.
 
-  About the second, as the meshing procedure is performed by gmsh on the stereographic plane, the `__call__` method
-  return the value of the mesh size in that space.
+  About the second point, as the meshing procedure is performed by gmsh on the stereographic plane, the `__call__`
+  method returns the value of the mesh size in that space.
 
-  First the value in 3D space of the criterion field is computed, then it is clipped and rescaled to interpolate the values between
-  `size_min` and `size_max`. Finally, the value of the mesh size field is rescaled to its value on the stereographic
-  projection.
+  First, the value in 3D space of the criterion field is computed; then the mesh size field is rescaled to its value on
+  the stereographic projection.
 
   See https://doi.org/10.1007/s10236-008-0148-3.
+  """
+
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    """Value of the mesh size field in 3D space."""
+    pass
+
+  def __call__(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    """Value of the mesh size field in stereographic projection coordinates,
+    possibly as a function of the coordinates in parametric space."""
+    mesh_size = self.mesh_size_3d(x, projection)
+    if not platecarree_srs.IsSame(projection):
+      transform = get_transform(projection, stereographic_srs)
+      x = transform(x)
+    earth_radius_squared = EARTH_RADIUS * EARTH_RADIUS
+    stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
+    return mesh_size / stereo_factor
+
+
+class ConstantField(StereoMeshSizeField):
+  """Stereographic mesh size field with a constant value."""
+  def __init__(self, value: float):
+    self.value = value
+
+  def mesh_size_3d(self, x, projection):
+    return np.full(x.shape[0], self.value)
+
+
+class BoundedStereoMeshSizeField(StereoMeshSizeField):
+  """
+  Base class that computes a mesh size field for using a criterion field in stereographic projection coordinates.
+  Computes the criterion field in 3D space, then clips it, and finally rescale it to interpolate the values
+  between `size_min` and `size_max`.
+
   """
   def __init__(self, size_min, size_max):
     self.size_min = size_min
@@ -65,35 +98,19 @@ class StereoMeshSizeField:
     delta = self.size_min + (self.size_max - self.size_min) * alpha
     return delta
 
-  def __call__(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
-    """Value of the mesh size field in stereographic projection coordinates,
-    possibly as a function of the coordinates in parametric space."""
-    mesh_size = self.mesh_size_3d(x, projection)
-    if not platecarree_proj.IsSame(projection):
-      transform = get_transform(projection, stereographic_proj)
-      x = transform(x)
-    earth_radius_squared = EARTH_RADIUS * EARTH_RADIUS
-    stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
-    return mesh_size / stereo_factor
 
-
-class ConstantField(StereoMeshSizeField):
-  """Stereographic mesh size field with a constant value."""
-  def __init__(self, value: float):
-    super().__init__(size_min=value, size_max=value)
-
-  def criterion(self, x, projection):
-    return np.full(x.shape[0], self.size_min)
-
-
-class ShoreProximityField(StereoMeshSizeField):
+class ShoreProximityField(BoundedStereoMeshSizeField):
   """Stereographic mesh size field based on the distance from the coast."""
-  def __init__(self, domain: seamsh.geometry.Domain, sampling: float, field_min: float, field_max: float, size_min,
-               size_max):
+  def __init__(self, filepath: Union[str, pathlib.Path], physical_name_field: str, curve_type: str, sampling: float,
+               field_min: float, field_max: float, size_min, size_max):
     super().__init__(size_min, size_max)
+    if isinstance(filepath, str):
+      filepath = pathlib.Path(filepath)
+    domain = load_domain(filepath, physical_name_field=physical_name_field, curve_type=curve_type)
+
     self.field_min = field_min
     self.field_max = field_max
-    self.distance_from_coast_f = seamsh.field.Distance(domain, sampling, projection=cartesian_proj)
+    self.distance_from_coast_f = seamsh.field.Distance(domain, sampling, projection=cartesian_srs)
 
   def criterion(self, x, projection):
     distance_from_coast = np.clip(self.distance_from_coast_f(x, projection), self.field_min, self.field_max)
@@ -101,86 +118,146 @@ class ShoreProximityField(StereoMeshSizeField):
     return alpha
 
 
-class GridField(StereoMeshSizeField):
+class RasterField(BoundedStereoMeshSizeField):
   """Stereographic mesh size field whose criterion field is interpolated from values defined on a regular grid in
   plate carree projection. The grid is assumed to be an xarray DataArray with dimensions (latitude_dim, longitude_dim).
   The field extrema are computed from the quantiles q_low and q_high.
   """
 
-  def __init__(self, grid: xr.DataArray, q_low: float, q_high: float, size_min, size_max,
-               longitude_dim: str = 'lon', latitude_dim: str = 'lat'):
+  def __init__(self, grid: xr.DataArray, size_min, size_max, q_low: float = 0.0, q_high: float = 1.0,
+               longitude_dim: str = 'lon', latitude_dim: str = 'lat', srs_name: str = 'cartesian'):
     super().__init__(size_min, size_max)
-    self.field = RegularGridInterpolator((grid[latitude_dim], grid[longitude_dim]), grid)
-    self.field_min = np.nanquantile(grid, q_low)
-    self.field_max = np.nanquantile(grid, q_high)
+    if q_low <= 0.0:
+      self.field_min = np.nanmin(grid)
+    else:
+      self.field_min = np.nanquantile(grid, q_low)
+    if q_high >= 1.0:
+      self.field_max = np.nanmax(grid)
+    else:
+      self.field_max = np.nanquantile(grid, q_high)
+    grid = grid.fillna(self.field_max)
+    gdal_raster = xarray_to_gdal_raster(da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim,
+                                        srs=SRSRegistry[srs_name])
+    self.field = seamsh.field.Raster(gdal_raster)
 
+  # noinspection PyTypeChecker
   def criterion(self, x, projection):
-    if not projection.IsSame(platecarree_proj):
-      transform = get_transform(projection, platecarree_proj)
-      x = transform(x)
-    # noinspection PyTypeChecker
-    alpha = (self.field(x) - self.field_min) / (self.field_max - self.field_min)
+    value = np.clip(self.field(x, projection), self.field_min, self.field_max)
+    alpha = (value - self.field_min) / (self.field_max - self.field_min)
     return alpha
 
 
-class HessianField(StereoMeshSizeField):
-  pass
+class BathymetryField(RasterField):
+  """Stereographic mesh size field based on the bathymetry."""
 
-
-class BathymetryField(StereoMeshSizeField):
-
-  def __init__(self, bathymetry: xr.DataArray, size_min, size_max, longitude_dim: str = 'lon', latitude_dim: str = 'lat'):
-    super().__init__(size_min, size_max)
-    self.bathymetry = bathymetry
-    self.bathymetry_min = np.nanmin(bathymetry)
-    self.bathymetry_max = np.nanmax(bathymetry)
-
-
-class CourantField(StereoMeshSizeField):
-  pass
-
-
-def norm_of_hessian(f: xr.DataArray, longitude_dim: str = 'lon', latitude_dim: str = 'lat') -> xr.DataArray:
-
-  h = np.empty(f.shape + (2, 2), dtype=f.dtype)
-
-  def diff(f: xr.DataArray, coord: str) -> xr.DataArray:
-    grad = f.differentiate(coord=coord)
-    # FIXME: document why this is needed, and in which approximation solves the problem.
-    if coord == longitude_dim:
-      grad = grad / np.cos(f[latitude_dim] * np.pi / 180.0)
-    return grad
-
-  for (i, coord_i) in enumerate([longitude_dim, latitude_dim]):
-    for (j, coord_j) in enumerate([longitude_dim, latitude_dim]):
-      h[..., i, j] = diff(diff(f, coord_i), coord_j)
-
-  # FIXME: document why this is needed, and in which approximation solves the problem.
-  h = 0.5 * (h + np.swapaxes(h, -1, -2))
-
-  h_singular_values = np.linalg.svd(h, compute_uv=False, hermitian=True)
-  h_norm = np.max(h_singular_values, axis=-1)
-  h_norm = xr.DataArray(data=h_norm, coords=f.coords, dims=f.dims, name='norm_of_hessian')
-
-  return h_norm
-
-
-def compute_alpha(ds: xr.Dataset, eps: float = 1.0e-10, longitude_dim: str = 'lon', latitude_dim: str = 'lat') -> xr.Dataset:
-
-  def alpha_f(da: xr.DataArray):
+  def __init__(self, filepath: Union[str, pathlib.Path], var_name: str,
+               size_min, size_max, **kwargs):
+    """It assumes that variable contains positive depth values."""
+    grid_ds = xr.open_dataset(filepath, engine='zarr')
+    grid_da = grid_ds[var_name].load()
     # noinspection PyArgumentList
-    alpha = np.sqrt(np.abs(da) / np.clip(norm_of_hessian(da), min=eps))
-    return alpha
+    assert np.all(np.logical_or(grid_da.isnull(), grid_da >= 0.0)), f"Variable {var_name} contain negative depth values."
+    bathy_sqrt = np.sqrt(grid_da)
+    super().__init__(bathy_sqrt, size_min, size_max, **kwargs)
 
-  def _compute_alpha(da: xr.DataArray):
-    if longitude_dim in da.dims and latitude_dim in da.dims and np.issubdtype(da.dtype, np.floating):
-      # TODO: why is `da = da.map_blocks(alpha, template=da)` slower?
-      da = alpha_f(da)
-    return da
 
-  ds = ds.map(_compute_alpha)
+class BathymetryHessianField(RasterField):
 
-  return ds
+  def __init__(self, filepath: Union[str, pathlib.Path], var_name: str, size_min, size_max, eps: float = 1.0e-5,
+               longitude_dim: str = 'lon', latitude_dim: str = 'lat', smoothing_kwargs: dict[str, Any] | None = None,
+               **kwargs):
+    grid_ds = xr.open_dataset(filepath, engine='zarr')
+    grid_da = grid_ds[var_name].load()
+    hnorm = self.norm_of_hessian(grid_da, longitude_dim=longitude_dim, latitude_dim=latitude_dim,
+                                 smoothing_kwargs=smoothing_kwargs)
+    assert np.all(hnorm >= 0.0), "Computed Hessian contains negative values."
+    # noinspection PyArgumentList
+    hnorm_invsqrt = 1 / np.clip(np.sqrt(hnorm), min=eps)
+    hnorm_invsqrt = xr.where(grid_da.isnull(), np.nan, hnorm_invsqrt)
+    super().__init__(hnorm_invsqrt, size_min, size_max, longitude_dim=longitude_dim, latitude_dim=latitude_dim,
+                     **kwargs)
+
+  @staticmethod
+  def norm_of_hessian(da: xr.DataArray, longitude_dim: str = 'lon', latitude_dim: str = 'lat',
+                      smoothing_kwargs: dict[str, Any] | None = None) -> xr.DataArray:
+    """Computes the norm of the Hessian matrix of a 2D array. The Hessian matrix is approximated by a spline,
+    and assumes latitude and longitude are in degrees."""
+
+    smoothing_kwargs = smoothing_kwargs or {}
+    # Use canonical coordinates order and fill missing values.
+    da = da.transpose(latitude_dim, longitude_dim)
+    da = da.fillna(0.0)
+    data = da.to_numpy()
+    latitudes = da[latitude_dim].to_numpy()
+    longitudes = da[longitude_dim].to_numpy()
+    hessian_matrix = np.empty(data.shape + (2, 2), dtype=data.dtype)
+
+    def direction(coord: str) -> Tuple[int, int]:
+      if coord == longitude_dim:
+        return 0, 1
+      elif coord == latitude_dim:
+        return 1, 0
+      else:
+        raise ValueError(f"Unknown coordinate {coord}.")
+
+    def fix_for_latitudes(z_di: np.ndarray, eps=1e-10) -> np.ndarray:
+      latitudes_grid = np.tile(latitudes.reshape(-1, 1), (1, len(longitudes)))
+      corrective_factor = 1 / np.clip(np.cos(latitudes_grid * np.pi / 180.0), min=eps)
+      return np.where(
+        np.logical_or(np.isclose(latitudes_grid, 90.0), np.isclose(latitudes_grid, -90.0)),
+        np.zeros_like(z_di), z_di * corrective_factor)
+
+    def grad(z: np.ndarray, coord: str) -> np.ndarray:
+      z_spline = RectBivariateSpline(latitudes, longitudes, z, **smoothing_kwargs)
+      z_di = z_spline.partial_derivative(*direction(coord))(latitudes, longitudes)
+      # FIXME: document why this is needed, and in which approximation solves the problem.
+      if coord == longitude_dim:
+        z_di = fix_for_latitudes(z_di)
+      return z_di
+
+    for i, coord_i in enumerate([longitude_dim, latitude_dim]):
+      for j, coord_j in enumerate([longitude_dim, latitude_dim]):
+        hessian_matrix[..., i, j] = grad(grad(data, coord_i), coord_j)
+
+    # FIXME: document why this is needed, and in which approximation solves the problem.
+    hessian_matrix = 0.5 * (hessian_matrix + np.swapaxes(hessian_matrix, -1, -2))
+    hessian_matrix_singular_values = np.linalg.svd(hessian_matrix, compute_uv=False, hermitian=True)
+    hessian_matrix_norm = np.max(hessian_matrix_singular_values, axis=-1)
+    hessian_matrix_norm = xr.DataArray(data=hessian_matrix_norm, coords=da.coords, dims=da.dims,
+                                       name=f"{da.name}_hessian_norm")
+
+    return hessian_matrix_norm
+
+
+FieldName = Literal['constant', 'shore_proximity', 'bathymetry', 'bathymetry_hessian']
+FieldsRegistry = {
+  'constant': ConstantField,
+  'shore_proximity': ShoreProximityField,
+  'bathymetry': BathymetryField,
+  'bathymetry_hessian': BathymetryHessianField
+}
+
+
+class CompositeMeshSizeField(StereoMeshSizeField):
+  """Stereographic mesh size field which takes the minimum of other fields."""
+
+  def __init__(self, fields_config: Iterable[Dict[str, Any]], prefix: pathlib.Path | None = None):
+    fields = {}
+    for config in fields_config:
+      field_name = config.pop('name')
+      if prefix is not None:
+        for key in config.keys():
+          if key == 'filepath' or key.endswith('_path'):
+            if key not in FieldsRegistry.keys():
+              raise ValueError(f"Unknown field type {key}.")
+            else:
+              config[key] = prefix / config[key]
+      logger.info("Creating field %s with config %s.", field_name, config)
+      fields[field_name] = FieldsRegistry[field_name](**config)
+    self.fields = fields
+
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
 
 
 def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, step: int = 0) \
@@ -288,7 +365,7 @@ def load_domain(path: pathlib.Path, physical_name_field: str = 'featurecla',
   # Path must be a shapefile.
   if not path.name.endswith('.shp'):
     raise ValueError(f"Path must be a shapefile, got {path}")
-  domain = seamsh.geometry.Domain(projection=stereographic_proj)
+  domain = seamsh.geometry.Domain(projection=stereographic_srs)
   domain.add_boundary_curves_shp(str(path), physical_name_field, getattr(seamsh.geometry.CurveType, curve_type.upper()))
   return domain
 
@@ -296,10 +373,10 @@ def load_domain(path: pathlib.Path, physical_name_field: str = 'featurecla',
 def coarsen_boundaries(domain: seamsh.geometry.Domain,
                        mesh_size: float,
                        x0: tuple[float, float] = (0.0, 0.0),
-                       x0_projection: Projection = 'stereographic'):
+                       x0_projection: SRSName = 'stereographic'):
   """ Creates a new Domain with the same projection and coarsened boundaries.
   """
-  x0_projection = ProjectionRegistry[x0_projection]
+  x0_projection = SRSRegistry[x0_projection]
   mesh_size_f = ConstantField(mesh_size)
   coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse
