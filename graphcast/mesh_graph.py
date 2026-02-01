@@ -99,9 +99,8 @@ class MeshGraph:
 #  However, it would be nice to have a way to store scalar mesh_size for backward compatibility with GraphCast for weather.
 @chex.dataclass(frozen=True, eq=True)
 class MeshData:
-  """Data structure containing mesh graph and boundary nodes."""
+  """Data structure containing mesh graph and additional information."""
   mesh_graph: MeshGraph
-  boundary_nodes: np.ndarray
   mesh_size: np.ndarray
   description: list[str]
   license: list[str]

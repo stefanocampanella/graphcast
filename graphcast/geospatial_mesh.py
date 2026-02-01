@@ -22,8 +22,7 @@ import seamsh
 
 from graphcast.dataset_utils import Configs
 from graphcast.gis_utils import SRSRegistry
-from graphcast.ocean_mesh_utils import load_domain, coarsen_boundaries, BoundaryProximityField, UniformField, \
-  CompositeMeshSizeField, StereoMeshSizeField
+from graphcast.geospatial_mesh_utils import load_domain, coarsen_boundaries, CompositeMeshSizeField, StereoMeshSizeField
 
 logger = logging.getLogger(__name__)
 

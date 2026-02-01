@@ -242,6 +242,7 @@ def cartesian_to_lat_lon(
       *cartesian_to_spherical(x, y, z, np_=np_), np_=np_)
 
 
+# TODO: implement using gis tools.
 def get_relative_position_in_receiver_local_coordinates(
     node_phi: np.ndarray,
     node_theta: np.ndarray,
@@ -409,7 +410,7 @@ def rotate_with_matrices(rotation_matrices: np.ndarray, positions: np.ndarray,
   return np_.einsum("...ji,...i->...j", rotation_matrices, positions)
 
 
-# TODO: this implementation should be updated to include the distance from the coast as a feature
+# TODO: this implementation could be updated to include the distance from the coast as a feature
 def get_bipartite_graph_spatial_features(
     *,
     senders_node_lat: np.ndarray,

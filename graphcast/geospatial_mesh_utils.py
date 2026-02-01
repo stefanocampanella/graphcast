@@ -261,8 +261,8 @@ class CompositeMeshSizeField(StereoMeshSizeField):
 
 # TODO: update implementation to save boundary elements into TriangleMesh, and read reference system from mesh file and
 #  save it as well in the output file.
-def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, step: int = 0) \
-    -> tuple[TriangleMesh, np.ndarray, np.ndarray | None]:
+def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, srs_attribute_name: str = 'Projection',
+              step: int = 0) -> tuple[TriangleMesh, np.ndarray | None]:
   """Returns the TriangleMesh and the list of boundary node indices. It assumes that gmsh has already been initialized.
 
   Args:
@@ -289,25 +289,21 @@ def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, ste
   line_tags, line_node_tags = gmsh.model.mesh.get_elements_by_type(1)
   if len(line_tags) > 0:
     # line_node_tags is a flat array of size 2 * num_lines
-    boundary_node_tags = np.unique(line_node_tags)
+    boundary_node_tags = line_node_tags.reshape(-1, 2)
   else:
-    boundary_node_tags = np.array([], dtype=int)
+    boundary_node_tags = np.empty((0, 2), dtype=int)
 
   # Meshes produced with seamsh might contain isolated points. Their existence, number and location are determined by
   # the resolution of the shapefile containing the coastlines, and the target mesh size used when coarsening the
   # coastlines. Here we remove those points: the mesh is valid only if all nodes are used by at least one element.
 
   # Get valid nodes, i.e., those belonging to a triangle by querying all triangular elements (type=2).
-  triangle_tags, _ = gmsh.model.mesh.get_elements_by_type(2)
+  triangle_tags, triangle_node_tags = gmsh.model.mesh.get_elements_by_type(2)
   if len(triangle_tags):
-    faces_node_tags = []
-    for triangle_tag in triangle_tags:
-      _, triangle_node_tags, _, _ = gmsh.model.mesh.get_element(triangle_tag)
-      faces_node_tags.extend(triangle_node_tags)
-    faces_node_tags = np.array(faces_node_tags, dtype=int)
+    faces_node_tags = triangle_node_tags.reshape(-1, 3)
     valid_node_tags = np.unique(faces_node_tags)
   else:
-    faces_node_tags = np.empty((0,), dtype=int)
+    faces_node_tags = np.empty((0, 3), dtype=int)
     valid_node_tags = np.empty((0,), dtype=int)
 
   def get_view_name(tag: int) -> str:
@@ -336,19 +332,18 @@ def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, ste
 
   # node_tags_inv_map tells how to retrieve the index of a node in node_coords from its tag.
   node_tags_inv_map = {n: i for (i, n) in enumerate(node_tags)}
+  node_tags_inv_f = np.vectorize(lambda n: node_tags_inv_map.get(n, -1))
 
   # Faces contains only valid node tags, so there is no need to filter them.
-  faces = [node_tags_inv_map[n] for n in faces_node_tags]
-  faces = np.array(faces, dtype=int)
-  faces = faces.reshape(-1, 3) # [num_faces, 3]
+  faces = node_tags_inv_f(faces_node_tags) # [num_faces, 3]
 
-  # Boundary nodes need both filtering and reordering.
-  boundary_node_mask = np.isin(boundary_node_tags, valid_node_tags)
-  boundary_node_tags = boundary_node_tags[boundary_node_mask]
-  boundary_nodes = [node_tags_inv_map[n] for n in boundary_node_tags] # [num_boundary_nodes]
-  boundary_nodes = np.array(boundary_nodes, dtype=int)
+  # Boundary nodes might need both filtering and reordering.
+  boundary_node_mask = np.all(np.isin(boundary_node_tags, valid_node_tags), axis=-1)
+  boundary_node_tags = boundary_node_tags[boundary_node_mask, :]
+  boundary = node_tags_inv_f(boundary_node_tags) # [num_boundary_nodes]
+  boundary_nodes = np.unique(boundary)
 
-  # Data needs both filtering and reordering.
+  # Data might need both filtering and reordering.
   data_mask = np.isin(data_node_tags, valid_node_tags)
   data = data[data_mask] # [num_valid_node_tags]
   data_node_tags = data_node_tags[data_mask] # [num_valid_node_tags]
@@ -357,8 +352,12 @@ def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, ste
   mesh_size = [data[data_node_tags_inv_map[n]] for n in node_tags]
   mesh_size = np.array(mesh_size)
 
-  mesh = TriangleMesh(vertices=node_coords, faces=faces, node_tags=valid_node_tags)
-  return mesh, boundary_nodes, mesh_size
+  srs_string_type, srs_string = gmsh.model.get_attribute(srs_attribute_name)
+  assert srs_string_type.upper() == "WKT"
+
+  mesh = TriangleMesh(vertices=node_coords, faces=faces, boundary=boundary, node_tags=valid_node_tags,
+                      spatial_reference_system=srs_string)
+  return mesh, mesh_size
 
 
 def load_domain(path: pathlib.Path, physical_name_field: str = 'featurecla',

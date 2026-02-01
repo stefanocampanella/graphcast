@@ -132,13 +132,14 @@ def init(config_path: pathlib.Path,
 
   if (mesh_path := (data_path / configs.get('mesh.filepath'))) is None:
     raise ValueError("The mesh filepath must be specified in the config file.")
-  ocean_mesh, boundary_nodes, mesh_size = read_mesh(mesh_path=mesh_path,
-                                                    mesh_size_tag_name=configs.get('mesh.mesh_size_tag_name',
-                                                                                   'MeshSize'),
-                                                    step=configs.get('mesh.mesh_size_tag_step', 0))
+  ocean_mesh, mesh_size = read_mesh(mesh_path=mesh_path,
+                                    mesh_size_tag_name=configs.get('mesh.mesh_size_tag_name',
+                                                                   'MeshSize'),
+                                    step=configs.get('mesh.mesh_size_tag_step', 0))
   mesh_license = gmsh.model.getAttribute('license')
   mesh_description = gmsh.model.getAttribute('description')
-  ocean_graph = MeshGraph(vertices=ocean_mesh.vertices, edges=faces_to_edges(ocean_mesh.faces), faces=ocean_mesh.faces)
+  ocean_graph = MeshGraph(vertices=ocean_mesh.vertices, edges=faces_to_edges(ocean_mesh.faces), faces=ocean_mesh.faces,
+                          boundary=ocean_mesh.boundary, spatial_reference_system=ocean_mesh.spatial_reference_system)
   logger.info("Mesh graph contains %d vertices and %d edges.",
               len(ocean_graph.vertices), len(ocean_graph.edges[0]))
   mesh_data = MeshData(mesh_graph=ocean_graph,
@@ -167,7 +168,6 @@ def init(config_path: pathlib.Path,
                         grid_mask=datasource.mask,
                         mesh_graph=mesh_data.mesh_graph,
                         mesh_size=mesh_data.mesh_size,
-                        boundary_nodes=mesh_data.boundary_nodes,
                         remat=True,
                         policy=policy,
                         prevent_cse=False)

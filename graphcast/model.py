@@ -242,7 +242,6 @@ class GraphCast(predictor_base.Predictor):
                grid_lon: np.ndarray,
                grid_mask: xarray.DataArray,
                mesh_graph: MeshGraph,
-               boundary_nodes: np.ndarray,
                mesh_size: np.ndarray,
                kdtree_workers: int = 1,
                remat: bool = False,
@@ -368,8 +367,7 @@ class GraphCast(predictor_base.Predictor):
     # The graphs are instantiated within `_init_{grid2mesh,mesh,mesh2grid}_graph` and saved as attributes
     #   self._{grid2mesh,mesh,mesh2grid}_graph_structure
 
-    self._init_mesh_properties(mesh_graph=mesh_graph,
-                               boundary_nodes=boundary_nodes)
+    self._init_mesh_properties(mesh_graph=mesh_graph)
     self._init_grid_properties(grid_lat=grid_lat,
                                grid_lon=grid_lon,
                                grid_mask=grid_mask)
@@ -377,10 +375,10 @@ class GraphCast(predictor_base.Predictor):
     self._mesh_graph_structure = self._init_mesh_graph()
     self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
 
-  def _init_mesh_properties(self, mesh_graph, boundary_nodes):
+  def _init_mesh_properties(self, mesh_graph):
     """Initializes static properties that have to do with mesh nodes."""
     self._mesh_graph = mesh_graph
-    self._boundary_nodes = boundary_nodes
+    self._boundary_nodes = np.unique(mesh_graph.boundary)
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
 
     cartesian2latlon = get_transform("cartesian", "ecmwf", pack_back=False)
