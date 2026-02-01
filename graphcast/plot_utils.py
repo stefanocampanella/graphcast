@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray
 
-from graphcast.mesh_graph import WGSGraph
+from graphcast.mesh_graph import EquirectangularGraph
 
 Point = tuple[float, float]
 Points = Sequence[Point]
@@ -98,7 +98,7 @@ def plot_data(
   return figure, update, max_steps
 
 
-def get_points_and_lines(wgs_graph: WGSGraph) -> tuple[Points, Lines]:
+def get_points_and_lines(wgs_graph: EquirectangularGraph) -> tuple[Points, Lines]:
   """Returns points and lines from a Graph.
 
   Args:
@@ -115,7 +115,7 @@ def get_points_and_lines(wgs_graph: WGSGraph) -> tuple[Points, Lines]:
   return points, lines
 
 
-def get_line_collection(wgs_graph: WGSGraph, **kwargs) ->  mc.LineCollection:
+def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) ->  mc.LineCollection:
   """Gets a LineCollection for plotting the graph.
 
   Args:

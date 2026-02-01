@@ -21,7 +21,7 @@ from osgeo import osr
 from scipy.interpolate import RectBivariateSpline
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.gis_utils import SRSName, SRSRegistry, stereographic_srs, cartesian_srs, platecarree_srs
+from graphcast.gis_utils import SRSName, SRSRegistry, stereographic_srs, cartesian_srs, equirectangular_srs
 from graphcast.gis_utils import get_transform, xarray_to_gdal_raster
 from graphcast.mesh_graph import TriangleMesh
 
@@ -60,7 +60,7 @@ class StereoMeshSizeField:
     """Value of the mesh size field in stereographic projection coordinates,
     possibly as a function of the coordinates in parametric space."""
     mesh_size = self.mesh_size_3d(x, projection)
-    if not platecarree_srs.IsSame(projection):
+    if not equirectangular_srs.IsSame(projection):
       transform = get_transform(projection, stereographic_srs)
       x = transform(x)
     earth_radius_squared = EARTH_RADIUS * EARTH_RADIUS
@@ -68,7 +68,7 @@ class StereoMeshSizeField:
     return mesh_size / stereo_factor
 
 
-class ConstantField(StereoMeshSizeField):
+class UniformField(StereoMeshSizeField):
   """Stereographic mesh size field with a constant value."""
   def __init__(self, value: float):
     self.value = value
@@ -231,7 +231,7 @@ class BathymetryHessianField(RasterField):
 
 FieldName = Literal['constant', 'shore_proximity', 'bathymetry', 'bathymetry_hessian']
 FieldsRegistry = {
-  'constant': ConstantField,
+  'uniform': UniformField,
   'shore_proximity': ShoreProximityField,
   'bathymetry': BathymetryField,
   'bathymetry_hessian': BathymetryHessianField
@@ -377,6 +377,6 @@ def coarsen_boundaries(domain: seamsh.geometry.Domain,
   """ Creates a new Domain with the same projection and coarsened boundaries.
   """
   x0_projection = SRSRegistry[x0_projection]
-  mesh_size_f = ConstantField(mesh_size)
+  mesh_size_f = UniformField(mesh_size)
   coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse

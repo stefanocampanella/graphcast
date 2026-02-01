@@ -15,14 +15,14 @@ osr.UseExceptions()
 stereographic_srs = osr.SpatialReference("+proj=stere +ellps=WGS84 +lat_0=90")
 cartesian_srs = osr.SpatialReference("+proj=cart +ellps=WGS84 +units=m +x_0=0 +y_0=0")
 cartesian_unit_sphere_srs = osr.SpatialReference("+proj=cart +a=1 +b=1 +units=m +x_0=0 +y_0=0")
-platecarree_srs = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
+equirectangular_srs = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs")
 ecmwf_srs = osr.SpatialReference("+proj=latlong +datum=WGS84 +no_defs +lon_wrap=180")
 
-SRSName = Literal['stereographic', 'cartesian', 'platecarree']
+SRSName = Literal['stereographic', 'cartesian', 'equirectangular', 'ecmwf']
 SRSRegistry = {
   'stereographic': stereographic_srs,
   'cartesian': cartesian_srs,
-  'platecarree': platecarree_srs,
+  'equirectangular': equirectangular_srs,
   'ecmwf': ecmwf_srs}
 
 
@@ -70,7 +70,7 @@ def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat
   xx = xx.flatten()
   yy = yy.flatten()
   points = np.stack([xx, yy], axis=-1)
-  values = func(points, platecarree_srs)
+  values = func(points, equirectangular_srs)
   values = values.reshape(grid.shape)
   values = xr.DataArray(values, dims=grid.dims, coords=grid.coords)
 
@@ -78,7 +78,7 @@ def map_on_grid(func, grid: xr.DataArray, longitude_dim='lon', latitude_dim='lat
 
 
 def xarray_to_gdal_raster(da: xr.DataArray,
-                          srs: osr.SpatialReference = platecarree_srs,
+                          srs: osr.SpatialReference = equirectangular_srs,
                           latitude_dim: str = 'lat',
                           longitude_dim: str = 'lon',
                           no_data_value: FloatingPoint | None = np.nan,

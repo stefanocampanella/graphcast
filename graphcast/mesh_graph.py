@@ -13,6 +13,8 @@
 # limitations under the License.
 # TODO: move tests from icosahedral_mesh and add tests for new functions
 # TODO: switch from np.ndarray to chex.Array in type hints
+# TODO: The type of spatial_reference_system in the type definitions below should gis_utils.SRSName,
+#  but in order to be serializable by checkpoint.checkpoint, it should be a string.
 """Utils for working with (multi-)mesh graphs and geospatial graphs."""
 import itertools
 from typing import Sequence, Tuple
@@ -23,28 +25,30 @@ import networkx as nx
 import numpy as np
 
 from graphcast import typed_graph
-from graphcast.gis_utils import cartesian_srs, cartesian_unit_sphere_srs, platecarree_srs, get_transform
+from graphcast.gis_utils import cartesian_srs, cartesian_unit_sphere_srs, equirectangular_srs, get_transform
 
 
 @chex.dataclass(frozen=True, eq=True)
 class Graph:
-  """Data structure for a generic graph
+  """Data structure for a generic geospatial graph
 
   Attributes:
     vertices: spatial positions of the vertices of the graph of shape [num_vertices, num_dims].
     edges: tuple of senders, receivers nodes
+    spatial_reference_system: reference system of coordinates of the vertices.
   """
   vertices: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
+  spatial_reference_system: str = "cartesian"
 
 
 @chex.dataclass(frozen=True, eq=True)
-class WGSGraph:
-  """Data structure for a World Geodetic System (WGS) graph,
-   where vertices are stored as a (latitudes, longitudes) tuple.
+class EquirectangularGraph:
+  """Data structure for a geospatial graph using equirectangular coordinates,
+   i.e. where vertices are stored as a (latitudes, longitudes) tuple. Useful for plotting.
 
   Attributes:
-    vertices: tuple of (latitudes, longitudes) of the nodes
+    vertices: tuple of (latitudes, longitudes) of the nodes, it assumes ECMWF convention (lon wrapping at 180)
     edges: tuple of senders, receivers nodes
   """
   vertices: tuple[np.ndarray, np.ndarray]
@@ -53,34 +57,41 @@ class WGSGraph:
 
 @chex.dataclass(frozen=True, eq=True)
 class TriangleMesh:
-  """Data structure for triangular meshes in 3D.
+  """Data structure for triangular meshes on a geoid.
 
   Attributes:
     vertices: spatial positions of the vertices of the mesh of shape
         [num_vertices, num_dims].
     faces: triangular faces of the mesh of shape [num_faces, 3]. Contains
         integer indices into `vertices`.
+    boundary: (optional) 1D boundary elements of the mesh of shape [num_boundary_elements, 2].
+    spatial_reference_system: reference system of coordinates of the vertices.
     node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
-
   """
   vertices: np.ndarray
   faces: np.ndarray
+  boundary: Optional[np.ndarray] = None
+  spatial_reference_system: str = "cartesian"
   node_tags: Optional[np.ndarray] = None
 
 
 @chex.dataclass(frozen=True, eq=True)
 class MeshGraph:
-  """Data structure for multi-mesh graphs in 3D.
+  """Data structure for multi-mesh graphs on a geoid..
 
   Attributes:
     vertices: same as TriangleMesh.vertices.
     faces: same as TriangleMesh.faces.
     edges: cumulated edges of all the triangular meshes used in building the multi-mesh graph.
+    boundary: (optional) 1D boundary elements of the mesh of shape [num_boundary_elements, 2].
+    spatial_reference_system: reference system of coordinates of the vertices.
     node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
   """
   vertices: np.ndarray
   faces: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
+  boundary: Optional[np.ndarray] = None
+  spatial_reference_system: str = "cartesian"
   node_tags: Optional[np.ndarray] = None
 
 
@@ -169,20 +180,20 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 
 
 # TODO: add and tests
-def graph_to_wgs(graph: Graph, unit_sphere: bool = False) -> WGSGraph:
+def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
   transformer = get_transform(cartesian_unit_sphere_srs if unit_sphere else cartesian_srs,
-                              platecarree_srs, pack_back=False)
+                              equirectangular_srs, pack_back=False)
   longitudes, latitudes, _ = transformer(graph.vertices)
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.
   vertices = (latitudes, longitudes)
-  return WGSGraph(vertices=vertices, edges=graph.edges)
+  return EquirectangularGraph(vertices=vertices, edges=graph.edges)
 
 
 # TODO: add tests
-def mesh_to_wgs(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> WGSGraph:
+def mesh_to_latlon(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D mesh.
 
   Args:
@@ -195,14 +206,14 @@ def mesh_to_wgs(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> WG
 
   edges = _get_undirected_edges(faces_to_edges(mesh.faces))
   graph = Graph(vertices=mesh.vertices, edges=edges)
-  wgs_graph = graph_to_wgs(graph, unit_sphere=unit_sphere)
+  wgs_graph = graph_to_latlon(graph, unit_sphere=unit_sphere)
 
   return wgs_graph
 
 
 # TODO: add tests, in particular check that implementation works when computing graph stats (i.e. when considering
 #  'coarse2fine` and `fine2fine` graphs, in case of the latter that vertices are counted twice)
-def typed_to_wgs(graph: typed_graph.TypedGraph, edge_set_name: str) -> WGSGraph:
+def typed_to_latlon(graph: typed_graph.TypedGraph, edge_set_name: str) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges)
   from a particular edge-set of a typed graph in 3D.
 
@@ -226,12 +237,12 @@ def typed_to_wgs(graph: typed_graph.TypedGraph, edge_set_name: str) -> WGSGraph:
     vertices = senders_nodes.features
     edges = graph.edges[edge_set_key].indices
   graph = Graph(vertices=vertices, edges=edges)
-  wgs_graph = graph_to_wgs(graph)
+  wgs_graph = graph_to_latlon(graph)
 
   return wgs_graph
 
 
-def wgs_to_nx(wgs_graph: WGSGraph) -> nx.DiGraph:
+def latlon_to_nx(wgs_graph: EquirectangularGraph) -> nx.DiGraph:
   graph = nx.DiGraph()
   latitudes, longitudes = wgs_graph.vertices
   vertices = [(node, {'latitude': latitude, 'longitude': longitude}) for node, (latitude, longitude) in

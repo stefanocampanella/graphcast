@@ -49,7 +49,7 @@ import numpy as np
 import xarray as xr
 
 from graphcast.mesh_connectivity import radius_query_indices, get_mesh_to_grid_edges
-from graphcast.mesh_graph import Mesh, TriangleMesh, MeshGraph, faces_to_edges, mesh_to_wgs
+from graphcast.mesh_graph import Mesh, TriangleMesh, MeshGraph, faces_to_edges, mesh_to_latlon
 
 logger = logging.getLogger(__name__)
 
@@ -193,7 +193,7 @@ def get_mesh_within_box(mesh: Mesh, box: Box):
   def _is_within_bounds(lat, lon):
     return (box.lat_min < lat < box.lat_max) and (box.lon_min < lon < box.lon_max)
 
-  wgs_graph = mesh_to_wgs(mesh)
+  wgs_graph = mesh_to_latlon(mesh)
   vertices_within_bounds = np.array([_is_within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
   marked_vertices = np.nonzero(vertices_within_bounds)[0]
   new_mesh, vertices_map = prune_mesh(marked_vertices, mesh, mode='all')

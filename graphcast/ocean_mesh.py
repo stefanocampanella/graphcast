@@ -22,7 +22,7 @@ import seamsh
 
 from graphcast.dataset_utils import Configs
 from graphcast.gis_utils import SRSRegistry
-from graphcast.ocean_mesh_utils import load_domain, coarsen_boundaries, ShoreProximityField, ConstantField, \
+from graphcast.ocean_mesh_utils import load_domain, coarsen_boundaries, ShoreProximityField, UniformField, \
   CompositeMeshSizeField, StereoMeshSizeField
 
 logger = logging.getLogger(__name__)
@@ -76,8 +76,10 @@ def make(config_path: pathlib.Path,
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
   # gmsh needs to be initialized before most seamsh functions can be used, so we do it here.
+  # FIXME: These should be read from the config file.
   gmsh.option.setNumber("General.Verbosity", 2)
   gmsh.option.setNumber("PostProcessing.SaveMesh", 1)
+  gmsh.option.setNumber("Mesh.Algorithm", 6)
   gmsh.option.setNumber("Mesh.MshFileVersion", 4.1)
   # Create a new model and set license and description attributes
   model_name = configs.get("model_name", "OceanMesh")
