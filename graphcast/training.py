@@ -38,7 +38,7 @@ from graphcast.mesh_graph import MeshData, faces_to_edges, MeshGraph
 from graphcast.model import TaskConfig, ModelConfig, GraphCast, CheckPoint
 from graphcast.normalization import InputsAndResiduals
 from graphcast.xarray_jax import unwrap_data
-from graphcast.ocean_mesh_utils import read_mesh
+from graphcast.geospatial_mesh_utils import read_mesh
 
 logger = logging.getLogger(__name__)
 

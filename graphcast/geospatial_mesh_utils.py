@@ -99,7 +99,7 @@ class BoundedStereoMeshSizeField(StereoMeshSizeField):
     return delta
 
 
-class ShoreProximityField(BoundedStereoMeshSizeField):
+class BoundaryProximityField(BoundedStereoMeshSizeField):
   """Stereographic mesh size field based on the distance from the coast."""
   def __init__(self, filepath: Union[str, pathlib.Path], physical_name_field: str, curve_type: str, sampling: float,
                field_min: float, field_max: float, size_min, size_max):
@@ -110,11 +110,11 @@ class ShoreProximityField(BoundedStereoMeshSizeField):
 
     self.field_min = field_min
     self.field_max = field_max
-    self.distance_from_coast_f = seamsh.field.Distance(domain, sampling, projection=cartesian_srs)
+    self.distance_from_boundary = seamsh.field.Distance(domain, sampling, projection=cartesian_srs)
 
   def criterion(self, x, projection):
-    distance_from_coast = np.clip(self.distance_from_coast_f(x, projection), self.field_min, self.field_max)
-    alpha = (distance_from_coast - self.field_min) / (self.field_max - self.field_min)
+    value= np.clip(self.distance_from_boundary(x, projection), self.field_min, self.field_max)
+    alpha = (value - self.field_min) / (self.field_max - self.field_min)
     return alpha
 
 
@@ -232,7 +232,7 @@ class BathymetryHessianField(RasterField):
 FieldName = Literal['constant', 'shore_proximity', 'bathymetry', 'bathymetry_hessian']
 FieldsRegistry = {
   'uniform': UniformField,
-  'shore_proximity': ShoreProximityField,
+  'shore_proximity': BoundaryProximityField,
   'bathymetry': BathymetryField,
   'bathymetry_hessian': BathymetryHessianField
 }
@@ -259,7 +259,8 @@ class CompositeMeshSizeField(StereoMeshSizeField):
   def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
 
-
+# TODO: update implementation to save boundary elements into TriangleMesh, and read reference system from mesh file and
+#  save it as well in the output file.
 def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, step: int = 0) \
     -> tuple[TriangleMesh, np.ndarray, np.ndarray | None]:
   """Returns the TriangleMesh and the list of boundary node indices. It assumes that gmsh has already been initialized.
