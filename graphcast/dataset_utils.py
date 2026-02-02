@@ -13,7 +13,6 @@ import functools
 import logging
 import pathlib
 import tempfile
-import tomllib
 import warnings
 from collections import OrderedDict
 from collections.abc import Iterable
@@ -34,42 +33,7 @@ from numcodecs import Blosc
 from scipy.ndimage import gaussian_filter
 from xarray.core.types import InterpOptions
 
-
-class Configs(dict):
-  """A simple dict that can be read from a TOML file and whose tables can be accessed using dot syntax using the get
-  method. Notice, __getitem__ does not accept the dot syntax."""
-
-  def __init__(self, *args, **kwargs):
-    super().__init__(*args, **kwargs)
-
-  def get(self, maybe_dot_key, default=None):
-
-    def contains(keys, container):
-      if keys:
-        head, tail = keys[0], keys[1:]
-        return (head in container) and contains(tail, container[head])
-      else:
-        return True
-
-    keys = maybe_dot_key.split('.')
-    if contains(keys, self):
-      value = self
-      for key in keys:
-        value = value[key]
-    else:
-      value = default
-
-    if isinstance(value, dict):
-      value = Configs(value)
-
-    return value
-
-  @staticmethod
-  def read(path: str | pathlib.Path):
-    path = path if isinstance(path, pathlib.Path) else pathlib.Path(path)
-    with path.open('rb') as file:
-      configs = Configs(tomllib.load(file))
-    return configs
+from graphcast.cli_utils import Configs
 
 
 @dataclass

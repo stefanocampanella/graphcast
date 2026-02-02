@@ -23,9 +23,8 @@ from dask.diagnostics import ProgressBar
 from numcodecs.blosc import Blosc
 from zarr.storage import TempStore, ZipStore
 
-from graphcast.cli_utils import DictParamType
-from graphcast.dataset_utils import (Configs,
-                                     DateIntervalsRange,
+from graphcast.cli_utils import Configs, DictParamType
+from graphcast.dataset_utils import (DateIntervalsRange,
                                      Process,
                                      ProvidersRegistry,
                                      check_coordinates,

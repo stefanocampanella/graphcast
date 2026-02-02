@@ -29,16 +29,15 @@ from jax.sharding import PartitionSpec, NamedSharding, AxisType
 
 from graphcast import checkpoint, cli_utils, xarray_tree
 from graphcast.casting import Bfloat16Cast
-from graphcast.cli_utils import run_analysis_and_report
+from graphcast.cli_utils import Configs, run_analysis_and_report
 from graphcast.dataloader import ARCODataSource, ToXarrayJax, RestoreDatetimeCoordinate, FillNans, \
   ExtractInputsTargetsForcings, AddLogDepthCoordinate, DevicePut, ShardOptions
-from graphcast.dataset_utils import Configs
+from graphcast.geospatial_mesh_utils import read_mesh
 from graphcast.mask import MaskedPredictor
 from graphcast.mesh_graph import MeshData, faces_to_edges, MeshGraph
 from graphcast.model import TaskConfig, ModelConfig, GraphCast, CheckPoint
 from graphcast.normalization import InputsAndResiduals
 from graphcast.xarray_jax import unwrap_data
-from graphcast.geospatial_mesh_utils import read_mesh
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +142,6 @@ def init(config_path: pathlib.Path,
   logger.info("Mesh graph contains %d vertices and %d edges.",
               len(ocean_graph.vertices), len(ocean_graph.edges[0]))
   mesh_data = MeshData(mesh_graph=ocean_graph,
-                       boundary_nodes=boundary_nodes,
                        mesh_size=mesh_size,
                        description=mesh_license,
                        license=mesh_description)

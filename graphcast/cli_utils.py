@@ -1,12 +1,51 @@
 import logging
 import os
 import pathlib
+import tomllib
 from typing import Callable
 
 import click
 import jax
 
 logger = logging.getLogger(__name__)
+
+
+class Configs(dict):
+  """A simple dict that can be read from a TOML file and whose tables can be accessed using dot syntax using the get
+  method. Notice, __getitem__ does not accept the dot syntax."""
+
+  def __init__(self, *args, **kwargs):
+    super().__init__(*args, **kwargs)
+
+  def get(self, maybe_dot_key, default=None):
+
+    def contains(keys, container):
+      if keys:
+        head, tail = keys[0], keys[1:]
+        return (head in container) and contains(tail, container[head])
+      else:
+        return True
+
+    keys = maybe_dot_key.split('.')
+    if contains(keys, self):
+      value = self
+      for key in keys:
+        value = value[key]
+    else:
+      value = default
+
+    if isinstance(value, dict):
+      value = Configs(value)
+
+    return value
+
+  @staticmethod
+  def read(path: str | pathlib.Path):
+    path = path if isinstance(path, pathlib.Path) else pathlib.Path(path)
+    with path.open('rb') as file:
+      configs = Configs(tomllib.load(file))
+    return configs
+
 
 class DictParamType(click.ParamType):
   """Click ParamType that parses mappings like "a:1,b:2" into dict[str, int].

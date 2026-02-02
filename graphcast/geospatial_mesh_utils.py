@@ -21,8 +21,8 @@ from osgeo import osr
 from scipy.interpolate import RectBivariateSpline
 
 from graphcast.constants import EARTH_RADIUS
-from graphcast.gis_utils import SRSName, SRSRegistry, stereographic_srs, cartesian_srs, equirectangular_srs
-from graphcast.gis_utils import get_transform, xarray_to_gdal_raster
+from graphcast.gis_utils import CRSName, CRSRegistry, stereographic_srs, cartesian_srs
+from graphcast.gis_utils import CoordinateReferenceSystem, get_transform, xarray_to_gdal_raster
 from graphcast.mesh_graph import TriangleMesh
 
 logger = logging.getLogger(__name__)
@@ -52,15 +52,15 @@ class StereoMeshSizeField:
   See https://doi.org/10.1007/s10236-008-0148-3.
   """
 
-  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+  def mesh_size_3d(self, x: np.ndarray, projection: CoordinateReferenceSystem) -> np.ndarray:
     """Value of the mesh size field in 3D space."""
     pass
 
-  def __call__(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+  def __call__(self, x: np.ndarray, projection: CoordinateReferenceSystem) -> np.ndarray:
     """Value of the mesh size field in stereographic projection coordinates,
     possibly as a function of the coordinates in parametric space."""
     mesh_size = self.mesh_size_3d(x, projection)
-    if not equirectangular_srs.IsSame(projection):
+    if not stereographic_srs.IsSame(projection):
       transform = get_transform(projection, stereographic_srs)
       x = transform(x)
     earth_radius_squared = EARTH_RADIUS * EARTH_RADIUS
@@ -136,8 +136,7 @@ class RasterField(BoundedStereoMeshSizeField):
     else:
       self.field_max = np.nanquantile(grid, q_high)
     grid = grid.fillna(self.field_max)
-    gdal_raster = xarray_to_gdal_raster(da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim,
-                                        srs=SRSRegistry[srs_name])
+    gdal_raster = xarray_to_gdal_raster(da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim)
     self.field = seamsh.field.Raster(gdal_raster)
 
   # noinspection PyTypeChecker
@@ -245,13 +244,12 @@ class CompositeMeshSizeField(StereoMeshSizeField):
     fields = {}
     for config in fields_config:
       field_name = config.pop('name')
+      if field_name not in FieldsRegistry.keys():
+        raise ValueError(f"Unknown field type {field_name}. Available types are {FieldsRegistry.keys()}.")
       if prefix is not None:
         for key in config.keys():
           if key == 'filepath' or key.endswith('_path'):
-            if key not in FieldsRegistry.keys():
-              raise ValueError(f"Unknown field type {key}.")
-            else:
-              config[key] = prefix / config[key]
+            config[key] = prefix / config[key]
       logger.info("Creating field %s with config %s.", field_name, config)
       fields[field_name] = FieldsRegistry[field_name](**config)
     self.fields = fields
@@ -341,7 +339,6 @@ def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, srs
   boundary_node_mask = np.all(np.isin(boundary_node_tags, valid_node_tags), axis=-1)
   boundary_node_tags = boundary_node_tags[boundary_node_mask, :]
   boundary = node_tags_inv_f(boundary_node_tags) # [num_boundary_nodes]
-  boundary_nodes = np.unique(boundary)
 
   # Data might need both filtering and reordering.
   data_mask = np.isin(data_node_tags, valid_node_tags)
@@ -373,10 +370,10 @@ def load_domain(path: pathlib.Path, physical_name_field: str = 'featurecla',
 def coarsen_boundaries(domain: seamsh.geometry.Domain,
                        mesh_size: float,
                        x0: tuple[float, float] = (0.0, 0.0),
-                       x0_projection: SRSName = 'stereographic'):
+                       x0_projection: CRSName = 'stereographic'):
   """ Creates a new Domain with the same projection and coarsened boundaries.
   """
-  x0_projection = SRSRegistry[x0_projection]
+  x0_projection = CRSRegistry[x0_projection]
   mesh_size_f = UniformField(mesh_size)
   coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse

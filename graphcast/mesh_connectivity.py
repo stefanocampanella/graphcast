@@ -23,7 +23,7 @@ import scipy
 import trimesh
 import xarray
 
-from graphcast.constants import EARTH_RADIUS
+from graphcast.gis_utils import equirectangular_srs, cartesian_srs, get_transform
 from graphcast.mesh_graph import Mesh, TriangleMesh, faces_to_edges
 from graphcast.typed_graph import TypedGraph, NodeSet, EdgeSet, EdgeSetKey, EdgesIndices, Context
 
@@ -36,20 +36,19 @@ logger = logging.getLogger(__name__)
 def _grid_lat_lon_to_coordinates(
     grid_latitude: np.ndarray, grid_longitude: np.ndarray) -> np.ndarray:
   """Lat [num_lat] lon [num_lon] to 3d coordinates [num_lat, num_lon, 3]."""
-  # Convert to spherical coordinates phi and theta defined in the grid.
-  # Each [num_latitude_points, num_longitude_points]
-  phi_grid, theta_grid = np.meshgrid(
-    np.deg2rad(grid_longitude),
-    np.deg2rad(90 - grid_latitude))
+  num_lat = len(grid_latitude)
+  num_lon = len(grid_longitude)
+  lon, lat = np.meshgrid(grid_longitude, grid_latitude, indexing='ij')
+  lon = np.where(lon > 180, lon - 360, lon)
+  lon = lon.reshape(-1)
+  lat = lat.reshape(-1)
+  lonlat_coordinates = np.stack([lon, lat], axis=-1)
+  transform = get_transform(equirectangular_srs, cartesian_srs)
+  cartesian_coordinates = transform(lonlat_coordinates)
+  cartesian_coordinates = cartesian_coordinates.reshape(num_lon, num_lat, 3)
+  cartesian_coordinates = cartesian_coordinates.transpose(1, 0, 2)
+  return cartesian_coordinates
 
-  # [num_latitude_points, num_longitude_points, 3]
-  # Note this assumes unit radius, since for now we model the earth as a
-  # sphere of unit radius, and keep any vertical dimension as a regular grid.
-  coordinates_on_unit_sphere = np.stack(
-    [np.cos(phi_grid) * np.sin(theta_grid),
-     np.sin(phi_grid) * np.sin(theta_grid),
-     np.cos(theta_grid)], axis=-1)
-  return EARTH_RADIUS * coordinates_on_unit_sphere
 
 
 def radius_query_indices(

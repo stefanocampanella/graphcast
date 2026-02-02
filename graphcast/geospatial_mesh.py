@@ -20,9 +20,9 @@ import click
 import gmsh
 import seamsh
 
-from graphcast.dataset_utils import Configs
-from graphcast.gis_utils import SRSRegistry
+from graphcast.cli_utils import Configs
 from graphcast.geospatial_mesh_utils import load_domain, coarsen_boundaries, CompositeMeshSizeField, StereoMeshSizeField
+from graphcast.gis_utils import CRSRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -107,14 +107,14 @@ def make(config_path: pathlib.Path,
   mesh_size = CompositeMeshSizeField(fields_config, prefix=data_path)
   # Mesh using seamsh
   seamsh.gmsh.mesh(boundary, mesh_size,
-                   output_srs=SRSRegistry['cartesian'],
+                   output_srs=CRSRegistry['cartesian'],
                    smoothness=configs.get('mesh.smoothness', 0.3))
   # Compute and add view containing mesh size field(s), finally save results
   node_tags, node_coords, _ = gmsh.model.mesh.getNodes(includeBoundary=True)
   node_coords = node_coords.reshape(-1, 3)
   logger.info(f"Writing mesh size field to {output_path}")
   def write_model_data(view_tag_name: str, field: StereoMeshSizeField, append=False) -> None:
-    mesh_size_at_nodes = field.mesh_size_3d(node_coords, projection=SRSRegistry['cartesian'])
+    mesh_size_at_nodes = field.mesh_size_3d(node_coords, projection=CRSRegistry['cartesian'])
     mesh_size_at_nodes = mesh_size_at_nodes.tolist()
     view_tag = gmsh.view.add(view_tag_name)
     gmsh.view.addHomogeneousModelData(

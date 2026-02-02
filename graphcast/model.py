@@ -45,7 +45,7 @@ from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
-from graphcast.gis_utils import get_transform
+from graphcast.gis_utils import get_transform, equirectangular_srs, cartesian_srs
 
 logger = logging.getLogger(__name__)
 
@@ -381,8 +381,8 @@ class GraphCast(predictor_base.Predictor):
     self._boundary_nodes = np.unique(mesh_graph.boundary)
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
 
-    cartesian2latlon = get_transform("cartesian", "ecmwf", pack_back=False)
-    mesh_nodes_lat, mesh_nodes_lon, _ = cartesian2latlon(self._mesh_graph.vertices)
+    cartesian2latlon = get_transform(cartesian_srs, equirectangular_srs, pack_back=False)
+    mesh_nodes_lon, mesh_nodes_lat = cartesian2latlon(self._mesh_graph.vertices)
 
     # Convert to f32 to ensure the lat/lon features aren't in f64.
     self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)

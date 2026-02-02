@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 name = "graphcast-ocean"
 version = "0.1"
 dependencies = [
-    "cartopy",
+    "cartopy >= 0.25.0",
     "cdsapi",
     "cfgrib",
     "cftime",
@@ -94,7 +94,7 @@ classifiers = ["Development Status :: 3 - Alpha",
 
 [project.scripts]
 dataset = "graphcast.dataset:cli"
-ocean-mesh = "graphcast.ocean_mesh:cli"
+ocean-mesh = "graphcast.geospatial_mesh:cli"
 stats = "graphcast.stats:cli"
 training = "graphcast.training:cli"
 
