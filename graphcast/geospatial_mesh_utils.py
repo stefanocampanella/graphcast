@@ -20,7 +20,6 @@ import xarray as xr
 from osgeo import osr
 from scipy.interpolate import RectBivariateSpline
 
-from graphcast.constants import EARTH_RADIUS
 from graphcast.gis_utils import CRSName, CRSRegistry, stereographic_srs, cartesian_srs
 from graphcast.gis_utils import CoordinateReferenceSystem, get_transform, xarray_to_gdal_raster
 from graphcast.mesh_graph import TriangleMesh
@@ -63,7 +62,7 @@ class StereoMeshSizeField:
     if not stereographic_srs.IsSame(projection):
       transform = get_transform(projection, stereographic_srs)
       x = transform(x)
-    earth_radius_squared = EARTH_RADIUS * EARTH_RADIUS
+    earth_radius_squared = stereographic_srs.GetSemiMajor() * stereographic_srs.GetSemiMinor()
     stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
     return mesh_size / stereo_factor
 
