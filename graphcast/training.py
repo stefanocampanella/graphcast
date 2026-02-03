@@ -15,6 +15,7 @@
 import logging
 import os
 import pathlib
+import time
 from typing import Mapping, Any
 
 import click
@@ -205,6 +206,252 @@ def init(config_path: pathlib.Path,
     output_path.parent.mkdir(parents=True)
   with output_path.open('wb') as ckpt_file:
     checkpoint.dump(ckpt_file, graphcast_ckpt)
+
+
+# FIXME: add docstring
+@cli.command()
+@click.argument("config_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path,
+                                file_okay=True,
+                                dir_okay=False,
+                                readable=True,
+                                resolve_path=True))
+@click.argument("checkpoint_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path,
+                                file_okay=True,
+                                dir_okay=False,
+                                readable=True,
+                                resolve_path=True))
+@click.option("--data-path",
+              help="Path to the data directory.",
+              type=click.Path(path_type=pathlib.Path,
+                              file_okay=False,
+                              dir_okay=True,
+                              readable=True,
+                              resolve_path=True))
+@click.option("--other-configs",
+              help="Other configs to override in the config file in the format 'key1:value1,key2:value2,...'",
+              type=cli_utils.DictParamType())
+@click.option("--analysis-report/--no-analysis-report",
+              "analysis",
+              help="Whether log memory and cost analysis (requires `log-level` to be greater than `info`).",
+              default=False,
+              is_flag=True)
+@click.option('--log-level',
+              default='info',
+              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
+def mockup(config_path: pathlib.Path,
+           checkpoint_path: pathlib.Path,
+           data_path: pathlib.Path | None = None,
+           other_configs: Mapping[str, Any] | None = None,
+           analysis = False,
+           log_level: str = 'info'):
+
+  logging.basicConfig(
+    format='%(levelname)s - %(asctime)s: %(message)s',
+    datefmt='%Y-%m-%dT%H:%M:%S',
+    level=getattr(logging, log_level.upper()),
+    force=True)
+
+  gmsh.initialize()
+
+  logger.info(f"Loading configs from {config_path}")
+  configs = Configs.read(config_path)
+  if other_configs is not None:
+    configs.update(other_configs)
+
+  jax_backend = configs.get('jax_backend') or jax.default_backend()
+  # FIXME: use backend in jax.devices and jax.device_count,
+  #  also check that the local batch size is divisible by the number of devices
+  multi_host = jax.process_count() > 1
+  logger.info(f"Setting up the device mesh with {jax.device_count()} devices "
+              f"and backend {jax_backend} ({'multi-host setup' if multi_host else 'single-host setup'}).")
+  device_mesh = jax.make_mesh((jax.device_count(),),
+                              ('batch',),
+                              devices=jax.devices(),
+                              axis_types=(AxisType.Explicit,))
+
+
+  logger.info(f"Loading checkpoint from {checkpoint_path}")
+  with open(checkpoint_path, 'rb') as checkpoint_file:
+    training_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
+
+  if data_path is None:
+    data_path = pathlib.Path(os.getcwd())
+
+  if (dataset_path := (data_path / configs.get('dataset.filepath'))) is None:
+    raise ValueError("The dataset filepath must be specified in the config file.")
+
+  def sharding(*dims):
+    return NamedSharding(device_mesh, PartitionSpec(*dims))
+
+  logger.info(f"Loading dataset from {dataset_path}")
+  datasource = ARCODataSource(dataset_path,
+                              timesteps=configs.get('dataset.timesteps', 3),
+                              mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
+  sampler = IndexSampler(num_records=len(datasource),
+                         # FIXME:
+                         # shard_options=BatchParallelShardOptions(sharding('batch')),
+                         shard_options=ShardOptions(shard_count=jax.process_count(),
+                                                    shard_index=jax.process_index()),
+                         num_epochs=configs.get('sampler.num_epochs', 1),
+                         shuffle=configs.get('sampler.shuffle_dataset', True),
+                         seed=configs.get('sampler.seed'))
+  # The order of operations is constrained by the following requirements:
+  # 1. RestoreDatetimeCoordinate must be called before ExtractInputsTargetsForcings, as the datetime coordinate is used
+  #    to determine the progress (e.g. day of the year) variables.
+  # 2. MakeArrayFromProcessLocalData must be called before RestoreDatetimeCoordinate, as the latter assume that data is
+  #    sharded (and it contains an all_gather communication).
+  # 3. ToXarrayJax must be called before MakeArrayFromProcessLocalData, as the latter takes numpy arrays as inputs and
+  #    returns jax arrays, and the former takes care of casting the datetime coordinate to a dtype that could be used in
+  #    a jax array.
+  # FIXME: IMPORTANT! Current implementation cannot use multiple workers as Device objects cannot be pickled. It might
+  #  be the case that most post-processing steps should be moved to the training loop.
+  operations = [Batch(batch_size=configs.get('local_batch_size', 1),
+                      drop_remainder=True,
+                      batch_fn=lambda datasets: xr.concat(datasets, dim='batch')),
+                ToXarrayJax(),
+                FillNans(),
+                AddLogDepthCoordinate(),  # The negative logarithm of depth is used as a weight in loss calculations
+                DevicePut(sharding=sharding('batch'), multi_host=multi_host),
+                RestoreDatetimeCoordinate(multi_host=multi_host),
+                ExtractInputsTargetsForcings(task=training_ckpt.task_config,
+                                             target_lead_times="1d",
+                                             derived_vars_device=sharding('batch'))]
+  dataloader = DataLoader(data_source=datasource,
+                          sampler=sampler,
+                          operations=operations,
+                          worker_count=configs.get('dataloader.worker_count', 0))
+
+  # Load a single minibatch from dataloader
+  if jax.process_count() > 1:
+    inputs, targets, forcings = jax.tree_util.tree_map(lambda xs: xs.addressable_data(0), next(iter(dataloader)))
+  else:
+    inputs, targets, forcings = next(iter(dataloader))
+
+  mask = datasource.mask
+  mesh_data = training_ckpt.mesh_data
+  policy = cp.save_and_offload_only_these_names(
+    names_which_can_be_saved=configs.get("policy.save", []),
+    names_which_can_be_offloaded=configs.get("policy.offload", []),
+    offload_src=configs.get("policy.offload_src", "device"),
+    offload_dst=configs.get("policy.offload_dst", "pinned_host")
+  )
+
+  # Deeper one-step predictor.
+  predictor = GraphCast(training_ckpt.model_config,
+                        training_ckpt.task_config,
+                        grid_lat=mask['lat'].to_numpy(),
+                        grid_lon=mask['lon'].to_numpy(),
+                        grid_mask=mask,
+                        mesh_graph=mesh_data.mesh_graph,
+                        boundary_nodes=mesh_data.boundary_nodes,
+                        mesh_size=mesh_data.mesh_size,
+                        remat=True,
+                        policy=policy,
+                        prevent_cse=False)
+
+  # Modify inputs/outputs to `graphcast.GraphCast` to handle conversion to from/to float32 to/from BFloat16.
+  predictor = Bfloat16Cast(predictor)
+
+  if (artifacts_path := (data_path / configs.get('artifacts.filepath'))) is None:
+    raise ValueError("The normalization artifacts filepath must be specified in the config file.")
+  logger.info(f"Loading normalization artifacts from {artifacts_path}")
+  artifacts = xr.open_datatree(artifacts_path, engine='zarr')
+
+  mean_by_level = artifacts['/inputs/location'].dataset
+  mean_by_level = mean_by_level.fillna(0.0)
+
+  stddev_by_level = artifacts['/inputs/scale'].dataset
+  stddev_by_level = stddev_by_level.fillna(1.0)
+  stddev_by_level = stddev_by_level.clip(min=1e-18)
+
+  diffs_stddev_by_level = artifacts['/residuals/scale'].dataset
+  diffs_stddev_by_level = diffs_stddev_by_level.fillna(1.0)
+  diffs_stddev_by_level = diffs_stddev_by_level.clip(min=1e-18)
+
+  # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
+  # normalization to the inputs/targets.
+  predictor = InputsAndResiduals(
+    predictor,
+    diffs_stddev_by_level=diffs_stddev_by_level,
+    mean_by_level=mean_by_level,
+    stddev_by_level=stddev_by_level)
+
+  # Mask inputs/outputs replacing missing values with 0.0
+  predictor = MaskedPredictor(predictor, mask=mask, value=0.0)
+
+  # get params from checkpoint
+  params = training_ckpt.params
+
+  @hk.without_apply_rng
+  @hk.transform
+  def local_loss_fn(inputs, targets, forcings):
+    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings,
+                                       levels_normalization_coord='log-depth')
+    return xarray_tree.map_structure(
+      lambda x: unwrap_data(x.mean(), require_jax=True),
+      (loss, diagnostics))
+
+  local_grad_fn = jax.value_and_grad(local_loss_fn.apply, has_aux=True)
+
+  # Data parallel section
+
+  params = jax.device_put(params, device=sharding())
+  args_template = (params,) + next(iter(dataloader))
+  args_template_value, args_template_structure = jax.tree.flatten(args_template)
+  args_template_shapedtypestruct = jax.tree_util.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
+                                                          args_template)
+  return_template = jax.eval_shape(local_grad_fn, *args_template_shapedtypestruct)
+
+  in_specs = (jax.tree_util.tree_map(lambda x: x.sharding.spec, args_template_value),)
+  out_specs = jax.tree_util.tree_map(lambda x: PartitionSpec(), return_template)
+
+  def global_grad_fn(params, inputs, targets, forcings):
+
+    # get pytrees from xarray.Dataset
+    args_value, args_structure = jax.tree.flatten((params, inputs, targets, forcings))
+    assert args_structure == args_template_structure
+
+    def pmean_grad_fn(args_value):
+      # reconstruct xarray.Dataset from pytrees
+      params, inputs, targets, forcings = args_template_structure.unflatten(args_value)
+      (loss, diagnostics), grads = jax.lax.pmean(local_grad_fn(params, inputs, targets, forcings), axis_name='batch')
+      return (loss, diagnostics), grads
+
+    # Eager evaluation of some function inside a `shard_map` isn't yet supported, hence the need for jit here.
+    _global_grad_fn = shard_map(jax.jit(pmean_grad_fn),
+                                mesh=device_mesh,
+                                in_specs=in_specs,
+                                out_specs=out_specs,
+                                check_rep=False)
+
+    return _global_grad_fn(args_value)
+
+  global_grad_fn_jit = jax.jit(global_grad_fn)
+  global_grad_fn_aot = global_grad_fn_jit.trace(params,
+                                                     inputs=inputs,
+                                                     targets=targets,
+                                                     forcings=forcings
+                                                     ).lower().compile()
+  if analysis:
+    logger.info("Running predictor memory and cost analysis")
+    run_analysis_and_report(global_grad_fn_aot)
+
+  eps = configs.get("sgd_step_size", 1e-4)
+  training_steps = configs.get("training_steps", 1)
+  logger.info(f"Running {training_steps} SGD steps (epsilon = {eps})")
+  for step, (inputs, targets, forcings) in enumerate(dataloader):
+    if step > training_steps:
+      break
+    current_time = time.time()
+    (loss, diagnostics), grads = global_grad_fn_aot(params, inputs=inputs, targets=targets, forcings=forcings)
+    logger.info(f"Step {step} took {time.time() - current_time:.2f} seconds, loss: {loss}, diagnostics: {diagnostics}")
+    params = jax.tree_util.tree_map(lambda p, g: p - eps * g, params, grads)
+
+  jax.distributed.shutdown()
 
 
 if __name__ == '__main__':

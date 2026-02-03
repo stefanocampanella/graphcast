@@ -8,7 +8,6 @@ import numpy as np
 import xarray as xr
 from grain.sharding import ShardOptions
 from jax.experimental import multihost_utils
-from jax.sharding import PartitionSpec, NamedSharding
 
 from graphcast import xarray_jax
 from graphcast.data_utils import extract_inputs_targets_forcings
@@ -40,6 +39,10 @@ class ARCODataSource(grain.RandomAccessDataSource):
   def mask(self):
     return self._dataset[self._mask_name].isel(level=0, drop=True)
 
+  @property
+  def dataset(self):
+    return self._dataset
+
 
 class ToXarrayJax(grain.MapTransform):
 
@@ -57,29 +60,38 @@ class ToXarrayJax(grain.MapTransform):
     return dataset
 
 
-class MakeArrayFromProcessLocalData(grain.MapTransform):
-  def __init__(self, sharding):
+class DevicePut(grain.MapTransform):
+  def __init__(self, sharding, multi_host=False):
     self.sharding = sharding
+    self.multi_host = multi_host
 
   def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    dataset = dataset.map(
-      lambda da: jax.tree_util.tree_map(
-        lambda xs: jax.make_array_from_process_local_data(sharding=self.sharding, local_data=xs),
-      da))
+    if self.multi_host:
+      dataset = dataset.map(
+        lambda da: jax.tree_util.tree_map(
+          lambda xs: jax.make_array_from_process_local_data(sharding=self.sharding, local_data=xs),
+        da))
+    else:
+      dataset = xarray_jax.tree_map_with_dims(lambda xs, _: jax.device_put(xs, self.sharding), dataset)
     return dataset
 
 
 class AddLogDepthCoordinate(grain.MapTransform):
 
+  def __init__(self, log_depth_name='log-depth', depth_name='depth'):
+    self.log_depth_name = log_depth_name
+    self.depth_name = depth_name
+
   def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    return dataset.assign_coords({'log-depth': - np.log(dataset['depth'])})
+    return dataset.assign_coords({self.log_depth_name: - np.log(dataset[self.depth_name])})
 
 
 class RestoreDatetimeCoordinate(grain.MapTransform):
 
-  def __init__(self, datetime_coord_name='datetime', gather_from_all_processes=True):
-    self.gather_from_all_processes = gather_from_all_processes
+  def __init__(self, datetime_coord_name='datetime', datetime_dims_name=('batch', 'time'), multi_host=False):
+    self.gather_from_all_processes = multi_host
     self.datetime_coord_name = datetime_coord_name
+    self.datetime_dims_name = datetime_dims_name
 
   def map(self, dataset: xr.Dataset) -> xr.Dataset:
     datetime_coordinate = dataset[self.datetime_coord_name]
@@ -89,18 +101,22 @@ class RestoreDatetimeCoordinate(grain.MapTransform):
     # `xarray_jax.Dataset`, and finally recasting to datetime64[ns] (the easy part).
     if self.gather_from_all_processes:
       datetime_coordinate = multihost_utils.process_allgather(datetime_coordinate)
-    datetime_coordinate = xarray_jax.unwrap(datetime_coordinate)
-    datetime_coordinate = datetime_coordinate.astype('datetime64[s]')
+    # In the case of single-host setups it might happen that datetime is still a numpy array
+    datetime_coordinate = xarray_jax.unwrap_data(datetime_coordinate, require_jax=False)
+    datetime_coordinate = np.asarray(datetime_coordinate).astype('datetime64[s]')
     dataset = dataset.drop(self.datetime_coord_name)
-    dataset = dataset.assign_coords({self.datetime_coord_name: datetime_coordinate})
+    dataset = dataset.assign_coords({self.datetime_coord_name: (self.datetime_dims_name, datetime_coordinate)})
     return dataset
 
 
 class FillNans(grain.MapTransform):
 
+  def __init__(self, value=0.0):
+    self.value = value
+
   def map(self, dataset: xr.Dataset) -> xr.Dataset:
     # Notice: as a side-effect, boolean variables get casted to float32 (which is useful)
-    dataset = dataset.fillna(value=jax.numpy.float32(0.0))
+    dataset = dataset.fillna(value=jax.numpy.float32(self.value))
     return dataset
 
 
@@ -120,24 +136,24 @@ class ExtractInputsTargetsForcings(grain.MapTransform):
     return inputs, targets, forcings
 
 
-class DevicePut(grain.MapTransform):
-
-  def __init__(self, mesh, replicate_along_batch=False, batch_dim_name='batch'):
-
-    self.mesh = mesh
-    self.replicate_along_batch = replicate_along_batch
-    self.batch_dim_name = batch_dim_name
-
-  def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    if self.replicate_along_batch:
-      sharding = NamedSharding(self.mesh, PartitionSpec())
-    else:
-      sharding = NamedSharding(self.mesh, PartitionSpec(self.batch_dim_name))
-
-    def _put_dataarray(data_array):
-      return jax.tree_util.tree_map(lambda xs: jax.device_put(xs, sharding), data_array)
-
-    return dataset.map(lambda da: _put_dataarray(da))
+# class DevicePut(grain.MapTransform):
+#
+#   def __init__(self, mesh, replicate_along_batch=False, batch_dim_name='batch'):
+#
+#     self.mesh = mesh
+#     self.replicate_along_batch = replicate_along_batch
+#     self.batch_dim_name = batch_dim_name
+#
+#   def map(self, dataset: xr.Dataset) -> xr.Dataset:
+#     if self.replicate_along_batch:
+#       sharding = NamedSharding(self.mesh, PartitionSpec())
+#     else:
+#       sharding = NamedSharding(self.mesh, PartitionSpec(self.batch_dim_name))
+#
+#     def _put_dataarray(data_array):
+#       return jax.tree_util.tree_map(lambda xs: jax.device_put(xs, sharding), data_array)
+#
+#     return dataset.map(lambda da: _put_dataarray(da))
 
 # FIXME: the following seems to be broken for a multi-host-each-with-multiple-devices setup.
 class BatchParallelShardOptions(ShardOptions):

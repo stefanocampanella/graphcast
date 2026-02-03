@@ -1,0 +1,24 @@
+seed = 42
+local_batch_size = 1
+jax_backend = "cpu"
+training_steps = 1
+sgd_step_size = 1e-4
+
+[dataset]
+filepath = "data/dataset/dataset_tres-1d_res-1_levels-10_arco"
+timesteps = 3
+
+[sampler]
+num_epochs = 1
+shuffle_dataset = false
+
+[dataloader]
+
+[policy]
+names_which_can_be_saved = []
+names_which_can_be_offloaded = []
+offload_src = "device"
+offload_dst = "pinned_host"
+
+[artifacts]
+filepath = "data/dataset/dataset_tres-1d_res-1_levels-10_normalization"
