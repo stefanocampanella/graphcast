@@ -13,8 +13,8 @@
 # limitations under the License.
 # TODO: move tests from icosahedral_mesh and add tests for new functions
 # TODO: switch from np.ndarray to chex.Array in type hints
-# TODO: The type of spatial_reference_system in the type definitions below should gis_utils.SRSName,
-#  but in order to be serializable by checkpoint.checkpoint, it should be a string.
+# TODO: MeshGraph and TriangleMesh share most of the code, refactor
+# TODO: TriangleMesh could easily hold possibly square meshes, not just triangular ones.
 """Utils for working with (multi-)mesh graphs and geospatial graphs."""
 import itertools
 from typing import Sequence, Tuple
@@ -25,7 +25,8 @@ import networkx as nx
 import numpy as np
 
 from graphcast import typed_graph
-from graphcast.gis_utils import cartesian_srs, cartesian_unit_sphere_srs, equirectangular_srs, get_transform
+from graphcast.gis_utils import (_cartesian_wkt, cartesian_srs, cartesian_unit_sphere_srs, equirectangular_srs,
+                                 get_transform)
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -71,13 +72,13 @@ class TriangleMesh:
   vertices: np.ndarray
   faces: np.ndarray
   boundary: Optional[np.ndarray] = None
-  spatial_reference_system: str = "cartesian"
+  spatial_reference_system: str = _cartesian_wkt
   node_tags: Optional[np.ndarray] = None
 
 
 @chex.dataclass(frozen=True, eq=True)
 class MeshGraph:
-  """Data structure for multi-mesh graphs on a geoid..
+  """Data structure for (multi-)mesh-graphs on a geoid.
 
   Attributes:
     vertices: same as TriangleMesh.vertices.
@@ -91,7 +92,7 @@ class MeshGraph:
   faces: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
   boundary: Optional[np.ndarray] = None
-  spatial_reference_system: str = "cartesian"
+  spatial_reference_system: str = _cartesian_wkt
   node_tags: Optional[np.ndarray] = None
 
 
@@ -184,7 +185,7 @@ def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularG
 
   transformer = get_transform(cartesian_unit_sphere_srs if unit_sphere else cartesian_srs,
                               equirectangular_srs, pack_back=False)
-  longitudes, latitudes, _ = transformer(graph.vertices)
+  longitudes, latitudes  = transformer(graph.vertices)
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.
   vertices = (latitudes, longitudes)

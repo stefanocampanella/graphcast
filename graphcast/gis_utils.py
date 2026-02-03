@@ -306,7 +306,8 @@ def xarray_to_gdal_raster(da: xr.DataArray,
   Returns:
     In-memory GDAL raster dataset of type gdal.Dataset.
   """
-  assert da.dims == (latitude_dim, longitude_dim), f"Dataset must have dimensions ({latitude_dim}, {longitude_dim})"
+  assert da.dims == (latitude_dim, longitude_dim), \
+    f"Dataset must have dimensions ({latitude_dim}, {longitude_dim}), got {da.dims}"
   da = wrap_longitude(da, longitude_dim)
   da = da.transpose(latitude_dim, longitude_dim)
   data = da.to_numpy()
