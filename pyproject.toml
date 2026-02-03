@@ -34,6 +34,7 @@ dependencies = [
     "grain >= 0.2.15",
     "graphviz>=0.21",
     "h5netcdf",
+    "humanize",
     "hvplot",
     "ipywidgets",
     # Install cuda using pip, building jaxlib from source is a pain in the neck...
@@ -55,6 +56,8 @@ dependencies = [
     "pandas",
     "pandas-stubs~=2.2.3",
     "papermill[all]",
+    # MacOS package distributes his own binary of proj, but Spilhouse projection requires proj >= 9.6.0
+    "pyproj@git+https://github.com/pyproj4/pyproj.git ; sys_platform == 'darwin'",
     # Necessary to visualize array sharding in JAX
     "rich",
     "rtree",
