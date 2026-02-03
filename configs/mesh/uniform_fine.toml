@@ -1,6 +1,6 @@
 description = """
   Global ocean triangular mesh, \
-  with a target mesh size set to a uniform field with a value of 30 km. \
+  with a target mesh size set to a uniform field with a value of 150 km. \
   All units are meters. \
   The code used the seamsh Python package by Jonathan Lambrechts \
   and a description of the algorithm can be found at \
@@ -17,13 +17,18 @@ license = """
   Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com
   """
 
+[mesh]
+smoothness = 0.3
+
 [domain]
+filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
+sampling = 5_000.0
 
 [coarsen_boundaries]
 mesh_size = 10_000.0
 
-[field]
-name = "ConstantField"
-value = 30_000.0
+[[fields]]
+name = "uniform"
+value = 25_000.0

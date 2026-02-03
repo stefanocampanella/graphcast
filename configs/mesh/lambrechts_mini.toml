@@ -1,6 +1,7 @@
 description = """
   Global ocean triangular mesh, \
-  with a target mesh size set to a uniform field with a value of 150 km. \
+  with a target mesh size set to a uniform field with a value of 300km \
+  for the interior of the domain and 10km for coastlines. \
   All units are meters. \
   The code used the seamsh Python package by Jonathan Lambrechts \
   and a description of the algorithm can be found at \
@@ -24,10 +25,29 @@ smoothness = 0.3
 filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
+sampling = 5_000.0
 
 [coarsen_boundaries]
 mesh_size = 10_000.0
 
+# For bathymetry and its hessian fields, Lambrecths et al use 25 km as a minimum mesh size,
+# and 30 for the shore proximity criterium. However, this would result in a mesh too fine for our purposes.
 [[fields]]
-name = "uniform"
-value = 100_000.0
+name = "shore_proximity"
+filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
+physical_name_field = "featurecla"
+curve_type = "bspline"
+sampling = 5_000.0
+field_min = 0.0
+field_max = 500_000.0
+size_min = 150_000.0
+size_max = 300_000.0
+
+[[fields]]
+name = "bathymetry"
+filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
+var_name = "deptho"
+q_low = 0.1
+q_high = 0.9
+size_min = 150_000.0
+size_max = 300_000.0

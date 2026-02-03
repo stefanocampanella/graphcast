@@ -1,0 +1,50 @@
+provider = 'cm'
+type = 'static'
+
+[[datasets]]
+dataset_id = 'cmems_mod_glo_phy_my_0.083deg_static'
+dataset_version = '202311'
+variables = ['deptho']
+dataset_part = 'bathy'
+service = 'static-arco'
+
+[[postprocess]]
+name = 'transpose'
+dims = ['latitude', 'longitude']
+
+[[postprocess]]
+name = 'regrid'
+method = 'conservative'
+latitude_dim = 'latitude'
+longitude_dim = 'longitude'
+
+[postprocess.kwargs]
+skipna = true
+output_chunks = {time = 'auto', latitude = -1, longitude = -1}
+
+[postprocess.grid]
+south = -90.0
+north = 90.0
+west = 0.0
+east = 359.9375
+resolution_lat = 0.0625
+resolution_lon = 0.0625
+
+[[postprocess]]
+name = 'chunk'
+latitude = -1
+longitude = -1
+
+[[postprocess]]
+name = 'astype'
+dtype = 'float32'
+casting='same_kind'
+
+[[postprocess]]
+name = 'rename_coordinates'
+name_dict = {latitude = 'lat', longitude = 'lon'}
+
+[save]
+consolidated = true
+chunk = {lat = -1, lon = -1}
+compressor = {cname = 'lz4', clevel = 1}

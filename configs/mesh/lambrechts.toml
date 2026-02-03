@@ -40,26 +40,26 @@ curve_type = "bspline"
 sampling = 5_000.0
 field_min = 0.0
 field_max = 500_000.0
-size_min = 120_000.0
-size_max = 500_000.0
+size_min = 30_000.0
+size_max = 200_000.0
 
 [[fields]]
 name = "bathymetry"
-filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
 var_name = "deptho"
 q_low = 0.1
 q_high = 0.9
 srs_name = 'ecmwf'
-size_min = 100_000.0
+size_min = 25_000.0
 size_max = 500_000.0
 
 [[fields]]
 name = "bathymetry_hessian"
-filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
 var_name = "deptho"
 q_low = 0.1
 q_high = 0.9
 smoothing_kwargs = {kx = 3, ky = 3}
 srs_name = 'ecmwf'
-size_min = 100_000.0
+size_min = 25_000.0
 size_max = 500_000.0
