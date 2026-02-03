@@ -1,8 +1,5 @@
 # TODO:
-#   1. Some StereoMeshSizeField derived classes have a pending implementation. These correspond to criterion fields
-#      based on the bathymetry (in case of drag waves) and standard error analysis tools. At the end, it should be
-#      possible to reproduce exactly the same mesh as in https://doi.org/10.1007/s10236-008-0148-3
-#   2. Some StereoMeshSizeField classes require several samples to average otherwise noisy criterion fields. These are
+#   1. Some StereoMeshSizeField classes require several samples to average otherwise noisy criterion fields. These are
 #      The one based on the hessian norm (SST might be a good target) and the one leveraging the
 #      Courant–Friedrichs–Lewy condition. These require both to be implemented and some other machinery (a command in
 #      ocean_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
