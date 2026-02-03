@@ -30,7 +30,7 @@ sampling = 5_000.0
 [coarsen_boundaries]
 mesh_size = 10_000.0
 
-# For bathymetry and its hessian fields, Lambrecths et al use 25 km as a minimum mesh size,
+# For bathymetry and its hessian fields, Lambrecths et al. use 25 km as a minimum mesh size,
 # and 30 for the shore proximity criterium. However, this would result in a mesh too fine for our purposes.
 [[fields]]
 name = "shore_proximity"
@@ -53,13 +53,17 @@ srs_name = 'ecmwf'
 size_min = 25_000.0
 size_max = 500_000.0
 
-[[fields]]
-name = "bathymetry_hessian"
-filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
-var_name = "deptho"
-q_low = 0.1
-q_high = 0.9
-smoothing_kwargs = {kx = 3, ky = 3}
-srs_name = 'ecmwf'
-size_min = 25_000.0
-size_max = 500_000.0
+# Lambrechts et al. uses also a criteria based on standard error analysis,
+# However, this needs fine-tuning, and our experiments resulted in a noisy
+# field with artifacts. We'll keep it here for documentation purposes.
+#
+# [[fields]]
+# name = "bathymetry_hessian"
+# filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
+# var_name = "deptho"
+# q_low = 0.1
+# q_high = 0.9
+# smoothing_kwargs = {kx = 3, ky = 3, s = 1.0e4}
+# srs_name = 'ecmwf'
+# size_min = 25_000.0
+# size_max = 500_000.0

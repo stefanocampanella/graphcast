@@ -153,7 +153,7 @@ class BathymetryField(RasterField):
     """It assumes that variable contains positive depth values."""
     grid_ds = xr.open_dataset(filepath, engine='zarr')
     grid_da = grid_ds[var_name].load()
-    # noinspection PyArgumentList
+    grid_da = grid_da / grid_da.max()
     assert np.all(np.logical_or(grid_da.isnull(), grid_da >= 0.0)), f"Variable {var_name} contain negative depth values."
     bathy_sqrt = np.sqrt(grid_da)
     super().__init__(bathy_sqrt, size_min, size_max, **kwargs)
@@ -166,11 +166,11 @@ class BathymetryHessianField(RasterField):
                **kwargs):
     grid_ds = xr.open_dataset(filepath, engine='zarr')
     grid_da = grid_ds[var_name].load()
+    grid_da = grid_da / grid_da.max()
     hnorm = self.norm_of_hessian(grid_da, longitude_dim=longitude_dim, latitude_dim=latitude_dim,
                                  smoothing_kwargs=smoothing_kwargs)
     assert np.all(hnorm >= 0.0), "Computed Hessian contains negative values."
-    # noinspection PyArgumentList
-    hnorm_invsqrt = 1 / np.clip(np.sqrt(hnorm), min=eps)
+    hnorm_invsqrt = 1 / np.clip(np.sqrt(hnorm), a_min=eps, a_max=None)
     hnorm_invsqrt = xr.where(grid_da.isnull(), np.nan, hnorm_invsqrt)
     super().__init__(hnorm_invsqrt, size_min, size_max, longitude_dim=longitude_dim, latitude_dim=latitude_dim,
                      **kwargs)
@@ -200,7 +200,7 @@ class BathymetryHessianField(RasterField):
 
     def fix_for_latitudes(z_di: np.ndarray, eps=1e-10) -> np.ndarray:
       latitudes_grid = np.tile(latitudes.reshape(-1, 1), (1, len(longitudes)))
-      corrective_factor = 1 / np.clip(np.cos(latitudes_grid * np.pi / 180.0), min=eps)
+      corrective_factor = 1 / np.clip(np.cos(latitudes_grid * np.pi / 180.0), a_min=eps, a_max=None)
       return np.where(
         np.logical_or(np.isclose(latitudes_grid, 90.0), np.isclose(latitudes_grid, -90.0)),
         np.zeros_like(z_di), z_di * corrective_factor)
