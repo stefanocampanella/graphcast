@@ -7,6 +7,7 @@
 #   5. Download and merge should use the function save_to_zarr from utils, which in turn should be extended to support
 #      them.
 #   6. Progress bars should be dropped.
+#   7. Revise logging (e.g. don't use formatted strings)
 import logging
 import pathlib
 import pprint
@@ -34,6 +35,8 @@ from graphcast.dataset_utils import (DateIntervalsRange,
                                      save_to_zarr,
                                      valid_time_coordinate)
 from graphcast.dask_distributed_utils import get_client
+
+logger = logging.getLogger(__name__)
 
 
 def bar(progress):
@@ -117,15 +120,13 @@ def download(
     end: datetime | None = None,
     dry_run: bool = False,
     progress: bool = False,
-    logger: logging.Logger | None= None,
     log_level: str = 'info',
     overwrite: bool = False):
 
-  if logger is None:
-    logger = logging.getLogger(__name__)
-    logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
-                        datefmt='%Y-%m-%dT%H:%M:%S',
-                        level=getattr(logging, log_level.upper()))
+  logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
+                      datefmt='%Y-%m-%dT%H:%M:%S',
+                      level=getattr(logging, log_level.upper()),
+                      force=True)
 
   # Open the configuration file and load the TOML configs.
   configs = Configs.read(config_path)
@@ -137,14 +138,14 @@ def download(
   # Check if time interval options are valid, and get the date intervals to process.
   if dataset_type == 'static':
     date_intervals = (None,)
-    logging.info("Processing static dataset")
+    logger.info("Processing static dataset")
   elif dataset_type == 'timeseries':
     date_intervals, output_path = _parse_timeseries_arguments(configs,
                                                               output_path,
                                                               start=start,
                                                               end=end,
                                                               array_id=array_id)
-    logging.info(f"Processing timeseries {date_intervals}")
+    logger.info(f"Processing timeseries {date_intervals}")
   else:
     raise ValueError(f"The 'type' key value must be one of 'static' or 'timeseries'.")
 
@@ -170,7 +171,7 @@ def download(
 
       def _download_step(**kwargs):
         if date_interval is not None:
-          logging.info(f"Processing step {date_interval}")
+          logger.info(f"Processing step {date_interval}")
         # When downloading from Copernicus Marine Data Store or Climate Data Store, the typical case is a large dataset,
         # spanning a long time period, with several sets of variables in different datasets (bio, phys, etc.),
         # which needs to be downloaded one piece at a time. Hence, `datasets` array values in the TOML configuration file
@@ -193,7 +194,7 @@ def download(
         # This might be optimized, but as we are saving it fast local storage (SSD), it is probably fine.
         for var in fragment.data_vars:
           fragment[var].encoding['compressor'] = None
-        logging.info(f"Saving temporary dataset to {temporary_store.path}")
+        logger.info(f"Saving temporary dataset to {temporary_store.path}")
         if not dry_run:
           fragment.to_zarr(store=temporary_store, **kwargs)
 
@@ -210,7 +211,7 @@ def download(
     output_parent_dir = output_path.parent
     if not dry_run:
         output_parent_dir.mkdir(parents=True, exist_ok=True)
-    logging.info(f"Saving dataset to {output_path} with {save_configs}")
+    logger.info(f"Saving dataset to {output_path} with {save_configs}")
     if not dry_run:
       # Load the temporary Zarr, eventually rechunk and save to final destination.
       dataset = xr.open_zarr(temporary_store, overwrite_encoded_chunks=True)
@@ -322,8 +323,8 @@ def merge(
     dask.config.set(scheduler='synchronous')
 
   logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
-                      datefmt='%Y-%m-%dT%H:%M:%S',
-                      level=getattr(logging, log_level.upper()))
+                      datefmt='%Y-%m-%dT%H:%M:%S', level=getattr(logging, log_level.upper()),
+                      force=True)
 
   # Open the configuration file and load the TOML configs.
   configs = Configs.read(config_path)
@@ -343,7 +344,7 @@ def merge(
   end_date = date_intervals.last_valid_date
 
   def reader(path, **kwargs):
-    logging.info(f"Reading {path}")
+    logger.info(f"Reading {path}")
     if path.is_dir():
       path = list(path.glob('*.zip'))
     else:
@@ -399,7 +400,7 @@ def merge(
   output_parent_dir = output_path.parent
   output_parent_dir.mkdir(parents=True, exist_ok=True)
 
-  logging.info(f"Saving merged dataset to {output_path} with {save_configs}")
+  logger.info(f"Saving merged dataset to {output_path} with {save_configs}")
   if rechunk_conf := save_configs.pop('chunk', {}):
     dataset = dataset.chunk(**rechunk_conf)
     # see: https://github.com/pydata/xarray/issues/4380
@@ -463,7 +464,8 @@ def normalization(
 
   logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
                       datefmt='%Y-%m-%dT%H:%M:%S',
-                      level=getattr(logging, log_level.upper()))
+                      level=getattr(logging, log_level.upper()),
+                      force=True)
 
   # Open the configuration file and load the TOML configs.
   configs = Configs.read(config_path)
@@ -475,7 +477,7 @@ def normalization(
   def open_dataset(name: str) -> xr.Dataset:
     path = pathlib.Path(configs[name])
     path = path if data_path_prefix is None else data_path_prefix / path
-    logging.info(f"Loading {name} from {path}")
+    logger.info(f"Loading {name} from {path}")
     return xr.open_dataset(path, engine='zarr')
 
   # Load dataset and statistics
@@ -532,7 +534,7 @@ def normalization(
   })
 
   # Save the DataTree to a Zarr store
-  logging.info(f"Saving normalization datatree to {output_path}")
+  logger.info(f"Saving normalization datatree to {output_path}")
   with bar(progress):
     dt.to_zarr(store=output_path, mode="w" if overwrite else "w-", compute=True)
 
@@ -608,10 +610,10 @@ def unpack(
   given output path.
   """
 
-  logger = logging.getLogger(__name__)
   logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
                       datefmt='%Y-%m-%dT%H:%M:%S',
-                      level=getattr(logging, log_level.upper()))
+                      level=getattr(logging, log_level.upper()),
+                      force=True)
   client = get_client(logger=logger, debug=debug, local=local)
 
   # If destination exists and should not overwrite, raise and exit.
@@ -625,7 +627,7 @@ def unpack(
       return [path.with_suffix('.zip')]
 
   paths = build_paths(input_path)
-  logging.info(f"Reading {len(paths)} zipped Zarrs from {input_path}")
+  logger.info(f"Reading {len(paths)} zipped Zarrs from {input_path}")
 
   # noinspection PyTypeChecker
   dataset = open_mfdataset(paths, chunks=chunks)
@@ -637,7 +639,7 @@ def unpack(
   output_path = output_path.absolute()
   # Ensure parent directory exists
   output_path.parent.mkdir(parents=True, exist_ok=True)
-  logging.info(f"Saving unpacked dataset to directory Zarr at {output_path}")
+  logger.info(f"Saving unpacked dataset to directory Zarr at {output_path}")
 
   save_to_zarr(dataset, output_path, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
 
