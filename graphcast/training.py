@@ -99,6 +99,7 @@ def init(config_path: pathlib.Path,
 
   logger.info("Initialize gmsh.")
   gmsh.initialize()
+  gmsh.option.setNumber("General.Verbosity", 2)
 
   if output_path.exists() and not overwrite:
     raise ValueError(f"Output destination {output_path} already exists.")

@@ -13,12 +13,13 @@
 # limitations under the License.
 """Utilities for building models."""
 
-from typing import Any, Mapping, Optional, Tuple
+from typing import Any, Mapping, Optional, Tuple, Literal
 
-import jax.numpy as jnp
 import numpy as np
-from scipy.spatial import transform
+import pyproj
 import xarray
+
+from graphcast.gis_utils import get_transform, equirectangular_srs, cartesian_unit_sphere_srs
 
 NumpyInterface = Any
 TransformInterface = Any
@@ -27,16 +28,15 @@ TransformInterface = Any
 # TODO: this implementation should be updated to include the distance from the coast as a feature
 # TODO: compute features by solving the related inverse problems (proj/geod)
 def get_graph_spatial_features(
-    *, node_lat: np.ndarray, node_lon: np.ndarray,
+    *, node_lon: np.ndarray, node_lat: np.ndarray,
     senders: np.ndarray, receivers: np.ndarray,
     boundary_nodes: Optional[np.ndarray],
     add_node_positions: bool,
     add_node_latitude: bool,
     add_node_longitude: bool,
-    add_relative_positions: bool,
-    edge_normalization_factor: Optional[float] = None,
-    relative_longitude_local_coordinates: bool,
-    relative_latitude_local_coordinates: bool,
+    add_edge_length: bool,
+    add_edge_direction: bool,
+    edge_normalization: Tuple[float, float] | Literal['zscore'] | None = None,
     sine_cosine_encoding: bool = False,
     encoding_num_freqs: int = 10,
     encoding_multiplicative_factor: float = 1.2,
@@ -44,10 +44,11 @@ def get_graph_spatial_features(
   """Computes spatial features for the nodes.
 
   Args:
+    node_lon: Longitudes in the [-180, 180] interval of shape [num_nodes]
     node_lat: Latitudes in the [-90, 90] interval of shape [num_nodes]
-    node_lon: Longitudes in the [0, 360] interval of shape [num_nodes]
     senders: Sender indices of shape [num_edges]
     receivers: Receiver indices of shape [num_edges]
+    boundary_nodes: Optional list of boundary node indices.
     add_node_positions: Add unit norm absolute positions.
     add_node_latitude: Add a feature for latitude (cos(90 - lat))
         Note even if this is set to False, the model may be able to infer the
@@ -59,14 +60,12 @@ def get_graph_spatial_features(
         longitude from relative features, unless
         `relative_longitude_local_coordinates` is also True, or if there is any
         bias on the relative edge sizes for different longitudes.
-    add_relative_positions: Whether to relative positions in R3 to the edges.
-    edge_normalization_factor: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length. This supports using pre-trained
+    add_edge_length: Whether to add geodetic length of edges.
+    add_edge_direction: Whether to add azimuth of edges using sine and cosine encoding.
+    edge_normalization: Allows explicitly controlling edge normalization.
+        If None, defaults to max edge length. If 'zscore' use standardization,
+        otherwise specify location and scale. This supports using pre-trained
         model weights with a different graph structure to what it was trained.
-    relative_longitude_local_coordinates: If True, relative positions are
-        computed in a local space where the receiver is at 0 longitude.
-    relative_latitude_local_coordinates: If True, relative positions are
-        computed in a local space where the receiver is at 0 latitude.
     sine_cosine_encoding: If True, we will transform the node/edge features
         with sine and cosine functions, similar to NERF.
     encoding_num_freqs: frequency parameter
@@ -81,19 +80,21 @@ def get_graph_spatial_features(
   num_nodes = node_lat.shape[0]
   num_edges = senders.shape[0]
   dtype = node_lat.dtype
-  node_phi, node_theta = lat_lon_deg_to_spherical(node_lat, node_lon)
+  node_phi, node_theta = lat_lon_deg_to_spherical(node_lon, node_lat)
 
   # Computing some node features.
   node_features = []
 
   if boundary_nodes is not None:
-    boundary_mask = np.zeros(num_nodes, dtype=np.float32)
-    boundary_mask[boundary_nodes] = 1.
+    # Set interior nodes to -1, boundary nodes to 1.
+    boundary_mask = np.full((num_nodes,), -1.0, dtype=np.float32)
+    boundary_mask[boundary_nodes] = 1.0
     node_features.append(boundary_mask)
 
   if add_node_positions:
     # Already in [-1, 1.] range.
-    node_features.extend(spherical_to_cartesian(node_phi, node_theta))
+    latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
+    node_features.extend(*latlon_to_unit_sphere((node_lon, node_lat)))
 
   if add_node_latitude:
     # Using the cos of theta.
@@ -113,36 +114,31 @@ def get_graph_spatial_features(
   # Computing some edge features.
   edge_features = []
 
-  if add_relative_positions:
-
-    relative_position = get_relative_position_in_receiver_local_coordinates(
-        node_phi=node_phi,
-        node_theta=node_theta,
-        senders=senders,
-        receivers=receivers,
-        latitude_local_coordinates=relative_latitude_local_coordinates,
-        longitude_local_coordinates=relative_longitude_local_coordinates
-        )
-
-    # FIXME: this is L2 distance in 3d space, rather than geodesic distance.
-    relative_edge_distances = np.linalg.norm(
-        relative_position, axis=-1, keepdims=True)
-
-    if edge_normalization_factor is None:
-      # Normalize to the maximum edge distance. Note that we expect to always
-      # have an edge that goes in the opposite direction of any given edge
-      # so the distribution of relative positions should be symmetric around
-      # zero. So by scaling by the maximum length, we expect all relative
-      # positions to fall in the [-1., 1.] interval, and all relative distances
-      # to fall in the [0., 1.] interval.
-      edge_normalization_factor = relative_edge_distances.max()
-    edge_features.append(relative_edge_distances / edge_normalization_factor)
-    edge_features.append(relative_position / edge_normalization_factor)
+  if add_edge_length or add_edge_direction:
+    geoid = pyproj.Geod(ellps="WGS84")
+    edge_azimuths, _, edge_lengths = geoid.inv(node_lon[senders], node_lat[senders],
+                                              node_lon[receivers], node_lat[receivers])
+    if add_edge_length:
+      if edge_normalization is None:
+        # Normalize to the maximum edge length.
+        edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
+        edge_normalization_scale = edge_lengths.max()
+      elif edge_normalization == "zscore":
+        edge_normalization_location = np.mean(edge_lengths)
+        edge_normalization_scale = np.std(edge_lengths)
+      else:
+        edge_normalization_location, edge_normalization_scale = edge_normalization
+      edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+      edge_features.append(edge_lengths / edge_normalization_scale)
+    if add_edge_direction:
+      edge_azimuths = np.deg2rad(edge_azimuths)
+      edge_features.append(np.sin(edge_azimuths))
+      edge_features.append(np.cos(edge_azimuths))
 
   if not edge_features:
     edge_features = np.zeros([num_edges, 0], dtype=dtype)
   else:
-    edge_features = np.concatenate(edge_features, axis=-1)
+    edge_features = np.stack(edge_features, axis=-1)
 
   if sine_cosine_encoding:
     def sine_cosine_transform(x: np.ndarray) -> np.ndarray:
@@ -184,8 +180,8 @@ def restore_leading_axes(grid_xarray: xarray.DataArray) -> xarray.DataArray:
   return grid_xarray.transpose(*output_dims)
 
 
-def lat_lon_deg_to_spherical(node_lat: np.ndarray,
-                             node_lon: np.ndarray,
+def lat_lon_deg_to_spherical(node_lon: np.ndarray,
+                             node_lat: np.ndarray,
                              np_: NumpyInterface = np,
                             ) -> Tuple[np.ndarray, np.ndarray]:
   phi = np_.deg2rad(node_lon)
@@ -193,239 +189,26 @@ def lat_lon_deg_to_spherical(node_lat: np.ndarray,
   return phi, theta
 
 
-def spherical_to_lat_lon(phi: np.ndarray,
-                         theta: np.ndarray,
-                         np_: NumpyInterface = np,
-                        ) -> Tuple[np.ndarray, np.ndarray]:
-  lon = np_.mod(np_.rad2deg(phi), 360)
-  lat = 90 - np_.rad2deg(theta)
-  return lat, lon
-
-
-# TODO: deprecate this. It assumes unit radius!
-def cartesian_to_spherical(x: np.ndarray,
-                           y: np.ndarray,
-                           z: np.ndarray,
-                           np_: NumpyInterface = np,
-                          ) -> Tuple[np.ndarray, np.ndarray]:
-  phi = np_.arctan2(y, x)
-  with np.errstate(invalid="ignore"):  # circumventing b/253179568
-    theta = np_.arccos(z)  # Assuming unit radius.
-  return phi, theta
-
-
-def spherical_to_cartesian(
-    phi: np.ndarray, theta: np.ndarray,
-    np_: NumpyInterface = np,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-  # Assuming unit radius.
-  return (np_.cos(phi)*np_.sin(theta),
-          np_.sin(phi)*np_.sin(theta),
-          np_.cos(theta))
-
-
-def lat_lon_to_cartesian(
-    lat: np.ndarray, lon: np.ndarray,
-    np_: NumpyInterface = np,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-  return spherical_to_cartesian(
-      *lat_lon_deg_to_spherical(lat, lon, np_=np_), np_=np_)
-
-
-def cartesian_to_lat_lon(
-    x: np.ndarray,
-    y: np.ndarray,
-    z: np.ndarray,
-    np_: NumpyInterface = np,
-    ) -> Tuple[np.ndarray, np.ndarray]:
-  return spherical_to_lat_lon(
-      *cartesian_to_spherical(x, y, z, np_=np_), np_=np_)
-
-
-# TODO: implement using gis tools.
-def get_relative_position_in_receiver_local_coordinates(
-    node_phi: np.ndarray,
-    node_theta: np.ndarray,
-    senders: np.ndarray,
-    receivers: np.ndarray,
-    latitude_local_coordinates: bool,
-    longitude_local_coordinates: bool,
-    np_: NumpyInterface = np,
-    transform_: TransformInterface = transform,
-    ) -> np.ndarray:
-  """Returns relative position features for the edges.
-
-  The relative positions will be computed in a rotated space for a local
-  coordinate system as defined by the receiver. The relative positions are
-  simply obtained by subtracting sender position minues receiver position in
-  that local coordinate system after the rotation in R^3.
-
-  Args:
-    node_phi: [num_nodes] with polar angles.
-    node_theta: [num_nodes] with azimuthal angles.
-    senders: [num_edges] with indices.
-    receivers: [num_edges] with indices.
-    latitude_local_coordinates: Whether to rotate edges such that in the
-        positions are computed such that the receiver is always at latitude 0.
-    longitude_local_coordinates: Whether to rotate edges such that in the
-        positions are computed such that the receiver is always at longitude 0.
-    np_: Numpy library interface.
-    transform_: scipy.transform library interface.
-
-  Returns:
-    Array of relative positions in R3 [num_edges, 3]
-  """
-
-  node_pos = np_.stack(
-      spherical_to_cartesian(node_phi, node_theta, np_=np_), axis=-1)
-
-  # No rotation in this case.
-  if not (latitude_local_coordinates or longitude_local_coordinates):
-    return node_pos[senders] - node_pos[receivers]
-
-  # Get rotation matrices for the local space space for every node.
-  rotation_matrices = get_rotation_matrices_to_local_coordinates(
-      reference_phi=node_phi,
-      reference_theta=node_theta,
-      rotate_latitude=latitude_local_coordinates,
-      rotate_longitude=longitude_local_coordinates,
-      np_=np_,
-      transform_=transform_)
-
-  # Each edge will be rotated according to the rotation matrix of its receiver
-  # node.
-  edge_rotation_matrices = rotation_matrices[receivers]
-
-  # Rotate all nodes to the rotated space of the corresponding edge.
-  # Note for receivers we can also do the matmul first and the gather second:
-  # ```
-  # receiver_pos_in_rotated_space = rotate_with_matrices(
-  #    rotation_matrices, node_pos)[receivers]
-  # ```
-  # which is more efficient, however, we do gather first to keep it more
-  # symmetric with the sender computation.
-  receiver_pos_in_rotated_space = rotate_with_matrices(
-      edge_rotation_matrices, node_pos[receivers], np_=np_)
-  sender_pos_in_in_rotated_space = rotate_with_matrices(
-      edge_rotation_matrices, node_pos[senders], np_=np_)
-  # Note, here, that because the rotated space is chosen according to the
-  # receiver, if:
-  # * latitude_local_coordinates = True: latitude for the receivers will be
-  #   0, that is the z coordinate will always be 0.
-  # * longitude_local_coordinates = True: longitude for the receivers will be
-  #   0, that is the y coordinate will be 0.
-
-  # Now we can just subtract.
-  # Note we are rotating to a local coordinate system, where the y-z axes are
-  # parallel to a tangent plane to the sphere, but still remain in a 3d space.
-  # Note that if both `latitude_local_coordinates` and
-  # `longitude_local_coordinates` are True, and edges are short,
-  # then the difference in x coordinate between sender and receiver
-  # should be small, so we could consider dropping the new x coordinate if
-  # we wanted to the tangent plane, however in doing so
-  # we would lose information about the curvature of the mesh, which may be
-  # important for very coarse meshes.
-  return sender_pos_in_in_rotated_space - receiver_pos_in_rotated_space
-
-
-def get_rotation_matrices_to_local_coordinates(
-    reference_phi: np.ndarray,
-    reference_theta: np.ndarray,
-    rotate_latitude: bool,
-    rotate_longitude: bool,
-    np_: NumpyInterface = np,
-    transform_: TransformInterface = transform,
-    ) -> np.ndarray:
-  """Returns a rotation matrix to rotate to a point based on a reference vector.
-
-  The rotation matrix is build such that, a vector in the
-  same coordinate system at the reference point that points towards the pole
-  before the rotation, continues to point towards the pole after the rotation.
-
-  Args:
-    reference_phi: [leading_axis] Polar angles of the reference.
-    reference_theta: [leading_axis] Azimuthal angles of the reference.
-    rotate_latitude: Whether to produce a rotation matrix that would rotate
-        R^3 vectors to zero latitude.
-    rotate_longitude: Whether to produce a rotation matrix that would rotate
-        R^3 vectors to zero longitude.
-    np_: Numpy library interface.
-    transform_: scipy.transform library interface.
-
-  Returns:
-    Matrices of shape [leading_axis] such that when applied to the reference
-        position with `rotate_with_matrices(rotation_matrices, reference_pos)`
-
-        * phi goes to 0. if "rotate_longitude" is True.
-
-        * theta goes to np.pi / 2 if "rotate_latitude" is True.
-
-        The rotation consists of:
-        * rotate_latitude = False, rotate_longitude = True:
-            Latitude preserving rotation.
-        * rotate_latitude = True, rotate_longitude = True:
-            Latitude preserving rotation, followed by longitude preserving
-            rotation.
-        * rotate_latitude = True, rotate_longitude = False:
-            Latitude preserving rotation, followed by longitude preserving
-            rotation, and the inverse of the latitude preserving rotation. Note
-            this is computationally different from rotating the longitude only
-            and is. We do it like this, so the polar geodesic curve, continues
-            to be aligned with one of the axis after the rotation.
-
-  """
-
-  # Azimuthal angle we need to apply to move to zero longitude.
-  azimuthal_rotation = - reference_phi
-
-  # Polar angle we need to apply to move from "theta" to zero latitude.
-  polar_rotation = - reference_theta + np.pi/2
-
-  if rotate_longitude and rotate_latitude:
-    # We first rotate to zero longitude around the z axis, and then, when the
-    # point is at x=0 we can simply apply the polar rotation around the y axis.
-    return transform_.Rotation.from_euler(
-        "zy", np_.stack([azimuthal_rotation, polar_rotation],
-                        axis=1)).as_matrix()
-  elif rotate_longitude:
-    # Just like the previous case, but applying only the azimuthal rotation,
-    # leaving the latitude unchanged.
-    return transform_.Rotation.from_euler("z", azimuthal_rotation).as_matrix()
-  elif rotate_latitude:
-    # We want to apply the polar rotation only, but we don't know the rotation
-    # axis to apply a polar rotation. The simplest way to achieve this is to
-    # first rotate all the way to longitude 0, then apply the polar rotation
-    # arond the y axis, and then rotate back to the original longitude.
-    return transform_.Rotation.from_euler(
-        "zyz", np_.stack(
-            [azimuthal_rotation, polar_rotation, -azimuthal_rotation]
-            , axis=1)).as_matrix()
-  else:
-    raise ValueError(
-        "At least one of longitude and latitude should be rotated.")
-
-
-def rotate_with_matrices(rotation_matrices: np.ndarray, positions: np.ndarray,
-                         np_: NumpyInterface = np) -> np.ndarray:
-  return np_.einsum("...ji,...i->...j", rotation_matrices, positions)
-
-
 # TODO: this implementation could be updated to include the distance from the coast as a feature
 def get_bipartite_graph_spatial_features(
     *,
-    senders_node_lat: np.ndarray,
     senders_node_lon: np.ndarray,
+    senders_node_lat: np.ndarray,
     senders: np.ndarray,
-    receivers_node_lat: np.ndarray,
     receivers_node_lon: np.ndarray,
+    receivers_node_lat: np.ndarray,
     receivers: np.ndarray,
+    senders_boundary_nodes: Optional[np.ndarray] = None,
+    receivers_boundary_nodes: Optional[np.ndarray] = None,
     add_node_positions: bool,
     add_node_latitude: bool,
     add_node_longitude: bool,
-    add_relative_positions: bool,
-    edge_normalization_factor: Optional[float] = None,
-    relative_longitude_local_coordinates: bool,
-    relative_latitude_local_coordinates: bool,
+    add_edge_length: bool,
+    add_edge_direction: bool,
+    edge_normalization: Tuple[float, float] | Literal['zscore'] | None = None,
+    sine_cosine_encoding: bool = False,
+    encoding_num_freqs: int = 10,
+    encoding_multiplicative_factor: float = 1.2,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -446,6 +229,8 @@ def get_bipartite_graph_spatial_features(
       [num_receiver_nodes]
     receivers: Receiver indices of shape [num_edges], indices in [0,
       num_receiver_nodes)
+    senders_boundary_nodes: Optional list of boundary node indices.
+    receivers_boundary_nodes: Optional list of boundary node indices.
     add_node_positions: Add unit norm absolute positions.
     add_node_latitude: Add a feature for latitude (cos(90 - lat)) Note even if
       this is set to False, the model may be able to infer the longitude from
@@ -457,21 +242,22 @@ def get_bipartite_graph_spatial_features(
       from relative features, unless `relative_longitude_local_coordinates` is
       also True, or if there is any bias on the relative edge sizes for
       different longitudes.
-    add_relative_positions: Whether to relative positions in R3 to the edges.
-    edge_normalization_factor: Allows explicitly controlling edge normalization.
-      If None, defaults to max edge length. This supports using pre-trained
-      model weights with a different graph structure to what it was trained on.
-    relative_longitude_local_coordinates: If True, relative positions are
-      computed in a local space where the receiver is at 0 longitude.
-    relative_latitude_local_coordinates: If True, relative positions are
-      computed in a local space where the receiver is at 0 latitude.
+    add_edge_length: Whether to add geodetic length of edges.
+    add_edge_direction: Whether to add azimuth of edges using sine and cosine encoding.
+    edge_normalization: Allows explicitly controlling edge normalization.
+        If None, defaults to max edge length. If 'zscore' use standardization,
+        otherwise specify location and scale. This supports using pre-trained
+        model weights with a different graph structure to what it was trained.
+    sine_cosine_encoding: If True, we will transform the node/edge features
+        with sine and cosine functions, similar to NERF.
+    encoding_num_freqs: frequency parameter
+    encoding_multiplicative_factor: used for calculating the frequency.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
     with node and edge features.
 
   """
-
   num_senders = senders_node_lat.shape[0]
   num_receivers = receivers_node_lat.shape[0]
   num_edges = senders.shape[0]
@@ -485,12 +271,26 @@ def get_bipartite_graph_spatial_features(
   # Computing some node features.
   senders_node_features = []
   receivers_node_features = []
+
+  if senders_boundary_nodes is not None:
+    # Set interior nodes to -1, boundary nodes to 1.
+    senders_boundary_mask = np.full((num_senders,), -1.0, dtype=np.float32)
+    senders_boundary_mask[senders_boundary_nodes] = 1.0
+    senders_node_features.append(senders_boundary_mask)
+
+  if receivers_boundary_nodes is not None:
+    # Set interior nodes to -1, boundary nodes to 1.
+    receivers_boundary_mask = np.full((num_receivers,), -1.0, dtype=np.float32)
+    receivers_boundary_mask[receivers_boundary_nodes] = 1.0
+    receivers_node_features.append(receivers_boundary_mask)
+
   if add_node_positions:
     # Already in [-1, 1.] range.
+    latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
     senders_node_features.extend(
-        spherical_to_cartesian(senders_node_phi, senders_node_theta))
+        latlon_to_unit_sphere((senders_node_lon, senders_node_lat)))
     receivers_node_features.extend(
-        spherical_to_cartesian(receivers_node_phi, receivers_node_theta))
+        latlon_to_unit_sphere((receivers_node_lon, receivers_node_lat)))
 
   if add_node_latitude:
     # Using the cos of theta.
@@ -516,138 +316,47 @@ def get_bipartite_graph_spatial_features(
   # Computing some edge features.
   edge_features = []
 
-  if add_relative_positions:
+  if add_edge_length or add_edge_direction:
+    geoid = pyproj.Geod(ellps="WGS84")
+    edge_azimuths, _, edge_lengths = geoid.inv(senders_node_lon[senders], senders_node_lat[senders],
+                                               receivers_node_lon[receivers], receivers_node_lat[receivers])
 
-    relative_position = get_bipartite_relative_position_in_receiver_local_coordinates(  # pylint: disable=line-too-long
-        senders_node_phi=senders_node_phi,
-        senders_node_theta=senders_node_theta,
-        receivers_node_phi=receivers_node_phi,
-        receivers_node_theta=receivers_node_theta,
-        senders=senders,
-        receivers=receivers,
-        latitude_local_coordinates=relative_latitude_local_coordinates,
-        longitude_local_coordinates=relative_longitude_local_coordinates)
-
-    # Note this is L2 distance in 3d space, rather than geodesic distance.
-    relative_edge_distances = np.linalg.norm(
-        relative_position, axis=-1, keepdims=True)
-
-    if edge_normalization_factor is None:
-      # Normalize to the maximum edge distance. Note that we expect to always
-      # have an edge that goes in the opposite direction of any given edge
-      # so the distribution of relative positions should be symmetric around
-      # zero. So by scaling by the maximum length, we expect all relative
-      # positions to fall in the [-1., 1.] interval, and all relative distances
-      # to fall in the [0., 1.] interval.
-      edge_normalization_factor = relative_edge_distances.max()
-
-    edge_features.append(relative_edge_distances / edge_normalization_factor)
-    edge_features.append(relative_position / edge_normalization_factor)
+    if add_edge_length:
+      if edge_normalization is None:
+        # Normalize to the maximum edge length.
+        edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
+        edge_normalization_scale = edge_lengths.max()
+      elif edge_normalization == 'zscore':
+        edge_normalization_location = np.mean(edge_lengths)
+        edge_normalization_scale = np.std(edge_lengths)
+      else:
+        edge_normalization_location, edge_normalization_scale = edge_normalization
+      edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+      edge_features.append(edge_lengths)
+    if add_edge_direction:
+      edge_azimuths = np.deg2rad(edge_azimuths)
+      edge_features.append(np.sin(edge_azimuths))
+      edge_features.append(np.cos(edge_azimuths))
 
   if not edge_features:
     edge_features = np.zeros([num_edges, 0], dtype=dtype)
   else:
-    edge_features = np.concatenate(edge_features, axis=-1)
+    edge_features = np.stack(edge_features, axis=-1)
+
+  if sine_cosine_encoding:
+    def sine_cosine_transform(x: np.ndarray) -> np.ndarray:
+      freqs = encoding_multiplicative_factor**np.arange(encoding_num_freqs)
+      phases = freqs * x[..., None]
+      x_sin = np.sin(phases)
+      x_cos = np.cos(phases)
+      x_cat = np.concatenate([x_sin, x_cos], axis=-1)
+      return x_cat.reshape([x.shape[0], -1])
+
+    senders_node_features = sine_cosine_transform(senders_node_features)
+    receivers_node_features = sine_cosine_transform(receivers_node_features)
+    edge_features = sine_cosine_transform(edge_features)
 
   return senders_node_features, receivers_node_features, edge_features
-
-
-def get_bipartite_relative_position_in_receiver_local_coordinates(
-    senders_node_phi: np.ndarray,
-    senders_node_theta: np.ndarray,
-    senders: np.ndarray,
-    receivers_node_phi: np.ndarray,
-    receivers_node_theta: np.ndarray,
-    receivers: np.ndarray,
-    latitude_local_coordinates: bool,
-    longitude_local_coordinates: bool,
-    np_: NumpyInterface = np,
-    transform_: TransformInterface = transform,
-    ) -> np.ndarray:
-  """Returns relative position features for the edges.
-
-  This function is equivalent to
-  `get_relative_position_in_receiver_local_coordinates`, but adapted to work
-  with bipartite typed graphs.
-
-  The relative positions will be computed in a rotated space for a local
-  coordinate system as defined by the receiver. The relative positions are
-  simply obtained by subtracting sender position minues receiver position in
-  that local coordinate system after the rotation in R^3.
-
-  Args:
-    senders_node_phi: [num_sender_nodes] with polar angles.
-    senders_node_theta: [num_sender_nodes] with azimuthal angles.
-    senders: [num_edges] with indices into sender nodes.
-    receivers_node_phi: [num_sender_nodes] with polar angles.
-    receivers_node_theta: [num_sender_nodes] with azimuthal angles.
-    receivers: [num_edges] with indices into receiver nodes.
-    latitude_local_coordinates: Whether to rotate edges such that in the
-      positions are computed such that the receiver is always at latitude 0.
-    longitude_local_coordinates: Whether to rotate edges such that in the
-      positions are computed such that the receiver is always at longitude 0.
-    np_: Numpy library interface.
-    transform_: scipy.transform library interface.
-
-  Returns:
-    Array of relative positions in R3 [num_edges, 3]
-  """
-
-  senders_node_pos = np_.stack(
-      spherical_to_cartesian(
-          senders_node_phi, senders_node_theta, np_=np_), axis=-1)
-
-  receivers_node_pos = np_.stack(
-      spherical_to_cartesian(
-          receivers_node_phi, receivers_node_theta, np_=np_), axis=-1)
-
-  # No rotation in this case.
-  if not (latitude_local_coordinates or longitude_local_coordinates):
-    return senders_node_pos[senders] - receivers_node_pos[receivers]
-
-  # Get rotation matrices for the local space space for every receiver node.
-  receiver_rotation_matrices = get_rotation_matrices_to_local_coordinates(
-      reference_phi=receivers_node_phi,
-      reference_theta=receivers_node_theta,
-      rotate_latitude=latitude_local_coordinates,
-      rotate_longitude=longitude_local_coordinates,
-      np_=np_,
-      transform_=transform_)
-
-  # Each edge will be rotated according to the rotation matrix of its receiver
-  # node.
-  edge_rotation_matrices = receiver_rotation_matrices[receivers]
-
-  # Rotate all nodes to the rotated space of the corresponding edge.
-  # Note for receivers we can also do the matmul first and the gather second:
-  # ```
-  # receiver_pos_in_rotated_space = rotate_with_matrices(
-  #    rotation_matrices, node_pos)[receivers]
-  # ```
-  # which is more efficient, however, we do gather first to keep it more
-  # symmetric with the sender computation.
-  receiver_pos_in_rotated_space = rotate_with_matrices(
-      edge_rotation_matrices, receivers_node_pos[receivers], np_=np_)
-  sender_pos_in_in_rotated_space = rotate_with_matrices(
-      edge_rotation_matrices, senders_node_pos[senders], np_=np_)
-  # Note, here, that because the rotated space is chosen according to the
-  # receiver, if:
-  # * latitude_local_coordinates = True: latitude for the receivers will be
-  #   0, that is the z coordinate will always be 0.
-  # * longitude_local_coordinates = True: longitude for the receivers will be
-  #   0, that is the y coordinate will be 0.
-
-  # Now we can just subtract.
-  # Note we are rotating to a local coordinate system, where the y-z axes are
-  # parallel to a tangent plane to the sphere, but still remain in a 3d space.
-  # Note that if both `latitude_local_coordinates` and
-  # `longitude_local_coordinates` are True, and edges are short,
-  # then the difference in x coordinate between sender and receiver
-  # should be small, so we could consider dropping the new x coordinate if
-  # we wanted to the tangent plane, however in doing so
-  # we would lose information about the curvature of the mesh, which may be
-  # important for very coarse meshes.
-  return sender_pos_in_in_rotated_space - receiver_pos_in_rotated_space
 
 
 def variable_to_stacked(
@@ -744,6 +453,7 @@ def stacked_to_dataset(
     type as template_dataset.
   """
   unstack_from_channels_sizes = {}
+  # noinspection PyTypeChecker
   var_names = sorted(template_dataset.keys())
   for name in var_names:
     template_var = template_dataset[name]
@@ -785,10 +495,10 @@ def stacked_to_dataset(
 
 
 def fourier_features(
-    values: jnp.ndarray,
-    base_period: float,
+    values: np.ndarray,
     num_frequencies: int,
-    ) -> jnp.ndarray:
+    base_period: float = 1.0,
+    ) -> np.ndarray:
   """Maps values to sin/cos features for a range of frequencies.
 
   Args:
@@ -808,10 +518,10 @@ def fourier_features(
     frequency.
   """
   frequencies = np.arange(1, num_frequencies + 1) / base_period
-  angular_frequencies = jnp.array(2 * np.pi * frequencies, dtype=values.dtype)
+  angular_frequencies = np.array(2 * np.pi * frequencies, dtype=values.dtype)
   values_times_angular_freqs = values[..., None] * angular_frequencies
-  return jnp.concatenate(
-      [jnp.cos(values_times_angular_freqs),
-       jnp.sin(values_times_angular_freqs)],
+  return np.concatenate(
+      [np.cos(values_times_angular_freqs),
+       np.sin(values_times_angular_freqs)],
       axis=-1)
 

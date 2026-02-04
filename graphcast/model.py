@@ -266,9 +266,8 @@ class GraphCast(predictor_base.Predictor):
       add_node_positions=False,
       add_node_latitude=True,
       add_node_longitude=True,
-      add_relative_positions=True,
-      relative_longitude_local_coordinates=True,
-      relative_latitude_local_coordinates=True)
+      add_edge_length=True,
+      add_edge_direction=True)
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
     #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
@@ -443,7 +442,8 @@ class GraphCast(predictor_base.Predictor):
       receivers_node_lon=self._mesh_nodes_lon,
       senders=senders,
       receivers=receivers,
-      edge_normalization_factor=None,
+      receivers_boundary_nodes=self._boundary_nodes,
+      edge_normalization=None,
       **self._spatial_features_kwargs,
     )
 
@@ -479,7 +479,7 @@ class GraphCast(predictor_base.Predictor):
 
   def _init_mesh_graph(self) -> typed_graph.TypedGraph:
 
-    # Work just with the connected mesh nodes.
+    # Possibly get a subset of mesh nodes.
     senders, receivers = self._get_mesh_edges()
 
     # Precompute structural node and edge features according to config options.
@@ -487,8 +487,8 @@ class GraphCast(predictor_base.Predictor):
     # latitude and longitudes of the nodes.
     assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
     node_features, edge_features = model_utils.get_graph_spatial_features(
-      node_lat=self._mesh_nodes_lat,
       node_lon=self._mesh_nodes_lon,
+      node_lat=self._mesh_nodes_lat,
       senders=senders,
       receivers=receivers,
       boundary_nodes=self._boundary_nodes,
@@ -538,7 +538,8 @@ class GraphCast(predictor_base.Predictor):
       receivers_node_lon=self._grid_nodes_lon,
       senders=senders,
       receivers=receivers,
-      edge_normalization_factor=self._mesh2grid_edge_normalization_factor,
+      senders_boundary_nodes=self._boundary_nodes,
+      edge_normalization=self._mesh2grid_edge_normalization_factor,
       **self._spatial_features_kwargs,
     )
 

@@ -6,8 +6,8 @@
 * Log training metrics to TensorBoard. **HIGH PRIORITY**
 * Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
 * Experiment with typed graphs context (i.e., a global graph attribute which might embed variables as year_progress).
-* Revise functions in `model_utils.py` to use GIS utilities. **HIGH PRIORITY**
-* Compute edge length and azimuth using GIS utilities, and add the latter to edge features (using fourier encoding). **HIGH PRIORITY**
+* ~~Revise functions in `model_utils.py` to use GIS utilities.~~ **DONE**
+* ~~Compute edge length and azimuth using GIS utilities, and add the latter to edge features.~~ **DONE**
 * Add utilities and a notebook to inspect the encoder and decoder graphs. **HIGH PRIORITY**
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
 * Refactor code base to have a `models` module, move the `model.py` and all global ocean related code to a model-specific module. Update `pyproject.toml` accordingly. (Low priority)

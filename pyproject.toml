@@ -1,4 +1,4 @@
-    [build-system]
+[build-system]
 # Minimum version required by gdal and jax
 requires = ["setuptools (>= 67.0,<81)"]
 build-backend = "setuptools.build_meta"
@@ -21,7 +21,7 @@ dependencies = [
     "dm-tree",
     "flox",
     "gcsfs",
-    # Versions listed here should agree with the one compiled in leonardo/setup.sh (v3.10.0 is the last one available on spack@23.1)
+    # Versions listed here should agree with the one compiled in leonardo/setup.sh
     "gdal-utils==3.11.4 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
     "gdal-utils==3.12.0.0 ; sys_platform == 'darwin'",
@@ -97,7 +97,7 @@ classifiers = ["Development Status :: 3 - Alpha",
 
 [project.scripts]
 dataset = "graphcast.dataset:cli"
-ocean-mesh = "graphcast.geospatial_mesh:cli"
+geospatial-mesh = "graphcast.geospatial_mesh:cli"
 stats = "graphcast.stats:cli"
 training = "graphcast.training:cli"
 
