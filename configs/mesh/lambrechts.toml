@@ -49,7 +49,6 @@ filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
 var_name = "deptho"
 q_low = 0.1
 q_high = 0.9
-srs_name = 'ecmwf'
 size_min = 25_000.0
 size_max = 500_000.0
 
@@ -63,7 +62,7 @@ size_max = 500_000.0
 # var_name = "deptho"
 # q_low = 0.1
 # q_high = 0.9
-# smoothing_kwargs = {kx = 3, ky = 3, s = 1.0e4}
-# srs_name = 'ecmwf'
+# filter_kwargs = {sigma = 10.0, radius = 10}
+# spline_kwargs = {kx = 3, ky = 3}
 # size_min = 25_000.0
 # size_max = 500_000.0

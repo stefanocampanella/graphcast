@@ -16,6 +16,7 @@ import seamsh
 import xarray as xr
 from osgeo import osr
 from scipy.interpolate import RectBivariateSpline
+from scipy.ndimage import gaussian_filter
 
 from graphcast.gis_utils import CRSName, CRSRegistry, stereographic_srs, cartesian_srs
 from graphcast.gis_utils import CoordinateReferenceSystem, get_transform, xarray_to_gdal_raster
@@ -159,13 +160,13 @@ class BathymetryField(RasterField):
 class BathymetryHessianField(RasterField):
 
   def __init__(self, filepath: Union[str, pathlib.Path], var_name: str, size_min, size_max, eps: float = 1.0e-5,
-               longitude_dim: str = 'lon', latitude_dim: str = 'lat', smoothing_kwargs: dict[str, Any] | None = None,
-               **kwargs):
+               longitude_dim: str = 'lon', latitude_dim: str = 'lat', spline_kwargs: dict[str, Any] | None = None,
+               filter_kwargs: dict[str, Any] | None = None, **kwargs):
     grid_ds = xr.open_dataset(filepath, engine='zarr')
     grid_da = grid_ds[var_name].load()
     grid_da = grid_da / grid_da.max()
     hnorm = self.norm_of_hessian(grid_da, longitude_dim=longitude_dim, latitude_dim=latitude_dim,
-                                 smoothing_kwargs=smoothing_kwargs)
+                                 filter_kwargs=filter_kwargs, spline_kwargs=spline_kwargs)
     assert np.all(hnorm >= 0.0), "Computed Hessian contains negative values."
     hnorm_invsqrt = 1 / np.clip(np.sqrt(hnorm), a_min=eps, a_max=None)
     hnorm_invsqrt = xr.where(grid_da.isnull(), np.nan, hnorm_invsqrt)
@@ -174,15 +175,19 @@ class BathymetryHessianField(RasterField):
 
   @staticmethod
   def norm_of_hessian(da: xr.DataArray, longitude_dim: str = 'lon', latitude_dim: str = 'lat',
-                      smoothing_kwargs: dict[str, Any] | None = None) -> xr.DataArray:
+                      filter_kwargs: dict[str, Any] | None = None, spline_kwargs: dict[str, Any] | None = None) \
+      -> xr.DataArray:
     """Computes the norm of the Hessian matrix of a 2D array. The Hessian matrix is approximated by a spline,
     and assumes latitude and longitude are in degrees."""
 
-    smoothing_kwargs = smoothing_kwargs or {}
+    spline_kwargs = spline_kwargs or {}
     # Use canonical coordinates order and fill missing values.
     da = da.transpose(latitude_dim, longitude_dim)
     da = da.fillna(0.0)
     data = da.to_numpy()
+    filter_kwargs = filter_kwargs or {}
+    sigma = filter_kwargs.pop('sigma', 1.0)
+    data = gaussian_filter(data, sigma, **filter_kwargs)
     latitudes = da[latitude_dim].to_numpy()
     longitudes = da[longitude_dim].to_numpy()
     hessian_matrix = np.empty(data.shape + (2, 2), dtype=data.dtype)
@@ -203,7 +208,7 @@ class BathymetryHessianField(RasterField):
         np.zeros_like(z_di), z_di * corrective_factor)
 
     def grad(z: np.ndarray, coord: str) -> np.ndarray:
-      z_spline = RectBivariateSpline(latitudes, longitudes, z, **smoothing_kwargs)
+      z_spline = RectBivariateSpline(latitudes, longitudes, z, **spline_kwargs)
       z_di = z_spline.partial_derivative(*direction(coord))(latitudes, longitudes)
       # FIXME: document why this is needed, and in which approximation solves the problem.
       if coord == longitude_dim:
