@@ -86,6 +86,7 @@ def get_graph_spatial_features(
   node_features = []
 
   if boundary_nodes is not None:
+    # TODO: consider removing boundary nodes information (see comment below)
     # Set interior nodes to -1, boundary nodes to 1.
     boundary_mask = np.full((num_nodes,), -1.0, dtype=np.float32)
     boundary_mask[boundary_nodes] = 1.0
@@ -117,12 +118,13 @@ def get_graph_spatial_features(
   if add_edge_length or add_edge_direction:
     geoid = pyproj.Geod(ellps="WGS84")
     edge_azimuths, _, edge_lengths = geoid.inv(node_lon[senders], node_lat[senders],
-                                              node_lon[receivers], node_lat[receivers])
+                                               node_lon[receivers], node_lat[receivers])
     if add_edge_length:
       if edge_normalization is None:
         # Normalize to the maximum edge length.
         edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
         edge_normalization_scale = edge_lengths.max()
+      # TODO: does zscore make sense here?
       elif edge_normalization == "zscore":
         edge_normalization_location = np.mean(edge_lengths)
         edge_normalization_scale = np.std(edge_lengths)
@@ -132,6 +134,7 @@ def get_graph_spatial_features(
       edge_features.append(edge_lengths / edge_normalization_scale)
     if add_edge_direction:
       edge_azimuths = np.deg2rad(edge_azimuths)
+      # TODO: Consider multiplying by edge_length to get a non-unit vector on tangent plane.
       edge_features.append(np.sin(edge_azimuths))
       edge_features.append(np.cos(edge_azimuths))
 
@@ -140,6 +143,10 @@ def get_graph_spatial_features(
   else:
     edge_features = np.stack(edge_features, axis=-1)
 
+  # TODO: add support for basic, positional and fourier encoding as in https://arxiv.org/pdf/2006.10739
+  #  or rewrite the embedding procedure to make use of learnable fourier encoding as in https://arxiv.org/abs/2106.02795.
+  #  In that context, it would make more sense to use an embedder only for inputs, and then concatenate with the
+  #  positional encoding as well as boundary information (which then should be removed from get_*_graph_spatial_features).
   if sine_cosine_encoding:
     def sine_cosine_transform(x: np.ndarray) -> np.ndarray:
       freqs = encoding_multiplicative_factor**np.arange(encoding_num_freqs)
