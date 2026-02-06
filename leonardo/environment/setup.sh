@@ -40,6 +40,7 @@ SYNOPSIS
 DESCRIPTION
     Setup options
         --clear                                 Clear all local environment files.
+        --add-spack-mirrors                     Add spack binary caches, needed only the first time (default false).
         --skip-spack                            Do not setup spack.
         --skip-venv                             Do not setup Python virtual environment (implies --skip-venv-compile, --skip-venv-download, --skip-venv-install).
         --skip-venv-compile                     Do not compile requirements.txt.
@@ -49,7 +50,7 @@ DESCRIPTION
 EOF
 }
 
-LONGOPTS='help,clear,skip-spack,skip-venv,skip-venv-compile,skip-venv-download,skip-venv-install'
+LONGOPTS='help,clear,add-spack-mirrors,skip-spack,skip-venv,skip-venv-compile,skip-venv-download,skip-venv-install'
 ARGS=$(getopt --options '' --longoptions ${LONGOPTS} -- "${@}")
 if [[ ${?} -ne 0 ]]; then
     usage
@@ -68,12 +69,12 @@ INSTALL_VENV=true
 eval "set -- ${ARGS}"
 while true; do
     case "${1}" in
-    (--skip-spack)
-        BUILD_SPACK=false
-        shift
-        ;;
     (--add-spack-mirrors)
         ADD_SPACK_MIRRORS=true
+        shift
+        ;;
+    (--skip-spack)
+        BUILD_SPACK=false
         shift
         ;;
     (--skip-venv)
@@ -225,7 +226,8 @@ if [[ $BUILD_VENV == true ]]; then
     # Activate python venv
     source "${VENV_DIR}/bin/activate"
 
-    pip install pip-tools
+    # Need to install pip-tools from repo because of: https://github.com/jazzband/pip-tools/pull/2320
+    pip install --upgrade pip "pip-tools@git+https://github.com/jazzband/pip-tools.git@b92744e"
 
     if [[ $COMPILE_VENV == true ]]; then
         # Freeze environment for later reuse
