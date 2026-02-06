@@ -106,6 +106,7 @@ def make(config_path: pathlib.Path,
     raise ValueError("At least one field must be specified in the config file.")
   mesh_size = CompositeMeshSizeField(fields_config, prefix=data_path)
   # Mesh using seamsh
+  # noinspection PyTypeChecker
   seamsh.gmsh.mesh(boundary, mesh_size,
                    output_srs=CRSRegistry['cartesian'],
                    smoothness=configs.get('mesh.smoothness', 0.3))

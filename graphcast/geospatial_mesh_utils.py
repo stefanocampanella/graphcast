@@ -25,7 +25,8 @@ from graphcast.mesh_graph import TriangleMesh
 logger = logging.getLogger(__name__)
 
 @atexit.register
-def _gmsh_finalize():
+def _maybe_gmsh_finalize():
+  if gmsh.is_initialized():
     logger.info(f"Finalize gmsh.")
     gmsh.finalize()
 
