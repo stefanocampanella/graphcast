@@ -65,7 +65,7 @@ class TriangleMesh:
         [num_vertices, num_dims].
     faces: triangular faces of the mesh of shape [num_faces, 3]. Contains
         integer indices into `vertices`.
-    boundary: (optional) 1D boundary elements of the mesh of shape [num_boundary_elements, 2].
+    boundary: (optional) mask telling which vertices belong to 1D boundary elements of the mesh of shape [num_vertices].
     spatial_reference_system: reference system of coordinates of the vertices.
     node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
   """
@@ -84,7 +84,7 @@ class MeshGraph:
     vertices: same as TriangleMesh.vertices.
     faces: same as TriangleMesh.faces.
     edges: cumulated edges of all the triangular meshes used in building the multi-mesh graph.
-    boundary: (optional) 1D boundary elements of the mesh of shape [num_boundary_elements, 2].
+    boundary: (optional) mask telling which vertices belong to 1D boundary elements of the mesh of shape [num_vertices].
     spatial_reference_system: reference system of coordinates of the vertices.
     node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
   """

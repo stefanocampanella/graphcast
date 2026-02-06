@@ -44,8 +44,9 @@ from graphcast import model_utils
 from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
-from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
+from graphcast.fourier_features import FourierFeaturesEncoder
 from graphcast.gis_utils import get_transform, equirectangular_srs, cartesian_srs
+from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
 
 logger = logging.getLogger(__name__)
 
@@ -250,10 +251,6 @@ class GraphCast(predictor_base.Predictor):
                sharding: NamedSharding | None = None):
     """Initializes the predictor."""
 
-    # TODO: `_get_max_edge_distance` should return the maximum edge length in the finest mesh. However, after
-    #  refactoring `mesh_graph` is possibly a multi-mesh graph including all edges.
-    #  Obtain the query radius (on the geoid, not the unit-sphere) for the grid2mesh model, by rescaling the
-    #  `radius_query_fraction_edge_length`.
     self._query_radius = model_config.radius_query_fraction_edge_length * mesh_size
     self._mesh2grid_edge_normalization_factor = model_config.mesh2grid_edge_normalization_factor
     self._per_variable_weights = model_config.per_variable_weights
@@ -263,11 +260,16 @@ class GraphCast(predictor_base.Predictor):
     self._prevent_cse = prevent_cse
     self._sharding = sharding
     self._spatial_features_kwargs = dict(
-      add_node_positions=False,
-      add_node_latitude=True,
-      add_node_longitude=True,
+      add_node_position=False,
+      add_node_coordinates=True,
+      add_edge_fwd_azimuth=False,
+      add_edge_direction=True,
       add_edge_length=True,
-      add_edge_direction=True)
+      add_edge_receiver_coordinates=False)
+    self._fourier_encoding_kwargs = dict(
+      num_frequencies = 32,
+      hidden_dim = 32,
+      encoding_dim = 16)
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
     #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
@@ -374,10 +376,10 @@ class GraphCast(predictor_base.Predictor):
     self._mesh_graph_structure = self._init_mesh_graph()
     self._mesh2grid_graph_structure = self._init_mesh2grid_graph()
 
-  def _init_mesh_properties(self, mesh_graph):
+  def _init_mesh_properties(self, mesh_graph: MeshGraph):
     """Initializes static properties that have to do with mesh nodes."""
     self._mesh_graph = mesh_graph
-    self._boundary_nodes = np.unique(mesh_graph.boundary)
+    self._boundary_nodes_mask = mesh_graph.boundary
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
 
     cartesian2latlon = get_transform(cartesian_srs, equirectangular_srs, pack_back=False)
@@ -442,7 +444,6 @@ class GraphCast(predictor_base.Predictor):
       receivers_node_lon=self._mesh_nodes_lon,
       senders=senders,
       receivers=receivers,
-      receivers_boundary_nodes=self._boundary_nodes,
       edge_normalization=None,
       **self._spatial_features_kwargs,
     )
@@ -491,7 +492,6 @@ class GraphCast(predictor_base.Predictor):
       node_lat=self._mesh_nodes_lat,
       senders=senders,
       receivers=receivers,
-      boundary_nodes=self._boundary_nodes,
       **self._spatial_features_kwargs,
     )
 
@@ -538,7 +538,6 @@ class GraphCast(predictor_base.Predictor):
       receivers_node_lon=self._grid_nodes_lon,
       senders=senders,
       receivers=receivers,
-      senders_boundary_nodes=self._boundary_nodes,
       edge_normalization=self._mesh2grid_edge_normalization_factor,
       **self._spatial_features_kwargs,
     )
@@ -579,7 +578,6 @@ class GraphCast(predictor_base.Predictor):
                forcings: xarray.Dataset,
                is_training: bool = False,
                ) -> xarray.Dataset:
-
     # Convert all input data into flat vectors for each of the grid nodes.
     # xarray (batch, time, lat, lon, level, multiple vars, forcings)
     # -> [num_grid_nodes, batch, num_channels]
@@ -643,45 +641,67 @@ class GraphCast(predictor_base.Predictor):
     loss, _ = self.loss_and_predictions(inputs, targets, forcings, **kwargs)
     return loss  # pytype: disable=bad-return-type  # jax-ndarray
 
-  def _run_grid2mesh_gnn(self, grid_node_features: chex.Array,
+  def _encode_positions(self, nodes: chex.Array, dtype=jnp.float32) -> chex.Array:
+    """Encodes node positions using learnable Fourier features."""
+    positional_encoder = FourierFeaturesEncoder(**self._fourier_encoding_kwargs, name="node_position_encoder")
+    if self._remat:
+      positional_encoder = hk.remat(positional_encoder, policy=self._policy, prevent_cse=self._prevent_cse)
+    return positional_encoder(nodes.astype(dtype))
+
+  def _run_grid2mesh_gnn(self, grid_node_input_features: chex.Array,
                          ) -> tuple[chex.Array, chex.Array]:
     """Runs the grid2mesh_gnn, extracting latent mesh and grid nodes."""
     # Concatenate node structural features with input features.
-    batch_size = grid_node_features.shape[1]
+    batch_size = grid_node_input_features.shape[1]
 
     grid2mesh_graph = self._grid2mesh_graph_structure
     assert grid2mesh_graph is not None
     grid_nodes = grid2mesh_graph.nodes["grid_nodes"]
     mesh_nodes = grid2mesh_graph.nodes["mesh_nodes"]
-    new_grid_nodes = grid_nodes._replace(
-      features=jnp.concatenate(
-        [grid_node_features,
-         _add_batch_second_axis(grid_nodes.features.astype(grid_node_features.dtype),
-                                batch_size,
-                                sharding=self._sharding)],
-        axis=-1))
 
-    # To make sure capacity of the embedded is identical for the grid nodes and
-    # the mesh nodes, we also append some dummy zero input features for the
-    # mesh nodes.
-    dummy_mesh_node_features = jnp.zeros((self._num_mesh_nodes,) + grid_node_features.shape[1:],
-                                         dtype=grid_node_features.dtype,
+    # Compute positional encodings and add batch dimension.
+    grid_node_position_encodings = self._encode_positions(grid_nodes.features, dtype=grid_node_input_features.dtype)
+    grid_node_position_encodings = _add_batch_second_axis(grid_node_position_encodings, batch_size,
+                                                          sharding=self._sharding)
+    mesh_node_position_encodings = self._encode_positions(mesh_nodes.features,
+                                                          dtype=grid_node_input_features.dtype)
+    mesh_node_position_encodings = _add_batch_second_axis(mesh_node_position_encodings, batch_size,
+                                                          sharding=self._sharding)
+
+    # Add boundary information to mesh nodes.
+    if self._boundary_nodes_mask is not None:
+      mesh_node_boundary_mask = self._boundary_nodes_mask[..., None].astype(grid_node_input_features.dtype)
+      mesh_node_boundary_mask = _add_batch_second_axis(mesh_node_boundary_mask, batch_size, sharding=self._sharding)
+      mesh_node_position_encodings = jnp.concatenate([mesh_node_position_encodings, mesh_node_boundary_mask], axis=-1)
+
+    # Concatenate input features with positional encodings for grid nodes
+    grid_node_features = jnp.concatenate([grid_node_input_features, grid_node_position_encodings], axis=-1)
+
+    # TODO: this comment from the original GraphCast code should be checked.
+    #  "To make sure capacity of the embedded is identical for the grid nodes and
+    #  the mesh nodes, we also append some dummy zero input features for the
+    #  mesh nodes."
+    #  In doubt, we add dummy features for the mesh nodes here.
+    assert grid_node_input_features.shape[-1] > 0
+    dummy_mesh_node_shape = ((self._num_mesh_nodes,) +
+                             grid_node_input_features.shape[1:-1] +
+                             (grid_node_input_features.shape[-1] - (1 if self._boundary_nodes_mask is not None
+                                                                    else 0),))
+    dummy_mesh_node_features = jnp.zeros(dummy_mesh_node_shape,
+                                         dtype=grid_node_input_features.dtype,
                                          device=self._sharding)
-    new_mesh_nodes = mesh_nodes._replace(
-        features=jnp.concatenate(
-          [dummy_mesh_node_features,
-           _add_batch_second_axis(mesh_nodes.features.astype(dummy_mesh_node_features.dtype), batch_size,
-                                 sharding=self._sharding)],
-          axis=-1))
+    mesh_node_features = jnp.concatenate([dummy_mesh_node_features, mesh_node_position_encodings], axis=-1)
+    assert mesh_node_features.shape[1:] == grid_node_features.shape[1:]
+
+    new_grid_nodes = grid_nodes._replace(features=grid_node_features)
+    new_mesh_nodes = mesh_nodes._replace(features=mesh_node_features)
 
     # Broadcast edge structural features to the required batch size.
     grid2mesh_edges_key = grid2mesh_graph.edge_key_by_name("grid2mesh")
     edges = grid2mesh_graph.edges[grid2mesh_edges_key]
-
-    new_edges = edges._replace(
-        features=_add_batch_second_axis(edges.features.astype(dummy_mesh_node_features.dtype),
-                                        batch_size,
-                                        sharding=self._sharding))
+    edge_features = _add_batch_second_axis(edges.features.astype(dummy_mesh_node_features.dtype), batch_size,
+                                           sharding=self._sharding)
+    new_edges = edges._replace(features=edge_features)
 
     input_graph = self._grid2mesh_graph_structure._replace(
         edges={grid2mesh_edges_key: new_edges},
@@ -720,10 +740,9 @@ class GraphCast(predictor_base.Predictor):
            " mesh GNN.")
     assert len(mesh_graph.edges) == 1, msg
 
-    new_edges = edges._replace(
-        features=_add_batch_second_axis(edges.features.astype(latent_mesh_nodes.dtype),
-                                        batch_size,
-                                        sharding=self._sharding))
+    edge_features = _add_batch_second_axis(edges.features.astype(latent_mesh_nodes.dtype), batch_size,
+                                           sharding=self._sharding)
+    new_edges = edges._replace(features=edge_features)
 
     nodes = mesh_graph.nodes["mesh_nodes"]
     nodes = nodes._replace(features=latent_mesh_nodes)
@@ -759,10 +778,9 @@ class GraphCast(predictor_base.Predictor):
     mesh2grid_key = mesh2grid_graph.edge_key_by_name("mesh2grid")
     edges = mesh2grid_graph.edges[mesh2grid_key]
 
-    new_edges = edges._replace(
-        features=_add_batch_second_axis(edges.features.astype(latent_grid_nodes.dtype),
-                                        batch_size,
-                                        sharding=self._sharding))
+    edge_features = _add_batch_second_axis(edges.features.astype(latent_grid_nodes.dtype), batch_size,
+                                           sharding=self._sharding)
+    new_edges = edges._replace(features=edge_features)
 
     input_graph = mesh2grid_graph._replace(
         edges={mesh2grid_key: new_edges},

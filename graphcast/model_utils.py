@@ -25,21 +25,16 @@ NumpyInterface = Any
 TransformInterface = Any
 
 
-# TODO: this implementation should be updated to include the distance from the coast as a feature
-# TODO: compute features by solving the related inverse problems (proj/geod)
 def get_graph_spatial_features(
     *, node_lon: np.ndarray, node_lat: np.ndarray,
     senders: np.ndarray, receivers: np.ndarray,
-    boundary_nodes: Optional[np.ndarray],
-    add_node_positions: bool,
-    add_node_latitude: bool,
-    add_node_longitude: bool,
-    add_edge_length: bool,
+    add_node_position: bool,
+    add_node_coordinates: bool,
+    add_edge_fwd_azimuth: bool,
     add_edge_direction: bool,
-    edge_normalization: Tuple[float, float] | Literal['zscore'] | None = None,
-    sine_cosine_encoding: bool = False,
-    encoding_num_freqs: int = 10,
-    encoding_multiplicative_factor: float = 1.2,
+    add_edge_length: bool,
+    add_edge_receiver_coordinates: bool,
+    edge_normalization: Optional[Tuple[float, float]] = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -48,28 +43,16 @@ def get_graph_spatial_features(
     node_lat: Latitudes in the [-90, 90] interval of shape [num_nodes]
     senders: Sender indices of shape [num_edges]
     receivers: Receiver indices of shape [num_edges]
-    boundary_nodes: Optional list of boundary node indices.
-    add_node_positions: Add unit norm absolute positions.
-    add_node_latitude: Add a feature for latitude (cos(90 - lat))
-        Note even if this is set to False, the model may be able to infer the
-        longitude from relative features, unless
-        `relative_latitude_local_coordinates` is also True, or if there is any
-        bias on the relative edge sizes for different longitudes.
-    add_node_longitude: Add features for longitude (cos(lon), sin(lon)).
-        Note even if this is set to False, the model may be able to infer the
-        longitude from relative features, unless
-        `relative_longitude_local_coordinates` is also True, or if there is any
-        bias on the relative edge sizes for different longitudes.
-    add_edge_length: Whether to add geodetic length of edges.
-    add_edge_direction: Whether to add azimuth of edges using sine and cosine encoding.
+    add_node_position: Add unit norm absolute positions to node features.
+    add_node_coordinates: Add nodes longitude and latitude in turns (1 / 2pi radians) to node features.
+    add_edge_fwd_azimuth: Add edge forward azimuth in turns (1 / 2pi radians) to edge features.
+    add_edge_direction: Add edge unit vector on the tangent plane to edge features
+        ((x, y) with respectively x easting and y northing directions).
+    add_edge_receiver_coordinates: Add receiver longitude and latitude in turns (1 / 2pi radians) to edge features.
+    add_edge_length: Add geodetic length to edge features.
     edge_normalization: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length. If 'zscore' use standardization,
-        otherwise specify location and scale. This supports using pre-trained
-        model weights with a different graph structure to what it was trained.
-    sine_cosine_encoding: If True, we will transform the node/edge features
-        with sine and cosine functions, similar to NERF.
-    encoding_num_freqs: frequency parameter
-    encoding_multiplicative_factor: used for calculating the frequency.
+        If None, defaults to max edge length, otherwise specify location and scale as a pair.
+        This supports using pre-trained model weights with a different graph structure to what it was trained.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
@@ -80,32 +63,20 @@ def get_graph_spatial_features(
   num_nodes = node_lat.shape[0]
   num_edges = senders.shape[0]
   dtype = node_lat.dtype
-  node_phi, node_theta = lat_lon_deg_to_spherical(node_lon, node_lat)
 
   # Computing some node features.
   node_features = []
 
-  if boundary_nodes is not None:
-    # TODO: consider removing boundary nodes information (see comment below)
-    # Set interior nodes to -1, boundary nodes to 1.
-    boundary_mask = np.full((num_nodes,), -1.0, dtype=np.float32)
-    boundary_mask[boundary_nodes] = 1.0
-    node_features.append(boundary_mask)
-
-  if add_node_positions:
+  if add_node_position:
     # Already in [-1, 1.] range.
     latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
     node_features.extend(*latlon_to_unit_sphere((node_lon, node_lat)))
 
-  if add_node_latitude:
-    # Using the cos of theta.
-    # From 1. (north pole) to -1 (south pole).
-    node_features.append(np.cos(node_theta))
-
-  if add_node_longitude:
-    # Using the cos and sin, which is already normalized.
-    node_features.append(np.cos(node_phi))
-    node_features.append(np.sin(node_phi))
+  if add_node_coordinates:
+    node_phi, node_theta = lat_lon_deg_to_spherical(node_lon, node_lat)
+    # Normalize in [-1, 1.] range.
+    node_features.append(node_phi / (2 * np.pi))
+    node_features.append(node_theta / (2 * np.pi))
 
   if not node_features:
     node_features = np.zeros([num_nodes, 0], dtype=dtype)
@@ -115,49 +86,34 @@ def get_graph_spatial_features(
   # Computing some edge features.
   edge_features = []
 
-  if add_edge_length or add_edge_direction:
-    geoid = pyproj.Geod(ellps="WGS84")
-    edge_azimuths, _, edge_lengths = geoid.inv(node_lon[senders], node_lat[senders],
-                                               node_lon[receivers], node_lat[receivers])
-    if add_edge_length:
-      if edge_normalization is None:
-        # Normalize to the maximum edge length.
-        edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
-        edge_normalization_scale = edge_lengths.max()
-      # TODO: does zscore make sense here?
-      elif edge_normalization == "zscore":
-        edge_normalization_location = np.mean(edge_lengths)
-        edge_normalization_scale = np.std(edge_lengths)
-      else:
-        edge_normalization_location, edge_normalization_scale = edge_normalization
-      edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
-      edge_features.append(edge_lengths / edge_normalization_scale)
-    if add_edge_direction:
-      edge_azimuths = np.deg2rad(edge_azimuths)
-      # TODO: Consider multiplying by edge_length to get a non-unit vector on tangent plane.
-      edge_features.append(np.sin(edge_azimuths))
-      edge_features.append(np.cos(edge_azimuths))
+  geoid = pyproj.Geod(ellps="WGS84")
+  edge_azimuths, _, edge_lengths = geoid.inv(node_lon[senders], node_lat[senders],
+                                             node_lon[receivers], node_lat[receivers])
+  edge_azimuths = np.rad2deg(edge_azimuths)
+  if edge_normalization is None:
+    # Normalize to the maximum edge length.
+    edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
+    edge_normalization_scale = edge_lengths.max()
+  else:
+    edge_normalization_location, edge_normalization_scale = edge_normalization
+  edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+
+  if add_edge_fwd_azimuth:
+    edge_features.append(edge_azimuths / (2 * np.pi))
+  if add_edge_direction:
+    edge_features.append(np.sin(edge_azimuths))
+    edge_features.append(np.cos(edge_azimuths))
+  if add_edge_length:
+    edge_features.append(edge_lengths)
+  if add_edge_receiver_coordinates:
+    edge_phi, edge_theta = lat_lon_deg_to_spherical(node_lon[receivers], node_lat[receivers])
+    edge_features.append(edge_phi / (2 * np.pi))
+    edge_features.append(edge_theta / (2 * np.pi))
 
   if not edge_features:
     edge_features = np.zeros([num_edges, 0], dtype=dtype)
   else:
     edge_features = np.stack(edge_features, axis=-1)
-
-  # TODO: add support for basic, positional and fourier encoding as in https://arxiv.org/pdf/2006.10739
-  #  or rewrite the embedding procedure to make use of learnable fourier encoding as in https://arxiv.org/abs/2106.02795.
-  #  In that context, it would make more sense to use an embedder only for inputs, and then concatenate with the
-  #  positional encoding as well as boundary information (which then should be removed from get_*_graph_spatial_features).
-  if sine_cosine_encoding:
-    def sine_cosine_transform(x: np.ndarray) -> np.ndarray:
-      freqs = encoding_multiplicative_factor**np.arange(encoding_num_freqs)
-      phases = freqs * x[..., None]
-      x_sin = np.sin(phases)
-      x_cos = np.cos(phases)
-      x_cat = np.concatenate([x_sin, x_cos], axis=-1)
-      return x_cat.reshape([x.shape[0], -1])
-
-    node_features = sine_cosine_transform(node_features)
-    edge_features = sine_cosine_transform(edge_features)
 
   return node_features, edge_features
 
@@ -196,7 +152,6 @@ def lat_lon_deg_to_spherical(node_lon: np.ndarray,
   return phi, theta
 
 
-# TODO: this implementation could be updated to include the distance from the coast as a feature
 def get_bipartite_graph_spatial_features(
     *,
     senders_node_lon: np.ndarray,
@@ -205,17 +160,13 @@ def get_bipartite_graph_spatial_features(
     receivers_node_lon: np.ndarray,
     receivers_node_lat: np.ndarray,
     receivers: np.ndarray,
-    senders_boundary_nodes: Optional[np.ndarray] = None,
-    receivers_boundary_nodes: Optional[np.ndarray] = None,
-    add_node_positions: bool,
-    add_node_latitude: bool,
-    add_node_longitude: bool,
-    add_edge_length: bool,
+    add_node_position: bool,
+    add_node_coordinates: bool,
+    add_edge_fwd_azimuth: bool,
     add_edge_direction: bool,
-    edge_normalization: Tuple[float, float] | Literal['zscore'] | None = None,
-    sine_cosine_encoding: bool = False,
-    encoding_num_freqs: int = 10,
-    encoding_multiplicative_factor: float = 1.2,
+    add_edge_length: bool,
+    add_edge_receiver_coordinates: bool,
+    edge_normalization: Optional[Tuple[float, float]] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -236,29 +187,16 @@ def get_bipartite_graph_spatial_features(
       [num_receiver_nodes]
     receivers: Receiver indices of shape [num_edges], indices in [0,
       num_receiver_nodes)
-    senders_boundary_nodes: Optional list of boundary node indices.
-    receivers_boundary_nodes: Optional list of boundary node indices.
-    add_node_positions: Add unit norm absolute positions.
-    add_node_latitude: Add a feature for latitude (cos(90 - lat)) Note even if
-      this is set to False, the model may be able to infer the longitude from
-      relative features, unless `relative_latitude_local_coordinates` is also
-      True, or if there is any bias on the relative edge sizes for different
-      longitudes.
-    add_node_longitude: Add features for longitude (cos(lon), sin(lon)). Note
-      even if this is set to False, the model may be able to infer the longitude
-      from relative features, unless `relative_longitude_local_coordinates` is
-      also True, or if there is any bias on the relative edge sizes for
-      different longitudes.
-    add_edge_length: Whether to add geodetic length of edges.
-    add_edge_direction: Whether to add azimuth of edges using sine and cosine encoding.
+    add_node_position: Add unit norm absolute positions to node features.
+    add_node_coordinates: Add nodes longitude and latitude in turns (1 / 2pi radians) to node features.
+    add_edge_fwd_azimuth: Add edge forward azimuth in turns (1 / 2pi radians) to edge features.
+    add_edge_direction: Add edge unit vector on the tangent plane to edge features
+        ((x, y) with respectively x easting and y northing directions).
+    add_edge_receiver_coordinates: Add receiver longitude and latitude in turns (1 / 2pi radians) to edge features.
+    add_edge_length: Add geodetic length to edge features.
     edge_normalization: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length. If 'zscore' use standardization,
-        otherwise specify location and scale. This supports using pre-trained
-        model weights with a different graph structure to what it was trained.
-    sine_cosine_encoding: If True, we will transform the node/edge features
-        with sine and cosine functions, similar to NERF.
-    encoding_num_freqs: frequency parameter
-    encoding_multiplicative_factor: used for calculating the frequency.
+        If None, defaults to max edge length, otherwise specify location and scale as a pair.
+        This supports using pre-trained model weights with a different graph structure to what it was trained.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
@@ -279,19 +217,7 @@ def get_bipartite_graph_spatial_features(
   senders_node_features = []
   receivers_node_features = []
 
-  if senders_boundary_nodes is not None:
-    # Set interior nodes to -1, boundary nodes to 1.
-    senders_boundary_mask = np.full((num_senders,), -1.0, dtype=np.float32)
-    senders_boundary_mask[senders_boundary_nodes] = 1.0
-    senders_node_features.append(senders_boundary_mask)
-
-  if receivers_boundary_nodes is not None:
-    # Set interior nodes to -1, boundary nodes to 1.
-    receivers_boundary_mask = np.full((num_receivers,), -1.0, dtype=np.float32)
-    receivers_boundary_mask[receivers_boundary_nodes] = 1.0
-    receivers_node_features.append(receivers_boundary_mask)
-
-  if add_node_positions:
+  if add_node_position:
     # Already in [-1, 1.] range.
     latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
     senders_node_features.extend(
@@ -299,19 +225,12 @@ def get_bipartite_graph_spatial_features(
     receivers_node_features.extend(
         latlon_to_unit_sphere((receivers_node_lon, receivers_node_lat)))
 
-  if add_node_latitude:
-    # Using the cos of theta.
-    # From 1. (north pole) to -1 (south pole).
-    senders_node_features.append(np.cos(senders_node_theta))
-    receivers_node_features.append(np.cos(receivers_node_theta))
-
-  if add_node_longitude:
-    # Using the cos and sin, which is already normalized.
-    senders_node_features.append(np.cos(senders_node_phi))
-    senders_node_features.append(np.sin(senders_node_phi))
-
-    receivers_node_features.append(np.cos(receivers_node_phi))
-    receivers_node_features.append(np.sin(receivers_node_phi))
+  if add_node_coordinates:
+    # Normalize in [-1, 1.] range.
+    senders_node_features.append(senders_node_phi / (2 * np.pi))
+    senders_node_features.append(senders_node_theta / (2 * np.pi))
+    receivers_node_features.append(receivers_node_phi / (2 * np.pi))
+    receivers_node_features.append(receivers_node_theta / (2 * np.pi))
 
   if not senders_node_features:
     senders_node_features = np.zeros([num_senders, 0], dtype=dtype)
@@ -323,45 +242,33 @@ def get_bipartite_graph_spatial_features(
   # Computing some edge features.
   edge_features = []
 
-  if add_edge_length or add_edge_direction:
-    geoid = pyproj.Geod(ellps="WGS84")
-    edge_azimuths, _, edge_lengths = geoid.inv(senders_node_lon[senders], senders_node_lat[senders],
-                                               receivers_node_lon[receivers], receivers_node_lat[receivers])
-
-    if add_edge_length:
-      if edge_normalization is None:
-        # Normalize to the maximum edge length.
-        edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
-        edge_normalization_scale = edge_lengths.max()
-      elif edge_normalization == 'zscore':
-        edge_normalization_location = np.mean(edge_lengths)
-        edge_normalization_scale = np.std(edge_lengths)
-      else:
-        edge_normalization_location, edge_normalization_scale = edge_normalization
-      edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
-      edge_features.append(edge_lengths)
-    if add_edge_direction:
-      edge_azimuths = np.deg2rad(edge_azimuths)
-      edge_features.append(np.sin(edge_azimuths))
-      edge_features.append(np.cos(edge_azimuths))
+  geoid = pyproj.Geod(ellps="WGS84")
+  edge_azimuths, _, edge_lengths = geoid.inv(senders_node_lon[senders], senders_node_lat[senders],
+                                             receivers_node_lon[receivers], receivers_node_lat[receivers])
+  edge_azimuths = np.rad2deg(edge_azimuths)
+  if edge_normalization is None:
+    # Normalize to the maximum edge length.
+    edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
+    edge_normalization_scale = edge_lengths.max()
+  else:
+    edge_normalization_location, edge_normalization_scale = edge_normalization
+  edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+  if add_edge_fwd_azimuth:
+    edge_features.append(edge_azimuths / (2 * np.pi))
+  if add_edge_direction:
+    edge_features.append(np.sin(edge_azimuths))
+    edge_features.append(np.cos(edge_azimuths))
+  if add_edge_length:
+    edge_features.append(edge_lengths)
+  if add_edge_receiver_coordinates:
+    edge_phi, edge_theta = lat_lon_deg_to_spherical(receivers_node_lon[receivers], receivers_node_lat[receivers])
+    edge_features.append(edge_phi / (2 * np.pi))
+    edge_features.append(edge_theta / (2 * np.pi))
 
   if not edge_features:
     edge_features = np.zeros([num_edges, 0], dtype=dtype)
   else:
     edge_features = np.stack(edge_features, axis=-1)
-
-  if sine_cosine_encoding:
-    def sine_cosine_transform(x: np.ndarray) -> np.ndarray:
-      freqs = encoding_multiplicative_factor**np.arange(encoding_num_freqs)
-      phases = freqs * x[..., None]
-      x_sin = np.sin(phases)
-      x_cos = np.cos(phases)
-      x_cat = np.concatenate([x_sin, x_cos], axis=-1)
-      return x_cat.reshape([x.shape[0], -1])
-
-    senders_node_features = sine_cosine_transform(senders_node_features)
-    receivers_node_features = sine_cosine_transform(receivers_node_features)
-    edge_features = sine_cosine_transform(edge_features)
 
   return senders_node_features, receivers_node_features, edge_features
 

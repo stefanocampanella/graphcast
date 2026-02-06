@@ -336,10 +336,8 @@ def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, srs
   # Faces contains only valid node tags, so there is no need to filter them.
   faces = node_tags_inv_f(faces_node_tags) # [num_faces, 3]
 
-  # Boundary nodes might need both filtering and reordering.
-  boundary_node_mask = np.all(np.isin(boundary_node_tags, valid_node_tags), axis=-1)
-  boundary_node_tags = boundary_node_tags[boundary_node_mask, :]
-  boundary = node_tags_inv_f(boundary_node_tags) # [num_boundary_nodes]
+  # Compute the boundary nodes mask
+  boundary_node_mask = np.isin(range(len(node_coords)), node_tags_inv_f(np.unique(boundary_node_tags))) # [num_valid_node_tags]
 
   # Data might need both filtering and reordering.
   data_mask = np.isin(data_node_tags, valid_node_tags)
@@ -353,7 +351,7 @@ def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, srs
   srs_string_type, srs_string = gmsh.model.get_attribute(srs_attribute_name)
   assert srs_string_type.upper() == "WKT"
 
-  mesh = TriangleMesh(vertices=node_coords, faces=faces, boundary=boundary, node_tags=valid_node_tags,
+  mesh = TriangleMesh(vertices=node_coords, faces=faces, boundary=boundary_node_mask, node_tags=valid_node_tags,
                       spatial_reference_system=srs_string)
   return mesh, mesh_size
 
