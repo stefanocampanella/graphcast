@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Learnable Fourier features, see: https://arxiv.org/abs/2006.10739."""
+"""Learnable Fourier features, see: https://arxiv.org/pdf/2106.02795 and https://arxiv.org/abs/2006.10739."""
 import dataclasses
 
 import haiku as hk
@@ -52,18 +52,17 @@ class FourierFeaturesEncoder(hk.Module):
     w_init = hk.initializers.VarianceScaling(2.0, mode="fan_in", distribution="uniform")
     mlp = hk.nets.MLP(output_sizes=(self.hidden_dim, self.encoding_dim), w_init=w_init, activation=jax.nn.gelu,
                       activate_final=False)
-    # Keep only leading and last dimensions
-    values = values.reshape((input_shape[0], -1, input_shape[-1]))
-    features = mlp(self.fourier_features(values, frequencies))
+    # Keep only last dimensions
+    values = values.reshape(-1, input_shape[-1])
+    features = mlp(self.fourier_features_fn(values, frequencies))
     # Restore all but the last dimension
     features = features.reshape(input_shape[:-1] + (self.encoding_dim,))
 
     return features
 
-  def fourier_features(
+  def fourier_features_fn(
       self,
       values: jnp.ndarray,
       frequencies: jnp.ndarray) -> jnp.ndarray:
-    values = values.reshape(-1, values.shape[-1])
     values = 2 * np.pi * values @  frequencies
     return jnp.concatenate([jnp.cos(values), jnp.sin(values)], axis=-1) / jnp.sqrt(self.num_frequencies)

@@ -30,4 +30,4 @@ mesh_size = 10_000.0
 
 [[fields]]
 name = "uniform"
-value = 100_000.0
+value = 120_000.0

@@ -47,6 +47,7 @@ from graphcast import xarray_jax
 from graphcast.fourier_features import FourierFeaturesEncoder
 from graphcast.gis_utils import get_transform, equirectangular_srs, cartesian_srs
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
+from graphcast.model_utils import fourier_features
 
 logger = logging.getLogger(__name__)
 
@@ -245,6 +246,7 @@ class GraphCast(predictor_base.Predictor):
                mesh_graph: MeshGraph,
                mesh_size: np.ndarray,
                kdtree_workers: int = 1,
+               learnable_fourier_encoding: bool = True,
                remat: bool = False,
                policy: Callable[..., bool] | None = None,
                prevent_cse: bool = False,
@@ -266,6 +268,7 @@ class GraphCast(predictor_base.Predictor):
       add_edge_direction=True,
       add_edge_length=True,
       add_edge_receiver_coordinates=False)
+    self._learnable_fourier_encoding = learnable_fourier_encoding
     self._fourier_encoding_kwargs = dict(
       num_frequencies = 32,
       hidden_dim = 32,
@@ -641,12 +644,16 @@ class GraphCast(predictor_base.Predictor):
     loss, _ = self.loss_and_predictions(inputs, targets, forcings, **kwargs)
     return loss  # pytype: disable=bad-return-type  # jax-ndarray
 
-  def _encode_positions(self, nodes: chex.Array, dtype=jnp.float32) -> chex.Array:
+  def _encode_positions(self, node_coordinates: chex.Array) -> chex.Array:
     """Encodes node positions using learnable Fourier features."""
-    positional_encoder = FourierFeaturesEncoder(**self._fourier_encoding_kwargs, name="node_position_encoder")
-    if self._remat:
-      positional_encoder = hk.remat(positional_encoder, policy=self._policy, prevent_cse=self._prevent_cse)
-    return positional_encoder(nodes.astype(dtype))
+    if self._learnable_fourier_encoding:
+      positional_encoder = FourierFeaturesEncoder(**self._fourier_encoding_kwargs, name="node_position_encoder")
+      if self._remat:
+        positional_encoder = hk.remat(positional_encoder, policy=self._policy, prevent_cse=self._prevent_cse)
+      node_coordinates = checkpoint_name(node_coordinates, "positional_encoder")
+      return positional_encoder(node_coordinates)
+    else:
+      return fourier_features(node_coordinates, **self._fourier_encoding_kwargs)
 
   def _run_grid2mesh_gnn(self, grid_node_input_features: chex.Array,
                          ) -> tuple[chex.Array, chex.Array]:
@@ -660,11 +667,10 @@ class GraphCast(predictor_base.Predictor):
     mesh_nodes = grid2mesh_graph.nodes["mesh_nodes"]
 
     # Compute positional encodings and add batch dimension.
-    grid_node_position_encodings = self._encode_positions(grid_nodes.features, dtype=grid_node_input_features.dtype)
+    grid_node_position_encodings = self._encode_positions(grid_nodes.features.astype(grid_node_input_features.dtype))
     grid_node_position_encodings = _add_batch_second_axis(grid_node_position_encodings, batch_size,
                                                           sharding=self._sharding)
-    mesh_node_position_encodings = self._encode_positions(mesh_nodes.features,
-                                                          dtype=grid_node_input_features.dtype)
+    mesh_node_position_encodings = self._encode_positions(mesh_nodes.features.astype(grid_node_input_features.dtype))
     mesh_node_position_encodings = _add_batch_second_axis(mesh_node_position_encodings, batch_size,
                                                           sharding=self._sharding)
 
