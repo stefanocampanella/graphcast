@@ -58,6 +58,7 @@ dependencies = [
     "pandas",
     "pandas-stubs~=2.2.3",
     "papermill[all]",
+    "pyarrow==22.0.0",
     # MacOS package distributes his own binary of proj, but Spilhouse projection requires proj >= 9.6.0
     "pyproj@git+https://github.com/pyproj4/pyproj.git@3.7.1",
     # Necessary to visualize array sharding in JAX
@@ -72,7 +73,9 @@ dependencies = [
     # FIXME: find a way to have a functioning xprof and tensorboard on MacOS with ARM.
     #   See: https://github.com/tensorflow/tensorflow/issues/99464 and
     #   https://github.com/tensorflow/tensorflow/issues/98563#issuecomment-3536220032
-    "tensorflow ; sys_platform == 'linux'",
+    #   Using tensorflow<2.20 and pyarrow==22.0.0 seems to solve the issue.
+    #   See: https://github.com/google-deepmind/gemma/pull/466
+    "tensorflow<2.20",
     "tqdm",
     "trimesh",
     "treescope",

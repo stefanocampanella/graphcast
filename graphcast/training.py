@@ -15,13 +15,14 @@
 import logging
 import os
 import pathlib
-import time
 from typing import Mapping, Any
 
 import click
 import gmsh
 import haiku as hk
 import jax
+import optax
+import orbax.checkpoint as ocp
 import xarray as xr
 from grain.python import IndexSampler, DataLoader, Batch
 from jax import checkpoint_policies as cp
@@ -38,6 +39,7 @@ from graphcast.mask import MaskedPredictor
 from graphcast.mesh_graph import MeshData, faces_to_edges, MeshGraph
 from graphcast.model import TaskConfig, ModelConfig, GraphCast, CheckPoint
 from graphcast.normalization import InputsAndResiduals
+from graphcast.training_utils import get_optimizer
 from graphcast.xarray_jax import unwrap_data
 
 logger = logging.getLogger(__name__)
@@ -243,7 +245,7 @@ def init(config_path: pathlib.Path,
 @click.option('--log-level',
               default='info',
               type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
-def mockup(config_path: pathlib.Path,
+def launch(config_path: pathlib.Path,
            checkpoint_path: pathlib.Path,
            data_path: pathlib.Path | None = None,
            other_configs: Mapping[str, Any] | None = None,
@@ -263,7 +265,16 @@ def mockup(config_path: pathlib.Path,
   if other_configs is not None:
     configs.update(other_configs)
 
+  # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
   jax_backend = configs.get('jax_backend') or jax.default_backend()
+  jax.distributed.initialize(local_device_ids=configs.get('local_devices', [0, 1, 2, 3]))
+  _ = jax.devices()
+
+  from tensorflow import summary
+  import tensorflow as tf
+
+  tf.config.experimental.set_visible_devices([], 'GPU')
+
   # FIXME: use backend in jax.devices and jax.device_count,
   #  also check that the local batch size is divisible by the number of devices
   multi_host = jax.process_count() > 1
@@ -275,9 +286,15 @@ def mockup(config_path: pathlib.Path,
                               axis_types=(AxisType.Explicit,))
 
 
-  logger.info(f"Loading checkpoint from {checkpoint_path}")
+  logger.info(f"Loading GraphCast checkpoint from {checkpoint_path}")
   with open(checkpoint_path, 'rb') as checkpoint_file:
     training_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
+
+  params_checkpoint_path = data_path / configs.get("checkpoints.dirpath")
+  logger.info(f"Saving params checkpoint from {params_checkpoint_path}")
+  params_checkpoint_path = params_checkpoint_path.resolve()
+  if jax.process_index() == 0 and any(params_checkpoint_path.iterdir()):
+    params_checkpoint_path = ocp.test_utils.erase_and_create_empty(params_checkpoint_path)
 
   if data_path is None:
     data_path = pathlib.Path(os.getcwd())
@@ -430,26 +447,43 @@ def mockup(config_path: pathlib.Path,
 
     return _global_grad_fn(args_value)
 
-  global_grad_fn_jit = jax.jit(global_grad_fn)
-  global_grad_fn_aot = global_grad_fn_jit.trace(params,
-                                                     inputs=inputs,
-                                                     targets=targets,
-                                                     forcings=forcings
-                                                     ).lower().compile()
   if analysis:
-    logger.info("Running predictor memory and cost analysis")
+    logger.info("Running gradient memory and cost analysis")
+    global_grad_fn_jit = jax.jit(global_grad_fn)
+    global_grad_fn_aot = global_grad_fn_jit.trace(params,
+                                                  inputs=inputs,
+                                                  targets=targets,
+                                                  forcings=forcings
+                                                  ).lower().compile()
     run_analysis_and_report(global_grad_fn_aot)
 
-  eps = configs.get("sgd_step_size", 1e-4)
-  training_steps = configs.get("training_steps", 1)
-  logger.info(f"Running {training_steps} SGD steps (epsilon = {eps})")
-  for step, (inputs, targets, forcings) in enumerate(dataloader):
-    if step > training_steps:
-      break
-    current_time = time.time()
-    (loss, diagnostics), grads = global_grad_fn_aot(params, inputs=inputs, targets=targets, forcings=forcings)
-    logger.info(f"Step {step} took {time.time() - current_time:.2f} seconds, loss: {loss}, diagnostics: {diagnostics}")
-    params = jax.tree_util.tree_map(lambda p, g: p - eps * g, params, grads)
+  optimizer = get_optimizer(configs["optimizer"])
+  opt_state = optimizer.init(params)
+
+  @jax.jit
+  def train_step(params, opt_state, sample):
+    inputs, targets, forcings = sample
+    (loss, diagnostics), grads = global_grad_fn(params, inputs=inputs, targets=targets, forcings=forcings)
+    updates, opt_state = optimizer.update(grads, opt_state, params)
+    params = optax.apply_updates(params, updates)
+
+    return params, opt_state, loss, diagnostics
+
+  ckpt_mngr_options = ocp.CheckpointManagerOptions(max_to_keep=3, best_fn=lambda metrics: metrics['loss'],
+                                                   best_mode='min')
+  ckpt_mngr = ocp.CheckpointManager(params_checkpoint_path, options=ckpt_mngr_options)
+  logdir = (data_path / configs.get('logging.filepath', 'logs')) / os.getenv('SLURM_JOB_ID', 'local')
+  summary_writer = summary.create_file_writer(str(logdir))
+  dataloader_iter = iter(dataloader)
+  with summary_writer.as_default():
+    training_steps = configs.get("training_steps", 1024)
+    logger.info(f"Running {training_steps} training steps")
+    for step in range(training_steps):
+      params, opt_state, loss, diagnostics = train_step(params, opt_state, next(dataloader_iter))
+      ckpt_mngr.save(step, args=ocp.args.StandardSave(params), metrics={'loss': loss.item()})
+      summary.scalar("loss", loss, step=step)
+      for key, value in diagnostics.items():
+        summary.scalar(key, value, step=step)
 
   jax.distributed.shutdown()
 

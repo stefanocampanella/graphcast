@@ -1,0 +1,53 @@
+jax_backend = "gpu"
+local_devices_ids = [0, 1, 2, 3]
+local_batch_size = 4
+training_steps = 32768
+seed = 42
+
+[dataset]
+filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+timesteps = 3
+
+[sampler]
+num_epochs = 4
+shuffle_dataset = true
+seed = 42
+
+[dataloader]
+
+[policy]
+names_which_can_be_saved = []
+names_which_can_be_offloaded = ["positional_encoder", "embedder", "message_passing", "grid2mesh_gnn", "mesh_gnn", "mesh2grid_gnn"]
+offload_src = "device"
+offload_dst = "pinned_host"
+
+[artifacts]
+filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_normalization"
+
+[optimizer]
+schedule_boundaries = [128]
+
+[[optimizer.schedule]]
+name = 'linear_schedule'
+init_value = 0.0
+end_value = 1.0e-3
+transition_steps = 128
+
+[[optimizer.schedule]]
+name = 'cosine_decay_schedule'
+init_value = 1.0e-3
+decay_steps = 32640
+alpha = 3.0e-4
+
+[[optimizer.gradient_transformation]]
+name = 'clip_by_global_norm'
+max_norm = 32.0
+
+[[optimizer.gradient_transformation]]
+name = 'adamw'
+b1 = 0.9
+b2 = 0.95
+weight_decay = 0.1
+
+[checkpoints]
+dirpath = "data/training_checkpoints"
