@@ -42,17 +42,14 @@ input_variables = [
     "waverys_deptho",
     "waverys_mask",
 ]
+# Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts
 target_variables = [
     "zos",
     "mlotst",
     "thetao",
-    "siconc",
-    "sithick",
     "so",
     "uo",
-    "usi",
     "vo",
-    "vsi",
 ]
 forcing_variables = [
     "10u",

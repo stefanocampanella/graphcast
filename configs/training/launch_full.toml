@@ -9,7 +9,6 @@ filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
 timesteps = 3
 
 [sampler]
-num_epochs = 4
 shuffle_dataset = true
 seed = 42
 
@@ -25,13 +24,13 @@ offload_dst = "pinned_host"
 filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_normalization"
 
 [optimizer]
-schedule_boundaries = [128]
+schedule_boundaries = [512]
 
 [[optimizer.schedule]]
 name = 'linear_schedule'
 init_value = 0.0
 end_value = 1.0e-3
-transition_steps = 128
+transition_steps = 512
 
 [[optimizer.schedule]]
 name = 'cosine_decay_schedule'

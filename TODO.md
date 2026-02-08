@@ -6,6 +6,8 @@
 * ~~Log training metrics to TensorBoard.~~ **DONE**
 * Check that tensorboard is logging asynchornously. **HIGH PRIORITY**
 * Implement controls for overwriting paramerters checkpointing. **HIGH PRIORITY**
+* Checkpoint dataloader state, and implement restart logic. **HIGH PRIORITY**
+* Log each process independently using `cli_utils.py`. **HIGH PRIORITY**
 * Move training stuff to `training_utils.py` **HIGH PRIORITY**
 * Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
 * Experiment with typed graphs context (i.e., a global graph attribute which might embed variables as year_progress).

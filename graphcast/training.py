@@ -314,7 +314,7 @@ def launch(config_path: pathlib.Path,
                          # shard_options=BatchParallelShardOptions(sharding('batch')),
                          shard_options=ShardOptions(shard_count=jax.process_count(),
                                                     shard_index=jax.process_index()),
-                         num_epochs=configs.get('sampler.num_epochs', 1),
+                         num_epochs=None,
                          shuffle=configs.get('sampler.shuffle_dataset', True),
                          seed=configs.get('sampler.seed'))
   # The order of operations is constrained by the following requirements:
@@ -481,9 +481,10 @@ def launch(config_path: pathlib.Path,
     for step in range(training_steps):
       params, opt_state, loss, diagnostics = train_step(params, opt_state, next(dataloader_iter))
       ckpt_mngr.save(step, args=ocp.args.StandardSave(params), metrics={'loss': loss.item()})
-      summary.scalar("loss", loss, step=step)
-      for key, value in diagnostics.items():
-        summary.scalar(key, value, step=step)
+      if jax.process_index() == 0:
+        summary.scalar("loss", loss, step=step)
+        for key, value in diagnostics.items():
+          summary.scalar(key, value, step=step)
 
   jax.distributed.shutdown()
 

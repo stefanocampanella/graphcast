@@ -1,13 +1,10 @@
 #! /usr/bin/env bash
 #SBATCH --account=OGS23_PRACE_IT_0
 #SBATCH --partition=boost_usr_prod
-#SBATCH --qos=boost_qos_dbg
-#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=32
 #SBATCH --gres=gpu:4
 #SBATCH --exclusive
-#SBATCH --time=30
 #SBATCH --requeue
 
 PROJECTROOT=$(git rev-parse --show-toplevel)
