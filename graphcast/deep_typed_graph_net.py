@@ -94,8 +94,10 @@ class DeepTypedGraphNet(hk.Module):
                f32_aggregation: bool = False,
                aggregate_edges_for_nodes_fn: str = "segment_sum",
                aggregate_normalization: Optional[float] = None,
+               remat: bool = True,
                policy = None,
                prevent_cse: bool = True,
+               scan: bool = False,
                name: str = "DeepTypedGraphNet"):
     """Inits the model.
 
@@ -129,6 +131,10 @@ class DeepTypedGraphNet(hk.Module):
         increase the number of edges connected to a node. In particular, this is
         useful when using segment_sum, but should not be combined with
         segment_mean.
+      remat: Whether to use remat.
+      policy: remat policy.
+      prevent_cse: Whether to prevent common subexpression elimination.
+      scan: Whether to use scan to reduce compilation times.
       name: Name of the model.
     """
 
@@ -153,8 +159,10 @@ class DeepTypedGraphNet(hk.Module):
     self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(
         aggregate_edges_for_nodes_fn)
     self._aggregate_normalization = aggregate_normalization
+    self._remat = remat
     self._policy = policy
     self._prevent_cse = prevent_cse
+    self._scan = scan
 
     if aggregate_normalization:
       # using aggregate_normalization only makes sense with segment_sum.
@@ -216,11 +224,13 @@ class DeepTypedGraphNet(hk.Module):
         embed_node_fn=embed_node_fn,
     )
 
-    @partial(hk.remat, policy=self._policy, prevent_cse=self._prevent_cse)
     def _embedder_network(graph):
-      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "embedder"), graph)
-      return typed_graph_net.GraphMapFeatures(**embedder_kwargs)(graph)
+      graph = typed_graph_net.GraphMapFeatures(**embedder_kwargs)(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "graph_embedder"), graph)
+      return graph
 
+    if self._remat:
+      _embedder_network = hk.remat(_embedder_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._embedder_network = _embedder_network
 
     if self._f32_aggregation:
@@ -246,22 +256,27 @@ class DeepTypedGraphNet(hk.Module):
     # it also outputs the messages as updated edge latent features.
     self._processor_networks = []
     for step_i in range(self._num_message_passing_steps):
-      self._processor_networks.append(
-          typed_graph_net.InteractionNetwork(
-              update_edge_fn=_build_update_fns_for_edge_types(
-                  build_mlp_with_maybe_layer_norm,
-                  graph_template,
-                  f"processor_edges_{step_i}_",
-                  output_sizes=self._edge_latent_size),
-              update_node_fn=_build_update_fns_for_node_types(
-                  build_mlp_with_maybe_layer_norm,
-                  graph_template,
-                  f"processor_nodes_{step_i}_",
-                  output_sizes=self._node_latent_size),
-              aggregate_edges_for_nodes_fn=aggregate_fn,
-              include_sent_messages_in_node_update=(
-                  self._include_sent_messages_in_node_update),
-              ))
+      def _processor_network(graph):
+        graph = typed_graph_net.InteractionNetwork(
+          update_edge_fn=_build_update_fns_for_edge_types(
+              build_mlp_with_maybe_layer_norm,
+              graph_template,
+              f"processor_edges_{step_i}_",
+              output_sizes=self._edge_latent_size),
+          update_node_fn=_build_update_fns_for_node_types(
+              build_mlp_with_maybe_layer_norm,
+              graph_template,
+              f"processor_nodes_{step_i}_",
+              output_sizes=self._node_latent_size),
+          aggregate_edges_for_nodes_fn=aggregate_fn,
+          include_sent_messages_in_node_update=(
+              self._include_sent_messages_in_node_update),
+          )(graph)
+        graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
+        return graph
+      if self._remat:
+        _processor_network = hk.remat(_processor_network, policy=self._policy, prevent_cse=self._prevent_cse)
+      self._processor_networks.append(_processor_network)
 
     # The output MLPs converts edge/node latent features into the output sizes.
     output_kwargs = dict(
@@ -271,8 +286,15 @@ class DeepTypedGraphNet(hk.Module):
         embed_node_fn=_build_update_fns_for_node_types(
             build_mlp, graph_template, "decoder_nodes_", self._node_output_size)
         if self._node_output_size else None,)
-    self._output_network = typed_graph_net.GraphMapFeatures(
-        **output_kwargs)
+
+    def _output_network(graph):
+      graph = typed_graph_net.GraphMapFeatures(**output_kwargs)(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "graph_output"), graph)
+      return graph
+
+    if self._remat:
+      _output_network = hk.remat(_output_network, policy=self._policy, prevent_cse=self._prevent_cse)
+    self._output_network = _output_network
 
   def _embed(
       self, input_graph: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
@@ -308,41 +330,33 @@ class DeepTypedGraphNet(hk.Module):
     # Do `num_message_passing_steps` with each of the `self._processor_networks`
     # with unshared weights, and repeat that `self._num_processor_repetitions`
     # times.
-    # latent_graph = latent_graph_0
-    # for unused_repetition_i in range(self._num_processor_repetitions):
-    #   for processor_network in self._processor_networks:
-    #     latent_graph = self._process_step(processor_network, latent_graph)
-    # When running apply, we leverage scan to try reducing compilation times when taking gradients.
     if hk.running_init():
+      # When running init there's no need to remat and checkpoint.
       latent_graph = latent_graph_0
       for unused_repetition_i in range(self._num_processor_repetitions):
         for processor_network in self._processor_networks:
           latent_graph = self._process_step(processor_network, latent_graph)
     else:
-      def _msg_passing_fn(processor_network):
-
-        @partial(hk.remat, policy=self._policy, prevent_cse=self._prevent_cse)
-        def _msg_passing_fn_inner(latent_graph_prev):
-          latent_graph_prev = jax.tree_util.tree_map(lambda g: checkpoint_name(g, "message_passing"),
-                                                     latent_graph_prev)
-          latent_graph_k = processor_network(latent_graph_prev)
-          return latent_graph_k
-
-        return _msg_passing_fn_inner
-
-      _msg_passing_fns = [_msg_passing_fn(processor_network) for processor_network in self._processor_networks]
-
-      # The one-liner using scan is conceptually equivalent to, but terser than the following:
-      # latent_graph = hk.fori_loop(0, self._num_processor_repetitions,
-      #                             lambda _, init_graph:
-      #                               hk.fori_loop(0, self._num_message_passing_steps,
-      #                                            lambda n, graph: hk.switch(n, _msg_passing_fns, graph),
-      #                                            init_graph),
-      #                             latent_graph_0)
-      latent_graph, _ = hk.scan(lambda graph, n: (hk.switch(n, _msg_passing_fns, graph), None),
-                                latent_graph_0,
-                                xs=jnp.tile(jnp.arange(self._num_message_passing_steps, dtype=int),
-                                            self._num_processor_repetitions))
+      # When running apply, we might leverage scan to try reducing compilation times.
+      if self._scan:
+        process_steps = [partial(self._process_step, processor_network) for processor_network in self._processor_networks]
+        # The one-liner using scan is conceptually equivalent to, but terser than the following:
+        # latent_graph = hk.fori_loop(0, self._num_processor_repetitions,
+        #                             lambda _, init_graph:
+        #                               hk.fori_loop(0, self._num_message_passing_steps,
+        #                                            lambda n, graph: hk.switch(n, process_steps, graph),
+        #                                            init_graph),
+        #                             latent_graph_0)
+        latent_graph, _ = hk.scan(lambda graph, n: (hk.switch(n, process_steps, graph), None),
+                                  latent_graph_0,
+                                  xs=jnp.tile(jnp.arange(self._num_message_passing_steps, dtype=int),
+                                              self._num_processor_repetitions))
+      else:
+        latent_graph = latent_graph_0
+        for unused_repetition_i in range(self._num_processor_repetitions):
+          for processor_network in self._processor_networks:
+            latent_graph = self._process_step(processor_network, latent_graph)
+        latent_graph = latent_graph_0
 
     return latent_graph
 

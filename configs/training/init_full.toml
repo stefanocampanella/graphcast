@@ -70,8 +70,7 @@ input_duration = "2d"
 
 [model]
 latent_size = 512
-# Unfortunately, it appears to be impossible to train such a model on CINECA Leonardo
-gnn_msg_steps = 8
+gnn_msg_steps = 16
 hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 per_variable_weights = {}

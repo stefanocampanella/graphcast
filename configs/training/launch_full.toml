@@ -13,10 +13,12 @@ shuffle_dataset = true
 seed = 42
 
 [dataloader]
+worker_count = 16
+num_threads = 1
 
 [policy]
 names_which_can_be_saved = []
-names_which_can_be_offloaded = ["positional_encoder", "embedder", "message_passing", "grid2mesh_gnn", "mesh_gnn", "mesh2grid_gnn"]
+names_which_can_be_offloaded = ["positional_encoder", "graph_embedder", "message_passing", "graph_output"]
 offload_src = "device"
 offload_dst = "pinned_host"
 
