@@ -1,13 +1,10 @@
 import pathlib
-from collections import OrderedDict
 from typing import SupportsIndex
 
 import grain.python as grain
 import jax
 import numpy as np
 import xarray as xr
-from grain.sharding import ShardOptions
-from jax.experimental import multihost_utils
 
 from graphcast import xarray_jax
 from graphcast.data_utils import extract_inputs_targets_forcings
@@ -44,38 +41,6 @@ class ARCODataSource(grain.RandomAccessDataSource):
     return self._dataset
 
 
-class ToXarrayJax(grain.MapTransform):
-
-  def __init__(self, datetime_coord_name='datetime'):
-    self.datetime_coord_name = datetime_coord_name
-
-  def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    datetime_coord = dataset[self.datetime_coord_name]
-    datetime_coord.data = datetime_coord.data.astype("datetime64[s]").astype(np.int64)
-    dataset = dataset.drop(self.datetime_coord_name)
-    dataset = xarray_jax.Dataset(data_vars={var: (data.dims, data.data) for var, data in dataset.data_vars.items()},
-                                 coords=dataset.coords,
-                                 jax_coords={self.datetime_coord_name: datetime_coord},
-                                 attrs=dataset.attrs)
-    return dataset
-
-
-class DevicePut(grain.MapTransform):
-  def __init__(self, sharding, multi_host=False):
-    self.sharding = sharding
-    self.multi_host = multi_host
-
-  def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    if self.multi_host:
-      dataset = dataset.map(
-        lambda da: jax.tree_util.tree_map(
-          lambda xs: jax.make_array_from_process_local_data(sharding=self.sharding, local_data=xs),
-        da))
-    else:
-      dataset = xarray_jax.tree_map_with_dims(lambda xs, _: jax.device_put(xs, self.sharding), dataset)
-    return dataset
-
-
 class AddLogDepthCoordinate(grain.MapTransform):
 
   def __init__(self, log_depth_name='log-depth', depth_name='depth'):
@@ -86,29 +51,6 @@ class AddLogDepthCoordinate(grain.MapTransform):
     return dataset.assign_coords({self.log_depth_name: - np.log(dataset[self.depth_name])})
 
 
-class RestoreDatetimeCoordinate(grain.MapTransform):
-
-  def __init__(self, datetime_coord_name='datetime', datetime_dims_name=('batch', 'time'), multi_host=False):
-    self.gather_from_all_processes = multi_host
-    self.datetime_coord_name = datetime_coord_name
-    self.datetime_dims_name = datetime_dims_name
-
-  def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    datetime_coordinate = dataset[self.datetime_coord_name]
-    # The datetime coordinate should be reverted to a simple coordinate (and not jax_coordinate with an underlying jax
-    # array spanning multiple processes/devices): this requires calling
-    # `jax.experimental.multihost_utils.process_allgather`, then unwrapping/converting to numpy.ndarray and calling
-    # `xarray_jax.Dataset`, and finally recasting to datetime64[ns] (the easy part).
-    if self.gather_from_all_processes:
-      datetime_coordinate = multihost_utils.process_allgather(datetime_coordinate)
-    # In the case of single-host setups it might happen that datetime is still a numpy array
-    datetime_coordinate = xarray_jax.unwrap_data(datetime_coordinate, require_jax=False)
-    datetime_coordinate = np.asarray(datetime_coordinate).astype('datetime64[s]')
-    dataset = dataset.drop(self.datetime_coord_name)
-    dataset = dataset.assign_coords({self.datetime_coord_name: (self.datetime_dims_name, datetime_coordinate)})
-    return dataset
-
-
 class FillNans(grain.MapTransform):
 
   def __init__(self, value=0.0):
@@ -116,7 +58,7 @@ class FillNans(grain.MapTransform):
 
   def map(self, dataset: xr.Dataset) -> xr.Dataset:
     # Notice: as a side-effect, boolean variables get casted to float32 (which is useful)
-    dataset = dataset.fillna(value=jax.numpy.float32(self.value))
+    dataset = dataset.fillna(value=self.value)
     return dataset
 
 
@@ -131,44 +73,24 @@ class ExtractInputsTargetsForcings(grain.MapTransform):
     inputs, targets, forcings = extract_inputs_targets_forcings(dataset=dataset,
                                                                 **self.task,
                                                                 target_lead_times=self.target_lead_times,
-                                                                to_jax=True,
-                                                                derived_vars_device=self.derived_vars_device)
+                                                                to_jax=False)
     return inputs, targets, forcings
 
 
-# class DevicePut(grain.MapTransform):
-#
-#   def __init__(self, mesh, replicate_along_batch=False, batch_dim_name='batch'):
-#
-#     self.mesh = mesh
-#     self.replicate_along_batch = replicate_along_batch
-#     self.batch_dim_name = batch_dim_name
-#
-#   def map(self, dataset: xr.Dataset) -> xr.Dataset:
-#     if self.replicate_along_batch:
-#       sharding = NamedSharding(self.mesh, PartitionSpec())
-#     else:
-#       sharding = NamedSharding(self.mesh, PartitionSpec(self.batch_dim_name))
-#
-#     def _put_dataarray(data_array):
-#       return jax.tree_util.tree_map(lambda xs: jax.device_put(xs, sharding), data_array)
-#
-#     return dataset.map(lambda da: _put_dataarray(da))
+class WrapData(grain.MapTransform):
+  """Wraps data in a jax.tree_util compatible structure to allow data movements between processes and work with JAX
+  arrays."""
 
-# FIXME: the following seems to be broken for a multi-host-each-with-multiple-devices setup.
-class BatchParallelShardOptions(ShardOptions):
+  def map(self, element):
 
-  def __init__(self, sharding, batch_dim_name='batch', drop_remainder=False):
+    def _wrap_data(dataset: xr.Dataset) -> xr.Dataset:
+      # The main reason for using WrapData is to ensure that the data is contiguous. Otherwise, when using
+      # multiprocessing, uncontiguous arrays would not be converted to SharedMemoryArrays and instead would be pickled
+      # and transferred to the main process.
+      dataset = xarray_jax.Dataset(data_vars={var: (data.dims, np.ascontiguousarray(data.data)) for var, data in dataset.data_vars.items()},
+                                   coords=dataset.coords,
+                                   jax_coords={},
+                                   attrs=dataset.attrs)
+      return dataset
 
-    def addressable_device_mesh_indices_map(device):
-      global_shape = tuple(size for (_, size) in sharding.mesh.shape_tuple)
-      slices = sharding.addressable_devices_indices_map(global_shape)[device]
-      indices = OrderedDict((name, s.start) for (name, s) in zip(sharding.mesh.axis_names, slices))
-      return indices
-
-    local_device_batch_indices = [addressable_device_mesh_indices_map(device)[batch_dim_name]
-                                  for device in sharding.addressable_devices]
-    assert all(n == local_device_batch_indices[0] for n in local_device_batch_indices)
-    shard_index = local_device_batch_indices[0]
-    shard_count = sharding.mesh.shape[batch_dim_name]
-    super().__init__(shard_count=shard_count, shard_index=shard_index, drop_remainder=drop_remainder)
+    return jax.tree_util.tree_map(_wrap_data, element, is_leaf=lambda x: isinstance(x, xr.Dataset))

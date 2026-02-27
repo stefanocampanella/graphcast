@@ -15,32 +15,34 @@
 import logging
 import os
 import pathlib
+from functools import partial
 from typing import Mapping, Any
 
 import click
 import gmsh
+import grain
 import haiku as hk
 import jax
+import numpy as np
 import optax
 import orbax.checkpoint as ocp
 import xarray as xr
-from grain.python import IndexSampler, DataLoader, Batch
+from grain.python import IndexSampler, DataLoader, Batch, ShardOptions, ReadOptions
 from jax import checkpoint_policies as cp
-from jax.experimental.shard_map import shard_map
+from jax.experimental.shard import reshard
 from jax.sharding import PartitionSpec, NamedSharding, AxisType
 
-from graphcast import checkpoint, cli_utils, xarray_tree
+from graphcast import checkpoint, cli_utils, xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import Configs, run_analysis_and_report
-from graphcast.dataloader import ARCODataSource, ToXarrayJax, RestoreDatetimeCoordinate, FillNans, \
-  ExtractInputsTargetsForcings, AddLogDepthCoordinate, DevicePut, ShardOptions
+from graphcast.dataloader import ARCODataSource, FillNans, ExtractInputsTargetsForcings, AddLogDepthCoordinate, \
+  WrapData
 from graphcast.geospatial_mesh_utils import read_mesh
 from graphcast.mask import MaskedPredictor
 from graphcast.mesh_graph import MeshData, faces_to_edges, MeshGraph
 from graphcast.model import TaskConfig, ModelConfig, GraphCast, CheckPoint
 from graphcast.normalization import InputsAndResiduals
-from graphcast.training_utils import get_optimizer
-from graphcast.xarray_jax import unwrap_data
+from graphcast.training_utils import get_optimizer, get_global_grad_fn
 
 logger = logging.getLogger(__name__)
 
@@ -125,11 +127,9 @@ def init(config_path: pathlib.Path,
                               timesteps=configs.get('dataset.timesteps', 3),
                               mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
   sampler = IndexSampler(num_records=len(datasource))
-  operations = [ToXarrayJax(),
-                FillNans(),
-                RestoreDatetimeCoordinate(multi_host=False),
-                ExtractInputsTargetsForcings(task=task_config,
-                                             target_lead_times=target_lead_times)]
+  # FIXME: Should log-depth coordinate and other operation options be read from configs?
+  operations = [FillNans(), AddLogDepthCoordinate(),
+                ExtractInputsTargetsForcings(task=task_config, target_lead_times=target_lead_times)]
   dataloader = DataLoader(data_source=datasource, sampler=sampler, operations=operations)
   inputs, targets, forcings = next(iter(dataloader))
 
@@ -273,6 +273,7 @@ def launch(config_path: pathlib.Path,
   from tensorflow import summary
   import tensorflow as tf
 
+  # TODO: could this be set using environment variables?
   tf.config.experimental.set_visible_devices([], 'GPU')
 
   # FIXME: use backend in jax.devices and jax.device_count,
@@ -280,21 +281,33 @@ def launch(config_path: pathlib.Path,
   multi_host = jax.process_count() > 1
   logger.info(f"Setting up the device mesh with {jax.device_count()} devices "
               f"and backend {jax_backend} ({'multi-host setup' if multi_host else 'single-host setup'}).")
+
   device_mesh = jax.make_mesh((jax.device_count(),),
                               ('batch',),
                               devices=jax.devices(),
                               axis_types=(AxisType.Explicit,))
+  null_mesh = jax.make_mesh((), ())
 
+  # TODO: add an option to either restart from previous checkpoint or start a fresh training
+  # The CheckpointManager has to be within a context using null_mesh, or before jax.sharding.set_mesh() is called.
+  # The reason is that within the CheckpointManager stack there is a call to jax.multihost_utils.broadcast_on_to_all
+  # (used to implement a barrier), which declares its own jax.sharding.Mesh which is generally different from the
+  # context mesh. The same goes for save and restore operations.
+  # See: https://github.com/google/orbax/issues/2545
+  params_checkpoint_path = data_path / configs.get("checkpoints.dirpath")
+  logger.info(f"Reading and saving checkpoints from {params_checkpoint_path}")
+  params_checkpoint_path = params_checkpoint_path.resolve()
+  if jax.process_index() == 0 and any(params_checkpoint_path.iterdir()):
+    params_checkpoint_path = ocp.test_utils.erase_and_create_empty(params_checkpoint_path)
+  ckpt_mngr_options = ocp.CheckpointManagerOptions(max_to_keep=3, best_fn=lambda metrics: metrics['loss'],
+                                                   best_mode='min')
+  ckpt_mngr = ocp.CheckpointManager(params_checkpoint_path, options=ckpt_mngr_options)
+
+  jax.sharding.set_mesh(device_mesh)
 
   logger.info(f"Loading GraphCast checkpoint from {checkpoint_path}")
   with open(checkpoint_path, 'rb') as checkpoint_file:
     training_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
-
-  params_checkpoint_path = data_path / configs.get("checkpoints.dirpath")
-  logger.info(f"Saving params checkpoint from {params_checkpoint_path}")
-  params_checkpoint_path = params_checkpoint_path.resolve()
-  if jax.process_index() == 0 and any(params_checkpoint_path.iterdir()):
-    params_checkpoint_path = ocp.test_utils.erase_and_create_empty(params_checkpoint_path)
 
   if data_path is None:
     data_path = pathlib.Path(os.getcwd())
@@ -302,52 +315,32 @@ def launch(config_path: pathlib.Path,
   if (dataset_path := (data_path / configs.get('dataset.filepath'))) is None:
     raise ValueError("The dataset filepath must be specified in the config file.")
 
-  def sharding(*dims):
-    return NamedSharding(device_mesh, PartitionSpec(*dims))
-
   logger.info(f"Loading dataset from {dataset_path}")
   datasource = ARCODataSource(dataset_path,
                               timesteps=configs.get('dataset.timesteps', 3),
                               mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
   sampler = IndexSampler(num_records=len(datasource),
-                         # FIXME:
-                         # shard_options=BatchParallelShardOptions(sharding('batch')),
                          shard_options=ShardOptions(shard_count=jax.process_count(),
                                                     shard_index=jax.process_index()),
                          num_epochs=None,
                          shuffle=configs.get('sampler.shuffle_dataset', True),
                          seed=configs.get('sampler.seed'))
-  # The order of operations is constrained by the following requirements:
-  # 1. RestoreDatetimeCoordinate must be called before ExtractInputsTargetsForcings, as the datetime coordinate is used
-  #    to determine the progress (e.g. day of the year) variables.
-  # 2. MakeArrayFromProcessLocalData must be called before RestoreDatetimeCoordinate, as the latter assume that data is
-  #    sharded (and it contains an all_gather communication).
-  # 3. ToXarrayJax must be called before MakeArrayFromProcessLocalData, as the latter takes numpy arrays as inputs and
-  #    returns jax arrays, and the former takes care of casting the datetime coordinate to a dtype that could be used in
-  #    a jax array.
-  # FIXME: IMPORTANT! Current implementation cannot use multiple workers as Device objects cannot be pickled. It might
-  #  be the case that most post-processing steps should be moved to the training loop.
-  operations = [Batch(batch_size=configs.get('local_batch_size', 1),
-                      drop_remainder=True,
-                      batch_fn=lambda datasets: xr.concat(datasets, dim='batch')),
-                ToXarrayJax(),
-                FillNans(),
+
+  def batch_fn(samples):
+    return tuple(map(lambda datasets: xr.concat(datasets, dim='batch'), zip(*samples)))
+
+  operations = [FillNans(),
                 AddLogDepthCoordinate(),  # The negative logarithm of depth is used as a weight in loss calculations
-                DevicePut(sharding=sharding('batch'), multi_host=multi_host),
-                RestoreDatetimeCoordinate(multi_host=multi_host),
-                ExtractInputsTargetsForcings(task=training_ckpt.task_config,
-                                             target_lead_times="1d",
-                                             derived_vars_device=sharding('batch'))]
+                ExtractInputsTargetsForcings(task=training_ckpt.task_config, target_lead_times="1d"),
+                Batch(batch_size=configs.get('local_batch_size', 1),
+                      drop_remainder=True,
+                      batch_fn=batch_fn),
+                WrapData()]
   dataloader = DataLoader(data_source=datasource,
                           sampler=sampler,
                           operations=operations,
-                          worker_count=configs.get('dataloader.worker_count', 0))
-
-  # Load a single minibatch from dataloader
-  if jax.process_count() > 1:
-    inputs, targets, forcings = jax.tree_util.tree_map(lambda xs: xs.addressable_data(0), next(iter(dataloader)))
-  else:
-    inputs, targets, forcings = next(iter(dataloader))
+                          worker_count=configs.get('dataloader.worker_count', 0),
+                          read_options=ReadOptions(num_threads=configs.get('dataloader.num_threads', 0)))
 
   mask = datasource.mask
   mesh_data = training_ckpt.mesh_data
@@ -366,6 +359,7 @@ def launch(config_path: pathlib.Path,
                         grid_mask=mask,
                         mesh_graph=mesh_data.mesh_graph,
                         mesh_size=mesh_data.mesh_size,
+                        scan=False,
                         remat=True,
                         policy=policy,
                         prevent_cse=False)
@@ -373,6 +367,7 @@ def launch(config_path: pathlib.Path,
   # Modify inputs/outputs to `graphcast.GraphCast` to handle conversion to from/to float32 to/from BFloat16.
   predictor = Bfloat16Cast(predictor)
 
+  # TODO: Move artifacts loading code to training_utils.py, take care of zero residual scales, and put on device
   if (artifacts_path := (data_path / configs.get('artifacts.filepath'))) is None:
     raise ValueError("The normalization artifacts filepath must be specified in the config file.")
   logger.info(f"Loading normalization artifacts from {artifacts_path}")
@@ -400,57 +395,49 @@ def launch(config_path: pathlib.Path,
   # Mask inputs/outputs replacing missing values with 0.0
   predictor = MaskedPredictor(predictor, mask=mask, value=0.0)
 
-  # get params from checkpoint
-  params = training_ckpt.params
+  global_grad_fn = get_global_grad_fn(predictor, device_mesh,
+                                      levels_normalization_coord='log-depth', batch_dim_name='batch')
 
-  @hk.without_apply_rng
-  @hk.transform
-  def local_loss_fn(inputs, targets, forcings):
-    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings,
-                                       levels_normalization_coord='log-depth')
-    return xarray_tree.map_structure(
-      lambda x: unwrap_data(x.mean(), require_jax=True),
-      (loss, diagnostics))
+  @partial(jax.jit, donate_argnums=(0, 1, 2))
+  def train_step(params, rng_key, opt_state, sample):
+    inputs, targets, forcings = sample
+    rng_key, next_rng_key = jax.random.split(rng_key)
+    (loss, diagnostics), grads = global_grad_fn(params, rng_key, inputs=inputs, targets=targets, forcings=forcings)
+    updates, next_opt_state = optimizer.update(grads, opt_state, params)
+    updated_params = optax.apply_updates(params, updates)
 
-  local_grad_fn = jax.value_and_grad(local_loss_fn.apply, has_aux=True)
+    return updated_params, next_rng_key, next_opt_state, loss, diagnostics
 
   # Data parallel section
 
-  params = jax.device_put(params, device=sharding())
-  args_template = (params,) + next(iter(dataloader))
-  args_template_value, args_template_structure = jax.tree.flatten(args_template)
-  args_template_shapedtypestruct = jax.tree_util.tree_map(lambda x: jax.ShapeDtypeStruct(x.shape, x.dtype),
-                                                          args_template)
-  return_template = jax.eval_shape(local_grad_fn, *args_template_shapedtypestruct)
+  sharding_along_batch = NamedSharding(device_mesh, PartitionSpec('batch'))
+  sharding_replicated = NamedSharding(device_mesh, PartitionSpec())
 
-  in_specs = (jax.tree_util.tree_map(lambda x: x.sharding.spec, args_template_value),)
-  out_specs = jax.tree_util.tree_map(lambda x: PartitionSpec(), return_template)
+  # TODO: revise dataset put logic: could it be rewritten as a single tree_map?
+  def device_put_dataset(dataset: xr.Dataset) -> xr.Dataset:
+    # jax.block_until_ready is needed to ensure that shared memory arrays are converted to JAX arrays
+    # while still existing (in the async case that is not guaranteed).
+    dataset = dataset.map(
+      lambda da: jax.block_until_ready(jax.tree_util.tree_map(
+        lambda local_data: jax.make_array_from_process_local_data(sharding=sharding_along_batch, local_data=local_data),
+        da)))
+    dataset = xarray_jax.Dataset(data_vars={var: (data.dims, xarray_jax.wrap(data.data))
+                                            for var, data in dataset.data_vars.items()},
+                                 coords=dataset.coords,
+                                 attrs=dataset.attrs)
+    return dataset
 
-  def global_grad_fn(params, inputs, targets, forcings):
-
-    # get pytrees from xarray.Dataset
-    args_value, args_structure = jax.tree.flatten((params, inputs, targets, forcings))
-    assert args_structure == args_template_structure
-
-    def pmean_grad_fn(args_value):
-      # reconstruct xarray.Dataset from pytrees
-      params, inputs, targets, forcings = args_template_structure.unflatten(args_value)
-      (loss, diagnostics), grads = jax.lax.pmean(local_grad_fn(params, inputs, targets, forcings), axis_name='batch')
-      return (loss, diagnostics), grads
-
-    # Eager evaluation of some function inside a `shard_map` isn't yet supported, hence the need for jit here.
-    _global_grad_fn = shard_map(jax.jit(pmean_grad_fn),
-                                mesh=device_mesh,
-                                in_specs=in_specs,
-                                out_specs=out_specs,
-                                check_rep=False)
-
-    return _global_grad_fn(args_value)
+  # get params from checkpoint and upload them to devices
+  params = reshard(training_ckpt.params, out_shardings=sharding_replicated)
+  rng_key = reshard(jax.random.key(configs['seed']), out_shardings=sharding_replicated)
 
   if analysis:
     logger.info("Running gradient memory and cost analysis")
+    # Load a single minibatch from dataloader
+    inputs, targets, forcings = jax.tree_util.tree_map(device_put_dataset, next(iter(dataloader)),
+                                                       is_leaf=lambda x: isinstance(x, xr.Dataset))
     global_grad_fn_jit = jax.jit(global_grad_fn)
-    global_grad_fn_aot = global_grad_fn_jit.trace(params,
+    global_grad_fn_aot = global_grad_fn_jit.trace(params, rng_key,
                                                   inputs=inputs,
                                                   targets=targets,
                                                   forcings=forcings
@@ -458,20 +445,10 @@ def launch(config_path: pathlib.Path,
     run_analysis_and_report(global_grad_fn_aot)
 
   optimizer = get_optimizer(configs["optimizer"])
-  opt_state = optimizer.init(params)
+  opt_state = reshard(optimizer.init(params), out_shardings=sharding_replicated)
 
-  @jax.jit
-  def train_step(params, opt_state, sample):
-    inputs, targets, forcings = sample
-    (loss, diagnostics), grads = global_grad_fn(params, inputs=inputs, targets=targets, forcings=forcings)
-    updates, opt_state = optimizer.update(grads, opt_state, params)
-    params = optax.apply_updates(params, updates)
-
-    return params, opt_state, loss, diagnostics
-
-  ckpt_mngr_options = ocp.CheckpointManagerOptions(max_to_keep=3, best_fn=lambda metrics: metrics['loss'],
-                                                   best_mode='min')
-  ckpt_mngr = ocp.CheckpointManager(params_checkpoint_path, options=ckpt_mngr_options)
+  # TODO: summary_writer should be handled by a separate utility function, and it should resume from the latest
+  #  checkpoint in case of a restart.
   logdir = (data_path / configs.get('logging.filepath', 'logs')) / os.getenv('SLURM_JOB_ID', 'local')
   summary_writer = summary.create_file_writer(str(logdir))
   dataloader_iter = iter(dataloader)
@@ -479,8 +456,23 @@ def launch(config_path: pathlib.Path,
     training_steps = configs.get("training_steps", 1024)
     logger.info(f"Running {training_steps} training steps")
     for step in range(training_steps):
-      params, opt_state, loss, diagnostics = train_step(params, opt_state, next(dataloader_iter))
-      ckpt_mngr.save(step, args=ocp.args.StandardSave(params), metrics={'loss': loss.item()})
+      batch_on_host = next(dataloader_iter)
+      batch = jax.tree_util.tree_map(device_put_dataset, batch_on_host,
+                                      is_leaf=lambda x: isinstance(x, xr.Dataset))
+      params, rng_key, opt_state, loss, diagnostics = train_step(params, rng_key, opt_state, batch)
+      # FIXME: Orbax messes up with global mesh, see comments above. Check if new versions of Orbax fix the issue.
+      #  Also, it seems that converting params to a pytree of numpy arrays speeds things up.
+      with jax.sharding.use_mesh(null_mesh):
+        params_on_host = jax.tree_util.tree_map(np.array, params)
+        ckpt_mngr.save(step,
+                       args=ocp.args.Composite(
+                         dataloader=grain.checkpoint.CheckpointSave(dataloader_iter),
+                         params=ocp.args.StandardSave(params_on_host),
+                         rng=ocp.args.JaxRandomKeySave(rng_key)),
+                       metrics={'loss': loss.item()})
+      # Explicitly delete batch_on_host to trigger shared memory release in Grain.
+      # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
+      del batch_on_host
       if jax.process_index() == 0:
         summary.scalar("loss", loss, step=step)
         for key, value in diagnostics.items():

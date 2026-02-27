@@ -107,6 +107,9 @@ import jax.numpy as jnp
 import numpy as np
 import tree
 import xarray
+from xarray.core.variable import as_compatible_data
+from grain.python import SharedMemoryArray
+from grain._src.python.shared_memory_array import SharedMemoryArrayMetadata
 
 
 # Types which we wrap with JaxArrayWrapper to allow creating xarray datatypes
@@ -114,8 +117,15 @@ import xarray
 # Note this includes some non-Array types which jax sometimes needs to use as
 # leaves of pytrees, in order to ensure we can still use xarray datatypes as
 # internal pytree nodes in these cases.
-_WRAPPED_TYPES = (
+_JAX_WRAPPED_TYPES = (
     jax.Array, jax.ShapeDtypeStruct, jax.stages.ArgInfo)
+# SharedMemoryArray inherits from Numpy array, hence XArray would recognize it as a DuckArrayT, and there would be no
+# need to wrap this type in a SharedMemoryArrayWrapper.
+# However, we include it in _GRAIN_WRAPPED_TYPES to allow its usage only withing data transfers from child processes to
+# parent in a Grain dataset when using multiprocessing.
+_GRAIN_WRAPPED_TYPES = (
+  SharedMemoryArray, SharedMemoryArrayMetadata)
+_WRAPPED_TYPES = _JAX_WRAPPED_TYPES + _GRAIN_WRAPPED_TYPES
 
 
 def Variable(dims, data, **kwargs) -> xarray.Variable:  # pylint:disable=invalid-name
@@ -373,21 +383,25 @@ def assign_jax_coords(
 
 
 def wrap(value):
-  """Wraps JAX arrays for use in xarray, passing through other values."""
-  if isinstance(value, _WRAPPED_TYPES):
+  """Wraps JAX or Grain shared memory arrays for use in xarray, passing through other values."""
+  if isinstance(value, _JAX_WRAPPED_TYPES):
     return JaxArrayWrapper(value)
+  elif isinstance(value, _GRAIN_WRAPPED_TYPES):
+    return SharedMemoryArrayWrapper(value)
   else:
     return value
 
 
 def unwrap(value, require_jax=False):
-  """Unwraps wrapped JAX arrays used in xarray, passing through other values."""
+  """Unwraps wrapped JAX or Grain shared memory arrays used in xarray, passing through other values."""
   if isinstance(value, JaxArrayWrapper):
     return value.jax_array
   elif isinstance(value, jax.Array):
     return value
   elif require_jax:
     raise TypeError(f'Expected JAX array, found {type(value)}.')
+  elif isinstance(value, SharedMemoryArrayWrapper):
+    return value.shmem_array
   else:
     return value
 
@@ -441,6 +455,41 @@ def jax_vars(
   """Like unwrap_vars, but will complain if vars are not all jax arrays."""
   return cast(Mapping[str, jax.Array], unwrap_vars(dataset, require_jax=True))
 
+
+# See: https://google-grain.readthedocs.io/en/latest/behind_the_scenes.html#shared-memory
+class SharedMemoryArrayWrapper:
+  """Wraps a Grain SharedMemoryArray or SharedMemoryArrayMetadata into a duck-typed array
+  suitable for use with xarray."""
+
+  def __init__(self, shmem_array: SharedMemoryArray | SharedMemoryArrayMetadata):
+    self.shmem_array = shmem_array
+
+  def __array_ufunc__(self, ufunc, method, args, kwargs):
+    raise TypeError(f'Shared memory arrays cannot be used with xarray: {ufunc}')
+
+  def __array_function__(self, func, types, args, kwargs):
+    raise TypeError(f'Shared memory arrays cannot be used with xarray: {func}')
+
+  def __repr__(self):
+    return f'xarray_jax.SharedMemoryArrayWrapper({repr(self.shmem_array)})'
+
+  __str__ = __repr__
+
+  @property
+  def shape(self):
+    return tuple(self.shmem_array.shape)
+
+  @property
+  def dtype(self):
+    return self.shmem_array.dtype
+
+  @property
+  def ndim(self):
+    return len(self.shape)
+
+  @property
+  def size(self):
+    return np.prod(self.shape)
 
 class JaxArrayWrapper(np.lib.mixins.NDArrayOperatorsMixin):
   """Wraps a JAX array into a duck-typed array suitable for use with xarray.
