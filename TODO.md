@@ -1,6 +1,7 @@
 # TODO list
 
-* Fix dataloader to use multiple workers and reduce training bubble. **HIGH PRIORITY**
+* ~~Fix dataloader to use multiple workers and reduce training bubble.~~ **DONE**
+* Investigate bug resulting in the release of SharedMemoryArrays when using multiple workers in Grain and checkpointing parameters as pytree in Orbax. **HIGH PRIORITY**
 * ~~Write a training loop using Optax.~~ **DONE**
 * ~~Checkpoint training loop with Orbax~~ **DONE**
 * ~~Log training metrics to TensorBoard.~~ **DONE**
@@ -9,6 +10,13 @@
 * Checkpoint dataloader state, and implement restart logic. **HIGH PRIORITY**
 * Log each process independently using `cli_utils.py`. **HIGH PRIORITY**
 * Move training stuff to `training_utils.py` **HIGH PRIORITY**
+* Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
+* Check that artifacts contain only zero std residuals for sea ice variables. **HIGH PRIORITY**
+* Experiment with argument buffer donation to accelerate training. (Low priority)
+* Check memory consumption without scan. **HIGH PRIORITY**
+* Revise level weighting using depth. **HIGH PRIORITY**
+* Revise per variable weighting according to GraphCast. **HIGH PRIORITY**
+* Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules. **HIGH PRIORITY**
 * Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
 * Experiment with typed graphs context (i.e., a global graph attribute which might embed variables as year_progress).
 * ~~Revise functions in `model_utils.py` to use GIS utilities.~~ **DONE**

@@ -461,7 +461,7 @@ def launch(config_path: pathlib.Path,
                                       is_leaf=lambda x: isinstance(x, xr.Dataset))
       params, rng_key, opt_state, loss, diagnostics = train_step(params, rng_key, opt_state, batch)
       # FIXME: Orbax messes up with global mesh, see comments above. Check if new versions of Orbax fix the issue.
-      #  Also, it seems that converting params to a pytree of numpy arrays speeds things up.
+      # FIXME: When checkpointing params as is, after a while the dataloader tries to retrieve a SharedMemoryArray whose memory has already been released, making a Grain worker fail and ultimately stopping the whole execution. Also, it seems that converting params to a pytree of numpy arrays speeds things up.
       with jax.sharding.use_mesh(null_mesh):
         params_on_host = jax.tree_util.tree_map(np.array, params)
         ckpt_mngr.save(step,
