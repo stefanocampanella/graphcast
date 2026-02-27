@@ -13,14 +13,17 @@
 # limitations under the License.
 """Learnable Fourier features, see: https://arxiv.org/pdf/2106.02795 and https://arxiv.org/abs/2006.10739."""
 import dataclasses
+from typing import Callable
 
 import haiku as hk
 import jax
 import jax.numpy as jnp
 import numpy as np
+from jax.ad_checkpoint import checkpoint_name
+
 
 @dataclasses.dataclass
-class FourierFeaturesEncoder(hk.Module):
+class FourierFeatures(hk.Module):
   """A simple MLP applied to Fourier features of values. see: https://arxiv.org/abs/2006.10739.
 
     Args:
@@ -37,7 +40,7 @@ class FourierFeaturesEncoder(hk.Module):
   name: str | None = None
 
   def __post_init__(self):
-        super().__post_init__(name=self.name)
+    super().__post_init__(name=self.name)
 
   def __call__(self, values: jnp.ndarray) -> jnp.ndarray:
     frequencies = hk.get_parameter("frequencies", shape=(values.shape[-1], self.num_frequencies),
@@ -66,3 +69,57 @@ class FourierFeaturesEncoder(hk.Module):
       frequencies: jnp.ndarray) -> jnp.ndarray:
     values = 2 * np.pi * values @  frequencies
     return jnp.concatenate([jnp.cos(values), jnp.sin(values)], axis=-1) / jnp.sqrt(self.num_frequencies)
+
+
+# TODO: disabling learnable fourier features has not been tested, the following might be broken
+def fourier_features(
+    values: jnp.ndarray,
+    num_frequencies: int,
+) -> jnp.ndarray:
+  """Maps values to sin/cos features for a range of frequencies.
+
+  Args:
+    values: Values to compute Fourier features for.
+    num_frequencies: The number of frequencies to use, we will use integer from 1 up
+      to num_frequencies inclusive. (We don't include a zero frequency as this would
+      just give constant features which are redundant if a bias term is present).
+
+  Returns:
+    Array with same shape as values except with an extra trailing dimension
+    of size 2*num_frequencies, which contains a sin and a cos feature for each
+    frequency.
+  """
+  frequencies = 2 * jnp.pi * jnp.arange(1, num_frequencies + 1, dtype=values.dtype)
+  values_times_freqs = values[..., None] * frequencies
+  features = jnp.concatenate([jnp.cos(values_times_freqs), jnp.sin(values_times_freqs)], axis=-1)
+  features = features.reshape(values.shape[:-1] + (2 * num_frequencies * values.shape[-1],))
+  return features
+
+@dataclasses.dataclass
+class PositionalEncoder(hk.Module):
+  """Encodes positions using learnable or static Fourier features."""
+
+  learnable_fourier_features: bool
+  num_frequencies: int
+  encoding_dim: int
+  hidden_dim: int
+  gamma: float | None = 1.0
+  remat: bool = False
+  policy: Callable[..., bool] | None = None
+  prevent_cse: bool = False
+  name: str | None = None
+
+  def __post_init__(self):
+    super().__post_init__(name=self.name)
+
+  def __call__(self, node_coordinates: jnp.ndarray) -> jnp.ndarray:
+    if self.learnable_fourier_features:
+      positional_encoder = FourierFeatures(self.num_frequencies, self.encoding_dim, self.hidden_dim,
+                                           self.gamma, name=self.name + "_fourier_features")
+      if self.remat:
+        positional_encoder = hk.remat(positional_encoder, policy=self.policy, prevent_cse=self.prevent_cse)
+      codes = positional_encoder(node_coordinates)
+    else:
+      codes = fourier_features(node_coordinates, self.num_frequencies)
+    codes = checkpoint_name(codes, "positional_encoder")
+    return codes

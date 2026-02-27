@@ -28,7 +28,6 @@ import logging
 from typing import Any, Callable, Mapping, Optional, Tuple
 
 import chex
-import haiku as hk
 import jax
 import jax.numpy as jnp
 import jraph
@@ -44,10 +43,9 @@ from graphcast import model_utils
 from graphcast import predictor_base
 from graphcast import typed_graph
 from graphcast import xarray_jax
-from graphcast.fourier_features import FourierFeaturesEncoder
+from graphcast.fourier_features import PositionalEncoder
 from graphcast.gis_utils import get_transform, equirectangular_srs, cartesian_srs
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
-from graphcast.model_utils import fourier_features
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +244,11 @@ class GraphCast(predictor_base.Predictor):
                mesh_graph: MeshGraph,
                mesh_size: np.ndarray,
                kdtree_workers: int = 1,
-               learnable_fourier_encoding: bool = True,
+               learnable_fourier_features: bool = True,
                remat: bool = False,
                policy: Callable[..., bool] | None = None,
                prevent_cse: bool = False,
+               scan=False,
                sharding: NamedSharding | None = None):
     """Initializes the predictor."""
 
@@ -268,11 +267,17 @@ class GraphCast(predictor_base.Predictor):
       add_edge_direction=True,
       add_edge_length=True,
       add_edge_receiver_coordinates=False)
-    self._learnable_fourier_encoding = learnable_fourier_encoding
-    self._fourier_encoding_kwargs = dict(
-      num_frequencies = 32,
-      hidden_dim = 32,
-      encoding_dim = 16)
+
+    # Positional encoder, which encodes the position of the grid and mesh nodes.
+    self._positional_encoder_kwargs = dict(
+      learnable_fourier_features=learnable_fourier_features,
+      num_frequencies=32,
+      hidden_dim=32,
+      encoding_dim=16,
+      remat=self._remat,
+      policy=self._policy,
+      prevent_cse=self._prevent_cse,
+      name="positional_encoder")
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
     #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
@@ -304,8 +309,10 @@ class GraphCast(predictor_base.Predictor):
         activation="swish",
         f32_aggregation=True,
         aggregate_normalization=None,
+        remat=self._remat,
         policy=self._policy,
         prevent_cse=self._prevent_cse,
+        scan=False,
         name="grid2mesh_gnn")
 
     # Processor, which performs message passing on the multi-mesh.
@@ -321,8 +328,10 @@ class GraphCast(predictor_base.Predictor):
         include_sent_messages_in_node_update=False,
         activation="swish",
         f32_aggregation=False,
+        remat=self._remat,
         policy=self._policy,
         prevent_cse=self._prevent_cse,
+        scan=scan,
         name="mesh_gnn")
 
     num_surface_vars = len(set(task_config.target_variables) & set(ALL_SURFACE_VARS))
@@ -349,8 +358,10 @@ class GraphCast(predictor_base.Predictor):
         include_sent_messages_in_node_update=False,
         activation="swish",
         f32_aggregation=False,
+        remat=self._remat,
         policy=self._policy,
         prevent_cse=self._prevent_cse,
+        scan=False,
         name="mesh2grid_gnn")
 
     # The `_init_*_properties` methods initialize remaining properties, that is:
@@ -586,29 +597,17 @@ class GraphCast(predictor_base.Predictor):
     # -> [num_grid_nodes, batch, num_channels]
     grid_node_features = self._inputs_to_grid_node_features(inputs, forcings)
 
-    if self._remat:
-      run_grid2mesh_gnn  = hk.remat(self._run_grid2mesh_gnn, policy=self._policy, prevent_cse=self._prevent_cse)
-    else:
-      run_grid2mesh_gnn  = self._run_grid2mesh_gnn
     # Transfer data for the grid to the mesh,
     # [num_mesh_nodes, batch, latent_size], [num_grid_nodes, batch, latent_size]
-    latent_mesh_nodes, latent_grid_nodes = run_grid2mesh_gnn(grid_node_features)
+    latent_mesh_nodes, latent_grid_nodes = self._run_grid2mesh_gnn(grid_node_features)
 
-    if self._remat:
-      run_mesh_gnn  = hk.remat(self._run_mesh_gnn, policy=self._policy, prevent_cse=self._prevent_cse)
-    else:
-      run_mesh_gnn  = self._run_mesh_gnn
     # Run message passing in the multimesh.
     # [num_mesh_nodes, batch, latent_size]
-    updated_latent_mesh_nodes = run_mesh_gnn(latent_mesh_nodes)
+    updated_latent_mesh_nodes = self._run_mesh_gnn(latent_mesh_nodes)
 
-    if self._remat:
-      run_mesh2grid_gnn  = hk.remat(self._run_mesh2grid_gnn, policy=self._policy, prevent_cse=self._prevent_cse)
-    else:
-      run_mesh2grid_gnn  = self._run_mesh2grid_gnn
     # Transfer data from the mesh to the grid.
     # [num_grid_nodes, batch, output_size]
-    output_grid_nodes = run_mesh2grid_gnn(updated_latent_mesh_nodes, latent_grid_nodes)
+    output_grid_nodes = self._run_mesh2grid_gnn(updated_latent_mesh_nodes, latent_grid_nodes)
 
     # Convert output flat vectors for the grid nodes to the format of the output.
     # [num_grid_nodes, batch, output_size] ->
@@ -644,17 +643,6 @@ class GraphCast(predictor_base.Predictor):
     loss, _ = self.loss_and_predictions(inputs, targets, forcings, **kwargs)
     return loss  # pytype: disable=bad-return-type  # jax-ndarray
 
-  def _encode_positions(self, node_coordinates: chex.Array) -> chex.Array:
-    """Encodes node positions using learnable Fourier features."""
-    if self._learnable_fourier_encoding:
-      positional_encoder = FourierFeaturesEncoder(**self._fourier_encoding_kwargs, name="node_position_encoder")
-      if self._remat:
-        positional_encoder = hk.remat(positional_encoder, policy=self._policy, prevent_cse=self._prevent_cse)
-      node_coordinates = checkpoint_name(node_coordinates, "positional_encoder")
-      return positional_encoder(node_coordinates)
-    else:
-      return fourier_features(node_coordinates, **self._fourier_encoding_kwargs)
-
   def _run_grid2mesh_gnn(self, grid_node_input_features: chex.Array,
                          ) -> tuple[chex.Array, chex.Array]:
     """Runs the grid2mesh_gnn, extracting latent mesh and grid nodes."""
@@ -667,10 +655,11 @@ class GraphCast(predictor_base.Predictor):
     mesh_nodes = grid2mesh_graph.nodes["mesh_nodes"]
 
     # Compute positional encodings and add batch dimension.
-    grid_node_position_encodings = self._encode_positions(grid_nodes.features.astype(grid_node_input_features.dtype))
+    positional_encoder = PositionalEncoder(**self._positional_encoder_kwargs)
+    grid_node_position_encodings = positional_encoder(grid_nodes.features.astype(grid_node_input_features.dtype))
     grid_node_position_encodings = _add_batch_second_axis(grid_node_position_encodings, batch_size,
                                                           sharding=self._sharding)
-    mesh_node_position_encodings = self._encode_positions(mesh_nodes.features.astype(grid_node_input_features.dtype))
+    mesh_node_position_encodings = positional_encoder(mesh_nodes.features.astype(grid_node_input_features.dtype))
     mesh_node_position_encodings = _add_batch_second_axis(mesh_node_position_encodings, batch_size,
                                                           sharding=self._sharding)
 
@@ -687,7 +676,7 @@ class GraphCast(predictor_base.Predictor):
     #  "To make sure capacity of the embedded is identical for the grid nodes and
     #  the mesh nodes, we also append some dummy zero input features for the
     #  mesh nodes."
-    #  In doubt, we add dummy features for the mesh nodes here.
+    #  In doubt, we add dummy features for the mesh nodes here as done originally.
     assert grid_node_input_features.shape[-1] > 0
     dummy_mesh_node_shape = ((self._num_mesh_nodes,) +
                              grid_node_input_features.shape[1:-1] +
