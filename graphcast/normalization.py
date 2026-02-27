@@ -17,6 +17,7 @@ The Predictor which is wrapped sees normalized inputs and targets, and makes
 normalized predictions. The wrapper handles translating the predictions back
 to the original domain.
 """
+# TODO: fix implementation for sea ice variables, that have residual scales equal to zero on most of the domain.
 
 import logging
 from typing import Optional, Tuple
