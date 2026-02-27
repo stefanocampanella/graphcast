@@ -106,6 +106,8 @@ def get_graph_spatial_features(
     edge_features.append(np.cos(edge_azimuths))
   if add_edge_length:
     edge_features.append(edge_lengths)
+
+  # TODO: this should probably be deprecated
   if add_edge_receiver_coordinates:
     edge_phi, edge_theta = lat_lon_deg_to_spherical(node_lon[receivers], node_lat[receivers])
     edge_features.append(edge_phi / (2 * np.pi))
@@ -261,6 +263,8 @@ def get_bipartite_graph_spatial_features(
     edge_features.append(np.cos(edge_azimuths))
   if add_edge_length:
     edge_features.append(edge_lengths)
+
+  # TODO: this should probably be deprecated
   if add_edge_receiver_coordinates:
     edge_phi, edge_theta = lat_lon_deg_to_spherical(receivers_node_lon[receivers], receivers_node_lat[receivers])
     edge_features.append(edge_phi / (2 * np.pi))
@@ -407,28 +411,4 @@ def stacked_to_dataset(
         name=template_var.name,
     )
   return type(template_dataset)(data_vars)  # pytype:disable=not-callable,wrong-arg-count
-
-
-def fourier_features(
-    values: jnp.ndarray,
-    num_frequencies: int,
-    ) -> jnp.ndarray:
-  """Maps values to sin/cos features for a range of frequencies.
-
-  Args:
-    values: Values to compute Fourier features for.
-    num_frequencies: The number of frequencies to use, we will use integer from 1 up
-      to num_frequencies inclusive. (We don't include a zero frequency as this would
-      just give constant features which are redundant if a bias term is present).
-
-  Returns:
-    Array with same shape as values except with an extra trailing dimension
-    of size 2*num_frequencies, which contains a sin and a cos feature for each
-    frequency.
-  """
-  frequencies = 2 * jnp.pi * jnp.arange(1, num_frequencies + 1, dtype=values.dtype)
-  values_times_freqs = values[..., None] * frequencies
-  features = jnp.concatenate([jnp.cos(values_times_freqs), jnp.sin(values_times_freqs)], axis=-1)
-  features = features.reshape(values.shape[:-1] + (2 * num_frequencies * values.shape[-1],))
-  return features
 
