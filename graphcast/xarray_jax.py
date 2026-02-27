@@ -118,7 +118,7 @@ from grain._src.python.shared_memory_array import SharedMemoryArrayMetadata
 # leaves of pytrees, in order to ensure we can still use xarray datatypes as
 # internal pytree nodes in these cases.
 _JAX_WRAPPED_TYPES = (
-    jax.Array, jax.ShapeDtypeStruct, jax.stages.ArgInfo)
+  jax.Array, jax.ShapeDtypeStruct, jax.stages.ArgInfo, jax.stages.OutInfo)
 # SharedMemoryArray inherits from Numpy array, hence XArray would recognize it as a DuckArrayT, and there would be no
 # need to wrap this type in a SharedMemoryArrayWrapper.
 # However, we include it in _GRAIN_WRAPPED_TYPES to allow its usage only withing data transfers from child processes to
