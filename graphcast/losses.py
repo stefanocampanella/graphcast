@@ -12,17 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Loss functions (and terms for use in loss functions) used for weather."""
+import functools
+from typing import Mapping, Callable
+from typing import Optional
 
-from typing import Mapping
+import numpy as np
+import xarray as xr
+from typing_extensions import Protocol
 
 from graphcast import xarray_tree
-import numpy as np
-from typing_extensions import Protocol
-from typing import Optional
-import xarray
 
-
-LossAndDiagnostics = tuple[xarray.DataArray, xarray.Dataset]
+LossAndDiagnostics = tuple[xr.DataArray, xr.Dataset]
 
 
 class LossFunction(Protocol):
@@ -33,8 +33,8 @@ class LossFunction(Protocol):
   """
 
   def __call__(self,
-               predictions: xarray.Dataset,
-               targets: xarray.Dataset,
+               predictions: xr.Dataset,
+               targets: xr.Dataset,
                **optional_kwargs) -> LossAndDiagnostics:
     """Computes a loss function.
 
@@ -53,34 +53,68 @@ class LossFunction(Protocol):
         batch before logging.
     """
 
+
 #TODO: The loss could also make use spatial weights.
 def weighted_mse_per_level(
-    predictions: xarray.Dataset,
-    targets: xarray.Dataset,
+    predictions: xr.Dataset,
+    targets: xr.Dataset,
     per_variable_weights: Optional[Mapping[str, float]] = None,
-    mask: Optional[xarray.DataArray] = None,
+    mask: Optional[xr.DataArray] = None,
     levels_normalization_coord: str = 'level',
-    ) -> LossAndDiagnostics:
-  """Latitude- and pressure-level-weighted MSE loss."""
-  def loss(prediction, target):
-    loss = (prediction - target)**2
+) -> LossAndDiagnostics:
+  """Latitude- and level-weighted, masked MSE loss."""
+
+  def squared_error(prediction: xr.DataArray, target: xr.DataArray) -> xr.DataArray:
+    return (prediction - target)**2
+
+  weighted_mse_per_level_fn = get_weighted_loss_per_level(squared_error,
+                                                          per_variable_weights=per_variable_weights,
+                                                          levels_normalization_coord=levels_normalization_coord,
+                                                          mask=mask)
+  return weighted_mse_per_level_fn(predictions, targets)
+
+
+def get_weighted_loss_per_level(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
+                                levels_normalization_coord: str = 'level',
+                                per_variable_weights: Optional[Mapping[str, float]] = None,
+                                mask: Optional[xr.DataArray] = None) \
+    -> Callable[[xr.Dataset, xr.Dataset], LossAndDiagnostics]:
+  """Returns a Dataset function that computes latitude- and level-weighted, masked loss for a given loss function."""
+
+  def weighted_loss_per_level_fn(predictions: xr.Dataset, targets: xr.Dataset) -> LossAndDiagnostics:
+    """Latitude- and level-weighted loss."""
+    weighted_loss_fn = get_weighted_loss(loss_fn, levels_normalization_coord=levels_normalization_coord, mask=mask)
+    losses = xarray_tree.map_structure(weighted_loss_fn, predictions, targets)
+    return sum_per_variable_losses(losses, per_variable_weights)
+
+  return weighted_loss_per_level_fn
+
+
+def get_weighted_loss(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
+                      levels_normalization_coord: str = 'level',
+                      mask: Optional[xr.DataArray] = None) \
+    -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
+  """Returns a DataArray function that computes (latitude) area-weighted, masked loss for a given loss function."""
+
+  @functools.wraps(loss_fn)
+  def weighted_loss_fn(prediction: xr.DataArray, target: xr.DataArray):
+    loss = loss_fn(prediction, target)
     loss *= normalized_latitude_weights(target).astype(loss.dtype)
     if 'level' in target.dims:
       loss *= normalized_level_weights(target, coord=levels_normalization_coord).astype(loss.dtype)
     return _mean_preserving_batch(loss, mask=mask)
 
-  losses = xarray_tree.map_structure(loss, predictions, targets)
-  return sum_per_variable_losses(losses, per_variable_weights)
+  return weighted_loss_fn
 
 
-def _mean_preserving_batch(x: xarray.DataArray, mask: Optional[xarray.DataArray]=None) -> xarray.DataArray:
+def _mean_preserving_batch(x: xr.DataArray, mask: Optional[xr.DataArray]=None) -> xr.DataArray:
   if mask is not None:
     x = x.where(mask, 0.0)
   return x.mean([d for d in x.dims if d != 'batch'], skipna=False)
 
 
 def sum_per_variable_losses(
-    per_variable_losses: Mapping[str, xarray.DataArray],
+    per_variable_losses: Mapping[str, xr.DataArray],
     weights: Optional[Mapping[str, float]] = None,
 ) -> LossAndDiagnostics:
   """Weighted sum of per-variable losses."""
@@ -94,13 +128,14 @@ def sum_per_variable_losses(
       name: loss * weights.get(name, 1)
       for name, loss in per_variable_losses.items()
   }
-  total = xarray.concat(
+  total = xr.concat(
       weighted_per_variable_losses.values(), dim='variable', join='exact').sum(
           'variable', skipna=False)
+  # noinspection PyTypeChecker
   return total, per_variable_losses  # pytype: disable=bad-return-type
 
 
-def normalized_level_weights(data: xarray.DataArray, coord: str = 'level', w_min=1e-2) -> xarray.DataArray:
+def normalized_level_weights(data: xr.DataArray, coord: str = 'level', w_min=1e-2) -> xr.DataArray:
   """Compute weights from `coord` at each level.
 
   We ask that the weights are such that:
@@ -118,7 +153,7 @@ def normalized_level_weights(data: xarray.DataArray, coord: str = 'level', w_min
   return weights / weights.sum()
 
 
-def normalized_latitude_weights(data: xarray.DataArray) -> xarray.DataArray:
+def normalized_latitude_weights(data: xr.DataArray) -> xr.DataArray:
   """Weights based on latitude, roughly proportional to grid cell area.
 
   This method supports two use cases only (both for equispaced values):
@@ -195,3 +230,16 @@ def _check_uniform_spacing_and_get_delta(vector):
   if not np.all(np.isclose(diff[0], diff)):
     raise ValueError(f'Vector {diff} is not uniformly spaced.')
   return diff[0]
+
+
+def get_tweedie_deviance(p: float) -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
+
+  def tweedie_deviance(prediction: xr.DataArray, target: xr.DataArray) -> xr.DataArray:
+
+    assert prediction.shape == target.shape, 'Predictions and targets shapes must match'
+
+    return (2 / ((1 - p) * (2 - p))) * (target ** (2 - p)
+                                        - 2 * (2 - p) * target * prediction ** (1 - p)
+                                        + (1 - p) * prediction ** (2 - p))
+
+  return tweedie_deviance
