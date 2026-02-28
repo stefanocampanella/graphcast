@@ -25,7 +25,7 @@ export NCCL_PROTO=SIMPLE,LL,LL128
 CONFIG_PATH="$LEONARDO_CODE_ROOT/configs/training/${1}"
 INPUT_CKPT_PATH="$LEONARDO_DATA_ROOT/data/models/${2}"
 OUTPUT_CKPT_PATH="$LEONARDO_DATA_ROOT/data/models/${3}"
-TRAIN_CKPT_PATH="$LEONARDO_DATA_ROOT/data/models/${4}"
+TRAIN_CKPT_PATH="$LEONARDO_FAST_ROOT/data/training_checkpoints/${4}"
 
 shift 4
 
