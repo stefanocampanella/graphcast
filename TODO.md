@@ -2,6 +2,9 @@
 
 * ~~Fix dataloader to use multiple workers and reduce training bubble.~~ **DONE**
 * Investigate bug resulting in the release of SharedMemoryArrays when using multiple workers in Grain and checkpointing parameters as pytree in Orbax. **HIGH PRIORITY**
+* Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
+* Check if and why mesh and grid nodes must have the same number of features before applying the encoder graph (as it is currently implemented). **HIGH PRIORITY**
+* Move mask and artifacts to GPU memory once. **HIGH PRIORITY**
 * ~~Write a training loop using Optax.~~ **DONE**
 * ~~Checkpoint training loop with Orbax~~ **DONE**
 * ~~Log training metrics to TensorBoard.~~ **DONE**
