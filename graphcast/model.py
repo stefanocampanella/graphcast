@@ -625,11 +625,11 @@ class GraphCast(predictor_base.Predictor):
     predictions = self(
         inputs, targets_template=targets, forcings=forcings, is_training=True)
     # Compute loss.
-    #TODO: Here probably `self._grid_mask` should reside on device, possibly being sharded. However,
-    # during the model initialization is probably better to keep it just a `numpy.ndarray` Fix this.
     loss = losses.weighted_mse(
         predictions, targets,
         per_variable_weights=self._per_variable_weights,
+        levels_normalization_coord='depth',
+        weights_decreasing_with_level=True,
         **kwargs)
     return loss, predictions  # pytype: disable=bad-return-type  # jax-ndarray
 

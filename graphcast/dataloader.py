@@ -44,16 +44,6 @@ class ARCODataSource(grain.RandomAccessDataSource):
     return self._dataset
 
 
-class AddLogDepthCoordinate(grain.MapTransform):
-
-  def __init__(self, log_depth_name='log-depth', depth_name='depth'):
-    self.log_depth_name = log_depth_name
-    self.depth_name = depth_name
-
-  def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    return dataset.assign_coords({self.log_depth_name: - np.log(dataset[self.depth_name])})
-
-
 class FillNans(grain.MapTransform):
 
   def __init__(self, value=0.0):

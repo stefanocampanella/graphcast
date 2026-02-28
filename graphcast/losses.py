@@ -60,8 +60,9 @@ def weighted_mse(
     predictions: xr.Dataset,
     targets: xr.Dataset,
     per_variable_weights: Optional[Mapping[str, float]] = None,
-    mask: Optional[xr.DataArray] = None,
     levels_normalization_coord: str = 'level',
+    weights_decreasing_with_level: bool = False,
+    mask: Optional[xr.DataArray] = None,
 ) -> LossAndDiagnostics:
   """Variable-, latitude- and level-weighted, masked MSE loss."""
 
@@ -71,6 +72,7 @@ def weighted_mse(
   weighted_mse_fn = get_weighted_loss(squared_error,
                                       per_variable_weights=per_variable_weights,
                                       levels_normalization_coord=levels_normalization_coord,
+                                      weights_decreasing_with_level=weights_decreasing_with_level,
                                       mask=mask)
   return weighted_mse_fn(predictions, targets)
 
@@ -79,9 +81,10 @@ def weighted_tweedie_deviance(
     predictions: xr.Dataset,
     targets: xr.Dataset,
     per_variable_weights: Optional[Mapping[str, float]] = None,
-    mask: Optional[xr.DataArray] = None,
     levels_normalization_coord: str = 'level',
-    p: float = 0.0
+    weights_decreasing_with_level: bool = False,
+    mask: Optional[xr.DataArray] = None,
+    p: float = 0.0,
 ) -> LossAndDiagnostics:
   """Variable-, latitude- and level-weighted, masked Tweedie deviance loss."""
 
@@ -95,6 +98,7 @@ def weighted_tweedie_deviance(
   weighted_tweedie_deviance_fn = get_weighted_loss(tweedie_deviance,
                                                    per_variable_weights=per_variable_weights,
                                                    levels_normalization_coord=levels_normalization_coord,
+                                                   weights_decreasing_with_level=weights_decreasing_with_level,
                                                    mask=mask)
   return weighted_tweedie_deviance_fn(predictions, targets)
 
@@ -102,23 +106,29 @@ def weighted_tweedie_deviance(
 def get_weighted_loss(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
                       levels_normalization_coord: str = 'level',
                       per_variable_weights: Optional[Mapping[str, float]] = None,
+                      weights_decreasing_with_level: bool = False,
                       mask: Optional[xr.DataArray] = None) \
     -> Callable[[xr.Dataset, xr.Dataset], LossAndDiagnostics]:
-  """Returns a Dataset function that computes latitude- and level-weighted, masked loss for a given loss function."""
+  """Returns a Dataset function that computes variable-, latitude-, and level-weighted, masked loss for a given loss
+  function."""
 
-  def weighted_loss_fn(predictions: xr.Dataset, targets: xr.Dataset) -> LossAndDiagnostics:
-    """Latitude- and level-weighted loss."""
-    weighted_loss_fn = get_weighted_loss_per_variable(loss_fn, levels_normalization_coord=levels_normalization_coord, mask=mask)
-    losses = xarray_tree.map_structure(weighted_loss_fn, predictions, targets)
+  @functools.wraps(loss_fn)
+  def weighted_loss(predictions: xr.Dataset, targets: xr.Dataset) -> LossAndDiagnostics:
+    loss_per_variable_fn = get_weighted_loss_per_variable(loss_fn,
+                                                          levels_normalization_coord=levels_normalization_coord,
+                                                          weights_decreasing_with_level=weights_decreasing_with_level,
+                                                          mask=mask)
+    losses = xarray_tree.map_structure(loss_per_variable_fn, predictions, targets)
     return sum_per_variable_losses(losses, per_variable_weights)
 
-  return weighted_loss_fn
+  return weighted_loss
 
 
 def get_weighted_loss_per_variable(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
                                    levels_normalization_coord: str = 'level',
-                                   mask: Optional[xr.DataArray] = None) \
-    -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
+                                   weights_decreasing_with_level: bool = False,
+                                   mask: Optional[xr.DataArray] = None
+                                   ) -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
   """Returns a DataArray function that computes (latitude) area-weighted, masked loss for a given loss function."""
 
   @functools.wraps(loss_fn)
@@ -126,7 +136,8 @@ def get_weighted_loss_per_variable(loss_fn: Callable[[xr.DataArray, xr.DataArray
     loss = loss_fn(prediction, target)
     loss *= normalized_latitude_weights(target).astype(loss.dtype)
     if 'level' in target.dims:
-      loss *= normalized_level_weights(target, coord=levels_normalization_coord).astype(loss.dtype)
+      loss *= normalized_level_weights(target, coord=levels_normalization_coord,
+                                       decreasing=weights_decreasing_with_level).astype(loss.dtype)
     return _mean_preserving_batch(loss, mask=mask)
 
   return weighted_loss_per_variable_fn
@@ -160,17 +171,24 @@ def sum_per_variable_losses(
   return total, per_variable_losses  # pytype: disable=bad-return-type
 
 
-def normalized_level_weights(data: xr.DataArray, coord: str = 'level', w_min=1e-2) -> xr.DataArray:
+def normalized_level_weights(data: xr.DataArray,
+                             coord: str = 'level',
+                             w_min=1e-2,
+                             decreasing: bool = False
+                             ) -> xr.DataArray:
   """Compute weights from `coord` at each level.
 
   We ask that the weights are such that:
     1. w_i >= w_min >= 0.
     2. sum(w_i) = 1.
-    3. w_i >= w_j iff coord_i >= coord_j
+    3. w_i >= w_j iff coord_i >= coord_j when decreasing=False,
+       or w_i >= w_j iff coord_i <= coord_j otherwise.
 
   Among all the possible ways to assign such weights, we choose `w_i = a * coord_i + b` with `min(w_i) = w_min`.
   """
   weights = data.coords[coord]
+  if decreasing:
+    weights = -weights
   assert 0 <= w_min < 1 / len(weights), 'w_min must be in (0, 1/len(coord))'
   weights = (weights - weights.min()) / (weights.max() - weights.min())
   delta = w_min * weights.sum() / (1 - len(weights) * w_min)

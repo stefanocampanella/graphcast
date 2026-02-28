@@ -23,10 +23,13 @@ export NCCL_LL_BUFFSIZE=-2
 export NCCL_PROTO=SIMPLE,LL,LL128
 
 CONFIG_PATH="$LEONARDO_CODE_ROOT/configs/training/${1}"
-CKPT_PATH="$LEONARDO_DATA_ROOT/data/init/${2}"
+INPUT_CKPT_PATH="$LEONARDO_DATA_ROOT/data/models/${2}"
+OUTPUT_CKPT_PATH="$LEONARDO_DATA_ROOT/data/models/${3}"
+TRAIN_CKPT_PATH="$LEONARDO_DATA_ROOT/data/models/${4}"
 
-shift 2
+shift 4
 
-srun python -m graphcast.training launch --data-path=$LEONARDO_DATA_ROOT "${@}" -- "${CONFIG_PATH}" "${CKPT_PATH}"
+srun python -m graphcast.training launch --data-path=$LEONARDO_DATA_ROOT "${@}" -- \
+  "${CONFIG_PATH}" "${INPUT_CKPT_PATH}" "${OUTPUT_CKPT_PATH}" "${TRAIN_CKPT_PATH}"
 
 source leonardo/environment/deactivate

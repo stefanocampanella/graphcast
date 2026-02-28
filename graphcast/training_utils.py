@@ -63,10 +63,9 @@ def get_optimizer(config: Configs) -> optax.GradientTransformationExtraArgs:
 #   rngs = jax.device_put(rngs, device_mesh)
 # However, the previous might produce the following error related to addressable devices and require more thinking.
 
-def get_global_grad_fn(predictor, device_mesh: jax.sharding.Mesh, levels_normalization_coord: str = 'log-depth',
-                       batch_dim_name: str = 'batch'):
+def get_global_grad_fn(predictor, device_mesh: jax.sharding.Mesh, batch_dim_name: str = 'batch'):
 
-  local_grad_fn = get_local_grad_fn(predictor, levels_normalization_coord=levels_normalization_coord)
+  local_grad_fn = get_local_grad_fn(predictor)
 
   def _local_grad_fn(params, rng_key, inputs, targets, forcings):
     local_rng_key = jax.random.fold_in(rng_key, jax.lax.axis_index(batch_dim_name))
@@ -86,12 +85,11 @@ def get_global_grad_fn(predictor, device_mesh: jax.sharding.Mesh, levels_normali
   return global_grad_fn
 
 
-def get_local_grad_fn(predictor, levels_normalization_coord='log-depth'):
+def get_local_grad_fn(predictor):
 
   @hk.transform
   def local_loss_fn(inputs, targets, forcings):
-    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings,
-                                       levels_normalization_coord=levels_normalization_coord)
+    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
     return xarray_tree.map_structure(
       lambda x: unwrap_data(x.mean(), require_jax=True),
       (loss, diagnostics))

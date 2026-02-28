@@ -35,8 +35,7 @@ from jax.sharding import PartitionSpec, NamedSharding, AxisType
 from graphcast import checkpoint, cli_utils, xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import Configs, run_analysis_and_report
-from graphcast.dataloader import ARCODataSource, FillNans, ExtractInputsTargetsForcings, AddLogDepthCoordinate, \
-  WrapData
+from graphcast.dataloader import ARCODataSource, FillNans, ExtractInputsTargetsForcings, WrapData
 from graphcast.geospatial_mesh_utils import read_mesh
 from graphcast.mask import MaskedPredictor
 from graphcast.mesh_graph import MeshData, faces_to_edges, MeshGraph
@@ -127,9 +126,7 @@ def init(config_path: pathlib.Path,
                               timesteps=configs.get('dataset.timesteps', 3),
                               mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
   sampler = IndexSampler(num_records=len(datasource))
-  # FIXME: Should log-depth coordinate and other operation options be read from configs?
-  operations = [FillNans(), AddLogDepthCoordinate(),
-                ExtractInputsTargetsForcings(task=task_config, target_lead_times=target_lead_times)]
+  operations = [FillNans(), ExtractInputsTargetsForcings(task=task_config, target_lead_times=target_lead_times)]
   dataloader = DataLoader(data_source=datasource, sampler=sampler, operations=operations)
   inputs, targets, forcings = next(iter(dataloader))
 
@@ -220,12 +217,27 @@ def init(config_path: pathlib.Path,
                                 dir_okay=False,
                                 readable=True,
                                 resolve_path=True))
-@click.argument("checkpoint_path",
+@click.argument("input_path",
                 required=True,
                 type=click.Path(path_type=pathlib.Path,
                                 file_okay=True,
                                 dir_okay=False,
                                 readable=True,
+                                resolve_path=True))
+@click.argument("output_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path,
+                                file_okay=True,
+                                dir_okay=False,
+                                writable=True,
+                                resolve_path=True))
+@click.argument("train_path",
+                required=True,
+                type=click.Path(path_type=pathlib.Path,
+                                file_okay=False,
+                                dir_okay=True,
+                                readable=True,
+                                writable=True,
                                 resolve_path=True))
 @click.option("--data-path",
               help="Path to the data directory.",
@@ -253,16 +265,23 @@ def init(config_path: pathlib.Path,
               help="Whether log memory and cost analysis (requires `log-level` to be greater than `info`).",
               default=False,
               is_flag=True)
+@click.option("--overwrite/--no-overwrite",
+              help="Whether to overwrite the final checkpoint.",
+              default=False,
+              is_flag=True)
 @click.option('--log-level',
               default='info',
               type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
 def launch(config_path: pathlib.Path,
-           checkpoint_path: pathlib.Path,
+           input_path: pathlib.Path,
+           output_path: pathlib.Path,
+           train_path: pathlib.Path,
            data_path: pathlib.Path | None = None,
            other_configs: Mapping[str, Any] | None = None,
            start_fresh: bool = False,
            tensorboard_logdir: pathlib.Path | None = None,
-           analysis = False,
+           analysis: bool = False,
+           overwrite: bool = False,
            log_level: str = 'info'):
 
   logging.basicConfig(
@@ -272,6 +291,9 @@ def launch(config_path: pathlib.Path,
     force=True)
 
   gmsh.initialize()
+
+  if output_path.exists() and not overwrite:
+    raise FileExistsError("The final checkpoint already exists. Use --overwrite to overwrite it.")
 
   logger.info(f"Loading configs from {config_path}")
   configs = Configs.read(config_path)
@@ -302,9 +324,9 @@ def launch(config_path: pathlib.Path,
 
   jax.sharding.set_mesh(device_mesh)
 
-  logger.info(f"Loading GraphCast init from {checkpoint_path}")
-  with open(checkpoint_path, 'rb') as checkpoint_file:
-    training_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
+  logger.info(f"Loading GraphCast init from {input_path}")
+  with open(input_path, 'rb') as checkpoint_file:
+    init_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
 
   if data_path is None:
     data_path = pathlib.Path(os.getcwd())
@@ -327,8 +349,7 @@ def launch(config_path: pathlib.Path,
     return tuple(map(lambda datasets: xr.concat(datasets, dim='batch'), zip(*samples)))
 
   operations = [FillNans(),
-                AddLogDepthCoordinate(),  # The negative logarithm of depth is used as a weight in loss calculations
-                ExtractInputsTargetsForcings(task=training_ckpt.task_config, target_lead_times="1d"),
+                ExtractInputsTargetsForcings(task=init_ckpt.task_config, target_lead_times="1d"),
                 Batch(batch_size=configs.get('local_batch_size', 1),
                       drop_remainder=True,
                       batch_fn=batch_fn),
@@ -340,7 +361,7 @@ def launch(config_path: pathlib.Path,
                           read_options=ReadOptions(num_threads=configs.get('dataloader.num_threads', 0)))
 
   mask = datasource.mask
-  mesh_data = training_ckpt.mesh_data
+  mesh_data = init_ckpt.mesh_data
   policy = cp.save_and_offload_only_these_names(
     names_which_can_be_saved=configs.get("policy.save", []),
     names_which_can_be_offloaded=configs.get("policy.offload", []),
@@ -349,8 +370,8 @@ def launch(config_path: pathlib.Path,
   )
 
   # Deeper one-step predictor.
-  predictor = GraphCast(training_ckpt.model_config,
-                        training_ckpt.task_config,
+  predictor = GraphCast(init_ckpt.model_config,
+                        init_ckpt.task_config,
                         grid_lat=mask['lat'].to_numpy(),
                         grid_lon=mask['lon'].to_numpy(),
                         grid_mask=mask,
@@ -392,8 +413,7 @@ def launch(config_path: pathlib.Path,
   # Mask inputs/outputs replacing missing values with 0.0
   predictor = MaskedPredictor(predictor, mask=mask, value=0.0)
 
-  global_grad_fn = get_global_grad_fn(predictor, device_mesh,
-                                      levels_normalization_coord='log-depth', batch_dim_name='batch')
+  global_grad_fn = get_global_grad_fn(predictor, device_mesh, batch_dim_name='batch')
 
   optimizer = get_optimizer(configs["optimizer"])
 
@@ -407,13 +427,15 @@ def launch(config_path: pathlib.Path,
 
     return updated_params, next_rng_key, next_opt_state, loss, diagnostics
 
-  params_checkpoint_path = data_path / configs.get("checkpoints.dirpath")
-  logger.info(f"Reading and saving checkpoints from {params_checkpoint_path}")
-  if start_fresh and any(params_checkpoint_path.iterdir()) and jax.process_index() == 0:
-    params_checkpoint_path = ocp.test_utils.erase_and_create_empty(params_checkpoint_path)
+  logger.info(f"Reading and saving checkpoints from {train_path}")
+  if jax.process_index() == 0:
+    if not train_path.exists():
+      train_path.mkdir(parents=True)
+    if start_fresh and any(train_path.iterdir()):
+      train_path = ocp.test_utils.erase_and_create_empty(train_path)
   ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
                                                    best_mode='min',
-                                                   **configs.get('checkpoints.checkpoint_manager_options', {}))
+                                                   **configs.get('checkpoints', {}))
 
   # FIXME: When checkpointing params as is, after a while the dataloader tries to retrieve a SharedMemoryArray whose
   #  memory has already been released, making a Grain worker fail and ultimately stopping the whole execution.
@@ -425,14 +447,14 @@ def launch(config_path: pathlib.Path,
   #  Also, it seems that converting params to a pytree of numpy arrays speeds things up.
   null_mesh = jax.make_mesh((), ())
   with jax.sharding.use_mesh(null_mesh):
-    ckpt_mngr = ocp.CheckpointManager(params_checkpoint_path, options=ckpt_mngr_options)
+    ckpt_mngr = ocp.CheckpointManager(train_path, options=ckpt_mngr_options)
 
   # Define checkpointables (dataloader iterator, params, rng, and opt_state), eventually restore them from the
   # checkpoint and move them to device.
   dataloader_iter = iter(dataloader)
   latest_step = 0
   rng_key = jax.random.key(configs['seed'])
-  params = training_ckpt.params
+  params = init_ckpt.params
   opt_state = optimizer.init(params)
   sharding_replicated = NamedSharding(device_mesh, PartitionSpec())
 
@@ -532,6 +554,20 @@ def launch(config_path: pathlib.Path,
       # Explicitly delete batch_on_host to trigger shared memory release in Grain.
       # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
       del batch_on_host
+
+  logger.info(f"Training finished, saving checkpoint to {output_path}")
+  if not output_path.parent.exists():
+    output_path.parent.mkdir(parents=True)
+  with output_path.open('wb') as ckpt_file:
+    params_on_host = jax.tree_util.tree_map(np.array, params)
+    graphcast_ckpt = CheckPoint(
+      params=params_on_host,
+      model_config=init_ckpt.model_config,
+      task_config=init_ckpt.task_config,
+      mesh_data=init_ckpt.mesh_data,
+      description=configs.get('description') or init_ckpt.description,
+      license=configs.get('license') or init_ckpt.description)
+    checkpoint.dump(ckpt_file, graphcast_ckpt)
 
   jax.distributed.shutdown()
 
