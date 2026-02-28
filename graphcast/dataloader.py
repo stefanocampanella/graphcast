@@ -32,6 +32,9 @@ class ARCODataSource(grain.RandomAccessDataSource):
 
     return dataset
 
+  def __repr__(self):
+    return f'{self.__class__.__name__}(dataset={self._dataset}, timesteps={self._timesteps}, mask_name={self._mask_name})'
+
   @property
   def mask(self):
     return self._dataset[self._mask_name].isel(level=0, drop=True)

@@ -23,7 +23,7 @@ export NCCL_LL_BUFFSIZE=-2
 export NCCL_PROTO=SIMPLE,LL,LL128
 
 CONFIG_PATH="$LEONARDO_CODE_ROOT/configs/training/${1}"
-CKPT_PATH="$LEONARDO_DATA_ROOT/data/ckpts/${2}"
+CKPT_PATH="$LEONARDO_DATA_ROOT/data/init/${2}"
 
 shift 2
 

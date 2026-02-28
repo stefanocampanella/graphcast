@@ -237,6 +237,17 @@ def init(config_path: pathlib.Path,
 @click.option("--other-configs",
               help="Other configs to override in the config file in the format 'key1:value1,key2:value2,...'",
               type=cli_utils.DictParamType())
+@click.option("--start-fresh",
+              help="Whether to start the training from scratch.",
+              default=False,
+              is_flag=True)
+@click.option("--tensorboard-logdir",
+              help="Tensorboard log directory.",
+              type=click.Path(path_type=pathlib.Path,
+                              file_okay=False,
+                              dir_okay=True,
+                              writable=True,
+                              resolve_path=True))
 @click.option("--analysis-report/--no-analysis-report",
               "analysis",
               help="Whether log memory and cost analysis (requires `log-level` to be greater than `info`).",
@@ -249,6 +260,8 @@ def launch(config_path: pathlib.Path,
            checkpoint_path: pathlib.Path,
            data_path: pathlib.Path | None = None,
            other_configs: Mapping[str, Any] | None = None,
+           start_fresh: bool = False,
+           tensorboard_logdir: pathlib.Path | None = None,
            analysis = False,
            log_level: str = 'info'):
 
@@ -286,26 +299,10 @@ def launch(config_path: pathlib.Path,
                               ('batch',),
                               devices=jax.devices(),
                               axis_types=(AxisType.Explicit,))
-  null_mesh = jax.make_mesh((), ())
-
-  # TODO: add an option to either restart from previous checkpoint or start a fresh training
-  # The CheckpointManager has to be within a context using null_mesh, or before jax.sharding.set_mesh() is called.
-  # The reason is that within the CheckpointManager stack there is a call to jax.multihost_utils.broadcast_on_to_all
-  # (used to implement a barrier), which declares its own jax.sharding.Mesh which is generally different from the
-  # context mesh. The same goes for save and restore operations.
-  # See: https://github.com/google/orbax/issues/2545
-  params_checkpoint_path = data_path / configs.get("checkpoints.dirpath")
-  logger.info(f"Reading and saving checkpoints from {params_checkpoint_path}")
-  params_checkpoint_path = params_checkpoint_path.resolve()
-  if jax.process_index() == 0 and any(params_checkpoint_path.iterdir()):
-    params_checkpoint_path = ocp.test_utils.erase_and_create_empty(params_checkpoint_path)
-  ckpt_mngr_options = ocp.CheckpointManagerOptions(max_to_keep=3, best_fn=lambda metrics: metrics['loss'],
-                                                   best_mode='min')
-  ckpt_mngr = ocp.CheckpointManager(params_checkpoint_path, options=ckpt_mngr_options)
 
   jax.sharding.set_mesh(device_mesh)
 
-  logger.info(f"Loading GraphCast checkpoint from {checkpoint_path}")
+  logger.info(f"Loading GraphCast init from {checkpoint_path}")
   with open(checkpoint_path, 'rb') as checkpoint_file:
     training_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
 
@@ -398,6 +395,8 @@ def launch(config_path: pathlib.Path,
   global_grad_fn = get_global_grad_fn(predictor, device_mesh,
                                       levels_normalization_coord='log-depth', batch_dim_name='batch')
 
+  optimizer = get_optimizer(configs["optimizer"])
+
   @partial(jax.jit, donate_argnums=(0, 1, 2))
   def train_step(params, rng_key, opt_state, sample):
     inputs, targets, forcings = sample
@@ -408,18 +407,76 @@ def launch(config_path: pathlib.Path,
 
     return updated_params, next_rng_key, next_opt_state, loss, diagnostics
 
-  # Data parallel section
+  params_checkpoint_path = data_path / configs.get("checkpoints.dirpath")
+  logger.info(f"Reading and saving checkpoints from {params_checkpoint_path}")
+  if start_fresh and any(params_checkpoint_path.iterdir()) and jax.process_index() == 0:
+    params_checkpoint_path = ocp.test_utils.erase_and_create_empty(params_checkpoint_path)
+  ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
+                                                   best_mode='min',
+                                                   **configs.get('checkpoints.checkpoint_manager_options', {}))
 
-  sharding_along_batch = NamedSharding(device_mesh, PartitionSpec('batch'))
+  # FIXME: When checkpointing params as is, after a while the dataloader tries to retrieve a SharedMemoryArray whose
+  #  memory has already been released, making a Grain worker fail and ultimately stopping the whole execution.
+  #  The CheckpointManager has to be within a context using null_mesh, or before jax.sharding.set_mesh() is called.
+  #  The reason is that within the CheckpointManager stack there is a call to jax.multihost_utils.broadcast_on_to_all
+  #  (used to implement a barrier), which declares its own jax.sharding.Mesh which is generally different from the
+  #  context mesh. The same goes for save and restore operations.
+  #  See: https://github.com/google/orbax/issues/2545
+  #  Also, it seems that converting params to a pytree of numpy arrays speeds things up.
+  null_mesh = jax.make_mesh((), ())
+  with jax.sharding.use_mesh(null_mesh):
+    ckpt_mngr = ocp.CheckpointManager(params_checkpoint_path, options=ckpt_mngr_options)
+
+  # Define checkpointables (dataloader iterator, params, rng, and opt_state), eventually restore them from the
+  # checkpoint and move them to device.
+  dataloader_iter = iter(dataloader)
+  latest_step = 0
+  rng_key = jax.random.key(configs['seed'])
+  params = training_ckpt.params
+  opt_state = optimizer.init(params)
   sharding_replicated = NamedSharding(device_mesh, PartitionSpec())
+
+  if not start_fresh:
+    latest_step = ckpt_mngr.lastest_step()
+    logger.info(f"Restoring {latest_step=} from checkpoint")
+    params_on_host = jax.tree_util.tree_map(np.array, params)
+    opt_state_on_host = jax.tree_util.tree_map(np.array, opt_state)
+    with jax.sharding.use_mesh(null_mesh):
+      restored = ckpt_mngr.restore(
+        step=latest_step,
+        args=ocp.args.Composite(
+          dataloader=grain.checkpoint.CheckpointRestore(dataloader_iter),
+          params=ocp.args.StandardRestore(params_on_host, strict=True, support_layout=False),
+          optimizer_state=ocp.args.StandardRestore(opt_state_on_host, strict=True, support_layout=False),
+          rng=ocp.args.JaxRandomKeyRestore(restore_args=ocp.type_handlers.ArrayRestoreArgs(
+            sharding=sharding_replicated))))
+    dataloader_iter = restored.dataloader
+
+    def replicate(tree):
+      return jax.tree_util.tree_map(lambda local_data:
+                                      jax.make_array_from_process_local_data(sharding=sharding_replicated,
+                                                                             local_data=local_data),
+                                    tree)
+
+    params_on_host = restored.params
+    params = replicate(params_on_host)
+    rng_key = restored.rng
+    opt_state_on_host = restored.optimizer_state
+    opt_state = replicate(opt_state_on_host)
+
+  # If params, rng, and opt_state have been restore from a checkpoint they should already have the correct sharding
+  # and the following should be a no-op.
+  params, rng, opt_state = reshard((params, rng_key, opt_state), out_shardings=sharding_replicated)
 
   # TODO: revise dataset put logic: could it be rewritten as a single tree_map?
   def device_put_dataset(dataset: xr.Dataset) -> xr.Dataset:
     # jax.block_until_ready is needed to ensure that shared memory arrays are converted to JAX arrays
     # while still existing (in the async case that is not guaranteed).
+    sharding_along_batch = NamedSharding(device_mesh, PartitionSpec('batch'))
     dataset = dataset.map(
       lambda da: jax.block_until_ready(jax.tree_util.tree_map(
-        lambda local_data: jax.make_array_from_process_local_data(sharding=sharding_along_batch, local_data=local_data),
+        lambda local_data: jax.make_array_from_process_local_data(sharding=sharding_along_batch,
+                                                                  local_data=local_data),
         da)))
     dataset = xarray_jax.Dataset(data_vars={var: (data.dims, xarray_jax.wrap(data.data))
                                             for var, data in dataset.data_vars.items()},
@@ -427,14 +484,12 @@ def launch(config_path: pathlib.Path,
                                  attrs=dataset.attrs)
     return dataset
 
-  # get params from checkpoint and upload them to devices
-  params = reshard(training_ckpt.params, out_shardings=sharding_replicated)
-  rng_key = reshard(jax.random.key(configs['seed']), out_shardings=sharding_replicated)
-
+  # TODO: Revise or deprecate analysis report, it could jeopardize dataloader iterator checkpoint restore.
   if analysis:
     logger.info("Running gradient memory and cost analysis")
     # Load a single minibatch from dataloader
-    inputs, targets, forcings = jax.tree_util.tree_map(device_put_dataset, next(iter(dataloader)),
+    batch = next(dataloader_iter)
+    inputs, targets, forcings = jax.tree_util.tree_map(device_put_dataset, batch,
                                                        is_leaf=lambda x: isinstance(x, xr.Dataset))
     global_grad_fn_jit = jax.jit(global_grad_fn)
     global_grad_fn_aot = global_grad_fn_jit.trace(params, rng_key,
@@ -443,40 +498,40 @@ def launch(config_path: pathlib.Path,
                                                   forcings=forcings
                                                   ).lower().compile()
     run_analysis_and_report(global_grad_fn_aot)
+    del batch
 
-  optimizer = get_optimizer(configs["optimizer"])
-  opt_state = reshard(optimizer.init(params), out_shardings=sharding_replicated)
-
-  # TODO: summary_writer should be handled by a separate utility function, and it should resume from the latest
-  #  checkpoint in case of a restart.
-  logdir = (data_path / configs.get('logging.filepath', 'logs')) / os.getenv('SLURM_JOB_ID', 'local')
-  summary_writer = summary.create_file_writer(str(logdir))
-  dataloader_iter = iter(dataloader)
-  with summary_writer.as_default():
-    training_steps = configs.get("training_steps", 1024)
-    logger.info(f"Running {training_steps} training steps")
-    for step in range(training_steps):
-      batch_on_host = next(dataloader_iter)
+  tensorboard_logdir = tensorboard_logdir or (data_path / "logdir")
+  summary_writer = summary.create_file_writer(str(tensorboard_logdir))
+  training_steps = configs.get("training_steps")
+  if training_steps is None:
+    raise ValueError("The number of training steps must be specified in the config file.")
+  logger.info(f"Training for {training_steps=} starting at step {latest_step=}.")
+  for current_step in range(latest_step, training_steps):
+    batch_on_host = next(dataloader_iter)
+    try:
       batch = jax.tree_util.tree_map(device_put_dataset, batch_on_host,
                                       is_leaf=lambda x: isinstance(x, xr.Dataset))
       params, rng_key, opt_state, loss, diagnostics = train_step(params, rng_key, opt_state, batch)
       # FIXME: Orbax messes up with global mesh, see comments above. Check if new versions of Orbax fix the issue.
-      # FIXME: When checkpointing params as is, after a while the dataloader tries to retrieve a SharedMemoryArray whose memory has already been released, making a Grain worker fail and ultimately stopping the whole execution. Also, it seems that converting params to a pytree of numpy arrays speeds things up.
       with jax.sharding.use_mesh(null_mesh):
         params_on_host = jax.tree_util.tree_map(np.array, params)
-        ckpt_mngr.save(step,
+        optimizer_state_on_host = jax.tree_util.tree_map(np.array, opt_state)
+        ckpt_mngr.save(current_step,
                        args=ocp.args.Composite(
                          dataloader=grain.checkpoint.CheckpointSave(dataloader_iter),
                          params=ocp.args.StandardSave(params_on_host),
-                         rng=ocp.args.JaxRandomKeySave(rng_key)),
+                         rng=ocp.args.JaxRandomKeySave(rng_key),
+                         optimizer_state=ocp.args.StandardSave(optimizer_state_on_host)),
                        metrics={'loss': loss.item()})
+      if jax.process_index() == 0:
+        with summary_writer.as_default():
+          summary.scalar("loss", loss, step=current_step)
+          for key, value in diagnostics.items():
+            summary.scalar(key, value, step=current_step)
+    finally:
       # Explicitly delete batch_on_host to trigger shared memory release in Grain.
       # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
       del batch_on_host
-      if jax.process_index() == 0:
-        summary.scalar("loss", loss, step=step)
-        for key, value in diagnostics.items():
-          summary.scalar(key, value, step=step)
 
   jax.distributed.shutdown()
 

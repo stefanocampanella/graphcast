@@ -52,3 +52,6 @@ weight_decay = 0.1
 
 [checkpoints]
 dirpath = "data/training_checkpoints"
+
+[checkpoints.checkpoint_manager_options]
+max_to_keep=3

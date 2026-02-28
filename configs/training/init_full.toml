@@ -73,7 +73,8 @@ latent_size = 512
 gnn_msg_steps = 16
 hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
-per_variable_weights = {}
+# The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
+per_variable_weights = {zos = 0.1, mlotst = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
 
 [mesh]
 filepath = "data/geometry/uniform_coarse.msh"

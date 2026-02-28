@@ -17,7 +17,7 @@
 * Check that artifacts contain only zero std residuals for sea ice variables. **HIGH PRIORITY**
 * Experiment with argument buffer donation to accelerate training. (Low priority)
 * Check memory consumption without scan. **HIGH PRIORITY**
-* Revise level weighting using depth. **HIGH PRIORITY**
+* Revise level weighting using depth. **URGENT**
 * Revise per variable weighting according to GraphCast. **HIGH PRIORITY**
 * Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules. **HIGH PRIORITY**
 * Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
