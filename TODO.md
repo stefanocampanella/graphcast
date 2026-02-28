@@ -9,16 +9,16 @@
 * ~~Checkpoint training loop with Orbax~~ **DONE**
 * ~~Log training metrics to TensorBoard.~~ **DONE**
 * Check that tensorboard is logging asynchornously. **HIGH PRIORITY**
-* Implement controls for overwriting paramerters checkpointing. **HIGH PRIORITY**
-* Checkpoint dataloader state, and implement restart logic. **HIGH PRIORITY**
+* ~~Implement restart from checkpoint logic.~~ **DONE**
+* ~~Checkpoint dataloader state, and implement restart logic~~. **HIGH PRIORITY**
 * Log each process independently using `cli_utils.py`. **HIGH PRIORITY**
 * Move training stuff to `training_utils.py` **HIGH PRIORITY**
 * Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
 * Check that artifacts contain only zero std residuals for sea ice variables. **HIGH PRIORITY**
-* Experiment with argument buffer donation to accelerate training. (Low priority)
-* Check memory consumption without scan. **HIGH PRIORITY**
+* ~~Experiment with argument buffer donation to accelerate training.~~ **DONE** 
+* ~~Check memory consumption without scan.~~ **DONE**
 * Revise level weighting using depth. **URGENT**
-* Revise per variable weighting according to GraphCast. **HIGH PRIORITY**
+* ~~Revise per variable weighting according to GraphCast.~~ **DONE**
 * Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules. **HIGH PRIORITY**
 * Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
 * Experiment with typed graphs context (i.e., a global graph attribute which might embed variables as year_progress).
