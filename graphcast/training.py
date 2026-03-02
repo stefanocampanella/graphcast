@@ -34,7 +34,7 @@ from jax.sharding import PartitionSpec, NamedSharding, AxisType
 
 from graphcast import checkpoint, cli_utils, xarray_jax
 from graphcast.casting import Bfloat16Cast
-from graphcast.cli_utils import Configs, run_analysis_and_report
+from graphcast.cli_utils import Configs, run_analysis_and_report, get_distributed_logger, OrbaxLoggerWrapper
 from graphcast.dataloader import ARCODataSource, FillNans, ExtractInputsTargetsForcings, WrapData
 from graphcast.geospatial_mesh_utils import read_mesh
 from graphcast.mask import MaskedPredictor
@@ -117,9 +117,7 @@ def init(config_path: pathlib.Path,
 
   if data_path is None:
     data_path = pathlib.Path(os.getcwd())
-
-  if (dataset_path := (data_path / configs.get('dataset.filepath'))) is None:
-    raise ValueError("The dataset filepath must be specified in the config file.")
+  dataset_path = data_path / configs.get('dataset.filepath', required=True)
 
   logger.info(f"Loading dataset from %s", dataset_path)
   datasource = ARCODataSource(dataset_path,
@@ -130,8 +128,7 @@ def init(config_path: pathlib.Path,
   dataloader = DataLoader(data_source=datasource, sampler=sampler, operations=operations)
   inputs, targets, forcings = next(iter(dataloader))
 
-  if (mesh_path := (data_path / configs.get('mesh.filepath'))) is None:
-    raise ValueError("The mesh filepath must be specified in the config file.")
+  mesh_path = data_path / configs.get('mesh.filepath', required=True)
   ocean_mesh, mesh_size = read_mesh(mesh_path=mesh_path,
                                     mesh_size_tag_name=configs.get('mesh.mesh_size_tag_name',
                                                                    'MeshSize'),
@@ -253,6 +250,15 @@ def init(config_path: pathlib.Path,
               help="Whether to start the training from scratch.",
               default=False,
               is_flag=True)
+@click.option("--overwrite/--no-overwrite",
+              help="Whether to overwrite the final checkpoint.",
+              default=False,
+              is_flag=True)
+@click.option("--analysis-report/--no-analysis-report",
+              "analysis",
+              help="Whether log memory and cost analysis (requires `log-level` to be greater than `info`).",
+              default=False,
+              is_flag=True)
 @click.option("--tensorboard-logdir",
               help="Tensorboard log directory.",
               type=click.Path(path_type=pathlib.Path,
@@ -260,15 +266,13 @@ def init(config_path: pathlib.Path,
                               dir_okay=True,
                               writable=True,
                               resolve_path=True))
-@click.option("--analysis-report/--no-analysis-report",
-              "analysis",
-              help="Whether log memory and cost analysis (requires `log-level` to be greater than `info`).",
-              default=False,
-              is_flag=True)
-@click.option("--overwrite/--no-overwrite",
-              help="Whether to overwrite the final checkpoint.",
-              default=False,
-              is_flag=True)
+@click.option("--logdir",
+              help="Log directory.",
+              type=click.Path(path_type=pathlib.Path,
+                              file_okay=False,
+                              dir_okay=True,
+                              writable=True,
+                              resolve_path=True))
 @click.option('--log-level',
               default='info',
               type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
@@ -279,56 +283,60 @@ def launch(config_path: pathlib.Path,
            data_path: pathlib.Path | None = None,
            other_configs: Mapping[str, Any] | None = None,
            start_fresh: bool = False,
-           tensorboard_logdir: pathlib.Path | None = None,
-           analysis: bool = False,
            overwrite: bool = False,
-           log_level: str = 'info'):
+           analysis: bool = False,
+           tensorboard_logdir: pathlib.Path | None = None,
+           logdir: pathlib.Path | None = None,
+           log_level: str = 'info',
+           jax_backend: str = 'gpu'):
 
-  logging.basicConfig(
-    format='%(levelname)s - %(asctime)s: %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-    level=getattr(logging, log_level.upper()),
-    force=True)
+  jax.distributed.initialize()
+
+  logger = get_distributed_logger(__name__,
+                                  log_dir=logdir,
+                                  log_suffix_fn=lambda: f"_{jax.process_index(jax_backend)}.log",
+                                  level=getattr(logging, log_level.upper()))
 
   gmsh.initialize()
 
   if output_path.exists() and not overwrite:
     raise FileExistsError("The final checkpoint already exists. Use --overwrite to overwrite it.")
 
-  logger.info(f"Loading configs from {config_path}")
-  configs = Configs.read(config_path)
-  if other_configs is not None:
-    configs.update(other_configs)
-
-  jax.distributed.initialize()
-  jax_backend = configs.get('jax_backend') or jax.default_backend()
-  _ = jax.devices(jax_backend)
-
   # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
+  _ = jax.devices(jax_backend)
   from tensorflow import summary
   import tensorflow as tf
   # TODO: could this be set using environment variables?
   tf.config.experimental.set_visible_devices([], 'GPU')
 
-  logger.info(f"Setting up the device mesh with {jax.device_count(jax_backend)} devices and backend {jax_backend} "
+  logger.info(f"Setting up the device mesh with {jax.device_count(jax_backend)} {jax_backend} devices "
               f"({'multi-host setup' if jax.process_count(jax_backend) > 1 else 'single-host setup'}).")
 
+  # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
+  # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
+  # generally different from the context mesh, causing an error.
+  # For this reason, CheckpointManager (which uses such a barrier) needs to be called using `null_mesh`, or before
+  # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
+  #  See: https://github.com/google/orbax/issues/2545
+  null_mesh = jax.make_mesh((), ())
   device_mesh = jax.make_mesh((jax.device_count(jax_backend),),
                               ('batch',),
                               devices=jax.devices(jax_backend),
                               axis_types=(AxisType.Explicit,))
-
   jax.sharding.set_mesh(device_mesh)
 
   logger.info(f"Loading GraphCast init from {input_path}")
   with open(input_path, 'rb') as checkpoint_file:
     init_ckpt = checkpoint.load(checkpoint_file, CheckPoint)
 
+  logger.info(f"Loading configs from {config_path}")
+  configs = Configs.read(config_path)
+  if other_configs is not None:
+    configs.update(other_configs)
+
   if data_path is None:
     data_path = pathlib.Path(os.getcwd())
-
-  if (dataset_path := (data_path / configs.get('dataset.filepath'))) is None:
-    raise ValueError("The dataset filepath must be specified in the config file.")
+  dataset_path = data_path / configs.get('dataset.filepath', required=True)
 
   logger.info(f"Loading dataset from {dataset_path}")
   datasource = ARCODataSource(dataset_path,
@@ -382,8 +390,7 @@ def launch(config_path: pathlib.Path,
   predictor = Bfloat16Cast(predictor)
 
   # TODO: Move artifacts loading code to training_utils.py, take care of zero residual scales, and put on device
-  if (artifacts_path := (data_path / configs.get('artifacts.filepath'))) is None:
-    raise ValueError("The normalization artifacts filepath must be specified in the config file.")
+  artifacts_path = data_path / configs.get('artifacts.filepath', required=True)
   logger.info(f"Loading normalization artifacts from {artifacts_path}")
   artifacts = xr.open_datatree(artifacts_path, engine='zarr')
 
@@ -423,7 +430,6 @@ def launch(config_path: pathlib.Path,
 
     return updated_params, next_rng_key, next_opt_state, loss, diagnostics
 
-  null_mesh = jax.make_mesh((), ())
   logger.info(f"Reading from and saving checkpoints to {train_path}")
   with jax.sharding.use_mesh(null_mesh):
     if jax.process_index(jax_backend) == 0:
@@ -436,16 +442,8 @@ def launch(config_path: pathlib.Path,
                                                    best_mode='min',
                                                    **configs.get('checkpoints', {}))
 
-  # FIXME: When checkpointing params as is, after a while the dataloader tries to retrieve a SharedMemoryArray whose
-  #  memory has already been released, making a Grain worker fail and ultimately stopping the whole execution.
-  #  The CheckpointManager has to be within a context using null_mesh, or before jax.sharding.set_mesh() is called.
-  #  The reason is that within the CheckpointManager stack there is a call to jax.multihost_utils.broadcast_on_to_all
-  #  (used to implement a barrier), which declares its own jax.sharding.Mesh which is generally different from the
-  #  context mesh. The same goes for save and restore operations.
-  #  See: https://github.com/google/orbax/issues/2545
-  #  Also, it seems that converting params to a pytree of numpy arrays speeds things up.
   with jax.sharding.use_mesh(null_mesh):
-    ckpt_mngr = ocp.CheckpointManager(train_path, options=ckpt_mngr_options)
+    ckpt_mngr = ocp.CheckpointManager(train_path, options=ckpt_mngr_options, logger=OrbaxLoggerWrapper(logger))
 
   # Define checkpointables (dataloader iterator, params, rng, and opt_state), eventually restore them from the
   # checkpoint and move them to devices.
@@ -531,11 +529,17 @@ def launch(config_path: pathlib.Path,
       batch = jax.tree_util.tree_map(device_put_dataset, batch_on_host,
                                       is_leaf=lambda x: isinstance(x, xr.Dataset))
       params, rng_key, opt_state, loss, diagnostics = train_step(params, rng_key, opt_state, batch)
-      # FIXME: Orbax messes up with global mesh, see comments above. Check if new versions of Orbax fix the issue.
+      # FIXME: When checkpointing params as a pytree of JAX arrays, after a while the dataloader tries to retrieve a
+      #  SharedMemoryArray whose memory has already been released (for unknown reasons), making a Grain worker fail and
+      #  ultimately stopping the whole execution. Also, it seems that converting params to a pytree of numpy arrays speeds
+      #  things up (again, for unknown reasons).
       params_on_host, opt_state_on_host = jax.device_get((params, opt_state))
+      # FIXME: Orbax messes up with global mesh, see comments above. Check if new versions of Orbax fix the issue.
       with jax.sharding.use_mesh(null_mesh):
         ckpt_mngr.save(current_step,
                        args=ocp.args.Composite(
+                         # FIXME: Checkpointing the dataloader iterator is costly, especially when using a large batch
+                         #  size. Wouldn't it be possible to checkpoint just the IndexSampler?
                          dataloader=grain.checkpoint.CheckpointSave(dataloader_iter),
                          params=ocp.args.StandardSave(params_on_host),
                          rng=ocp.args.JaxRandomKeySave(rng_key),
@@ -572,6 +576,7 @@ def launch(config_path: pathlib.Path,
         checkpoint.dump(ckpt_file, graphcast_ckpt)
     sync_global_devices("save_checkpoint")
 
+  logger.info("Shutting down")
   jax.distributed.shutdown()
 
 

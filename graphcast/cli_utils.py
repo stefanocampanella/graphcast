@@ -6,6 +6,7 @@ from typing import Callable
 
 import click
 import jax
+import orbax.checkpoint.logging
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class Configs(dict):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
-  def get(self, maybe_dot_key, default=None):
+  def get(self, maybe_dot_key, default=None, required=False):
 
     def contains(keys, container):
       if keys:
@@ -31,6 +32,8 @@ class Configs(dict):
       value = self
       for key in keys:
         value = value[key]
+    elif required:
+      raise KeyError(f"Key {maybe_dot_key} must be specified in config.")
     else:
       value = default
 
@@ -104,6 +107,7 @@ def get_distributed_logger(logger_name: str | None = None,
                            log_dir: pathlib.Path | None = None,
                            log_name: str | None =None,
                            log_suffix_fn: Callable | None = None,
+                           level: int = logging.INFO,
                            fmt='%(levelname)s - %(asctime)s: %(message)s',
                            datefmt='%Y-%m-%dT%H:%M:%S') -> logging.Logger:
 
@@ -121,14 +125,15 @@ def get_distributed_logger(logger_name: str | None = None,
   if log_name is None:
     job_name = os.getenv("SLURM_JOB_NAME")
     job_id = os.getenv("SLURM_JOB_ID")
-    if job_name is not None and job_id is not None:
+    if job_name is not None or job_id is not None:
       log_name = f"{job_name}-{job_id}"
     else:
-      raise ValueError("log_name must be specified")
+      raise ValueError("log_name must be specified or SLURM environment variables must be set.")
 
   if log_suffix_fn is not None:
     log_name = log_name + log_suffix_fn()
 
+  logger.setLevel(level=level)
   logger.propagate = False
   logger.handlers.clear()
   log_path = log_dir / log_name
@@ -138,6 +143,15 @@ def get_distributed_logger(logger_name: str | None = None,
   logger.addHandler(filehandler)
 
   return logger
+
+
+class OrbaxLoggerWrapper(orbax.checkpoint.logging.AbstractLogger):
+
+  def __init__(self, logger: logging.Logger):
+    self._logger = logger
+
+  def log_entry(self, msg, *args, **kwargs):
+    self._logger.info(msg, *args, **kwargs)
 
 
 def memory_usage_summary(compiled_stats):
