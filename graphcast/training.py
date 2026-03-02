@@ -23,12 +23,12 @@ import gmsh
 import grain
 import haiku as hk
 import jax
-import numpy as np
 import optax
 import orbax.checkpoint as ocp
 import xarray as xr
 from grain.python import IndexSampler, DataLoader, Batch, ShardOptions, ReadOptions
 from jax import checkpoint_policies as cp
+from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard import reshard
 from jax.sharding import PartitionSpec, NamedSharding, AxisType
 
@@ -300,26 +300,22 @@ def launch(config_path: pathlib.Path,
   if other_configs is not None:
     configs.update(other_configs)
 
-  # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
+  jax.distributed.initialize()
   jax_backend = configs.get('jax_backend') or jax.default_backend()
-  jax.distributed.initialize(local_device_ids=configs.get('local_devices', [0, 1, 2, 3]))
-  _ = jax.devices()
+  _ = jax.devices(jax_backend)
 
+  # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
   from tensorflow import summary
   import tensorflow as tf
-
   # TODO: could this be set using environment variables?
   tf.config.experimental.set_visible_devices([], 'GPU')
 
-  # FIXME: use backend in jax.devices and jax.device_count,
-  #  also check that the local batch size is divisible by the number of devices
-  multi_host = jax.process_count() > 1
-  logger.info(f"Setting up the device mesh with {jax.device_count()} devices "
-              f"and backend {jax_backend} ({'multi-host setup' if multi_host else 'single-host setup'}).")
+  logger.info(f"Setting up the device mesh with {jax.device_count(jax_backend)} devices and backend {jax_backend} "
+              f"({'multi-host setup' if jax.process_count(jax_backend) > 1 else 'single-host setup'}).")
 
-  device_mesh = jax.make_mesh((jax.device_count(),),
+  device_mesh = jax.make_mesh((jax.device_count(jax_backend),),
                               ('batch',),
-                              devices=jax.devices(),
+                              devices=jax.devices(jax_backend),
                               axis_types=(AxisType.Explicit,))
 
   jax.sharding.set_mesh(device_mesh)
@@ -339,8 +335,8 @@ def launch(config_path: pathlib.Path,
                               timesteps=configs.get('dataset.timesteps', 3),
                               mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
   sampler = IndexSampler(num_records=len(datasource),
-                         shard_options=ShardOptions(shard_count=jax.process_count(),
-                                                    shard_index=jax.process_index()),
+                         shard_options=ShardOptions(shard_count=jax.process_count(jax_backend),
+                                                    shard_index=jax.process_index(jax_backend)),
                          num_epochs=None,
                          shuffle=configs.get('sampler.shuffle_dataset', True),
                          seed=configs.get('sampler.seed'))
@@ -427,12 +423,15 @@ def launch(config_path: pathlib.Path,
 
     return updated_params, next_rng_key, next_opt_state, loss, diagnostics
 
-  logger.info(f"Reading and saving checkpoints from {train_path}")
-  if jax.process_index() == 0:
-    if not train_path.exists():
-      train_path.mkdir(parents=True)
-    if start_fresh and any(train_path.iterdir()):
-      train_path = ocp.test_utils.erase_and_create_empty(train_path)
+  null_mesh = jax.make_mesh((), ())
+  logger.info(f"Reading from and saving checkpoints to {train_path}")
+  with jax.sharding.use_mesh(null_mesh):
+    if jax.process_index(jax_backend) == 0:
+      if not train_path.exists():
+        train_path.mkdir(parents=True)
+      if start_fresh and any(train_path.iterdir()):
+        train_path = ocp.test_utils.erase_and_create_empty(train_path)
+    sync_global_devices("get_clean_train_path")
   ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
                                                    best_mode='min',
                                                    **configs.get('checkpoints', {}))
@@ -445,12 +444,11 @@ def launch(config_path: pathlib.Path,
   #  context mesh. The same goes for save and restore operations.
   #  See: https://github.com/google/orbax/issues/2545
   #  Also, it seems that converting params to a pytree of numpy arrays speeds things up.
-  null_mesh = jax.make_mesh((), ())
   with jax.sharding.use_mesh(null_mesh):
     ckpt_mngr = ocp.CheckpointManager(train_path, options=ckpt_mngr_options)
 
   # Define checkpointables (dataloader iterator, params, rng, and opt_state), eventually restore them from the
-  # checkpoint and move them to device.
+  # checkpoint and move them to devices.
   dataloader_iter = iter(dataloader)
   latest_step = 0
   rng_key = jax.random.key(configs['seed'])
@@ -461,8 +459,7 @@ def launch(config_path: pathlib.Path,
   if not start_fresh:
     latest_step = ckpt_mngr.lastest_step()
     logger.info(f"Restoring {latest_step=} from checkpoint")
-    params_on_host = jax.tree_util.tree_map(np.array, params)
-    opt_state_on_host = jax.tree_util.tree_map(np.array, opt_state)
+    params_on_host, opt_state_on_host = jax.device_get((params, opt_state))
     with jax.sharding.use_mesh(null_mesh):
       restored = ckpt_mngr.restore(
         step=latest_step,
@@ -535,17 +532,17 @@ def launch(config_path: pathlib.Path,
                                       is_leaf=lambda x: isinstance(x, xr.Dataset))
       params, rng_key, opt_state, loss, diagnostics = train_step(params, rng_key, opt_state, batch)
       # FIXME: Orbax messes up with global mesh, see comments above. Check if new versions of Orbax fix the issue.
+      params_on_host, opt_state_on_host = jax.device_get((params, opt_state))
       with jax.sharding.use_mesh(null_mesh):
-        params_on_host = jax.tree_util.tree_map(np.array, params)
-        optimizer_state_on_host = jax.tree_util.tree_map(np.array, opt_state)
         ckpt_mngr.save(current_step,
                        args=ocp.args.Composite(
                          dataloader=grain.checkpoint.CheckpointSave(dataloader_iter),
                          params=ocp.args.StandardSave(params_on_host),
                          rng=ocp.args.JaxRandomKeySave(rng_key),
-                         optimizer_state=ocp.args.StandardSave(optimizer_state_on_host)),
+                         optimizer_state=ocp.args.StandardSave(opt_state_on_host)),
                        metrics={'loss': loss.item()})
-      if jax.process_index() == 0:
+      loss, diagnostics = jax.device_get((loss, diagnostics))
+      if jax.process_index(jax_backend) == 0:
         with summary_writer.as_default():
           summary.scalar("loss", loss, step=current_step)
           for key, value in diagnostics.items():
@@ -556,18 +553,24 @@ def launch(config_path: pathlib.Path,
       del batch_on_host
 
   logger.info(f"Training finished, saving checkpoint to {output_path}")
-  if not output_path.parent.exists():
-    output_path.parent.mkdir(parents=True)
-  with output_path.open('wb') as ckpt_file:
-    params_on_host = jax.tree_util.tree_map(np.array, params)
-    graphcast_ckpt = CheckPoint(
-      params=params_on_host,
-      model_config=init_ckpt.model_config,
-      task_config=init_ckpt.task_config,
-      mesh_data=init_ckpt.mesh_data,
-      description=configs.get('description') or init_ckpt.description,
-      license=configs.get('license') or init_ckpt.description)
-    checkpoint.dump(ckpt_file, graphcast_ckpt)
+  with jax.sharding.use_mesh(null_mesh):
+    params_on_host = jax.device_get(params)
+    params_on_host = ckpt_mngr.restore(
+      step=ckpt_mngr.best_step(),
+      args=ocp.args.Composite(params=ocp.args.StandardRestore(params_on_host, strict=True, support_layout=False)))
+    if jax.process_index(jax_backend) == 0:
+      if not output_path.parent.exists():
+        output_path.parent.mkdir(parents=True)
+      with output_path.open('wb') as ckpt_file:
+        graphcast_ckpt = CheckPoint(
+          params=params_on_host,
+          model_config=init_ckpt.model_config,
+          task_config=init_ckpt.task_config,
+          mesh_data=init_ckpt.mesh_data,
+          description=configs.get('description') or init_ckpt.description,
+          license=configs.get('license') or init_ckpt.description)
+        checkpoint.dump(ckpt_file, graphcast_ckpt)
+    sync_global_devices("save_checkpoint")
 
   jax.distributed.shutdown()
 

@@ -1,6 +1,4 @@
 jax_backend = "gpu"
-local_devices_ids = [0, 1, 2, 3]
-local_batch_size = 4
 training_steps = 32768
 seed = 42
 
@@ -13,7 +11,8 @@ shuffle_dataset = true
 seed = 42
 
 [dataloader]
-worker_count = 16
+local_batch_size = 1
+worker_count = 4
 num_threads = 1
 
 [policy]
