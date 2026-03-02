@@ -5,19 +5,22 @@
 * Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
 * Check if and why mesh and grid nodes must have the same number of features before applying the encoder graph (as it is currently implemented). **HIGH PRIORITY**
 * Move mask and artifacts to GPU memory once. **HIGH PRIORITY**
+* Investigate training using large batch sizes, determine new learning rate. **HIGH PRIORITY**
+* Find a way to checkpoint dataloader state without dumping large datasets on disk. **HIGH PRIORITY**
+* Investigate why the compilation time increase with the number of JAX processes. **HIGH PRIORITY**
 * ~~Write a training loop using Optax.~~ **DONE**
 * ~~Checkpoint training loop with Orbax~~ **DONE**
 * ~~Log training metrics to TensorBoard.~~ **DONE**
 * Check that tensorboard is logging asynchornously. **HIGH PRIORITY**
 * ~~Implement restart from checkpoint logic.~~ **DONE**
 * ~~Checkpoint dataloader state, and implement restart logic~~. **HIGH PRIORITY**
-* Log each process independently using `cli_utils.py`. **HIGH PRIORITY**
+* ~~Log each process independently using `cli_utils.py`.~~ **DONE**
 * Move training stuff to `training_utils.py` **HIGH PRIORITY**
 * Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
 * Check that artifacts contain only zero std residuals for sea ice variables. **HIGH PRIORITY**
 * ~~Experiment with argument buffer donation to accelerate training.~~ **DONE** 
 * ~~Check memory consumption without scan.~~ **DONE**
-* Revise level weighting using depth. **URGENT**
+* ~~Revise level weighting using depth.~~ **DONE**
 * ~~Revise per variable weighting according to GraphCast.~~ **DONE**
 * Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules. **HIGH PRIORITY**
 * Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
