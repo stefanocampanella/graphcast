@@ -1,7 +1,15 @@
 # TODO list
 
 * ~~Fix dataloader to use multiple workers and reduce training bubble.~~ **DONE**
+* ~~Some nodes might be faulty or have systematic issues. Add hostname to log file names.~~ **DONE**
+* ~~Filter warnings and skip day_of_year_sin/cos in normalization warnings.~~ **DONE**
+* Merge `init` and `train` in training.py: start training from configs, instead of initial checkpoint. Optionally stop at the `init` phase. **HIGH PRIORITY**
+* Checkpoint rng data, not rng JAX array. **HIGH PRIORITY**
+* Fix probably-broken DASK scripts (e.g., stats) with new `get_distributed_logger`/`set_up_root_distributed_logger`. (Medium priority)
+* Add logging settings to training toml config file. (Medium priority)
+* Move from `Dataloader` to `Dataset` interface in Grain, use performance autotune to avoid OOM. **HIGH PRIORITY**
 * Investigate bug resulting in the release of SharedMemoryArrays when using multiple workers in Grain and checkpointing parameters as pytree in Orbax. **HIGH PRIORITY**
+* Investigate why JAX initialization gets logged twice, on stdout and stderr, in training.py. (Low priority)
 * Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
 * Check if and why mesh and grid nodes must have the same number of features before applying the encoder graph (as it is currently implemented). **HIGH PRIORITY**
 * Move mask and artifacts to GPU memory once. **HIGH PRIORITY**
