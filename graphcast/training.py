@@ -15,6 +15,7 @@
 import logging
 import os
 import pathlib
+import sys
 from functools import partial
 from typing import Mapping, Any
 
@@ -34,7 +35,7 @@ from jax.sharding import PartitionSpec, NamedSharding, AxisType
 
 from graphcast import checkpoint, cli_utils, xarray_jax
 from graphcast.casting import Bfloat16Cast
-from graphcast.cli_utils import Configs, run_analysis_and_report, get_distributed_logger, OrbaxLoggerWrapper
+from graphcast.cli_utils import Configs, run_analysis_and_report, OrbaxLogger
 from graphcast.dataloader import ARCODataSource, FillNans, ExtractInputsTargetsForcings, WrapData
 from graphcast.geospatial_mesh_utils import read_mesh
 from graphcast.mask import MaskedPredictor
@@ -94,11 +95,9 @@ def init(config_path: pathlib.Path,
          analysis = False,
          log_level: str = 'info'):
 
-  logging.basicConfig(
-    format='%(levelname)s - %(asctime)s: %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
-    level=getattr(logging, log_level.upper()),
-    force=True)
+  console = logging.StreamHandler(stream=sys.stdout)
+  console.setLevel(log_level.upper())
+  logging.basicConfig(handlers=[console], level='INFO', force=True)
 
   logger.info("Initialize gmsh.")
   gmsh.initialize()
@@ -266,13 +265,6 @@ def init(config_path: pathlib.Path,
                               dir_okay=True,
                               writable=True,
                               resolve_path=True))
-@click.option("--logdir",
-              help="Log directory.",
-              type=click.Path(path_type=pathlib.Path,
-                              file_okay=False,
-                              dir_okay=True,
-                              writable=True,
-                              resolve_path=True))
 @click.option('--log-level',
               default='info',
               type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
@@ -286,18 +278,15 @@ def launch(config_path: pathlib.Path,
            overwrite: bool = False,
            analysis: bool = False,
            tensorboard_logdir: pathlib.Path | None = None,
-           logdir: pathlib.Path | None = None,
-           log_level: str = 'info',
-           jax_backend: str = 'gpu'):
+           log_level: str = 'info'):
 
+  # Ensure that the root logger has only one handler, logging to stdout with selected level.
+  console = logging.StreamHandler(stream=sys.stdout)
+  console.setLevel(log_level.upper())
+  logging.basicConfig(handlers=[console], level='INFO', force=True)
+
+  logger.info(f"Initialize JAX distributed.")
   jax.distributed.initialize()
-
-  logger = get_distributed_logger(__name__,
-                                  log_dir=logdir,
-                                  log_suffix_fn=lambda: f"_{jax.process_index(jax_backend)}.log",
-                                  level=getattr(logging, log_level.upper()))
-
-  gmsh.initialize()
 
   if output_path.exists() and not overwrite:
     raise FileExistsError("The final checkpoint already exists. Use --overwrite to overwrite it.")
@@ -444,7 +433,7 @@ def launch(config_path: pathlib.Path,
                                                    **configs.get('checkpoints', {}))
 
   with jax.sharding.use_mesh(null_mesh):
-    ckpt_mngr = ocp.CheckpointManager(train_path, options=ckpt_mngr_options, logger=OrbaxLoggerWrapper(logger))
+    ckpt_mngr = ocp.CheckpointManager(train_path, options=ckpt_mngr_options, logger=OrbaxLogger())
 
   # Define checkpointables (dataloader iterator, params, rng, and opt_state), eventually restore them from the
   # checkpoint and move them to devices.
@@ -577,7 +566,7 @@ def launch(config_path: pathlib.Path,
         checkpoint.dump(ckpt_file, graphcast_ckpt)
     sync_global_devices("save_checkpoint")
 
-  logger.info("Shutting down")
+  logger.info("Shutting down JAX distributed.")
   jax.distributed.shutdown()
 
 

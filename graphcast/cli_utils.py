@@ -6,6 +6,7 @@ from typing import Callable
 
 import click
 import jax
+import orbax.checkpoint
 import orbax.checkpoint.logging
 
 logger = logging.getLogger(__name__)
@@ -144,11 +145,10 @@ def get_distributed_logger(logger_name: str | None = None,
 
   return logger
 
+class OrbaxLogger(orbax.checkpoint.logging.AbstractLogger):
 
-class OrbaxLoggerWrapper(orbax.checkpoint.logging.AbstractLogger):
-
-  def __init__(self, logger: logging.Logger):
-    self._logger = logger
+  def __init__(self):
+    self._logger = logging.getLogger(orbax.checkpoint.__name__)
 
   def log_entry(self, msg, *args, **kwargs):
     self._logger.info(msg, *args, **kwargs)

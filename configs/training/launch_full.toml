@@ -1,4 +1,3 @@
-jax_backend = "gpu"
 training_steps = 32768
 seed = 42
 
