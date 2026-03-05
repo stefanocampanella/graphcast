@@ -20,7 +20,7 @@ to the original domain.
 # TODO: fix implementation for sea ice variables, that have residual scales equal to zero on most of the domain.
 
 import logging
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Iterable
 
 from graphcast import predictor_base
 from graphcast import xarray_tree
@@ -30,8 +30,10 @@ import xarray
 def normalize(values: xarray.Dataset,
               scales: xarray.Dataset,
               locations: Optional[xarray.Dataset],
+              skip_names: Optional[Iterable[str]] = None,
               ) -> xarray.Dataset:
   """Normalize variables using the given scales and (optionally) locations."""
+  skip_names = skip_names or {}
   def normalize_array(array):
     if array.name is None:
       raise ValueError(
@@ -39,11 +41,11 @@ def normalize(values: xarray.Dataset,
     if locations is not None:
       if array.name in locations:
         array = array - locations[array.name].astype(array.dtype)
-      else:
+      elif array.name not in skip_names:
         logging.warning('No normalization location found for %s', array.name)
     if array.name in scales:
       array = array / scales[array.name].astype(array.dtype)
-    else:
+    elif array.name not in skip_names:
       logging.warning('No normalization scale found for %s', array.name)
     return array
   return xarray_tree.map_structure(normalize_array, values)
@@ -104,12 +106,14 @@ class InputsAndResiduals(predictor_base.Predictor):
       predictor: predictor_base.Predictor,
       stddev_by_level: xarray.Dataset,
       mean_by_level: xarray.Dataset,
-      diffs_stddev_by_level: xarray.Dataset):
+      diffs_stddev_by_level: xarray.Dataset,
+      skip_names: Optional[Iterable[str]] = None):
     self._predictor = predictor
     self._scales = stddev_by_level
     self._locations = mean_by_level
     self._residual_scales = diffs_stddev_by_level
     self._residual_locations = None
+    self._skip_names = skip_names
 
   def _unnormalize_prediction_and_add_input(self, inputs, norm_prediction):
     if norm_prediction.sizes.get('time') != 1:
@@ -152,8 +156,8 @@ class InputsAndResiduals(predictor_base.Predictor):
                forcings: xarray.Dataset,
                **kwargs
                ) -> xarray.Dataset:
-    norm_inputs = normalize(inputs, self._scales, self._locations)
-    norm_forcings = normalize(forcings, self._scales, self._locations)
+    norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
+    norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     norm_predictions = self._predictor(
         norm_inputs, targets_template, forcings=norm_forcings, **kwargs)
     return xarray_tree.map_structure(
@@ -167,8 +171,8 @@ class InputsAndResiduals(predictor_base.Predictor):
            **kwargs,
            ) -> predictor_base.LossAndDiagnostics:
     """Returns the loss computed on normalized inputs and targets."""
-    norm_inputs = normalize(inputs, self._scales, self._locations)
-    norm_forcings = normalize(forcings, self._scales, self._locations)
+    norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
+    norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     norm_target_residuals = xarray_tree.map_structure(
         lambda t: self._subtract_input_and_normalize_target(inputs, t),
         targets)
@@ -184,8 +188,8 @@ class InputsAndResiduals(predictor_base.Predictor):
       ) -> Tuple[predictor_base.LossAndDiagnostics,
                  xarray.Dataset]:
     """The loss computed on normalized data, with unnormalized predictions."""
-    norm_inputs = normalize(inputs, self._scales, self._locations)
-    norm_forcings = normalize(forcings, self._scales, self._locations)
+    norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
+    norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     norm_target_residuals = xarray_tree.map_structure(
         lambda t: self._subtract_input_and_normalize_target(inputs, t),
         targets)
