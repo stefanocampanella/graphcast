@@ -455,7 +455,7 @@ def launch(config_path: pathlib.Path,
   sharding_replicated = NamedSharding(device_mesh, PartitionSpec())
 
   if not start_fresh:
-    latest_step = ckpt_mngr.lastest_step()
+    latest_step = ckpt_mngr.latest_step()
     logger.info(f"Restoring {latest_step=} from checkpoint")
     params_on_host, opt_state_on_host = jax.device_get((params, opt_state))
     with jax.sharding.use_mesh(null_mesh):
