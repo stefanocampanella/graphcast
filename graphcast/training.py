@@ -303,14 +303,14 @@ def launch(config_path: pathlib.Path,
     raise FileExistsError("The final checkpoint already exists. Use --overwrite to overwrite it.")
 
   # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
-  _ = jax.devices(jax_backend)
+  _ = jax.devices()
   from tensorflow import summary
   import tensorflow as tf
   # TODO: could this be set using environment variables?
   tf.config.experimental.set_visible_devices([], 'GPU')
 
-  logger.info(f"Setting up the device mesh with {jax.device_count(jax_backend)} {jax_backend} devices "
-              f"({'multi-host setup' if jax.process_count(jax_backend) > 1 else 'single-host setup'}).")
+  logger.info(f"Setting up the device mesh with {jax.device_count()} devices "
+              f"({'multi-host setup' if jax.process_count() > 1 else 'single-host setup'}).")
 
   # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
   # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
@@ -319,9 +319,9 @@ def launch(config_path: pathlib.Path,
   # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
   #  See: https://github.com/google/orbax/issues/2545
   null_mesh = jax.make_mesh((), ())
-  device_mesh = jax.make_mesh((jax.device_count(jax_backend),),
+  device_mesh = jax.make_mesh((jax.device_count(),),
                               ('batch',),
-                              devices=jax.devices(jax_backend),
+                              devices=jax.devices(),
                               axis_types=(AxisType.Explicit,))
   jax.sharding.set_mesh(device_mesh)
 
@@ -343,8 +343,8 @@ def launch(config_path: pathlib.Path,
                               timesteps=configs.get('dataset.timesteps', 3),
                               mask_name=configs.get('dataset.mask_name', 'glorys_mask'))
   sampler = IndexSampler(num_records=len(datasource),
-                         shard_options=ShardOptions(shard_count=jax.process_count(jax_backend),
-                                                    shard_index=jax.process_index(jax_backend)),
+                         shard_options=ShardOptions(shard_count=jax.process_count(),
+                                                    shard_index=jax.process_index()),
                          num_epochs=None,
                          shuffle=configs.get('sampler.shuffle_dataset', True),
                          seed=configs.get('sampler.seed'))
@@ -411,7 +411,8 @@ def launch(config_path: pathlib.Path,
     predictor,
     diffs_stddev_by_level=diffs_stddev_by_level,
     mean_by_level=mean_by_level,
-    stddev_by_level=stddev_by_level)
+    stddev_by_level=stddev_by_level,
+    skip_names=['year_progress_cos', 'year_progress_sin'])
 
   # Mask inputs/outputs replacing missing values with 0.0
   predictor = MaskedPredictor(predictor, mask=mask, value=0.0)
@@ -432,7 +433,7 @@ def launch(config_path: pathlib.Path,
 
   logger.info(f"Reading from and saving checkpoints to {train_path}")
   with jax.sharding.use_mesh(null_mesh):
-    if jax.process_index(jax_backend) == 0:
+    if jax.process_index() == 0:
       if not train_path.exists():
         train_path.mkdir(parents=True)
       if start_fresh and any(train_path.iterdir()):
@@ -546,7 +547,7 @@ def launch(config_path: pathlib.Path,
                          optimizer_state=ocp.args.StandardSave(opt_state_on_host)),
                        metrics={'loss': loss.item()})
       loss, diagnostics = jax.device_get((loss, diagnostics))
-      if jax.process_index(jax_backend) == 0:
+      if jax.process_index() == 0:
         with summary_writer.as_default():
           summary.scalar("loss", loss, step=current_step)
           for key, value in diagnostics.items():
@@ -562,7 +563,7 @@ def launch(config_path: pathlib.Path,
     params_on_host = ckpt_mngr.restore(
       step=ckpt_mngr.best_step(),
       args=ocp.args.Composite(params=ocp.args.StandardRestore(params_on_host, strict=True, support_layout=False)))
-    if jax.process_index(jax_backend) == 0:
+    if jax.process_index() == 0:
       if not output_path.parent.exists():
         output_path.parent.mkdir(parents=True)
       with output_path.open('wb') as ckpt_file:
