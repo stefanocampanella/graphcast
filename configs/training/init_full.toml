@@ -41,6 +41,8 @@ input_variables = [
     "uparea",
     "waverys_deptho",
     "waverys_mask",
+    "year_progress_sin",
+    "year_progress_cos",
 ]
 # Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts
 target_variables = [
