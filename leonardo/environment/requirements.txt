@@ -441,7 +441,7 @@ jupyterlab-server==2.27.3
     # via jupyterlab
 jupyterlab-widgets==3.0.15
     # via ipywidgets
-keras==3.13.0
+keras==3.13.2
     # via tensorflow
 kiwisolver==1.4.8
     # via matplotlib
@@ -486,7 +486,7 @@ mdurl==0.1.2
     # via markdown-it-py
 mistune==3.1.3
     # via nbconvert
-ml-dtypes==0.5.1
+ml-dtypes==0.5.4
     # via
     #   jax
     #   jaxlib
@@ -537,9 +537,7 @@ nbformat==5.10.4
 nc-time-axis==1.4.1
     # via graphcast (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 nest-asyncio==1.6.0
-    # via
-    #   ipykernel
-    #   orbax-checkpoint
+    # via ipykernel
 netcdf4==1.7.2
     # via graphcast (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 networkx==3.5
@@ -552,7 +550,7 @@ numcodecs==0.15.1
     # via
     #   graphcast (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   zarr
-numpy==2.2.6
+numpy==2.1.3
     # via
     #   bokeh
     #   cartopy
@@ -648,7 +646,7 @@ optree==0.18.0
     # via keras
 optype==0.12.2
     # via scipy-stubs
-orbax-checkpoint==0.11.25
+orbax-checkpoint==0.11.33
     # via graphcast (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
 overrides==7.7.0
     # via jupyter-server
@@ -717,7 +715,6 @@ pillow==11.3.0
     # via
     #   bokeh
     #   matplotlib
-    #   tensorboard
 platformdirs==4.3.8
     # via
     #   black
@@ -732,7 +729,7 @@ propcache==0.3.2
     #   yarl
 proto-plus==1.26.1
     # via google-api-core
-protobuf==6.31.1
+protobuf==5.29.6
     # via
     #   google-api-core
     #   googleapis-common-protos
@@ -746,15 +743,17 @@ psutil==7.0.0
     # via
     #   distributed
     #   ipykernel
+    #   orbax-checkpoint
 ptyprocess==0.7.0
     # via
     #   pexpect
     #   terminado
 pure-eval==0.2.3
     # via stack-data
-pyarrow==21.0.0
+pyarrow==22.0.0
     # via
     #   arcosparse
+    #   graphcast (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
     #   papermill
 pyasn1==0.6.1
     # via
@@ -911,6 +910,7 @@ six==1.17.0
     #   gviz-api
     #   python-dateutil
     #   rfc3339-validator
+    #   tensorboard
     #   tensorflow
     #   xprof
 sniffio==1.3.1
@@ -929,12 +929,14 @@ tblib==3.1.0
     # via distributed
 tenacity==9.1.2
     # via papermill
-tensorboard==2.20.0
+tensorboard==2.19.0
     # via tensorflow
 tensorboard-data-server==0.7.2
     # via tensorboard
-tensorflow==2.20.0 ; sys_platform == "linux"
+tensorflow==2.19.1
     # via graphcast (/leonardo_scratch/fast/OGS23_PRACE_IT_0/scampane/xcast/pyproject.toml)
+tensorflow-io-gcs-filesystem==0.37.1
+    # via tensorflow
 tensorstore==0.1.76
     # via orbax-checkpoint
 termcolor==3.2.0
@@ -1031,6 +1033,8 @@ urllib3==2.5.0
     #   distributed
     #   pygithub
     #   requests
+uvloop==0.22.1
+    # via orbax-checkpoint
 wcwidth==0.2.13
     # via prompt-toolkit
 webcolors==24.11.1
@@ -1049,7 +1053,7 @@ wheel==0.45.1
     # via astunparse
 widgetsnbextension==4.0.14
     # via ipywidgets
-wrapt==1.17.2
+wrapt==1.17.3
     # via
     #   aiobotocore
     #   deprecated

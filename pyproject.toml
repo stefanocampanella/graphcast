@@ -1,6 +1,6 @@
 [build-system]
 # Minimum version required by gdal and jax
-requires = ["setuptools (>= 67.0,<81)"]
+requires = ["setuptools (>= 67.0)"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -54,7 +54,7 @@ dependencies = [
     "numcodecs<0.16",
     "numpy",
     "optax",
-    "orbax-checkpoint",
+    "orbax-checkpoint >= 0.11.30",
     "pandas",
     "pandas-stubs~=2.2.3",
     "papermill[all]",

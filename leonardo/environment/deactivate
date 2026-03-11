@@ -2,8 +2,14 @@
 #
 # Notice: the deactivation script should be sourced, not executed.
 
+# Source modules.sh if it has not yet
+if [[ ! -v LEONARDO_MODULES_DEFINED ]]; then
+    ROOT=$(git rev-parse --show-toplevel)
+    source "${ROOT}/leonardo/environment/modules.sh"
+fi
+
 # It should be enough to deactivate the python and then the spack environments, finally unload modules
 deactivate
 spack env deactivate
 
-module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2 cmake/3.27.9
+unload_modules

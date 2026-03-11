@@ -113,10 +113,6 @@ while true; do
     esac
 done
 
-# Load provided Leonardo modules.
-# Notice: **don't** load other modules beforehand (e.g. cmake), in tests bugged pigz/tar will make the build fail.
-module load git/2.45.1 gcc/12.2.0 openmpi/4.1.6--gcc--12.2.0-cuda-12.2 cmake/3.27.9
-
 # FIXME: if "fatal: not a git repository ..." exit with failure.
 #  Also, all the script use the same approach of finding the root of the project by means of git. Remote working
 #  directory are synced using rsync (leonardo/bin/sync.sh), can this lead to a corrupted git repository?
@@ -134,6 +130,8 @@ SLURM_QOS=boost_qos_dbg
 SLURM_INSTALL_JAXLIB="pip install --no-index --no-cache-dir --find-links=${PKG_CACHE_DIR} jaxlib"
 SLURM_TIME=10
 
+source "${ROOT}/leonardo/environment/modules.sh"
+load_modules
 
 # Change working directory to project root (nonetheless, absolute paths are preferred)
 cd "${ROOT}" || exit
@@ -198,13 +196,13 @@ if [[ $BUILD_SPACK == true ]]; then
 
     # Is it useful to add gcc and openmpi externals to the current environment? E.g.
     # spack compiler find
-    spack external find --not-buildable gcc openmpi cmake
+    spack external find gcc openmpi cmake
 
     # Add python and gdal to the environment, then install
-    spack add python@3.11%gcc@12.2.0
-    spack add gdal@3.11.4%gcc@12.2.0
+    spack add python@3.11
+    spack add gdal@3.11.4
     # Build fails for proj@9.7.0
-    spack add proj@9.4.1%gcc@12.2.0
+    spack add proj@9.4.1
 
     spack concretize || exit 1
 
@@ -264,3 +262,5 @@ if [[ $BUILD_VENV == true ]]; then
     deactivate
     spack env deactivate
 fi
+
+unload_modules
