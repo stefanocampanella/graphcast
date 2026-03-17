@@ -99,7 +99,8 @@ the coordinate, but that wasn't going to work with a jax array anyway.
 import collections
 import contextlib
 import contextvars
-from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Union, Tuple, TypeVar, cast
+import functools
+from typing import Any, Callable, Iterator, Mapping, Optional, Union, Tuple, TypeVar, cast
 from typing import Hashable  # pylint: disable=deprecated-class
 
 import jax
@@ -107,10 +108,9 @@ import jax.numpy as jnp
 import numpy as np
 import tree
 import xarray
-from xarray.core.variable import as_compatible_data
-from grain.python import SharedMemoryArray
 from grain._src.python.shared_memory_array import SharedMemoryArrayMetadata
-
+from grain.python import SharedMemoryArray
+from xarray.core.variable import as_compatible_data
 
 # Types which we wrap with JaxArrayWrapper to allow creating xarray datatypes
 # from them.
@@ -247,26 +247,6 @@ def Dataset(  # pylint:disable=invalid-name
   return assign_coords(result, coords=coords, jax_coords=jax_coords)
 
 
-def to_xarray_jax(dataset: xarray.Dataset, jax_coords: Iterable[str] | None = None) -> xarray.Dataset:
-  """Converts a XArray dataset to another where data is a wrapped JAX array."""
-  jax_coords = {} if jax_coords is None else set(jax_coords)
-  dataset_jax = Dataset(
-    data_vars={var: (data.dims, data.data) for (var, data) in dataset.data_vars.items()},
-    coords={name: da for (name, da) in dataset.coords.items() if name not in jax_coords},
-    jax_coords={name: da for (name, da) in dataset.coords.items() if name in jax_coords},
-    attrs=dataset.attrs)
-  return dataset_jax
-
-
-def to_np(dataset: xarray.Dataset) -> xarray.Dataset:
-  """Converts a XArray dataset to another where data is a plain numpy array."""
-  dataset_np = xarray.Dataset(
-    data_vars={var: (dataset[var].dims, np.asarray(data)) for (var, data) in unwrap_vars(dataset).items()},
-    coords=dataset.coords,
-    attrs=dataset.attrs)
-  return dataset_np
-
-
 DatasetOrDataArray = TypeVar(
     'DatasetOrDataArray', xarray.Dataset, xarray.DataArray)
 
@@ -392,6 +372,36 @@ def wrap(value):
     return value
 
 
+def wrap_data(value, to_jax=False, np_contiguous=True):
+  # The main reason for using WrapData is to ensure that the data is contiguous. Otherwise, when using
+  # multiprocessing, uncontiguous arrays would not be converted to SharedMemoryArrays and instead would be pickled
+  # and transferred to the main process.
+  def _as_something(x: np.ndarray) -> np.ndarray | jax.Array:
+    if np_contiguous:
+      x = np.ascontiguousarray(x)
+    if to_jax:
+      x = jax.numpy.asarray(x)
+    return x
+
+  def _wrap_data(ds_or_da: DatasetOrDataArray) -> DatasetOrDataArray:
+    if isinstance(ds_or_da, xarray.Dataset):
+      return Dataset(data_vars={var: (data.dims, _as_something(data.data))
+                                for var, data in ds_or_da.data_vars.items()},
+                     coords=ds_or_da.coords,
+                     jax_coords={},
+                     attrs=ds_or_da.attrs)
+    elif isinstance(ds_or_da, xarray.DataArray):
+      return DataArray(data=_as_something(ds_or_da.data),
+                       coords=ds_or_da.coords,
+                       jax_coords={},
+                       dims=ds_or_da.dims,
+                       attrs=ds_or_da.attrs)
+    else:
+      raise ValueError(f'Unsupported type: {type(ds_or_da)}')
+
+  return jax.tree_util.tree_map(_wrap_data, value, is_leaf=lambda x: isinstance(x, (xarray.Dataset, xarray.DataArray)))
+
+
 def unwrap(value, require_jax=False):
   """Unwraps wrapped JAX or Grain shared memory arrays used in xarray, passing through other values."""
   if isinstance(value, JaxArrayWrapper):
@@ -408,6 +418,7 @@ def unwrap(value, require_jax=False):
 
 def _wrapped(func):
   """Surrounds a function with JAX array unwrapping/wrapping."""
+  @functools.wraps(func)
   def wrapped_func(*args, **kwargs):
     args, kwargs = tree.map_structure(unwrap, (args, kwargs))
     result = func(*args, **kwargs)
