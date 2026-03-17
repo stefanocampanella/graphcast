@@ -7,11 +7,9 @@ import numpy as np
 
 class MaskedPredictor(predictor_base.Predictor):
 
-  def __init__(self, predictor: predictor_base.Predictor, mask: xr.DataArray, value: Any = np.float32(0.0)):
+  def __init__(self, predictor: predictor_base.Predictor, mask: xr.DataArray, value = np.float32(0.0)):
        self._predictor = predictor
        self._value = value
-       # TODO: Here probably `self._grid_mask` should reside on device, possibly being sharded. However,
-       #  it would probably interfere with model initialization, is probably better to keep it just a `numpy.ndarray`.
        self._mask = mask
 
   def __call__(self,

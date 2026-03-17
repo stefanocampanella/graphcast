@@ -159,7 +159,7 @@ def bfloat16_variable_view(enabled: bool = True):
   It works as follows:
   * Every time a variable is requested to be created/set as np.bfloat16,
     it will create an underlying float32 variable, instead.
-  * Every time a variable a variable is requested as bfloat16, it will check the
+  * Every time a variable is requested as bfloat16, it will check the
     variable is of float32 type, and cast the variable to bfloat16.
 
   Note the gradients are still computed and accumulated as float32, because
