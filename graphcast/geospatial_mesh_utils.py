@@ -20,7 +20,7 @@ from scipy.ndimage import gaussian_filter
 
 from graphcast.gis_utils import CRSName, CRSRegistry, stereographic_srs, cartesian_srs
 from graphcast.gis_utils import CoordinateReferenceSystem, get_transform, xarray_to_gdal_raster
-from graphcast.mesh_graph import TriangleMesh
+from graphcast.mesh_graph import TriangleMesh, MeshData, MeshGraph, faces_to_edges
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +259,7 @@ class CompositeMeshSizeField(StereoMeshSizeField):
   def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
 
+
 # TODO: update implementation to save boundary elements into TriangleMesh, and read reference system from mesh file and
 #  save it as well in the output file.
 def read_mesh(mesh_path: pathlib.Path | str, mesh_size_tag_name: str | None, srs_attribute_name: str = 'Projection',
@@ -377,3 +378,28 @@ def coarsen_boundaries(domain: seamsh.geometry.Domain,
   mesh_size_f = UniformField(mesh_size)
   coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse
+
+
+def read_mesh_data(mesh_path, gmsh_verbosity: int = 2,
+                   mesh_size_tag_name: str | None = None,
+                   mesh_size_tag_step: int = 0,
+                   ) -> MeshData:
+  logger.info("Initialize gmsh.")
+  gmsh.initialize()
+  gmsh.option.setNumber("General.Verbosity", gmsh_verbosity)
+
+  mesh_size_tag_name = mesh_size_tag_name or 'MeshSize'
+  mesh, mesh_size = read_mesh(mesh_path=mesh_path,
+                              mesh_size_tag_name=mesh_size_tag_name,
+                              step=mesh_size_tag_step)
+  mesh_license = gmsh.model.getAttribute('license')
+  mesh_description = gmsh.model.getAttribute('description')
+  graph = MeshGraph(vertices=mesh.vertices, edges=faces_to_edges(mesh.faces), faces=mesh.faces,
+                    boundary=mesh.boundary, spatial_reference_system=mesh.spatial_reference_system)
+  logger.info("Mesh graph contains %d vertices and %d edges.",
+              len(graph.vertices), len(graph.edges[0]))
+  mesh_data = MeshData(mesh_graph=graph,
+                       mesh_size=mesh_size,
+                       description=mesh_license,
+                       license=mesh_description)
+  return mesh_data
