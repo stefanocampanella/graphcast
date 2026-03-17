@@ -456,3 +456,30 @@ def extract_inputs_targets_forcings(
   targets = targets[list(target_variables)]
 
   return inputs, targets, forcings
+
+
+def _get_steps_per_window(dataset: xarray.Dataset,
+                          input_duration: TimedeltaLike,
+                          target_lead_times: TargetLeadTimes,
+                          time_dim: str = 'time') -> int:
+  """Returns the number of timesteps per window."""
+  ds_dummy = xarray.Dataset(coords=dataset.coords)
+  inputs_dummy, targets_dummy = extract_input_target_times(dataset=ds_dummy,
+                                                           input_duration=input_duration,
+                                                           target_lead_times=target_lead_times)
+  time_window_ds = xarray.concat([inputs_dummy, targets_dummy], dim=time_dim)
+  time_window = time_window_ds[time_dim].max() - time_window_ds[time_dim].min()
+  time_resolution = _get_time_resolution(ds_dummy, time_dim=time_dim)
+  steps_per_window = np.floor(time_window / time_resolution).astype(int)
+  return steps_per_window.item()
+
+
+def _get_time_resolution(dataset: xarray.Dataset, time_dim: str = 'time') -> np.timedelta64:
+  """Checks if the dataset has a fixed time resolution and returns it."""
+  time_coord = dataset[time_dim]
+  diffs = time_coord.diff(time_dim)
+  delta = diffs.isel({time_dim: 0})
+  assert (diffs == delta).all().item(), "The time coordinate is not uniformly spaced."
+  delta = delta.item()
+  delta = np.timedelta64(delta, 'ns')
+  return delta
