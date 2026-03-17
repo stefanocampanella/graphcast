@@ -155,7 +155,7 @@ def _edge_update(graph, edge_fn, edge_set_key):  # pylint: disable=invalid-name
 def _node_update(graph, node_fn, node_set_key, aggregation_fn):  # pylint: disable=invalid-name
   """Updates an edge set of a given key."""
   node_set = graph.nodes[node_set_key]
-  sum_n_node = tree.tree_leaves(node_set.features)[0].shape[0]
+  sum_n_node = node_set.n_node[0]
 
   sent_features = {}
   for edge_set_key, edge_set in graph.edges.items():

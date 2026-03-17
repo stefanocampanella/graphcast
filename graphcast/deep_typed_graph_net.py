@@ -41,7 +41,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import jraph
-from jax.ad_checkpoint import checkpoint_name, checkpoint
+from jax.ad_checkpoint import checkpoint_name
 
 from graphcast import typed_graph
 from graphcast import typed_graph_net
