@@ -39,6 +39,8 @@ from graphcast.dataset_utils import open_dataset_wo_static, save_to_zarr
 from graphcast.stats_utils import Stats, StatsRegistry
 from graphcast.cli_utils import DictParamType
 
+logger = logging.getLogger(__name__)
+
 
 @click.group()
 def cli():
@@ -128,7 +130,6 @@ def compute(stats: Stats,
   """
 
   # Configure logging
-  logger = logging.getLogger(__name__)
   logging.basicConfig(
     format='%(levelname)s - %(asctime)s: %(message)s',
     datefmt='%Y-%m-%dT%H:%M:%S',
