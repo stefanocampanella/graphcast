@@ -117,7 +117,7 @@ def get_mesh_to_grid_edges(
     grid_latitude: np.ndarray,
     grid_longitude: np.ndarray,
     mesh: Mesh,
-    mask: None | xarray.DataArray = None) -> tuple[np.ndarray, np.ndarray]:
+    mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for grid points contained in mesh triangles.
 
   Args:
@@ -134,14 +134,8 @@ def get_mesh_to_grid_edges(
       [num_lat_points, num_lon_points] grid, after flattening the leading axes.
     * mesh_indices: Indices of shape [num_edges], that index into mesh.vertices.
   """
-  if mask is None:
-    mask_data = np.ones((grid_latitude.shape[0], grid_longitude.shape[0]), dtype=bool)
-  else:
-    assert np.array_equal(mask['lat'].to_numpy(), grid_latitude)
-    assert np.array_equal(mask['lon'].to_numpy(), grid_longitude)
-    mask_data = mask.transpose('lat', 'lon').to_numpy()
   # [num_grid_points=num_lat_points * num_lon_points]
-  grid_mask = mask_data.reshape([-1])
+  grid_mask = mask.reshape([-1])
   # [num_grid_points=num_lat_points * num_lon_points, 3]
   grid_positions = _grid_lat_lon_to_coordinates(grid_latitude, grid_longitude).reshape([-1, 3])
   # [num_valid_grid_points=sum(grid_mask)]
