@@ -1,26 +1,36 @@
 import pathlib
-from typing import SupportsIndex
+from typing import SupportsIndex, Tuple
 
 import grain.python as grain
-import jax
-import numpy as np
 import xarray as xr
 
-from graphcast import xarray_jax
+from graphcast.data_utils import TargetLeadTimes, _get_steps_per_window
 from graphcast.data_utils import extract_inputs_targets_forcings
+from graphcast.model import TaskConfig
 
 
 class ARCODataSource(grain.RandomAccessDataSource):
   """A data source for analysis-ready cloud-optimized datasets containing time-series."""
-  def __init__(self, path: pathlib.Path, timesteps=3, mask_name='glorys_mask'):
-    self._dataset = xr.open_dataset(path, engine='zarr')
-    self._timesteps = timesteps
-    self._mask_name = mask_name
+  def __init__(self,
+               path: pathlib.Path,
+               task: TaskConfig,
+               target_lead_times: TargetLeadTimes = "1d",
+               fill_value: float = 0.0,
+               from_date: str | None = None,
+               to_date: str | None = None,
+               ):
+    self._dataset = xr.open_dataset(path, engine='zarr').sel(time=slice(from_date, to_date))
+    self._task = task
+    self._target_lead_times = target_lead_times
+    self._fill_value = fill_value
+    self._timesteps = _get_steps_per_window(dataset=self._dataset,
+                                            input_duration=self._task.input_duration,
+                                            target_lead_times=self._target_lead_times)
 
   def __len__(self):
     return len(self._dataset['time']) - self._timesteps + 1
 
-  def __getitem__(self, record_key: SupportsIndex):
+  def __getitem__(self, record_key: SupportsIndex) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
     """A single element drawn from the ARCODataSource is a time-series starting from `record_key` and followed by `_timesteps` timesteps. """
     idx = record_key.__index__()
     if idx < 0 or idx >= len(self):
@@ -29,61 +39,34 @@ class ARCODataSource(grain.RandomAccessDataSource):
     dataset = dataset.expand_dims(dim='batch', axis=0)
     dataset = dataset.assign_coords({'datetime': dataset['time'].expand_dims(dim='batch', axis=0)})
     dataset['time'] = dataset['time'] - dataset['time'][0]
-
-    return dataset
-
-  def __repr__(self):
-    return f'{self.__class__.__name__}(dataset={self._dataset}, timesteps={self._timesteps}, mask_name={self._mask_name})'
-
-  @property
-  def mask(self):
-    return self._dataset[self._mask_name].isel(level=0, drop=True)
-
-  @property
-  def dataset(self):
-    return self._dataset
-
-
-class FillNans(grain.MapTransform):
-
-  def __init__(self, value=0.0):
-    self.value = value
-
-  def map(self, dataset: xr.Dataset) -> xr.Dataset:
-    # Notice: as a side-effect, boolean variables get casted to float32 (which is useful)
-    dataset = dataset.fillna(value=self.value)
-    return dataset
-
-
-class ExtractInputsTargetsForcings(grain.MapTransform):
-
-  def __init__(self, task, target_lead_times="1d", derived_vars_device=None):
-    self.task = task
-    self.target_lead_times = target_lead_times
-    self.derived_vars_device = derived_vars_device
-
-  def map(self, dataset: xr.Dataset) -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    # It is crucial to slice the dataset before filling missing values, or to fill missing values after
+    # extract_inputs_targets_forcings. Otherwise, each reader would need to load the entire dataset into memory (and
+    # even a single copy might be too large, e.g., for ARCO-OCEAN).
+    dataset = dataset.fillna(value=self._fill_value)
     inputs, targets, forcings = extract_inputs_targets_forcings(dataset=dataset,
-                                                                **self.task,
-                                                                target_lead_times=self.target_lead_times,
+                                                                input_variables=self._task.input_variables,
+                                                                target_variables=self._task.target_variables,
+                                                                forcing_variables=self._task.forcing_variables,
+                                                                levels=self._task.levels,
+                                                                input_duration=self._task.input_duration,
+                                                                target_lead_times=self._target_lead_times,
                                                                 to_jax=False)
     return inputs, targets, forcings
 
+  def __repr__(self):
+    return (f'{self.__class__.__name__}(dataset={self._dataset}, '
+            f'task={self._task}, '
+            f'target lead times={self._target_lead_times} '
+            f'fill value={self._fill_value})')
 
-class WrapData(grain.MapTransform):
-  """Wraps data in a jax.tree_util compatible structure to allow data movements between processes and work with JAX
-  arrays."""
+  @property
+  def xarray_dataset(self):
+    return self._dataset
 
-  def map(self, element):
-
-    def _wrap_data(dataset: xr.Dataset) -> xr.Dataset:
-      # The main reason for using WrapData is to ensure that the data is contiguous. Otherwise, when using
-      # multiprocessing, uncontiguous arrays would not be converted to SharedMemoryArrays and instead would be pickled
-      # and transferred to the main process.
-      dataset = xarray_jax.Dataset(data_vars={var: (data.dims, np.ascontiguousarray(data.data)) for var, data in dataset.data_vars.items()},
-                                   coords=dataset.coords,
-                                   jax_coords={},
-                                   attrs=dataset.attrs)
-      return dataset
-
-    return jax.tree_util.tree_map(_wrap_data, element, is_leaf=lambda x: isinstance(x, xr.Dataset))
+  def get_sample(self, batch_size: int) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+    assert 0 < batch_size <= len(self)
+    samples = [self[n] for n in range(batch_size)]
+    inputs = xr.concat([inputs for inputs, _, _ in samples], dim='batch')
+    targets = xr.concat([targets for _, targets, _ in samples], dim='batch')
+    forcings = xr.concat([forcings for _, _, forcings in samples], dim='batch')
+    return inputs, targets, forcings
