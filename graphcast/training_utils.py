@@ -7,6 +7,7 @@ import grain.python as grain
 import jax
 import numpy as np
 import optax
+import orbax.checkpoint as ocp
 import xarray as xr
 from etils import epath
 from grain.experimental import pick_performance_config
@@ -19,7 +20,7 @@ from jax.sharding import PartitionSpec as P
 
 from graphcast import xarray_jax, checkpoint
 from graphcast.casting import Bfloat16Cast
-from graphcast.cli_utils import Configs
+from graphcast.cli_utils import Configs, OrbaxLogger
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
 from graphcast.dataset_utils import Process
 from graphcast.geospatial_mesh_utils import read_mesh_data
@@ -309,6 +310,23 @@ def get_first_sample_and_reset(iter: DatasetIterator[InputsTargetsForcings]) -> 
   sample = next(iter)
   iter.set_state(state)
   return sample
+
+
+def get_ckpt_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.CheckpointManager:
+  logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
+  ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
+                                                   best_mode='min',
+                                                   **configs.get('checkpoints', {}))
+  # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
+  # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
+  # generally different from the context mesh, causing an error.
+  # For this reason, orbax CheckpointManager (which uses such a barrier) needs to be called using `null_mesh`, or before
+  # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
+  #  See: https://github.com/google/orbax/issues/2545
+  mesh = jax.make_mesh((jax.process_count(), jax.local_device_count()), ('process', 'local_device'))
+  with jax.sharding.use_mesh(mesh):
+    ckpt_mngr = ocp.CheckpointManager(ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger())
+  return ckpt_mngr
 
 
 # get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
