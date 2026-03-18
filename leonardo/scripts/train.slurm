@@ -29,7 +29,7 @@ export JAX_PLATFORMS=cuda
 #  Debug messages can be logged with the following, however they appear not informative. Instead, disabling infiniband,
 #  as suggested here: https://github.com/NVIDIA/nccl/issues/694, solves the issue. Impact on performance is still to be
 #  investigated.
-export NCCL_DEBUG=INFO
+#export NCCL_DEBUG=INFO
 export NCCL_IB_DISABLE=1
 
 # The following might solve memory fragmentation issues
