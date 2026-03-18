@@ -324,7 +324,7 @@ def get_params(init_fn: Callable[..., hk.MutableParams], iterator: DatasetIterat
   return init_fn(rng_key, sample)
 
 
-def get_ckpt_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.CheckpointManager:
+def get_checkpoint_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.CheckpointManager:
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
   ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
                                                    best_mode='min',
@@ -347,6 +347,7 @@ def pull_checkpoint(ckpt_mngr, params, opt_state, train_iterator, test_iterator)
   latest_step = ckpt_mngr.latest_step()
   logger.info(f"Restoring {latest_step=}")
   # TODO: check restore and save args options related to sharding and layout
+  # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
   restored = ckpt_mngr.restore(
     step=latest_step,
     args=ocp.args.Composite(
@@ -367,6 +368,7 @@ def pull_checkpoint(ckpt_mngr, params, opt_state, train_iterator, test_iterator)
 def push_checkpoint(ckpt_mngr, step, loss, params, opt_state, train_iterator, test_iterator):
   params_on_host = jax.device_get(params)
   opt_state_on_host = jax.device_get(opt_state)
+  # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
   ckpt_mngr.save(step,
                  args=ocp.args.Composite(
                    train_iterator=GrainCkptSave(train_iterator),
@@ -399,42 +401,23 @@ def push_checkpoint(ckpt_mngr, step, loss, params, opt_state, train_iterator, te
 #   rngs = jax.device_put(rngs, device_mesh)
 # However, the previous might produce the following error related to addressable devices and require more thinking.
 
-def get_global_grad_fn(predictor, device_mesh: jax.sharding.Mesh, batch_dim_name: str = 'batch'):
-
-  local_grad_fn = get_local_grad_fn(predictor)
-
-  def _local_grad_fn(params, rng_key, inputs, targets, forcings):
+def fsdp_map(local_fn, mesh: jax.sharding.Mesh, batch_dim_name: str = 'batch'):
+  def _local_grad_fn(params, rng_key, data, static_data):
     local_rng_key = jax.random.fold_in(rng_key, jax.lax.axis_index(batch_dim_name))
-    return local_grad_fn(params, local_rng_key, inputs, targets, forcings)
+    return local_fn(params, local_rng_key, data, static_data)
 
-  def _pmean_grad_fn(params, rng_key, inputs, targets, forcings):
-    return jax.lax.pmean(_local_grad_fn(params, rng_key, inputs, targets, forcings), axis_name=batch_dim_name)
+  def _pmean_grad_fn(params, rng_key, data, static_data):
+    return jax.lax.pmean(_local_grad_fn(params, rng_key, data, static_data), axis_name=batch_dim_name)
 
-  def global_grad_fn(params, rng_key, inputs, targets, forcings):
+  def global_fn(params, rng_key, data, static_data):
     _global_grad_fn = shard_map(_pmean_grad_fn,
-                                mesh=device_mesh,
-                                in_specs=(P(), P(), P(batch_dim_name), P(batch_dim_name), P(batch_dim_name)),
+                                mesh=mesh,
+                                in_specs=(P(), P(), P(batch_dim_name), P()),
                                 out_specs=P(),
                                 check_rep=False)
-    return _global_grad_fn(params, rng_key, inputs, targets, forcings)
+    return _global_grad_fn(params, rng_key, data, static_data)
 
-  return global_grad_fn
-
-
-def get_local_grad_fn(predictor):
-
-  @hk.transform
-  def local_loss_fn(inputs, targets, forcings):
-    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
-    return xarray_tree.map_structure(
-      lambda x: unwrap_data(x.mean(), require_jax=True),
-      (loss, diagnostics))
-
-  @partial(jax.value_and_grad, has_aux=True)
-  def local_grad_fn(params, rng, inputs, targets, forcings):
-    return local_loss_fn.apply(params, rng, inputs=inputs, targets=targets, forcings=forcings)
-
-  return local_grad_fn
+  return global_fn
 
 
 # As the dataloader calls extract_inputs_targets_forcings, which is missing the datetime coordinate, the following
@@ -461,7 +444,40 @@ def reshard_data(dataset, sharding, datetime_coord_name='time'):
   return dataset
 
 
+# # FIXME: this should be refactored, predictor cannot live outside of a haiku transform
+# def save_checkpoint(predictor: Predictor, params, output_path: pathlib.Path, configs: Configs) -> None:
+#   logger.info(f"Training finished, saving checkpoint to {output_path}")
+#   with jax.sharding.use_mesh(_null_mesh):
+#     if jax.process_index() == 0:
+#       with output_path.open('wb') as ckpt_file:
+#         graphcast_ckpt = predictor.checkpoint(params,
+#                                               description=configs.get('description'),
+#                                               license=configs.get('license'))
+#         checkpoint.dump(ckpt_file, graphcast_ckpt)
+#     sync_global_devices("save_checkpoint")
 
 
+class SummaryWriter:
 
+  def __init__(self, tb_path: pathlib.Path):
 
+    # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
+    if not jax.distributed.is_initialized():
+      raise ValueError("Tensorboard summarywriter requires a distributed setup.")
+    else:
+      _ = jax.devices()
+      import tensorflow as tf
+      # TODO: could this be set using environment variables?
+      tf.config.experimental.set_visible_devices([], 'GPU')
+      from tensorflow import summary
+      self._summary_writer = summary.create_file_writer(str(tb_path))
+
+  def scalar(self, current_step, loss_and_diagnostics, suffix="/train"):
+    from tensorflow import summary
+
+    if jax.process_index() == 0:
+      loss, diagnostics = loss_and_diagnostics
+      with self._summary_writer.as_default():
+        summary.scalar("loss" + suffix, loss, step=current_step)
+        for key, value in diagnostics.items():
+          summary.scalar(key + suffix, value, step=current_step)
