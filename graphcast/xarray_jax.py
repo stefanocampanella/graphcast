@@ -1126,11 +1126,11 @@ jax.tree_util.register_pytree_node(
     xarray.DataTree, _flatten_datatree, _unflatten_datatree)
 
 
-def device_put(value, spec: P):
+def device_put(value, device=None):
 
   @_wrapped
   def _device_put(array):
-    return jax.device_put(array, device=spec)
+    return jax.device_put(array, device)
 
   return jax.tree_util.tree_map(_device_put, value)
 
