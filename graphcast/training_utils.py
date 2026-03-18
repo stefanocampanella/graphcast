@@ -1,7 +1,7 @@
 import logging
 import os
 import pathlib
-from typing import Tuple, Union, Callable
+from typing import Tuple, Union, Callable, Any, Mapping
 
 import grain.python as grain
 import haiku as hk
@@ -13,12 +13,13 @@ import xarray as xr
 from etils import epath
 from grain.checkpoint import CheckpointRestore as GrainCkptRestore, CheckpointSave as GrainCkptSave
 from grain.experimental import pick_performance_config
+from grain.python.experimental import MultiprocessPrefetchIterDataset
 from grain.python import IterDataset, DatasetIterator
 from jax import checkpoint_policies as cp
 from jax.experimental import multihost_utils
 from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard_map import shard_map
-from jax.sharding import PartitionSpec as P
+from jax.sharding import PartitionSpec as P, Mesh
 
 from graphcast import xarray_jax, checkpoint
 from graphcast.casting import Bfloat16Cast
@@ -37,6 +38,10 @@ logger = logging.getLogger(__name__)
 Datasets = Tuple[xr.Dataset, ...]
 DatasetsOrDataArrays = Tuple[Union[xr.Dataset, xr.DataArray], ...]
 Paths = Tuple[epath.Path, ...]
+InputsTargetsForcingsIterator = DatasetIterator[InputsTargetsForcings]
+InputsTargetsForcingsIterDataset = IterDataset[InputsTargetsForcings]
+JAXLossAndDiagnostics = Tuple[jax.Array, Mapping[str, jax.Array]]
+PyTree = Any
 
 
 def check_paths(output: epath.Path,
@@ -231,7 +236,10 @@ def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
   return optax.chain(*gradient_transformations)
 
 
-def get_dataset_iterator(data_path: epath.Path, configs: Configs, train: bool = True) -> IterDataset[InputsTargetsForcings]:
+def get_dataset_iterator(data_path: epath.Path,
+                         configs: Configs,
+                         train: bool = True,
+                         ) -> InputsTargetsForcingsIterDataset:
   dataset_path = data_path / configs.get('dataset.filepath', required=True)
   logger.info(f"Loading training and test datasource from {dataset_path}")
 
@@ -314,7 +322,7 @@ def get_first_sample_and_reset(iter: DatasetIterator[InputsTargetsForcings]) -> 
   return sample
 
 
-def get_params(init_fn: Callable[..., hk.MutableParams], iterator: DatasetIterator, configs: Configs):
+def get_params(init_fn: Callable[..., hk.MutableParams], iterator: DatasetIterator, configs: Configs) -> PyTree:
   seed = configs['seed']
   rng_key = jax.random.key(seed)
   sample_on_host = get_first_sample_and_reset(iterator)
@@ -341,7 +349,12 @@ def get_checkpoint_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.Check
   return ckpt_mngr
 
 
-def pull_checkpoint(ckpt_mngr, params, opt_state, train_iterator, test_iterator):
+def pull_checkpoint(ckpt_mngr: ocp.CheckpointManager,
+                    params: PyTree,
+                    opt_state: PyTree,
+                    train_iterator: InputsTargetsForcingsIterator,
+                    test_iterator: InputsTargetsForcingsIterator,
+                    ) -> Tuple[PyTree, PyTree, InputsTargetsForcingsIterator, InputsTargetsForcingsIterDataset]:
   params_on_host = jax.device_get(params)
   opt_state_on_host = jax.device_get(opt_state)
   latest_step = ckpt_mngr.latest_step()
@@ -365,7 +378,14 @@ def pull_checkpoint(ckpt_mngr, params, opt_state, train_iterator, test_iterator)
   return params, opt_state, train_iterator, test_iterator
 
 
-def push_checkpoint(ckpt_mngr, step, loss, params, opt_state, train_iterator, test_iterator):
+def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
+                    step: int,
+                    loss: float,
+                    params: PyTree,
+                    opt_state: PyTree,
+                    train_iterator: InputsTargetsForcingsIterator,
+                    test_iterator: InputsTargetsForcingsIterator,
+                    ) -> None:
   params_on_host = jax.device_get(params)
   opt_state_on_host = jax.device_get(opt_state)
   # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
@@ -376,6 +396,32 @@ def push_checkpoint(ckpt_mngr, step, loss, params, opt_state, train_iterator, te
                    params=ocp.args.StandardSave(params_on_host),
                    opt_state=ocp.args.StandardSave(opt_state_on_host)),
                  metrics={'loss': loss})
+
+
+def next_batches_on_device(train_iterator: InputsTargetsForcingsIterator,
+                           test_iterator: InputsTargetsForcingsIterator,
+                           device_mesh: Mesh,
+                           ) -> Tuple[InputsTargetsForcings, InputsTargetsForcings]:
+
+  def _is_mp(iterator):
+    return isinstance(iterator, MultiprocessPrefetchIterDataset)
+
+  if _is_mp(train_iterator) or _is_mp(test_iterator):
+    try:
+      batches_on_host = next(train_iterator), next(test_iterator)
+      batches = xarray_jax.make_array_from_process_local_data(batches_on_host, mesh=device_mesh, spec=P('batch'))
+      batch, batch_test = jax.block_until_ready(batches)
+    finally:
+      # Explicitly delete batch_on_host to trigger shared memory release in Grain.
+      # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
+      del batches_on_host
+  else:
+    batches_on_host = next(train_iterator), next(test_iterator)
+    batch, batch_test = xarray_jax.make_array_from_process_local_data(batches_on_host,
+                                                                      mesh=device_mesh,
+                                                                      spec=P('batch'))
+
+  return batch, batch_test
 
 
 # get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
@@ -457,27 +503,32 @@ def reshard_data(dataset, sharding, datetime_coord_name='time'):
 #     sync_global_devices("save_checkpoint")
 
 
-class SummaryWriter:
+class TensorboardLogger:
 
   def __init__(self, tb_path: pathlib.Path):
 
     # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
     if not jax.distributed.is_initialized():
-      raise ValueError("Tensorboard summarywriter requires a distributed setup.")
+      raise ValueError("JAX distributed should be initialized beforehand, "
+                       "see: https://github.com/google/flax/issues/4942.")
     else:
       _ = jax.devices()
       import tensorflow as tf
       # TODO: could this be set using environment variables?
       tf.config.experimental.set_visible_devices([], 'GPU')
       from tensorflow import summary
+      self._summary = summary
       self._summary_writer = summary.create_file_writer(str(tb_path))
 
-  def scalar(self, current_step, loss_and_diagnostics, suffix="/train"):
-    from tensorflow import summary
+  def log(self, current_step: int, train_metrics: JAXLossAndDiagnostics, test_metrics: JAXLossAndDiagnostics) -> None:
+    with self._summary_writer.as_default():
 
-    if jax.process_index() == 0:
-      loss, diagnostics = loss_and_diagnostics
-      with self._summary_writer.as_default():
-        summary.scalar("loss" + suffix, loss, step=current_step)
+      def _log(key, value):
+        if jax.process_index() == 0:
+          self._summary.scalar(key, value, step=current_step)
+
+      for set_name, set_metrics in [('train', train_metrics), ('test', test_metrics)]:
+        loss, diagnostics = set_metrics
+        _log(f'{set_name}/loss', loss)
         for key, value in diagnostics.items():
-          summary.scalar(key + suffix, value, step=current_step)
+          _log(f'{set_name}/{key}', value)

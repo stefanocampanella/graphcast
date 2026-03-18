@@ -27,11 +27,10 @@ from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
 
 from graphcast import cli_utils, xarray_jax, training_utils as trn_utils
 from graphcast.cli_utils import Configs
-from graphcast.training_utils import Datasets, DatasetsOrDataArrays
+from graphcast.training_utils import Datasets, DatasetsOrDataArrays, JAXLossAndDiagnostics
 
 logger = logging.getLogger(__name__)
 
-JAXLossAndDiagnostics = Tuple[jax.Array, Mapping[str, jax.Array]]
 
 @atexit.register
 def _shutdown_jax_distributed():
@@ -168,6 +167,7 @@ def launch(config_path: pathlib.Path,
 
   training_steps = configs.get("training_steps", required=True)
   logger.info(f"Training for {training_steps=} starting at step {latest_step=}.")
+  tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
   device_mesh = jax.make_mesh((jax.device_count(),), ('batch',), axis_types=(AxisType.Explicit,))
   params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
   opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
@@ -193,22 +193,15 @@ def launch(config_path: pathlib.Path,
     return updated_params, next_opt_state, loss_and_diagnostics, test_metrics
 
   for current_step in range(latest_step, training_steps):
-    batches_on_host = next(train_iterator), next(test_iterator)
-    try:
-      batches = xarray_jax.make_array_from_process_local_data(batches_on_host, mesh=device_mesh, spec=P('batch'))
-      batch, batch_test = jax.block_until_ready(batches)
-      with jax.sharding.use_mesh(device_mesh):
-        params, opt_state, (loss, diagnostics), test_metrics = train_step(params=params,
-                                                                          opt_state=opt_state,
-                                                                          data=batch,
-                                                                          data_test=batch_test,
-                                                                          static_data=static_data)
-      trn_utils.push_checkpoint(ckpt_mngr, current_step, loss.item(), params, opt_state, train_iterator, test_iterator)
-      # TODO: log train and test metrics
-    finally:
-      # Explicitly delete batch_on_host to trigger shared memory release in Grain.
-      # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
-      del batches_on_host
+    batch, batch_test = trn_utils.next_batches_on_device(train_iterator, test_iterator, device_mesh=device_mesh)
+    with jax.sharding.use_mesh(device_mesh):
+      params, opt_state, (loss, diagnostics), test_metrics = train_step(params=params,
+                                                                        opt_state=opt_state,
+                                                                        data=batch,
+                                                                        data_test=batch_test,
+                                                                        static_data=static_data)
+    trn_utils.push_checkpoint(ckpt_mngr, current_step, loss.item(), params, opt_state, train_iterator, test_iterator)
+    tb_logger.log(current_step, (loss, diagnostics), test_metrics)
   # TODO: save final model checkpoint
 
 
