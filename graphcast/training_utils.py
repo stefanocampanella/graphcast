@@ -1,15 +1,17 @@
 import logging
 import os
 import pathlib
-from typing import Tuple, Union
+from typing import Tuple, Union, Callable
 
 import grain.python as grain
+import haiku as hk
 import jax
 import numpy as np
 import optax
 import orbax.checkpoint as ocp
 import xarray as xr
 from etils import epath
+from grain.checkpoint import CheckpointRestore as GrainCkptRestore, CheckpointSave as GrainCkptSave
 from grain.experimental import pick_performance_config
 from grain.python import IterDataset, DatasetIterator
 from jax import checkpoint_policies as cp
@@ -312,6 +314,16 @@ def get_first_sample_and_reset(iter: DatasetIterator[InputsTargetsForcings]) -> 
   return sample
 
 
+def get_params(init_fn: Callable[..., hk.MutableParams], iterator: DatasetIterator, configs: Configs):
+  seed = configs['seed']
+  rng_key = jax.random.key(seed)
+  sample_on_host = get_first_sample_and_reset(iterator)
+  # FIXME: avoid grain workers failing (harmless, but produce lousy logs)
+  sample = xarray_jax.device_put(sample_on_host)
+  logger.info(f"Initializing parameters with {seed=}")
+  return init_fn(rng_key, sample)
+
+
 def get_ckpt_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.CheckpointManager:
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
   ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
@@ -327,6 +339,41 @@ def get_ckpt_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.CheckpointM
   with jax.sharding.use_mesh(mesh):
     ckpt_mngr = ocp.CheckpointManager(ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger())
   return ckpt_mngr
+
+
+def pull_checkpoint(ckpt_mngr, params, opt_state, train_iterator, test_iterator):
+  params_on_host = jax.device_get(params)
+  opt_state_on_host = jax.device_get(opt_state)
+  latest_step = ckpt_mngr.latest_step()
+  logger.info(f"Restoring {latest_step=}")
+  # TODO: check restore and save args options related to sharding and layout
+  restored = ckpt_mngr.restore(
+    step=latest_step,
+    args=ocp.args.Composite(
+      train_iterator=GrainCkptRestore(train_iterator),
+      test_iterator=GrainCkptRestore(test_iterator),
+      params=ocp.args.StandardRestore(params_on_host),
+      opt_state=ocp.args.StandardRestore(opt_state_on_host)))
+  train_iterator.close()
+  test_iterator.close()
+
+  train_iterator = restored.train_iterator
+  test_iterator = restored.test_iterator
+  params = jax.device_put(restored.params)
+  opt_state = jax.device_put(restored.opt_state)
+  return params, opt_state, train_iterator, test_iterator
+
+
+def push_checkpoint(ckpt_mngr, step, loss, params, opt_state, train_iterator, test_iterator):
+  params_on_host = jax.device_get(params)
+  opt_state_on_host = jax.device_get(opt_state)
+  ckpt_mngr.save(step,
+                 args=ocp.args.Composite(
+                   train_iterator=GrainCkptSave(train_iterator),
+                   test_iterator=GrainCkptSave(test_iterator),
+                   params=ocp.args.StandardSave(params_on_host),
+                   opt_state=ocp.args.StandardSave(opt_state_on_host)),
+                 metrics={'loss': loss})
 
 
 # get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
