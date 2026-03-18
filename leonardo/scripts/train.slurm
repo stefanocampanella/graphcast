@@ -61,7 +61,7 @@ export XLA_FLAGS='--xla_gpu_triton_gemm_any=true --xla_gpu_enable_latency_hiding
 # Flags to consider for OOM debugging
 #export JAX_LOG_CHECKPOINT_RESIDUALS=True
 # Other debugging flags
-#export JAX_TRACEBACK_FILTERING=off
+export JAX_TRACEBACK_FILTERING=off
 #export JAX_PPRINT_USE_COLOR=True
 
 CONFIG_PATH="${LEONARDO_CODE_ROOT}/configs/training/${1}"
