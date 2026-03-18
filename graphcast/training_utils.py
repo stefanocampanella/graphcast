@@ -133,6 +133,72 @@ def get_artifacts(data_path: epath.Path, configs: Configs) -> Datasets:
     return ds
 
   return tuple(_get_ds(name) for name in ['mean_by_level', 'stddev_by_level', 'diffs_stddev_by_level'])
+
+
+def get_predictor(configs: Configs,
+                  mesh_data: MeshData,
+                  grid_lat: np.ndarray,
+                  grid_lon: np.ndarray,
+                  grid_mask: np.ndarray,
+                  mean_by_level: xr.Dataset,
+                  stddev_by_level: xr.Dataset,
+                  diffs_stddev_by_level: xr.Dataset,
+                  mask_da: xr.DataArray,
+                  ) -> Predictor:
+  model_config = ModelConfig(
+    latent_size=configs.get('model.latent_size', required=True),
+    gnn_msg_steps=configs.get('model.gnn_msg_steps', required=True),
+    hidden_layers=configs.get('model.hidden_layers', required=True),
+    radius_query_fraction_edge_length=configs.get('model.radius_query_fraction_edge_length', required=True),
+    per_variable_weights=configs.get('model.per_variable_weights', {}),
+    learnable_fourier_features=configs.get('model.learnable_fourier_features', required=True))
+
+  task_config = TaskConfig(
+    input_variables=configs.get('task.input_variables', required=True),
+    target_variables=configs.get('task.target_variables', required=True),
+    forcing_variables=configs.get('task.forcing_variables', required=True),
+    levels=configs.get('task.levels', required=True),
+    input_duration=configs.get('task.input_duration', required=True))
+
+  policy = cp.save_and_offload_only_these_names(
+    names_which_can_be_saved=configs.get("policy.save", []),
+    names_which_can_be_offloaded=configs.get("policy.offload", []),
+    offload_src=configs.get("policy.offload_src", "device"),
+    offload_dst=configs.get("policy.offload_dst", "pinned_host")
+  )
+
+  # Deeper one-step predictor.
+  predictor = GraphCast(
+    _model_config=model_config,
+    _task_config=task_config,
+    _grid_lat=grid_lat,
+    _grid_lon=grid_lon,
+    _grid_mask=grid_mask,
+    _mesh_data=mesh_data,
+    _scan=False,
+    _remat=True,
+    _policy=policy,
+    _prevent_cse=False,
+  )
+
+  # Modify inputs/outputs to `graphcast.GraphCast` to handle conversion to from/to float32 to/from BFloat16.
+  predictor = Bfloat16Cast(predictor)
+
+  # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
+  # normalization to the inputs/targets.
+  predictor = InputsAndResiduals(
+    predictor,
+    diffs_stddev_by_level=diffs_stddev_by_level,
+    mean_by_level=mean_by_level,
+    stddev_by_level=stddev_by_level,
+    skip_names=configs.get('artifacts.skip_names', []))
+
+  # Mask inputs/outputs. Notice, other not finite values (i.e., inf) are not filled with mask.fill_value.
+  fill_value = configs.get('mask.fill_value', required=True)
+  predictor = MaskedPredictor(predictor, mask=mask_da, value=fill_value)
+
+  return predictor
+
   if not schedule_configs:
     raise ValueError("No learning rate schedule specified.")
   schedules = []
