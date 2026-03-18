@@ -10,6 +10,7 @@ import optax
 import xarray as xr
 from etils import epath
 from grain.experimental import pick_performance_config
+from grain.python import IterDataset, DatasetIterator
 from jax import checkpoint_policies as cp
 from jax.experimental import multihost_utils
 from jax.experimental.multihost_utils import sync_global_devices
@@ -19,7 +20,7 @@ from jax.sharding import PartitionSpec as P
 from graphcast import xarray_jax, checkpoint
 from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import Configs
-from graphcast.dataloader import ARCODataSource
+from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
 from graphcast.dataset_utils import Process
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import MaskedPredictor
@@ -225,6 +226,89 @@ def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
       gradient_transformation_config['learning_rate'] = scheduler
     gradient_transformations.append(gradient_transformation(**gradient_transformation_config))
   return optax.chain(*gradient_transformations)
+
+
+def get_dataset_iterator(data_path: epath.Path, configs: Configs, train: bool = True) -> IterDataset[InputsTargetsForcings]:
+  dataset_path = data_path / configs.get('dataset.filepath', required=True)
+  logger.info(f"Loading training and test datasource from {dataset_path}")
+
+  task_config = TaskConfig(
+    input_variables=configs.get('task.input_variables', required=True),
+    target_variables=configs.get('task.target_variables', required=True),
+    forcing_variables=configs.get('task.forcing_variables', required=True),
+    levels=configs.get('task.levels', required=True),
+    input_duration=configs.get('task.input_duration', required=True))
+
+  split_date = configs.get('dataset.split_date', required=True)
+  if train:
+    from_date, to_date = None, split_date
+  else:
+    from_date, to_date = split_date, None
+
+  datasource = ARCODataSource(dataset_path,
+                              task=task_config,
+                              target_lead_times=configs.get('dataset.target_lead_times', required=True),
+                              from_date=from_date,
+                              to_date=to_date)
+
+  dataset = (grain.MapDataset.source(datasource)
+             .repeat(num_epochs=None)
+             .shuffle(seed=configs.get('seed', required=True))
+             .slice(slice(jax.process_index(), None, jax.process_count())))
+
+  local_batch_size = configs.get('local_batch_size', 1)
+  if local_batch_size > 1:
+    logger.info(f"Batching {local_batch_size} samples per device.")
+    def batch_fn(samples):
+      return tuple(map(lambda datasets: xr.concat(datasets, dim='batch'), zip(*samples)))
+    dataset = dataset.batch(batch_size=local_batch_size,
+                            drop_remainder=True,
+                            batch_fn=batch_fn)
+
+  if pick_config := configs.get('dataset.pick_performance_config', None):
+    # pick_performance_config needs to measure the size of elements drawn from a DatasetIterator. However, the current
+    # implementation of _get_element_size_bytes in grain/_src/python/dataset/transformations/prefetch_autotune.py
+    # does not work with xarray datasets. We get around the issue by flattening the dataset beforehand.
+    flatten_dataset_iterator = dataset.map(jax.tree_util.tree_flatten).to_iter_dataset()
+    logger.info(f"Picking dataset iterator performance configurations ({pick_config=}).")
+    performance_config = pick_performance_config(ds=flatten_dataset_iterator,
+                                                 ram_budget_mb = pick_config.get('ram_budget_mb', None),
+                                                 max_workers = pick_config.get('max_workers', None),
+                                                 max_buffer_size = pick_config.get('max_buffer_size', None),
+                                                 samples_to_check = pick_config.get('samples_to_check', None))
+    read_options = performance_config.read_options
+    mp_options = performance_config.multiprocessing_options
+  else:
+    read_config = configs.get('dataset.read_options', required=True)
+    read_options = grain.ReadOptions(num_threads=read_config.get('num_threads', required=True),
+                                     prefetch_buffer_size=read_config.get('prefetch_buffer_size', required=True))
+    if mp_config := configs.get('dataset.multiprocessing_options', None):
+      mp_options = grain.MultiprocessingOptions(
+        num_workers=mp_config.get('num_workers', required=True),
+        per_worker_buffer_size=mp_config.get('per_worker_buffer_size', required=True),
+        enable_profiling=mp_config.get('enable_profiling', False))
+    else:
+      mp_options = None
+
+  logger.info(f"Using read options: {read_options}")
+  dataset_iterator = dataset.to_iter_dataset(read_options=read_options)
+  if mp_options is not None:
+    logger.info(f"Using multiprocessing prefetch with options: {mp_options}")
+    # When using multiprocessing prefetching, we need to wrap the xarray datasets to allow using grain
+    # SharedMemoryArrays.
+    dataset_iterator = (dataset
+                        .map(lambda value: xarray_jax.wrap_data(value, to_jax=False, np_contiguous=True))
+                        .to_iter_dataset(read_options=read_options)
+                        .mp_prefetch(options=mp_options))
+
+  return dataset_iterator
+
+
+def get_first_sample_and_reset(iter: DatasetIterator[InputsTargetsForcings]) -> InputsTargetsForcings:
+  state = iter.get_state()
+  sample = next(iter)
+  iter.set_state(state)
+  return sample
 
 
 # get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).

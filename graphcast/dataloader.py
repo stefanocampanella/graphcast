@@ -8,6 +8,7 @@ from graphcast.data_utils import TargetLeadTimes, _get_steps_per_window
 from graphcast.data_utils import extract_inputs_targets_forcings
 from graphcast.model import TaskConfig
 
+InputsTargetsForcings = Tuple[xr.Dataset, xr.Dataset, xr.Dataset]
 
 class ARCODataSource(grain.RandomAccessDataSource):
   """A data source for analysis-ready cloud-optimized datasets containing time-series."""
@@ -30,7 +31,7 @@ class ARCODataSource(grain.RandomAccessDataSource):
   def __len__(self):
     return len(self._dataset['time']) - self._timesteps + 1
 
-  def __getitem__(self, record_key: SupportsIndex) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
+  def __getitem__(self, record_key: SupportsIndex) -> InputsTargetsForcings:
     """A single element drawn from the ARCODataSource is a time-series starting from `record_key` and followed by `_timesteps` timesteps. """
     idx = record_key.__index__()
     if idx < 0 or idx >= len(self):
@@ -62,11 +63,3 @@ class ARCODataSource(grain.RandomAccessDataSource):
   @property
   def xarray_dataset(self):
     return self._dataset
-
-  def get_sample(self, batch_size: int) -> Tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
-    assert 0 < batch_size <= len(self)
-    samples = [self[n] for n in range(batch_size)]
-    inputs = xr.concat([inputs for inputs, _, _ in samples], dim='batch')
-    targets = xr.concat([targets for _, targets, _ in samples], dim='batch')
-    forcings = xr.concat([forcings for _, _, forcings in samples], dim='batch')
-    return inputs, targets, forcings
