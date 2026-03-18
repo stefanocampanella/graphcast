@@ -35,6 +35,8 @@ from xarray.core.types import InterpOptions
 
 from graphcast.cli_utils import Configs
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass
 class DateInterval:
@@ -267,7 +269,7 @@ class ClimateDataStore(Provider):
     file.close()
 
     client = self.get_cdsapi_client(progress=progress, client_logger=client_logger)
-    logging.debug(f"Submitting request {request} with destination {file.name}")
+    logger.debug(f"Submitting request {request} with destination {file.name}")
     client.retrieve(dataset_name, request, file.name)
 
     with tempfile.TemporaryDirectory(dir=dir) as tmpdir:
@@ -355,7 +357,7 @@ class GoogleCloudStorage(Provider):
     ds = xr.open_zarr(store=store)
     if (variables := kwargs.get('variables')) is not None:
       if variables_not_found := [name for name in variables if name not in ds.data_vars]:
-        logging.warning(f"{', '.join(variables_not_found)} variables not found")
+        logger.warning(f"{', '.join(variables_not_found)} variables not found")
       ds = ds.drop_vars(names=[name for name in ds.data_vars if name not in variables])
     if date_interval is not None:
       ds = ds.sel(time=slice(date_interval.start, date_interval.end))
@@ -389,7 +391,7 @@ class URLProvider(Provider):
       raise ValueError("URL must be provided for URLProvider")
 
     url = kwargs['url']
-    logging.info(f"Downloading NetCDF from URL: {url}")
+    logger.info(f"Downloading NetCDF from URL: {url}")
 
     # Create a temporary file to download the NetCDF
     with tempfile.NamedTemporaryFile(dir=dir, suffix='.nc', delete=False) as temp_file:
@@ -410,7 +412,7 @@ class URLProvider(Provider):
       # Filter by variables if specified
       if (variables := kwargs.get('variables')) is not None:
         if variables_not_found := [name for name in variables if name not in ds.data_vars]:
-          logging.warning(f"{', '.join(variables_not_found)} variables not found")
+          logger.warning(f"{', '.join(variables_not_found)} variables not found")
         ds = ds.drop_vars(names=[name for name in ds.data_vars if name not in variables])
 
       # Filter by date interval if specified
@@ -477,12 +479,11 @@ class Process:
     """
 
     if ('regrid' in self.configs) and ('interpolate' in self.configs):
-      logging.debug("Both 'regrid' and 'interpolate' are specified in the configuration. "
+      logger.debug("Both 'regrid' and 'interpolate' are specified in the configuration. "
                       "'regrid' will be applied first, followed by 'interpolate'.")
-
     for step in self.configs:
       conf = self.configs.get(step, {})
-      logging.info(f"Applying {step} with configuration {conf}")
+      logger.info(f"Applying {step} with configuration {conf}")
       if step in dir(self):
         ds = getattr(self, step)(ds, **conf)
       elif step in dir(ds):
@@ -762,7 +763,7 @@ def check_values(variables: None | Sequence[str] = None, mask: None | xr.DataArr
     @functools.wraps(reader)
     def decorated(pathlike: str | pathlib.Path, *args, **kwargs) -> xr.Dataset:
       ds = reader(pathlike, *args, **kwargs)
-      logging.info("Checking for Nans")
+      logger.info("Checking for Nans")
       allowed_variables = variables or ds.data_vars
       for var, da in ds.data_vars.items():
         if var in allowed_variables:
@@ -789,7 +790,7 @@ def check_date_range(start_date: datetime, end_date: datetime):
     def decorated(pathlike: str | pathlib.Path, *args, **kwargs) -> xr.Dataset:
       ds = reader(pathlike, *args, **kwargs)
 
-      logging.info("Checking for mismatching dates")
+      logger.info("Checking for mismatching dates")
       if 'time' in ds.dims:
 
         # Convert datetime.datetime to pd.Timestamps
@@ -826,7 +827,7 @@ def check_coordinates(reader):
   def decorated(pathlike: str | pathlib.Path, *args, **kwargs) -> xr.Dataset:
     ds = reader(pathlike, *args, **kwargs)
 
-    logging.info("Checking for mismatching coordinates")
+    logger.info("Checking for mismatching coordinates")
     # 1. Check that each dataset contains all the days between beginning and end
     if 'time' in ds.dims:
       time_range = pd.date_range(start=ds.time.min().item(), end=ds.time.max().item(), freq='D')

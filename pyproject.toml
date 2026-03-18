@@ -21,6 +21,7 @@ dependencies = [
     "dask_mpi",
     "dm-haiku",
     "dm-tree",
+    "etils",
     "flox",
     "gcsfs",
     # Versions listed here should agree with the one compiled in leonardo/setup.sh

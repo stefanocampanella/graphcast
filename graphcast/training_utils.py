@@ -20,6 +20,7 @@ from graphcast import xarray_jax, checkpoint
 from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import Configs
 from graphcast.dataloader import ARCODataSource
+from graphcast.dataset_utils import Process
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import MaskedPredictor
 from graphcast.mesh_graph import MeshData
@@ -116,6 +117,22 @@ def get_mask(data_path: epath.Path, configs: Configs) -> xr.DataArray:
   mask_level = configs.get('mask.level', required=True)
   mask = mask.isel(level=mask_level, drop=True)
   return mask
+
+
+def get_artifacts(data_path: epath.Path, configs: Configs) -> Datasets:
+  path = data_path / configs.get('artifacts.filepath', required=True)
+  logger.info(f"Loading normalization artifacts from {path}")
+  artifacts = xr.open_datatree(path, engine='zarr')
+
+  def _get_ds(name):
+    logger.info(f"Getting {name} dataset from normalization artifacts.")
+    ds_path = configs.get(f"artifacts.{name}.path", required=True)
+    ds = artifacts[ds_path].dataset
+    postprocess = Process(steps=configs.get(f"artifacts.{name}.postprocess", None))
+    ds = postprocess(ds)
+    return ds
+
+  return tuple(_get_ds(name) for name in ['mean_by_level', 'stddev_by_level', 'diffs_stddev_by_level'])
   if not schedule_configs:
     raise ValueError("No learning rate schedule specified.")
   schedules = []

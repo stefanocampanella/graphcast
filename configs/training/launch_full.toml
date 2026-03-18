@@ -114,6 +114,35 @@ offload_dst = "pinned_host"
 [artifacts]
 filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_normalization"
 
+[artifacts.mean_by_level]
+path = '/inputs/location'
+
+[[artifacts.mean_by_level.postprocess]]
+name = 'fillna'
+value = 0.0
+
+[artifacts.stddev_by_level]
+path = '/inputs/scale'
+
+[[artifacts.stddev_by_level.postprocess]]
+name = 'fillna'
+value = 1.0
+
+[[artifacts.stddev_by_level.postprocess]]
+name = 'clip'
+min = 1e-16
+
+[artifacts.diffs_stddev_by_level]
+path = '/residuals/scale'
+
+[[artifacts.diffs_stddev_by_level.postprocess]]
+name = 'fillna'
+value = 1.0
+
+[[artifacts.diffs_stddev_by_level.postprocess]]
+name = 'clip'
+min = 1e-16
+
 [optimizer]
 schedule_boundaries = [512]
 
