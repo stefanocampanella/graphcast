@@ -20,6 +20,7 @@ from graphcast import xarray_jax, checkpoint
 from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import Configs
 from graphcast.dataloader import ARCODataSource
+from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import MaskedPredictor
 from graphcast.mesh_graph import MeshData
 from graphcast.model import ModelConfig, TaskConfig, GraphCast
@@ -92,6 +93,16 @@ def check_paths(output: epath.Path,
     sync_global_devices("check_tb_path")
 
   return output, train, data, tb
+
+
+def get_mesh(data_path: epath.Path, configs: Configs) -> MeshData:
+
+  mesh_data_path = data_path / configs.get('mesh.filepath', required=True)
+  logger.info(f"Loading mesh from {mesh_data_path}")
+  mesh_data = read_mesh_data(mesh_data_path,
+                             mesh_size_tag_name=configs.get('mesh.mesh_size_tag_name', 'MeshSize'),
+                             mesh_size_tag_step=configs.get('mesh.mesh_size_tag_step', 0))
+  return mesh_data
 
 def get_optimizer(config: Configs) -> optax.GradientTransformationExtraArgs:
   schedule_configs = config.get('schedule', [])
