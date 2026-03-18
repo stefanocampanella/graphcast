@@ -111,6 +111,7 @@ import xarray
 from grain._src.python.shared_memory_array import SharedMemoryArrayMetadata
 from grain.python import SharedMemoryArray
 from xarray.core.variable import as_compatible_data
+from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
 
 # Types which we wrap with JaxArrayWrapper to allow creating xarray datatypes
 # from them.
@@ -1123,3 +1124,21 @@ jax.tree_util.register_pytree_node(
     xarray.Dataset, _flatten_dataset, _unflatten_dataset)
 jax.tree_util.register_pytree_node(
     xarray.DataTree, _flatten_datatree, _unflatten_datatree)
+
+
+def device_put(value, spec: P):
+
+  @_wrapped
+  def _device_put(array):
+    return jax.device_put(array, device=spec)
+
+  return jax.tree_util.tree_map(_device_put, value)
+
+
+def make_array_from_process_local_data(value, mesh: Mesh, spec: P):
+
+  @_wrapped
+  def _make_global_array(local_data):
+    return jax.make_array_from_process_local_data(local_data=local_data, sharding=NamedSharding(mesh, spec))
+
+  return jax.tree_util.tree_map(_make_global_array, value)
