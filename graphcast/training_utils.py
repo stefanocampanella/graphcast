@@ -95,6 +95,16 @@ def check_paths(output: epath.Path,
 
 def get_optimizer(config: Configs) -> optax.GradientTransformationExtraArgs:
   schedule_configs = config.get('schedule', [])
+
+def get_mask(data_path: epath.Path, configs: Configs) -> xr.DataArray:
+  path = data_path / configs.get('mask.filepath', required=True)
+  logger.info(f"Loading mask from {path}")
+  mask = xr.open_dataset(path, engine='zarr')
+  mask_name = configs.get('mask.name', required=True)
+  mask = mask[mask_name]
+  mask_level = configs.get('mask.level', required=True)
+  mask = mask.isel(level=mask_level, drop=True)
+  return mask
   if not schedule_configs:
     raise ValueError("No learning rate schedule specified.")
   schedules = []
