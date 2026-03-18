@@ -105,8 +105,6 @@ def get_mesh(data_path: epath.Path, configs: Configs) -> MeshData:
                              mesh_size_tag_step=configs.get('mesh.mesh_size_tag_step', 0))
   return mesh_data
 
-def get_optimizer(config: Configs) -> optax.GradientTransformationExtraArgs:
-  schedule_configs = config.get('schedule', [])
 
 def get_mask(data_path: epath.Path, configs: Configs) -> xr.DataArray:
   path = data_path / configs.get('mask.filepath', required=True)
@@ -199,6 +197,11 @@ def get_predictor(configs: Configs,
 
   return predictor
 
+
+# FIXME: this should use cosine_decay_schedule_with_warmup instead of chaining schedules as it currently does.
+def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
+  logger.info(f"Optimizing with {configs.get('optimizer')}")
+  schedule_configs = configs.get('optimizer.schedule', [])
   if not schedule_configs:
     raise ValueError("No learning rate schedule specified.")
   schedules = []
@@ -206,12 +209,12 @@ def get_predictor(configs: Configs,
     schedule_name = schedule_config.pop('name')
     schedule = getattr(optax, schedule_name)
     schedules.append(schedule(**schedule_config))
-  boundaries = config.get('schedule_boundaries', [])
+  boundaries = configs.get('optimizer.schedule_boundaries', [])
   if not boundaries:
     raise ValueError("No boundaries specified for learning rate schedule.")
   scheduler = optax.join_schedules(schedules, boundaries=boundaries)
 
-  gradient_transformation_configs = config.get('gradient_transformation', [])
+  gradient_transformation_configs = configs.get('optimizer.gradient_transformation', [])
   if not gradient_transformation_configs:
     raise ValueError("No gradient transformation specified.")
   gradient_transformations = []
