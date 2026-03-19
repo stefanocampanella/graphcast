@@ -44,65 +44,62 @@ JAXLossAndDiagnostics = Tuple[jax.Array, Mapping[str, jax.Array]]
 PyTree = Any
 
 
-def check_paths(output: epath.Path,
-                train: epath.Path,
-                data: epath.Path,
-                tb: epath.Path,
-                start_fresh: bool = False,
-                overwrite: bool = False) -> Paths:
-  """Check preconditions for path-arguments, safely creating and deleting directories if necessary."""
+def check_writable_paths(output: epath.Path,
+                         train: epath.Path,
+                         tb: epath.Path,
+                         start_fresh: bool = False,
+                         overwrite: bool = False) -> Paths:
+  """Check preconditions for path-arguments to write to, safely creating and deleting directories if necessary."""
+
   def ensure_directory_exists(path: epath.Path):
     if jax.process_index() == 0 and not path.exists():
       path.mkdir(parents=True, exist_ok=True)
+    sync_global_devices(f"ensure_{path}_exists")
 
   def empty_directory(path: epath.Path):
     if jax.process_index() == 0:
       if path.exists():
         path.rmtree()
       path.mkdir(parents=True, exist_ok=True)
+    sync_global_devices(f"empty_{path}")
 
   mesh = jax.make_mesh((jax.device_count(), jax.local_device_count()), ('process', 'local_device'))
   with jax.sharding.use_mesh(mesh):
 
-    # output is where the final checkpoint will be saved:
-    #   1. It should not point to an existing file if overwrite=False.
-    #   2. It should be writable
-    # We ensure that the parent directory exists with write permission.
+    # output is where the final checkpoint will be saved.
+    # We ensure that output' parent directory exists (with write permission if created). Also:
+    #   1. If overwrite=True, and output points to an existing file, then it should be writable
+    #   2. If overwrite=True, and output doesn't point to an existing file, then the parent directory should be writable.
+    #   3. If overwrite=False, then output should not point to an existing file.
     ensure_directory_exists(output.parent)
-    if output.exists() and not overwrite:
-      raise FileExistsError(f"{output} already exists.")
-    if not os.access(output, os.W_OK):
-      raise PermissionError(f"{output} is not writable.")
-    sync_global_devices("check_output_path")
+    if overwrite:
+      if output.exists():
+        if not os.access(output, os.W_OK):
+          raise PermissionError(f"{output} is not writable.")
+      else:
+        if not os.access(output.parent, os.W_OK):
+          raise PermissionError(f"{output.parent} is not writable.")
+    else:
+      if output.exists():
+        raise FileExistsError(f"{output} already exists.")
 
-    # train is the directory where checkpoints will be saved during training:
-    #   1. If it exists and start_fresh=True, it should be empty.
-    #   2. It should be readable and writable.
-    # We ensure that the directory exists and is empty if start_fresh=True.
+    # train is the directory where checkpoints will be saved during training.
+    # We ensure that the directory exists (with write permission if created) and is empty if start_fresh=True, also:
+    #   1. It should be readable and writable.
     ensure_directory_exists(train)
-    if any(train.iterdir()) and start_fresh:
+    if start_fresh and any(train.iterdir()):
       empty_directory(train)
     if not os.access(train, os.R_OK & os.W_OK):
       raise PermissionError(f"{train} is not readable and/or writable.")
-    sync_global_devices("check_train_path")
-
-    # data_path is the directory containing the mesh, the datasets, and the normalization artifacts:
-    #   1. It should be readable.
-    # We ensure that the directory exists.
-    ensure_directory_exists(data)
-    if not os.access(data, os.R_OK):
-      raise PermissionError(f"{data} is not readable.")
-    sync_global_devices("check_data_path")
 
     # tb is where the summarywriter will write the logs during training:
+    # We ensure that the directory exists (with write permission if created).
     #   1. It should be writable.
-    # We ensure that the directory exists.
     ensure_directory_exists(tb)
     if not os.access(tb, os.W_OK):
       raise PermissionError(f"{tb} is not writable.")
-    sync_global_devices("check_tb_path")
 
-  return output, train, data, tb
+  return output, train, tb
 
 
 def get_mesh(data_path: epath.Path, configs: Configs) -> MeshData:

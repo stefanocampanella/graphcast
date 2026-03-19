@@ -8,6 +8,7 @@ import click
 import jax
 import orbax.checkpoint
 import orbax.checkpoint.logging
+from etils import epath
 
 logger = logging.getLogger(__name__)
 
@@ -185,3 +186,9 @@ def run_analysis_and_report(func_aot):
     logger.info(f"Cost: {cost_analysis['flops'] * 1e-12} TFLOPs")
   else:
     logger.info("Cost: unknown")
+
+
+def get_cwd() -> epath.Path:
+  cwd = pathlib.Path.cwd()
+  # noinspection PyAbstractClass
+  return epath.Path(cwd)

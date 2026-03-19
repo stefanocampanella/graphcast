@@ -15,7 +15,7 @@ import atexit
 import logging
 import pathlib
 from functools import partial
-from typing import Mapping, Any, Tuple
+from typing import Mapping, Any
 
 import click
 import haiku as hk
@@ -62,7 +62,7 @@ def cli():
                                 resolve_path=True))
 @click.option("--data-path",
               help="Path to the data directory.",
-              default=pathlib.Path.cwd(),
+              default=cli_utils.get_cwd(),
               type=click.Path(path_type=epath.Path,
                               exists=True,
                               file_okay=False,
@@ -82,12 +82,8 @@ def cli():
               is_flag=True)
 @click.option("--tensorboard-logdir",
               help="Tensorboard log directory.",
-              default=pathlib.Path.cwd() / 'tb_logdir',
+              default=cli_utils.get_cwd() / 'tb_logdir',
               type=click.Path(path_type=epath.Path,
-                              exists=True,
-                              file_okay=False,
-                              dir_okay=True,
-                              writable=True,
                               resolve_path=True))
 @click.option('--log-level',
               default='info',
@@ -108,12 +104,11 @@ def launch(config_path: pathlib.Path,
   logger.info(f"Using a JAX mesh with {jax.device_count()} devices "
               f"({'multi-host setup' if jax.process_count() > 1 else 'single-host setup'}).")
 
-  output_path, train_path, data_path, tensorboard_logdir = trn_utils.check_paths(output_path,
-                                                                                 train_path,
-                                                                                 data=data_path,
-                                                                                 tb=tensorboard_logdir,
-                                                                                 start_fresh=start_fresh,
-                                                                                 overwrite=overwrite)
+  output_path, train_path, tensorboard_logdir = trn_utils.check_writable_paths(output_path,
+                                                                               train_path,
+                                                                               tensorboard_logdir,
+                                                                               start_fresh=start_fresh,
+                                                                               overwrite=overwrite)
 
   configs = Configs.read(config_path)
   if other_configs is not None:
