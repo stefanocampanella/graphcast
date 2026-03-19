@@ -97,13 +97,10 @@ target_lead_times = "1d"
 split_date = "2019-06-30T00:00:00"
 local_batch_size = 1
 
+# Multiprocessing dataloader is currently broken, we only use a multithreaded reader.
 [dataset.read_options]
-num_threads = 0
-prefetch_buffer_size = 1
-
-[dataset.multiprocessing_options]
-num_workers = 4
-per_worker_buffer_size = 8
+num_threads = 4
+prefetch_buffer_size = 32
 
 [policy]
 names_which_can_be_saved = []
