@@ -19,7 +19,7 @@ from typing import Optional
 import jax.numpy as jnp
 import numpy as np
 import xarray as xr
-from typing_extensions import Protocol
+from typing import Protocol
 
 from graphcast import xarray_tree
 

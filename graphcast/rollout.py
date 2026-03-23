@@ -21,11 +21,11 @@ import dask.array
 from graphcast import xarray_tree
 import jax
 import numpy as np
-import typing_extensions
+from typing import Protocol
 import xarray
 
 
-class PredictorFn(typing_extensions.Protocol):
+class PredictorFn(Protocol):
   """Functional version of base.Predictor.__call__ with explicit rng."""
 
   def __call__(
