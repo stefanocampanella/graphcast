@@ -98,7 +98,10 @@ def launch(config_path: pathlib.Path,
            tensorboard_logdir: pathlib.Path | None = None,
            log_level: str = 'info'):
 
-  logging.basicConfig(level=log_level.upper(), force=True)
+  logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
+                      datefmt='%Y-%m-%dT%H:%M:%S',
+                      level=log_level.upper(),
+                      force=True)
 
   jax.distributed.initialize()
   logger.info(f"Using a JAX mesh with {jax.device_count()} devices "

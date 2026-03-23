@@ -59,7 +59,8 @@ def make(config_path: pathlib.Path,
 
   logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
                       datefmt='%Y-%m-%dT%H:%M:%S',
-                      level=getattr(logging, log_level.upper()))
+                      level=log_level.upper(),
+                      force=True)
 
   logger.info(f"Initialize gmsh.")
   gmsh.initialize()
