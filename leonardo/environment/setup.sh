@@ -199,7 +199,7 @@ if [[ $BUILD_SPACK == true ]]; then
     spack external find gcc openmpi cmake
 
     # Add python and gdal to the environment, then install
-    spack add python@3.11
+    spack add python@3.13
     spack add gdal@3.11.4
     # Build fails for proj@9.7.0
     spack add proj@9.4.1

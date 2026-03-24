@@ -13,7 +13,6 @@ import xarray as xr
 from etils import epath
 from grain.checkpoint import CheckpointRestore as GrainCkptRestore, CheckpointSave as GrainCkptSave
 from grain.experimental import pick_performance_config
-from grain.python.experimental import MultiprocessPrefetchIterDataset
 from grain.python import IterDataset, DatasetIterator
 from jax import checkpoint_policies as cp
 from jax.experimental import multihost_utils
@@ -21,7 +20,7 @@ from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P, Mesh
 
-from graphcast import xarray_jax, checkpoint
+from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.cli_utils import Configs, OrbaxLogger
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
@@ -64,7 +63,7 @@ def check_writable_paths(output: epath.Path,
     sync_global_devices(f"empty_{path}")
 
   mesh = jax.make_mesh((jax.device_count(), jax.local_device_count()), ('process', 'local_device'))
-  with jax.sharding.use_mesh(mesh):
+  with jax.sharding.set_mesh(mesh):
 
     # output is where the final checkpoint will be saved.
     # We ensure that output' parent directory exists (with write permission if created). Also:
@@ -336,7 +335,7 @@ def get_checkpoint_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.Check
   # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
   #  See: https://github.com/google/orbax/issues/2545
   mesh = jax.make_mesh((jax.process_count(), jax.local_device_count()), ('process', 'local_device'))
-  with jax.sharding.use_mesh(mesh):
+  with jax.sharding.set_mesh(mesh):
     ckpt_mngr = ocp.CheckpointManager(ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger())
   return ckpt_mngr
 
@@ -393,12 +392,10 @@ def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
 def next_batches_on_device(train_iterator: InputsTargetsForcingsIterator,
                            test_iterator: InputsTargetsForcingsIterator,
                            device_mesh: Mesh,
+                           mp_prefetch: bool = False,
                            ) -> Tuple[InputsTargetsForcings, InputsTargetsForcings]:
 
-  def _is_mp(iterator):
-    return isinstance(iterator, MultiprocessPrefetchIterDataset)
-
-  if _is_mp(train_iterator) or _is_mp(test_iterator):
+  if mp_prefetch:
     try:
       batches_on_host = next(train_iterator), next(test_iterator)
       batches = xarray_jax.make_array_from_process_local_data(batches_on_host, mesh=device_mesh, spec=P('batch'))

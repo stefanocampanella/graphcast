@@ -13,37 +13,38 @@ dependencies = [
     "cftime",
     "chex",
     "click",
-    "colabtools",
-    "copernicusmarine",
-    # Needed to build pyproj
-    "cython>=3.1",
+    "copernicusmarine == 2.0.1",
+    "cython >= 3.1", # Needed to build pyproj
     "dask",
     "dask_mpi",
     "dm-haiku",
     "dm-tree",
     "etils",
-    "flox",
     "gcsfs",
     # Versions listed here should agree with the one compiled in leonardo/setup.sh
-    "gdal-utils==3.11.4 ; sys_platform == 'linux'",
+    "gdal-utils == 3.11.4 ; sys_platform == 'linux'",
+    "gdal[numpy] == 3.11.4 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
-    "gdal-utils==3.12.0.0 ; sys_platform == 'darwin'",
-    "gdal[numpy]==3.11.4 ; sys_platform == 'linux'",
-    "gdal[numpy]==3.12.0.post1 ; sys_platform == 'darwin'",
+    "gdal-utils == 3.12.3 ; sys_platform == 'darwin'",
+    "gdal[numpy] == 3.12.3 ; sys_platform == 'darwin'",
     "geopy",
     "geoviews",
     "gmsh",
     "google-cloud-storage",
     "grain >= 0.2.15",
-    "graphviz>=0.21",
+    "graphviz >= 0.21",
+    # TODO: hatchling is a build dependency of cgen, required by parcels, required by oceanbench.
+    #  It should be moved elsewhere.
+    "hatchling",
     "h5netcdf",
     "humanize",
     "hvplot",
     "ipywidgets",
+    # Jax >= 0.8 seems to be incompatible with dm-haiku
     # Install cuda using pip, building jaxlib from source is a pain in the neck...
-    "jax[cuda12] ; sys_platform == 'linux'",
+    "jax[cuda12] < 0.8, >= 0.7.2; sys_platform == 'linux'",
     # Disable HW acceleration on macOS (jax-metal is unstable/early stage).
-    "jax ; sys_platform == 'darwin'",
+    "jax < 0.8, >= 0.7.2; sys_platform == 'darwin'",
     "jraph",
     "jupyterlab",
     "matplotlib",
@@ -52,22 +53,20 @@ dependencies = [
     "netCDF4",
     "networkx",
     # numcodecs v0.16 seems to make copernicusmarine import fail on Leonardo
-    "numcodecs<0.16",
+    "numcodecs < 0.16",
     "numpy",
+    "oceanbench",
     "optax",
     "orbax-checkpoint >= 0.11.30",
     "pandas",
-    "pandas-stubs~=2.2.3",
-    "papermill[all]",
-    "pyarrow==22.0.0",
+    "pandas-stubs ~= 2.2.3",
     # MacOS package distributes his own binary of proj, but Spilhouse projection requires proj >= 9.6.0
-    "pyproj@git+https://github.com/pyproj4/pyproj.git@3.7.1",
+    "pyproj@git+https://github.com/pyproj4/pyproj.git@3.7.2",
     # Necessary to visualize array sharding in JAX
     "rich",
-    "rtree",
     "s3fs",
     "scipy",
-    "scipy-stubs~=1.15.2",
+    "scipy-stubs ~= 1.15.2",
     # Notice: Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work.
     # We'll use our own fork anyway, on Linux too.
     "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
@@ -76,18 +75,18 @@ dependencies = [
     #   https://github.com/tensorflow/tensorflow/issues/98563#issuecomment-3536220032
     #   Using tensorflow<2.20 and pyarrow==22.0.0 seems to solve the issue.
     #   See: https://github.com/google-deepmind/gemma/pull/466
-    "tensorflow<2.20",
+    "tensorflow >= 2.21.0",
+    "tensorboard",
     "tqdm",
     "trimesh",
     "treescope",
-    "typing_extensions",
     "xarray",
     "xarray-regrid[accel]",
     "xprof",
     # TODO: Port to Zarr v3
-    "zarr>=2,<3",
+    "zarr >= 2, < 3",
 ]
-requires-python = ">=3.11, <3.12"
+requires-python = ">=3.13"
 authors = [{name = "Stefano Campanella", email = "scampanella@ogs.it"}]
 description = "Data-driven global ocean circulation model based on Graphcast by Google DeepMind."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -111,10 +110,5 @@ training = "graphcast.training:cli"
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [tool.setuptools]
-# How to override dependencies when using setuptools?
 packages = ["graphcast"]
-
-[tool.uv]
-# Needed to fix google/grain#1045 as suggested in google/grain#1023
-override-dependencies = ["array_record<0.8 ; sys_platform == 'darwin'"]
 

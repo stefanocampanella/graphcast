@@ -194,7 +194,7 @@ def launch(config_path: pathlib.Path,
 
   for current_step in range(latest_step, training_steps):
     batch, batch_test = trn_utils.next_batches_on_device(train_iterator, test_iterator, device_mesh=device_mesh)
-    with jax.sharding.use_mesh(device_mesh):
+    with jax.sharding.set_mesh(device_mesh):
       params, opt_state, (loss, diagnostics), test_metrics = train_step(params=params,
                                                                         opt_state=opt_state,
                                                                         data=batch,
