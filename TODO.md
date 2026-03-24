@@ -2,14 +2,9 @@
 
 ## Core
 * Train the f*cking model. **EXTREME PRIORITY**
-* Move from `Dataloader` to `Dataset` interface in Grain, use performance autotune to avoid OOM. **HIGH PRIORITY**
-* Merge `init` and `train` in training.py: start training from configs, instead of initial checkpoint. Optionally stop at the `init` phase. **HIGH PRIORITY**
-* Split dataset for training and validation. **HIGH PRIORITY**
 * Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
 * Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules. **HIGH PRIORITY**
-* Move mask and artifacts to GPU memory once. **HIGH PRIORITY**
-* Move training stuff to `training_utils.py` **HIGH PRIORITY**
-* Add `oceanbench` to dependencies and implement the validation code. **HIGH PRIORITY**
+* Implement the validation code. **HIGH PRIORITY**
 
 ## Checks and improvements
 * Check if checkpointing rng data, and not rng JAX array, remove some of the warnings from Orbax. **HIGH PRIORITY**
@@ -23,6 +18,7 @@
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
 * Add routines to check graph statistics (number of nodes, edges, degree, etc.). In particular, one should check that all grid nodes are connected to the processor. **HIGH PRIORITY** 
 * Check that accumulated variables in ARCO-OCEAN are consistent (e.g. they use the (t-24h, t) convention). **HIGH PRIORITY**
+* Debug currently broken multi-processing dataloader. **HIGH PRIORITY**
 * Fix probably-broken DASK scripts (e.g., stats) with new `get_distributed_logger`/`set_up_root_distributed_logger`. (Medium priority)
 * Add logging settings to training toml config file. (Medium priority)
 * Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
@@ -62,6 +58,7 @@
 * Implement the algorithm sketched in `graph_pruning.py`, then implement a derived predictor class that does domain decomposition and measure memory consumption of the graph pruned version. (Low priority)
 
 ## Completed tasks
+* ~~Add `oceanbench` to dependencies~~ **DONE**
 * ~~Fix dataloader to use multiple workers and reduce training bubble.~~ **DONE**
 * ~~Some nodes might be faulty or have systematic issues. Add hostname to log file names.~~ **DONE**
 * ~~Filter warnings and skip day_of_year_sin/cos in normalization warnings.~~ **DONE**
@@ -79,3 +76,8 @@
 * ~~Implement restart from checkpoint logic.~~ **DONE**
 * ~~Checkpoint dataloader state, and implement restart logic~~. **DONE**
 * ~~Log each process independently using `cli_utils.py`.~~ **DONE**
+* ~~Merge `init` and `train` in training.py: start training from configs, instead of initial checkpoint. Optionally stop at the `init` phase.~~ **DONE**
+* ~~Split dataset for training and validation.~~ **DONE**
+* ~~Move mask and artifacts to GPU memory once.~~ **DONE**
+* ~~Move training stuff to `training_utils.py`~~ **DONE**
+* ~~Move from `Dataloader` to `Dataset` interface in Grain, try using performance autotune to avoid OOM.~~ **DONE**
