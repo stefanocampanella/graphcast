@@ -384,8 +384,9 @@ def read_mesh_data(mesh_path, gmsh_verbosity: int = 2,
                    mesh_size_tag_name: str | None = None,
                    mesh_size_tag_step: int = 0,
                    ) -> MeshData:
-  logger.info("Initialize gmsh.")
-  gmsh.initialize()
+  if not gmsh.is_initialized():
+    logger.info("Initialize gmsh.")
+    gmsh.initialize()
   gmsh.option.setNumber("General.Verbosity", gmsh_verbosity)
 
   mesh_size_tag_name = mesh_size_tag_name or 'MeshSize'

@@ -62,8 +62,9 @@ def make(config_path: pathlib.Path,
                       level=log_level.upper(),
                       force=True)
 
-  logger.info(f"Initialize gmsh.")
-  gmsh.initialize()
+  if not gmsh.is_initialized():
+    logger.info(f"Initialize gmsh.")
+    gmsh.initialize()
 
   # Open the configuration file and load the TOML configs.
   configs = Configs.read(config_path)
