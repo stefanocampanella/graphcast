@@ -248,16 +248,11 @@ def get_dataset_iterator(data_path: epath.Path,
     input_duration=configs.get('task.input_duration', required=True))
 
   split_date = configs.get('dataset.split_date', required=True)
-  if train:
-    from_date, to_date = None, split_date
-  else:
-    from_date, to_date = split_date, None
-
   datasource = ARCODataSource(dataset_path,
                               task=task_config,
                               target_lead_times=configs.get('dataset.target_lead_times', required=True),
-                              from_date=from_date,
-                              to_date=to_date)
+                              from_date=None if train else split_date,
+                              to_date=split_date if train else None)
 
   dataset = (grain.MapDataset.source(datasource)
              .repeat(num_epochs=None)
