@@ -139,8 +139,10 @@ def launch(config_path: pathlib.Path,
                                         stddev_by_level=stddev_by_level,
                                         diffs_stddev_by_level=diffs_stddev_by_level,
                                         mask_da=mask_da)
-    loss, predictions = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
-    return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(predictions)
+    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
+    assert loss.dims == ('batch',) and all(scalar.dims == ('batch', ) for scalar in diagnostics.values())
+    # Wait to reduce the batch dimension until shard_map is called.
+    return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(diagnostics)
 
   optimizer = trn_utils.get_optimizer(configs)
 
