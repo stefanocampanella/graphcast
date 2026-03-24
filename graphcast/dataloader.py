@@ -2,6 +2,7 @@ import pathlib
 from typing import SupportsIndex, Tuple
 
 import grain.python as grain
+import numpy as np
 import xarray as xr
 
 from graphcast.data_utils import TargetLeadTimes, _get_steps_per_window
@@ -44,6 +45,7 @@ class ARCODataSource(grain.RandomAccessDataSource):
     # extract_inputs_targets_forcings. Otherwise, each reader would need to load the entire dataset into memory (and
     # even a single copy might be too large, e.g., for ARCO-OCEAN).
     dataset = dataset.fillna(value=self._fill_value)
+    dataset = dataset.astype(np.float32)
     inputs, targets, forcings = extract_inputs_targets_forcings(dataset=dataset,
                                                                 input_variables=self._task.input_variables,
                                                                 target_variables=self._task.target_variables,
