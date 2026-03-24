@@ -159,7 +159,7 @@ class InputsAndResiduals(predictor_base.Predictor):
     norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
     norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     norm_predictions = self._predictor(
-        norm_inputs, targets_template, forcings=norm_forcings, **kwargs)
+        inputs=norm_inputs, targets_template=targets_template, forcings=norm_forcings, **kwargs)
     return xarray_tree.map_structure(
         lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
         norm_predictions)
@@ -171,13 +171,8 @@ class InputsAndResiduals(predictor_base.Predictor):
            **kwargs,
            ) -> predictor_base.LossAndDiagnostics:
     """Returns the loss computed on normalized inputs and targets."""
-    norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
-    norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
-    norm_target_residuals = xarray_tree.map_structure(
-        lambda t: self._subtract_input_and_normalize_target(inputs, t),
-        targets)
-    return self._predictor.loss(
-        norm_inputs, norm_target_residuals, forcings=norm_forcings, **kwargs)
+    loss_and_diagnostics, _ = self.loss_and_predictions(inputs=inputs, targets=targets, forcings=forcings, **kwargs)
+    return loss_and_diagnostics
 
   def loss_and_predictions(  # pytype: disable=signature-mismatch  # jax-ndarray
       self,
@@ -194,7 +189,7 @@ class InputsAndResiduals(predictor_base.Predictor):
         lambda t: self._subtract_input_and_normalize_target(inputs, t),
         targets)
     (loss, scalars), norm_predictions = self._predictor.loss_and_predictions(
-        norm_inputs, norm_target_residuals, forcings=norm_forcings, **kwargs)
+        inputs=norm_inputs, targets=norm_target_residuals, forcings=norm_forcings, **kwargs)
     predictions = xarray_tree.map_structure(
         lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
         norm_predictions)
