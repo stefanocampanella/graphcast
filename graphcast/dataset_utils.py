@@ -460,6 +460,8 @@ class Process:
     self.configs = OrderedDict()
     if steps is not None:
       for step in steps:
+        # Copy to avoid mutating the arguments
+        step = step.copy()
         name = step.pop('name')
         self.configs[name] = step
     self.mask = mask
