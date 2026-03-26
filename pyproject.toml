@@ -20,6 +20,8 @@ dependencies = [
     "dm-haiku",
     "dm-tree",
     "etils",
+    # haiku.experimental.flax requires flax as a dependency
+    "flax",
     "gcsfs",
     # Versions listed here should agree with the one compiled in leonardo/setup.sh
     "gdal-utils == 3.11.4 ; sys_platform == 'linux'",
@@ -64,8 +66,12 @@ dependencies = [
     "pyproj@git+https://github.com/pyproj4/pyproj.git@3.7.2",
     # Necessary to visualize array sharding in JAX
     "rich",
+    # Rtree is a (unlisted?) dependency of trimesh
+    "rtree",
     "s3fs",
     "scipy",
+    # Tensorboard seems broken for newer versions
+    "setuptools <= 81.0.0",
     "scipy-stubs ~= 1.15.2",
     # Notice: Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work.
     # We'll use our own fork anyway, on Linux too.

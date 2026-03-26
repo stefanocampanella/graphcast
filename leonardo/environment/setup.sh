@@ -229,7 +229,7 @@ if [[ $BUILD_VENV == true ]]; then
 
     if [[ $COMPILE_VENV == true ]]; then
         # Freeze environment for later reuse
-        pip-compile --no-strip-extras --all-build-deps --all-extras --output-file="${ROOT}/leonardo/environment/requirements.txt" "${ROOT}/pyproject.toml" || exit 1
+        pip-compile --allow-unsafe --no-strip-extras --all-build-deps --all-extras --output-file="${ROOT}/leonardo/environment/requirements.txt" "${ROOT}/pyproject.toml" || exit 1
     fi
     
     if [[ $DOWNLOAD_VENV == true ]]; then   
