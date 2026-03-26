@@ -13,10 +13,9 @@
 # limitations under the License.
 """Utilities for building models."""
 
-from typing import Any, Mapping, Optional, Tuple, Literal
+from typing import Any, Mapping, Tuple
 
 import numpy as np
-import jax.numpy as jnp
 import pyproj
 import xarray
 
@@ -35,7 +34,7 @@ def get_graph_spatial_features(
     add_edge_direction: bool,
     add_edge_length: bool,
     add_edge_receiver_coordinates: bool,
-    edge_normalization: Optional[Tuple[float, float]] = None,
+    edge_normalization: Tuple[float, float] | None = None,
     ) -> Tuple[np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -169,7 +168,7 @@ def get_bipartite_graph_spatial_features(
     add_edge_direction: bool,
     add_edge_length: bool,
     add_edge_receiver_coordinates: bool,
-    edge_normalization: Optional[Tuple[float, float]] = None,
+    edge_normalization: Tuple[float, float] | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -312,7 +311,7 @@ def variable_to_stacked(
 
 def dataset_to_stacked(
     dataset: xarray.Dataset,
-    sizes: Optional[Mapping[str, int]] = None,
+    sizes: Mapping[str, int] | None = None,
     preserved_dims: Tuple[str, ...] = ("batch", "lat", "lon"),
 ) -> xarray.DataArray:
   """Converts an xarray.Dataset to a single stacked array.
