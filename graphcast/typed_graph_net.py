@@ -13,7 +13,7 @@
 # limitations under the License.
 """A library of typed Graph Neural Networks."""
 
-from typing import Callable, Mapping, Optional, Union
+from typing import Callable, Mapping, Union
 
 from graphcast import typed_graph
 import jax.numpy as jnp
@@ -41,7 +41,7 @@ GNUpdateGlobalFn = Callable[
 def GraphNetwork(  # pylint: disable=invalid-name
     update_edge_fn: Mapping[str, jraph.GNUpdateEdgeFn],
     update_node_fn: Mapping[str, GNUpdateNodeFn],
-    update_global_fn: Optional[GNUpdateGlobalFn] = None,
+    update_global_fn: GNUpdateGlobalFn | None = None,
     aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph
     .segment_sum,
     aggregate_nodes_for_globals_fn: jraph.AggregateNodesToGlobalsFn = jraph
@@ -276,9 +276,9 @@ def InteractionNetwork(  # pylint: disable=invalid-name
 
 
 def GraphMapFeatures(  # pylint: disable=invalid-name
-    embed_edge_fn: Optional[Mapping[str, jraph.EmbedEdgeFn]] = None,
-    embed_node_fn: Optional[Mapping[str, jraph.EmbedNodeFn]] = None,
-    embed_global_fn: Optional[jraph.EmbedGlobalFn] = None):
+    embed_edge_fn: Mapping[str, jraph.EmbedEdgeFn] | None = None,
+    embed_node_fn: Mapping[str, jraph.EmbedNodeFn] | None = None,
+    embed_global_fn: jraph.EmbedGlobalFn | None = None):
   """Returns function which embeds the components of a graph independently.
 
   Args:

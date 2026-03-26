@@ -14,7 +14,6 @@
 """Loss functions (and terms for use in loss functions) used for weather."""
 import functools
 from typing import Mapping, Callable, Tuple, Hashable
-from typing import Optional
 
 import jax.numpy as jnp
 import numpy as np
@@ -60,10 +59,10 @@ class LossFunction(Protocol):
 def weighted_mse(
     predictions: xr.Dataset,
     targets: xr.Dataset,
-    per_variable_weights: Optional[Mapping[str, float]] = None,
+    per_variable_weights: Mapping[str, float] | None = None,
     levels_normalization_coord: str = 'level',
     weights_decreasing_with_level: bool = False,
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
 ) -> LossAndDiagnostics:
   """Variable-, latitude- and level-weighted, masked MSE loss."""
 
@@ -81,10 +80,10 @@ def weighted_mse(
 def weighted_tweedie_deviance(
     predictions: xr.Dataset,
     targets: xr.Dataset,
-    per_variable_weights: Optional[Mapping[str, float]] = None,
+    per_variable_weights: Mapping[str, float] | None = None,
     levels_normalization_coord: str = 'level',
     weights_decreasing_with_level: bool = False,
-    mask: Optional[xr.DataArray] = None,
+    mask: xr.DataArray | None = None,
     p: float = 0.0,
 ) -> LossAndDiagnostics:
   """Variable-, latitude- and level-weighted, masked Tweedie deviance loss."""
@@ -105,10 +104,10 @@ def weighted_tweedie_deviance(
 
 
 def get_weighted_loss(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
-                      per_variable_weights: Optional[Mapping[str, float]] = None,
+                      per_variable_weights: Mapping[str, float] | None = None,
                       levels_normalization_coord: str = 'level',
                       weights_decreasing_with_level: bool = False,
-                      mask: Optional[xr.DataArray] = None) \
+                      mask: xr.DataArray | None = None) \
     -> Callable[[xr.Dataset, xr.Dataset], LossAndDiagnostics]:
   """Returns a Dataset function that computes variable-, latitude-, and level-weighted, masked loss for a given loss
   function."""
@@ -128,7 +127,7 @@ def get_weighted_loss(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArr
 def get_weighted_loss_per_variable(loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
                                    levels_normalization_coord: str = 'level',
                                    weights_decreasing_with_level: bool = False,
-                                   mask: Optional[xr.DataArray] = None
+                                   mask: xr.DataArray | None = None
                                    ) -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
   """Returns a DataArray function that computes (latitude) area-weighted, masked loss for a given loss function."""
 
@@ -144,7 +143,7 @@ def get_weighted_loss_per_variable(loss_fn: Callable[[xr.DataArray, xr.DataArray
   return weighted_loss_per_variable_fn
 
 
-def _mean_preserving_batch(x: xr.DataArray, mask: Optional[xr.DataArray]=None) -> xr.DataArray:
+def _mean_preserving_batch(x: xr.DataArray, mask: xr.DataArray | None = None) -> xr.DataArray:
   if mask is not None:
     x = x.where(mask, 0.0)
   return x.mean([d for d in x.dims if d != 'batch'], skipna=False)
@@ -152,7 +151,7 @@ def _mean_preserving_batch(x: xr.DataArray, mask: Optional[xr.DataArray]=None) -
 
 def sum_per_variable_losses(
     per_variable_losses: Mapping[Hashable, xr.DataArray],
-    weights: Optional[Mapping[Hashable, np.floating | float]] = None,
+    weights: Mapping[Hashable, np.floating | float] | None = None,
 ) -> LossAndDiagnostics:
   """Weighted sum of per-variable losses."""
   weights = weights or {}

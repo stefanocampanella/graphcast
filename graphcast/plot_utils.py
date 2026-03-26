@@ -1,6 +1,6 @@
 import datetime
 import math
-from typing import Optional, Callable, Sequence
+from typing import Callable, Sequence
 
 import cartopy.crs as ccrs
 import matplotlib
@@ -20,8 +20,8 @@ Lines = Sequence[Line]
 def select(
     data: xarray.Dataset,
     variable: str,
-    level: Optional[int] = None,
-    max_steps: Optional[int] = None
+    level: int | None = None,
+    max_steps: int | None = None
 ) -> xarray.DataArray:
   data = data[variable]
   if "batch" in data.dims:
@@ -34,7 +34,7 @@ def select(
 
 def scale(
     data: xarray.Dataset,
-    center: Optional[float] = None,
+    center: float | None = None,
     robust: bool = False,
 ) -> tuple[xarray.Dataset, matplotlib.colors.Normalize, str]:
   vmin = np.nanpercentile(data, (2 if robust else 0))

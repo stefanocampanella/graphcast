@@ -8,7 +8,7 @@
 import atexit
 import logging
 import pathlib
-from typing import Iterable, Union, Literal, Dict, Any, Tuple
+from typing import Iterable, Literal, Dict, Any, Tuple
 
 import gmsh
 import numpy as np
@@ -99,7 +99,7 @@ class BoundedStereoMeshSizeField(StereoMeshSizeField):
 
 class BoundaryProximityField(BoundedStereoMeshSizeField):
   """Stereographic mesh size field based on the distance from the coast."""
-  def __init__(self, filepath: Union[str, pathlib.Path], physical_name_field: str, curve_type: str, sampling: float,
+  def __init__(self, filepath: str | pathlib.Path, physical_name_field: str, curve_type: str, sampling: float,
                field_min: float, field_max: float, size_min, size_max):
     super().__init__(size_min, size_max)
     if isinstance(filepath, str):
@@ -147,7 +147,7 @@ class RasterField(BoundedStereoMeshSizeField):
 class BathymetryField(RasterField):
   """Stereographic mesh size field based on the bathymetry."""
 
-  def __init__(self, filepath: Union[str, pathlib.Path], var_name: str,
+  def __init__(self, filepath: str | pathlib.Path, var_name: str,
                size_min, size_max, **kwargs):
     """It assumes that variable contains positive depth values."""
     grid_ds = xr.open_dataset(filepath, engine='zarr')
@@ -160,7 +160,7 @@ class BathymetryField(RasterField):
 
 class BathymetryHessianField(RasterField):
 
-  def __init__(self, filepath: Union[str, pathlib.Path], var_name: str, size_min, size_max, eps: float = 1.0e-5,
+  def __init__(self, filepath: str | pathlib.Path, var_name: str, size_min, size_max, eps: float = 1.0e-5,
                longitude_dim: str = 'lon', latitude_dim: str = 'lat', spline_kwargs: dict[str, Any] | None = None,
                filter_kwargs: dict[str, Any] | None = None, **kwargs):
     grid_ds = xr.open_dataset(filepath, engine='zarr')
