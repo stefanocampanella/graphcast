@@ -73,16 +73,11 @@ def unnormalize(values: xarray.Dataset,
   return xarray_tree.map_structure(unnormalize_array, values)
 
 
-class InputsAndResiduals(predictor_base.Predictor):
-  """Wraps with a residual connection, normalizing inputs and target residuals.
+class Normalize(predictor_base.Predictor):
+  """Wraps with a residual connection, normalizing inputs and targets.
 
   The inner predictor is given inputs that are normalized using `locations`
   and `scales` to roughly zero-mean unit variance.
-
-  For target variables that are present in the inputs, the inner predictor is
-  trained to predict residuals (target - last_frame_of_input) that have been
-  normalized using `residual_scales` (and optionally `residual_locations`) to
-  roughly unit variance / zero mean.
 
   This replaces `residual.Predictor` in the case where you want normalization
   that's based on the scales of the residuals.
@@ -106,49 +101,11 @@ class InputsAndResiduals(predictor_base.Predictor):
       predictor: predictor_base.Predictor,
       stddev_by_level: xarray.Dataset,
       mean_by_level: xarray.Dataset,
-      diffs_stddev_by_level: xarray.Dataset,
       skip_names: Optional[Iterable[str]] = None):
     self._predictor = predictor
     self._scales = stddev_by_level
     self._locations = mean_by_level
-    self._residual_scales = diffs_stddev_by_level
-    self._residual_locations = None
     self._skip_names = skip_names
-
-  def _unnormalize_prediction_and_add_input(self, inputs, norm_prediction):
-    if norm_prediction.sizes.get('time') != 1:
-      raise ValueError(
-          'normalization.InputsAndResiduals only supports predicting a '
-          'single timestep.')
-    if norm_prediction.name in inputs:
-      # Residuals are assumed to be predicted as normalized (unit variance),
-      # but the scale and location they need mapping to is that of the residuals
-      # not of the values themselves.
-      prediction = unnormalize(
-          norm_prediction, self._residual_scales, self._residual_locations)
-      # A prediction for which we have a corresponding input -- we are
-      # predicting the residual:
-      last_input = inputs[norm_prediction.name].isel(time=-1)
-      prediction = prediction + last_input
-      return prediction
-    else:
-      # A predicted variable which is not an input variable. We are predicting
-      # it directly, so unnormalize it directly to the target scale/location:
-      return unnormalize(norm_prediction, self._scales, self._locations)
-
-  def _subtract_input_and_normalize_target(self, inputs, target):
-    if target.sizes.get('time') != 1:
-      raise ValueError(
-          'normalization.InputsAndResiduals only supports wrapping predictors'
-          'that predict a single timestep.')
-    if target.name in inputs:
-      target_residual = target
-      last_input = inputs[target.name].isel(time=-1)
-      target_residual = target_residual - last_input
-      return normalize(
-          target_residual, self._residual_scales, self._residual_locations)
-    else:
-      return normalize(target, self._scales, self._locations)
 
   def __call__(self,
                inputs: xarray.Dataset,
@@ -160,9 +117,7 @@ class InputsAndResiduals(predictor_base.Predictor):
     norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     norm_predictions = self._predictor(
         inputs=norm_inputs, targets_template=targets_template, forcings=norm_forcings, **kwargs)
-    return xarray_tree.map_structure(
-        lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
-        norm_predictions)
+    return unnormalize(norm_predictions, self._scales, self._locations)
 
   def loss(self,
            inputs: xarray.Dataset,
@@ -185,12 +140,8 @@ class InputsAndResiduals(predictor_base.Predictor):
     """The loss computed on normalized data, with unnormalized predictions."""
     norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
     norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
-    norm_target_residuals = xarray_tree.map_structure(
-        lambda t: self._subtract_input_and_normalize_target(inputs, t),
-        targets)
+    norm_targets = normalize(targets, self._scales, self._locations, skip_names=self._skip_names)
     (loss, scalars), norm_predictions = self._predictor.loss_and_predictions(
-        inputs=norm_inputs, targets=norm_target_residuals, forcings=norm_forcings, **kwargs)
-    predictions = xarray_tree.map_structure(
-        lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
-        norm_predictions)
+        inputs=norm_inputs, targets=norm_targets, forcings=norm_forcings, **kwargs)
+    predictions = unnormalize(norm_predictions, self._scales, self._locations)
     return (loss, scalars), predictions

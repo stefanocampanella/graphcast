@@ -26,10 +26,10 @@ from graphcast.cli_utils import Configs, OrbaxLogger
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
 from graphcast.dataset_utils import Process
 from graphcast.geospatial_mesh_utils import read_mesh_data
-from graphcast.mask import MaskedPredictor
+from graphcast.mask import Mask
 from graphcast.mesh_graph import MeshData
 from graphcast.model import ModelConfig, TaskConfig, GraphCast
-from graphcast.normalization import InputsAndResiduals
+from graphcast.normalization import Normalize
 from graphcast.predictor_base import Predictor
 
 logger = logging.getLogger(__name__)
@@ -189,16 +189,14 @@ def get_predictor(configs: Configs,
 
   # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
   # normalization to the inputs/targets.
-  predictor = InputsAndResiduals(
+  predictor = Normalize(
     predictor,
-    diffs_stddev_by_level=diffs_stddev_by_level,
     mean_by_level=mean_by_level,
     stddev_by_level=stddev_by_level,
     skip_names=configs.get('artifacts.skip_names', []))
 
   # Mask inputs/outputs. Notice, other not finite values (i.e., inf) are not filled with mask.fill_value.
-  fill_value = configs.get('mask.fill_value', required=True)
-  predictor = MaskedPredictor(predictor, mask=mask_da, value=fill_value)
+  predictor = Mask(predictor, mask=mask_da, value=configs.get('mask.fill_value', required=True))
 
   return predictor
 

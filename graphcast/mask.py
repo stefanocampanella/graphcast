@@ -7,7 +7,7 @@ import xarray as xr
 from graphcast import predictor_base
 
 
-class MaskedPredictor(predictor_base.Predictor):
+class Mask(predictor_base.Predictor):
 
   def __init__(self, predictor: predictor_base.Predictor, mask: xr.DataArray, value: np.floating | float = np.float32(0.0)):
        self._predictor = predictor
