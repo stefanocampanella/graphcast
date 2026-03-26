@@ -1,7 +1,8 @@
 import logging
 import os
 import pathlib
-from typing import Tuple, Union, Callable, Any, Mapping
+import typing
+from typing import Tuple, Union, Callable, Mapping
 
 import grain.python as grain
 import haiku as hk
@@ -11,7 +12,9 @@ import optax
 import orbax.checkpoint as ocp
 import xarray as xr
 from etils import epath
-from grain.checkpoint import CheckpointRestore as GrainCkptRestore, CheckpointSave as GrainCkptSave
+from grain.checkpoint import (CheckpointSave as IterDatasetSave,
+                              CheckpointRestore as IterDatasetRestore,
+                              CheckpointHandler as IterDatasetHandler)
 from grain.experimental import pick_performance_config
 from grain.python import IterDataset, DatasetIterator
 from jax import checkpoint_policies as cp
@@ -19,9 +22,12 @@ from jax.experimental import multihost_utils
 from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P, Mesh
+from orbax.checkpoint.args import PyTreeSave, PyTreeRestore
+from orbax.checkpoint.handlers import PyTreeCheckpointHandler
 
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
+from graphcast.checkpoint import dump as ckpt_dump
 from graphcast.cli_utils import Configs, OrbaxLogger
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
 from graphcast.dataset_utils import Process
@@ -40,7 +46,6 @@ Paths = Tuple[epath.Path, ...]
 InputsTargetsForcingsIterator = DatasetIterator[InputsTargetsForcings]
 InputsTargetsForcingsIterDataset = IterDataset[InputsTargetsForcings]
 JAXLossAndDiagnostics = Tuple[jax.Array, Mapping[str, jax.Array]]
-PyTree = Any
 
 
 def check_writable_paths(output: epath.Path,
@@ -138,17 +143,9 @@ def get_artifacts(data_path: epath.Path, configs: Configs) -> Datasets:
   return tuple(_get_ds(name) for name in ['mean_by_level', 'stddev_by_level', 'diffs_stddev_by_level'])
 
 
-def get_predictor(configs: Configs,
-                  mesh_data: MeshData,
-                  grid_lat: np.ndarray,
-                  grid_lon: np.ndarray,
-                  grid_mask: np.ndarray,
-                  mean_by_level: xr.Dataset,
-                  stddev_by_level: xr.Dataset,
-                  diffs_stddev_by_level: xr.Dataset,
-                  mask_da: xr.DataArray,
-                  ) -> Predictor:
-  model_config = ModelConfig(
+def get_model_config(configs: Configs) -> ModelConfig:
+
+  return ModelConfig(
     latent_size=configs.get('model.latent_size', required=True),
     gnn_msg_steps=configs.get('model.gnn_msg_steps', required=True),
     hidden_layers=configs.get('model.hidden_layers', required=True),
@@ -156,31 +153,48 @@ def get_predictor(configs: Configs,
     per_variable_weights=configs.get('model.per_variable_weights', {}),
     learnable_fourier_features=configs.get('model.learnable_fourier_features', required=True))
 
-  task_config = TaskConfig(
+
+def get_task_config(configs: Configs) -> TaskConfig:
+
+  return TaskConfig(
     input_variables=configs.get('task.input_variables', required=True),
     target_variables=configs.get('task.target_variables', required=True),
     forcing_variables=configs.get('task.forcing_variables', required=True),
     levels=configs.get('task.levels', required=True),
     input_duration=configs.get('task.input_duration', required=True))
 
-  policy = cp.save_and_offload_only_these_names(
+
+def get_policy(configs: Configs) -> Callable:
+
+  return cp.save_and_offload_only_these_names(
     names_which_can_be_saved=configs.get("policy.save", []),
     names_which_can_be_offloaded=configs.get("policy.offload", []),
     offload_src=configs.get("policy.offload_src", "device"),
     offload_dst=configs.get("policy.offload_dst", "pinned_host")
   )
 
+
+def get_predictor(configs: Configs,
+                  mesh_data: MeshData,
+                  grid_lat: np.ndarray,
+                  grid_lon: np.ndarray,
+                  grid_mask: np.ndarray,
+                  mean_by_level: xr.Dataset,
+                  stddev_by_level: xr.Dataset,
+                  mask_da: xr.DataArray,
+                  ) -> Predictor:
+
   # Deeper one-step predictor.
   predictor = GraphCast(
-    _model_config=model_config,
-    _task_config=task_config,
+    _model_config=get_model_config(configs),
+    _task_config=get_task_config(configs),
     _grid_lat=grid_lat,
     _grid_lon=grid_lon,
     _grid_mask=grid_mask,
     _mesh_data=mesh_data,
     _scan=False,
     _remat=True,
-    _policy=policy,
+    _policy=get_policy(configs),
     _prevent_cse=False,
   )
 
@@ -237,12 +251,7 @@ def get_dataset_iterator(data_path: epath.Path,
   dataset_path = data_path / configs.get('dataset.filepath', required=True)
   logger.info(f"Loading training and test datasource from {dataset_path}")
 
-  task_config = TaskConfig(
-    input_variables=configs.get('task.input_variables', required=True),
-    target_variables=configs.get('task.target_variables', required=True),
-    forcing_variables=configs.get('task.forcing_variables', required=True),
-    levels=configs.get('task.levels', required=True),
-    input_duration=configs.get('task.input_duration', required=True))
+  task_config = get_task_config(configs)
 
   split_date = configs.get('dataset.split_date', required=True)
   datasource = ARCODataSource(dataset_path,
@@ -304,15 +313,19 @@ def get_dataset_iterator(data_path: epath.Path,
   return dataset_iterator
 
 
-def get_first_sample_and_reset(iter: DatasetIterator[InputsTargetsForcings]) -> InputsTargetsForcings:
-  state = iter.get_state()
-  sample = next(iter)
-  iter.set_state(state)
+def get_first_sample_and_reset(dataset_iterator: DatasetIterator[InputsTargetsForcings]) -> InputsTargetsForcings:
+  state = dataset_iterator.get_state()
+  sample = next(dataset_iterator)
+  dataset_iterator.set_state(state)
   return sample
 
 
-def get_params(init_fn: Callable[..., hk.MutableParams], iterator: DatasetIterator, configs: Configs) -> PyTree:
-  seed = configs['seed']
+def get_params(init_fn: Callable[..., hk.MutableParams],
+               iterator: DatasetIterator[InputsTargetsForcings],
+               configs: Configs,
+               seed: int | None = None
+               ) -> hk.Params:
+  seed = seed or configs['seed']
   rng_key = jax.random.key(seed)
   sample_on_host = get_first_sample_and_reset(iterator)
   # FIXME: avoid grain workers failing (harmless, but produce lousy logs)
@@ -321,11 +334,18 @@ def get_params(init_fn: Callable[..., hk.MutableParams], iterator: DatasetIterat
   return init_fn(rng_key, sample)
 
 
-def get_checkpoint_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.CheckpointManager:
+def get_checkpoint_manager(ckpt_path: epath.Path,
+                           configs: Configs,
+                           ) -> ocp.CheckpointManager:
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
-  ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics['loss'],
+  ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics[0],
                                                    best_mode='min',
                                                    **configs.get('checkpoints', {}))
+  registry = ocp.handlers.DefaultCheckpointHandlerRegistry()
+  registry.add(item=None, args=PyTreeSave, handler=ocp.handlers.PyTreeCheckpointHandler)
+  registry.add(item=None, args=PyTreeRestore, handler=PyTreeCheckpointHandler)
+  registry.add(item=None, args=IterDatasetSave, handler=IterDatasetHandler)
+  registry.add(item=None, args=IterDatasetRestore, handler=IterDatasetHandler)
   # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
   # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
   # generally different from the context mesh, causing an error.
@@ -334,18 +354,37 @@ def get_checkpoint_manager(ckpt_path: epath.Path, configs: Configs) -> ocp.Check
   #  See: https://github.com/google/orbax/issues/2545
   mesh = jax.make_mesh((jax.process_count(), jax.local_device_count()), ('process', 'local_device'))
   with jax.sharding.set_mesh(mesh):
-    ckpt_mngr = ocp.CheckpointManager(ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger())
+    ckpt_mngr = ocp.CheckpointManager(ckpt_path,
+                                      options=ckpt_mngr_options,
+                                      handler_registry=registry,
+                                      logger=OrbaxLogger())
   return ckpt_mngr
 
 
-def pull_checkpoint(ckpt_mngr: ocp.CheckpointManager,
-                    params: PyTree,
-                    opt_state: PyTree,
+def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
+                    step: int,
+                    metrics: JAXLossAndDiagnostics,
+                    params: hk.Params,
+                    opt_state: hk.Params,
                     train_iterator: InputsTargetsForcingsIterator,
                     test_iterator: InputsTargetsForcingsIterator,
-                    ) -> Tuple[PyTree, PyTree, InputsTargetsForcingsIterator, InputsTargetsForcingsIterDataset]:
+                    ) -> None:
+  metrics = jax.tree_util.tree_map(lambda x: x.item(), metrics)
   params_on_host = jax.device_get(params)
   opt_state_on_host = jax.device_get(opt_state)
+  # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
+  ckpt_mngr.save(step,
+                 args=ocp.args.Composite(
+                   train_iterator=IterDatasetSave(train_iterator),
+                   test_iterator=IterDatasetSave(test_iterator),
+                   params=PyTreeSave(params_on_host),
+                   opt_state=PyTreeSave(opt_state_on_host)),
+                 metrics=metrics)
+
+
+def pull_latest_checkpoint(ckpt_mngr: ocp.CheckpointManager,
+                           device = None,
+                           ) -> Tuple[hk.Params, hk.Params, InputsTargetsForcingsIterator, InputsTargetsForcingsIterDataset]:
   latest_step = ckpt_mngr.latest_step()
   logger.info(f"Restoring {latest_step=}")
   # TODO: check restore and save args options related to sharding and layout
@@ -353,38 +392,16 @@ def pull_checkpoint(ckpt_mngr: ocp.CheckpointManager,
   restored = ckpt_mngr.restore(
     step=latest_step,
     args=ocp.args.Composite(
-      train_iterator=GrainCkptRestore(train_iterator),
-      test_iterator=GrainCkptRestore(test_iterator),
-      params=ocp.args.StandardRestore(params_on_host),
-      opt_state=ocp.args.StandardRestore(opt_state_on_host)))
-  train_iterator.close()
-  test_iterator.close()
+      train_iterator=IterDatasetRestore,
+      test_iterator=IterDatasetRestore,
+      params=PyTreeRestore,
+      opt_state=PyTreeRestore))
 
   train_iterator = restored.train_iterator
   test_iterator = restored.test_iterator
-  params = jax.device_put(restored.params)
-  opt_state = jax.device_put(restored.opt_state)
+  params = jax.device_put(restored.params, device)
+  opt_state = jax.device_put(restored.opt_state, device)
   return params, opt_state, train_iterator, test_iterator
-
-
-def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
-                    step: int,
-                    loss: float,
-                    params: PyTree,
-                    opt_state: PyTree,
-                    train_iterator: InputsTargetsForcingsIterator,
-                    test_iterator: InputsTargetsForcingsIterator,
-                    ) -> None:
-  params_on_host = jax.device_get(params)
-  opt_state_on_host = jax.device_get(opt_state)
-  # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
-  ckpt_mngr.save(step,
-                 args=ocp.args.Composite(
-                   train_iterator=GrainCkptSave(train_iterator),
-                   test_iterator=GrainCkptSave(test_iterator),
-                   params=ocp.args.StandardSave(params_on_host),
-                   opt_state=ocp.args.StandardSave(opt_state_on_host)),
-                 metrics={'loss': loss})
 
 
 def next_batches_on_device(train_iterator: InputsTargetsForcingsIterator,
@@ -409,6 +426,73 @@ def next_batches_on_device(train_iterator: InputsTargetsForcingsIterator,
                                                                       spec=P('batch'))
 
   return batch, batch_test
+
+
+class TensorboardLogger:
+
+  def __init__(self, tb_path: pathlib.Path):
+
+    # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
+    if not jax.distributed.is_initialized():
+      raise ValueError("JAX distributed should be initialized beforehand, "
+                       "see: https://github.com/google/flax/issues/4942.")
+    else:
+      _ = jax.devices()
+      import tensorflow as tf
+      # TODO: could this be set using environment variables?
+      tf.config.experimental.set_visible_devices([], 'GPU')
+      from tensorflow import summary
+      self._summary = summary
+      self._summary_writer = summary.create_file_writer(str(tb_path))
+
+  def log(self, current_step: int, train_metrics: JAXLossAndDiagnostics, test_metrics: JAXLossAndDiagnostics) -> None:
+    with self._summary_writer.as_default():
+
+      def _log(key, value):
+        if jax.process_index() == 0:
+          self._summary.scalar(key, value, step=current_step)
+
+      for set_name, set_metrics in [('train', train_metrics), ('test', test_metrics)]:
+        set_metrics = jax.tree_util.tree_map(lambda x: x.item(), set_metrics)
+        loss, diagnostics = set_metrics
+        _log(f'{set_name}/loss', loss)
+        for key, value in diagnostics.items():
+          _log(f'{set_name}/{key}', value)
+
+
+def save_model(output_path: epath.Path,
+               ckpt_mngr: ocp.CheckpointManager,
+               configs: Configs,
+               grid_lat: np.ndarray,
+               grid_lon: np.ndarray,
+               grid_mask: np.ndarray,
+               mesh_data: MeshData,
+               ) -> None:
+
+  @hk.without_apply_rng
+  @hk.transform
+  def _get_model_ckpt():
+    return GraphCast(
+      _model_config=get_model_config(configs),
+      _task_config=get_task_config(configs),
+      _grid_lat=grid_lat,
+      _grid_lon=grid_lon,
+      _grid_mask=grid_mask,
+      _mesh_data=mesh_data
+    ).checkpoint(description=configs.get('description'), license=configs.get('license'))
+
+  device_mesh = jax.make_mesh((jax.device_count(), jax.local_device_count()),
+                              ('process', 'local_device'))
+  with jax.sharding.set_mesh(device_mesh):
+    best_step = ckpt_mngr.best_step()
+    restored = ckpt_mngr.restore(step=best_step, args=ocp.args.Composite(params=None))
+    graphcast_ckpt = _get_model_ckpt.apply(restored.params)
+    if jax.process_index() == 0:
+      logger.info(f"Saving checkpoint to {output_path} ({best_step=}) ")
+      with output_path.open('wb') as file:
+        file = typing.cast(typing.BinaryIO, file)
+        ckpt_dump(file, graphcast_ckpt)
+    sync_global_devices("save_checkpoint")
 
 
 # get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
@@ -475,47 +559,3 @@ def reshard_data(dataset, sharding, datetime_coord_name='time'):
   dataset = dataset.drop(datetime_coord_name)
   dataset = dataset.assign_coords({datetime_coord_name: (datetime_coord_name, datetime_coordinate)})
   return dataset
-
-
-# # FIXME: this should be refactored, predictor cannot live outside of a haiku transform
-# def save_checkpoint(predictor: Predictor, params, output_path: pathlib.Path, configs: Configs) -> None:
-#   logger.info(f"Training finished, saving checkpoint to {output_path}")
-#   with jax.sharding.use_mesh(_null_mesh):
-#     if jax.process_index() == 0:
-#       with output_path.open('wb') as ckpt_file:
-#         graphcast_ckpt = predictor.checkpoint(params,
-#                                               description=configs.get('description'),
-#                                               license=configs.get('license'))
-#         checkpoint.dump(ckpt_file, graphcast_ckpt)
-#     sync_global_devices("save_checkpoint")
-
-
-class TensorboardLogger:
-
-  def __init__(self, tb_path: pathlib.Path):
-
-    # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
-    if not jax.distributed.is_initialized():
-      raise ValueError("JAX distributed should be initialized beforehand, "
-                       "see: https://github.com/google/flax/issues/4942.")
-    else:
-      _ = jax.devices()
-      import tensorflow as tf
-      # TODO: could this be set using environment variables?
-      tf.config.experimental.set_visible_devices([], 'GPU')
-      from tensorflow import summary
-      self._summary = summary
-      self._summary_writer = summary.create_file_writer(str(tb_path))
-
-  def log(self, current_step: int, train_metrics: JAXLossAndDiagnostics, test_metrics: JAXLossAndDiagnostics) -> None:
-    with self._summary_writer.as_default():
-
-      def _log(key, value):
-        if jax.process_index() == 0:
-          self._summary.scalar(key, value, step=current_step)
-
-      for set_name, set_metrics in [('train', train_metrics), ('test', test_metrics)]:
-        loss, diagnostics = set_metrics
-        _log(f'{set_name}/loss', loss)
-        for key, value in diagnostics.items():
-          _log(f'{set_name}/{key}', value)
