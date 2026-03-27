@@ -46,11 +46,12 @@ DESCRIPTION
         --skip-venv-compile                     Do not compile requirements.txt.
         --skip-venv-download                    Do not download packages from PyPI.
         --skip-venv-install                     Do not install downloaded packages.
+        --add-tensorboard                       Setup an additional venv with Tensorboard
         --help                                  Shows this help.
 EOF
 }
 
-LONGOPTS='help,clear,add-spack-mirrors,skip-spack,skip-venv,skip-venv-compile,skip-venv-download,skip-venv-install'
+LONGOPTS='help,clear,add-spack-mirrors,add-tensorboard,skip-spack,skip-venv,skip-venv-compile,skip-venv-download,skip-venv-install'
 ARGS=$(getopt --options '' --longoptions ${LONGOPTS} -- "${@}")
 if [[ ${?} -ne 0 ]]; then
     usage
@@ -65,6 +66,7 @@ BUILD_VENV=true
 COMPILE_VENV=true
 DOWNLOAD_VENV=true
 INSTALL_VENV=true
+ADD_TENSORBOARD=false
 
 eval "set -- ${ARGS}"
 while true; do
@@ -91,6 +93,10 @@ while true; do
         ;;
     (--skip-venv-install)
         INSTALL_VENV=false
+        shift
+        ;;
+    (--add-tensorboard)
+        ADD_TENSORBOARD=true
         shift
         ;;
     (--clear)
@@ -122,6 +128,7 @@ SPACK_VENV_DIR="${ROOT}/.spack-venv"
 SPACK_DIR="${ROOT}/.spack"
 PKG_CACHE_DIR="${ROOT}/.pkg_cache"
 VENV_DIR="${ROOT}/.venv"
+TB_VENV_DIR="${ROOT}/.tb-venv"
 
 SLURM_ACCOUNT=OGS23_PRACE_IT_0
 SLURM_PARTITION=boost_usr_prod
@@ -138,7 +145,7 @@ cd "${ROOT}" || exit
 
 if [[ $CLEAR == true ]]; then
 	echo "Clearing all local environment files"
-	rm -rf "${SPACK_VENV_DIR}" "${SPACK_DIR}" "${VENV_DIR}" "${PKG_CACHE_DIR}" "${ROOT}/graphcast.egg-info"
+	rm -rf "${SPACK_VENV_DIR}" "${SPACK_DIR}" "${VENV_DIR}" "${PKG_CACHE_DIR}" "${TB_VENV_DIR}" "${ROOT}/graphcast.egg-info"
 fi
 
 if [[ $BUILD_SPACK == true ]]; then
@@ -232,9 +239,9 @@ if [[ $BUILD_VENV == true ]]; then
         pip-compile --allow-unsafe --no-strip-extras --all-build-deps --all-extras --output-file="${ROOT}/leonardo/environment/requirements.txt" "${ROOT}/pyproject.toml" || exit 1
     fi
     
-    if [[ $DOWNLOAD_VENV == true ]]; then   
+    if [[ $DOWNLOAD_VENV == true ]]; then
         # Download packages on login nodes (needs internet connection)
-        pip download --dest="${PKG_CACHE_DIR}" -r "${ROOT}/leonardo/environment/requirements.txt"
+        pip download --dest="${PKG_CACHE_DIR}" -r "${ROOT}/leonardo/environment/requirements.txt" || exit 1
     fi
 
     if [[ $INSTALL_VENV == true ]]; then
@@ -261,6 +268,23 @@ if [[ $BUILD_VENV == true ]]; then
     # Deactivate venv and spack environments
     deactivate
     spack env deactivate
+fi
+
+if [[ $ADD_TENSORBOARD == true ]]; then
+
+    # Activate spack
+    export SPACK_PYTHON="${SPACK_VENV_DIR}/bin/python3"
+    source "${SPACK_DIR}/share/spack/setup-env.sh"
+    spack env activate default
+
+    # Create a virtualenv for tensorboard
+    python -m venv --clear --copies --upgrade-deps "${TB_VENV_DIR}"
+
+    source "${TB_VENV_DIR}/bin/activate"
+
+    pip install --upgrade "setuptools<=81" standard-imghdr tensorboard
+
+    deactivate
 fi
 
 unload_modules

@@ -2,6 +2,7 @@
 **/.DS_Store
 .idea
 .venv
+.tb-venv
 .spack-venv
 .spack
 .pkg_cache

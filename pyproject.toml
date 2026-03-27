@@ -13,7 +13,7 @@ dependencies = [
     "cftime",
     "chex",
     "click",
-    "copernicusmarine == 2.0.1",
+    "copernicusmarine",
     "cython >= 3.1", # Needed to build pyproj
     "dask",
     "dask_mpi",
@@ -55,13 +55,13 @@ dependencies = [
     "netCDF4",
     "networkx",
     # numcodecs v0.16 seems to make copernicusmarine import fail on Leonardo
-    "numcodecs < 0.16",
+    "numcodecs",
     "numpy",
     "oceanbench",
     "optax",
     "orbax-checkpoint >= 0.11.30",
     "pandas",
-    "pandas-stubs ~= 2.2.3",
+    "papermill",
     # MacOS package distributes his own binary of proj, but Spilhouse projection requires proj >= 9.6.0
     "pyproj@git+https://github.com/pyproj4/pyproj.git@3.7.2",
     # Necessary to visualize array sharding in JAX
@@ -70,9 +70,6 @@ dependencies = [
     "rtree",
     "s3fs",
     "scipy",
-    # Tensorboard seems broken for newer versions
-    "setuptools <= 81.0.0",
-    "scipy-stubs ~= 1.15.2",
     # Notice: Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work.
     # We'll use our own fork anyway, on Linux too.
     "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
@@ -82,7 +79,6 @@ dependencies = [
     #   Using tensorflow<2.20 and pyarrow==22.0.0 seems to solve the issue.
     #   See: https://github.com/google-deepmind/gemma/pull/466
     "tensorflow >= 2.21.0",
-    "tensorboard",
     "tqdm",
     "trimesh",
     "treescope",
