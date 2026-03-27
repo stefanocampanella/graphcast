@@ -25,6 +25,7 @@ from numcodecs.blosc import Blosc
 from zarr.storage import TempStore, ZipStore
 
 from graphcast.cli_utils import Configs, DictParamType
+from graphcast.dask_distributed_utils import get_client
 from graphcast.dataset_utils import (DateIntervalsRange,
                                      Process,
                                      ProvidersRegistry,
@@ -34,7 +35,6 @@ from graphcast.dataset_utils import (DateIntervalsRange,
                                      open_mfdataset,
                                      save_to_zarr,
                                      valid_time_coordinate)
-from graphcast.dask_distributed_utils import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -614,7 +614,7 @@ def unpack(
                       datefmt='%Y-%m-%dT%H:%M:%S',
                       level=getattr(logging, log_level.upper()),
                       force=True)
-  client = get_client(logger=logger, debug=debug, local=local)
+  client = get_client(debug=debug, local=local)
 
   # If destination exists and should not overwrite, raise and exit.
   if output_path.exists() and not overwrite:
@@ -639,7 +639,6 @@ def unpack(
   output_path = output_path.absolute()
   # Ensure parent directory exists
   output_path.parent.mkdir(parents=True, exist_ok=True)
-  logger.info(f"Saving unpacked dataset to directory Zarr at {output_path}")
 
   save_to_zarr(dataset, output_path, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
 

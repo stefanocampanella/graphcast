@@ -34,10 +34,10 @@ import pathlib
 
 import click
 
+from graphcast.cli_utils import DictParamType
 from graphcast.dask_distributed_utils import get_client
 from graphcast.dataset_utils import open_dataset_wo_static, save_to_zarr
 from graphcast.stats_utils import Stats, StatsRegistry
-from graphcast.cli_utils import DictParamType
 
 logger = logging.getLogger(__name__)
 
@@ -129,13 +129,13 @@ def compute(stats: Stats,
       Whether to overwrite the output_path if it already exists.
   """
 
-  # Configure logging
   logging.basicConfig(
     format='%(levelname)s - %(asctime)s: %(message)s',
     datefmt='%Y-%m-%dT%H:%M:%S',
-    level=getattr(logging, log_level.upper()))
+    level=log_level.upper(),
+    force=True)
 
-  client = get_client(logger=logger, debug=debug, local=local)
+  client = get_client(debug=debug, local=local)
 
   if not input.exists():
     raise ValueError(f"Input path {input} does not exist")

@@ -996,6 +996,7 @@ def save_to_zarr(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False
     raise ValueError(f"Output path {output_path} already exists")
 
   # Notice that parallel writes to Zarr using zip store are (apparently) not supported.
+  logger.info(f"Saving dataset to {output_path} as Zarr")
   dataset.to_zarr(output_path, compute=True, consolidated=True, mode='w')
 
 

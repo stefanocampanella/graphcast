@@ -23,15 +23,14 @@ Exit codes:
 """
 
 import time
-import os
 from typing import Tuple
 
 import click
 import mpi4py
-from graphcast.dask_distributed_utils import get_distributed_logger, dask_mpi_initialize
 from distributed import Client
 from distributed.utils import TimeoutError as DaskTimeoutError
 
+from graphcast.dask_distributed_utils import dask_mpi_initialize
 
 
 @click.command()
@@ -41,7 +40,7 @@ from distributed.utils import TimeoutError as DaskTimeoutError
               default='info',
               type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False),
               show_default=True)
-def cli(log_level: str, timeout: float) -> int:
+def cli(timeout: float) -> int:
   """Validate a running Dask cluster launched with dask-mpi.
 
   Returns
@@ -49,14 +48,6 @@ def cli(log_level: str, timeout: float) -> int:
   int
       0 on success, 1 on failure.
   """
-  # Configure distributed log handler
-  job_name = os.getenv("SLURM_JOB_NAME")
-  job_id = os.getenv("SLURM_JOB_ID")
-  if job_name is not None and job_id is not None:
-    log_name = f"{job_name}_{job_id}"
-  else:
-    log_name = "dask_mpi_test"
-  get_distributed_logger(log_name=log_name)
 
   try:
     dask_mpi_initialize()

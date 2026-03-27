@@ -6,10 +6,8 @@ import socket
 import dask
 import dask_mpi
 import distributed
-from mpi4py import MPI
 
-from graphcast.cli_utils import get_distributed_logger
-
+logger = logging.getLogger(__name__)
 
 class DummyClient:
 
@@ -18,22 +16,6 @@ class DummyClient:
 
 
 MaybeClient = distributed.Client | DummyClient
-
-
-def get_distributed_log_suffix() -> str:
-  world_size = MPI.COMM_WORLD.Get_size()
-  rank = MPI.COMM_WORLD.Get_rank()
-  log_suffix = ""
-  if world_size > 1:
-    if rank == 0:
-      log_suffix += f"_scheduler"
-    elif rank == 1:
-      log_suffix += f"_client"
-    else:
-      log_suffix += f"_worker_{rank}"
-  log_suffix += ".log"
-
-  return log_suffix
 
 
 def get_dask_env_options(suffix=None, inherit_params_from=None):
@@ -65,25 +47,17 @@ def filter_kwargs(kwargs, func):
   return filtered
 
 
-@get_dask_env_options(suffix="mpi", inherit_params_from=(get_distributed_logger, dask_mpi.initialize))
+@get_dask_env_options(suffix="mpi")
 def dask_mpi_initialize(*args, **kwargs):
-  set_log_handler_kwargs = filter_kwargs(kwargs, get_distributed_logger)
-  get_distributed_logger(logger_name="distributed", log_suffix_fn=get_distributed_log_suffix, **set_log_handler_kwargs)
-  dask_mpi_initialize_kwargs = filter_kwargs(kwargs, dask_mpi.initialize)
-  return dask_mpi.initialize(*args, **dask_mpi_initialize_kwargs)
+  return dask_mpi.initialize(*args, **kwargs)
 
 
-@get_dask_env_options(inherit_params_from=(get_distributed_logger, distributed.LocalCluster))
+@get_dask_env_options()
 def LocalCluster(*args, **kwargs):
-  set_log_handler_kwargs = filter_kwargs(kwargs, get_distributed_logger)
-  get_distributed_logger(logger_name="distributed", log_name="distributed", **set_log_handler_kwargs)
-  local_cluster_kwargs = filter_kwargs(kwargs, distributed.LocalCluster)
-  return distributed.LocalCluster(*args, **local_cluster_kwargs)
+  return distributed.LocalCluster(*args, **kwargs)
 
 
-def get_client(logger=None, local=False, debug=False) -> MaybeClient:
-
-  logger = logger or logging.getLogger(__name__)
+def get_client(local=False, debug=False) -> MaybeClient:
 
   if debug:
     dask.config.set(scheduler="synchronous")
