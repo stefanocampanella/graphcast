@@ -72,7 +72,7 @@ shift 3
 
 srun --output="${LEONARDO_FAST_ROOT}"/logs/%x-%j_%N_%t.out --error="${LEONARDO_FAST_ROOT}"/logs/%x-%j_%N_%t.err \
    python -m graphcast.training launch \
-   --data-path=$LEONARDO_DATA_ROOT "${@}" -- \
+   --data-path="$LEONARDO_DATA_ROOT" --tensorboard-logdir="${LEONARDO_FAST_ROOT}/tb_logdir/$(date)" "${@}" -- \
   "${CONFIG_PATH}" "${OUTPUT_CKPT_PATH}" "${TRAIN_CKPT_PATH}"
 
 source leonardo/environment/deactivate

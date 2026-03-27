@@ -78,6 +78,7 @@ dependencies = [
     #   https://github.com/tensorflow/tensorflow/issues/98563#issuecomment-3536220032
     #   Using tensorflow<2.20 and pyarrow==22.0.0 seems to solve the issue.
     #   See: https://github.com/google-deepmind/gemma/pull/466
+    "tensorboard",
     "tensorflow >= 2.21.0",
     "tqdm",
     "trimesh",
