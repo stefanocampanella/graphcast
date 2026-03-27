@@ -137,7 +137,8 @@ def launch(config_path: pathlib.Path,
                                         grid_mask=grid_mask,
                                         mean_by_level=mean_by_level,
                                         stddev_by_level=stddev_by_level,
-                                        mask_da=mask_da)
+                                        mask_da=mask_da,
+                                        diffs_stddev_by_level=diffs_stddev_by_level)
     loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
     assert loss.dims == ('batch',) and all(scalar.dims == ('batch', ) for scalar in diagnostics.values())
     # Wait to reduce the batch dimension until shard_map is called.

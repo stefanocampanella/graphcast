@@ -35,12 +35,13 @@ from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
 from graphcast.mesh_graph import MeshData
 from graphcast.model import ModelConfig, TaskConfig, GraphCast
-from graphcast.normalization import Normalize
+from graphcast.normalization import InputsAndResiduals
 from graphcast.predictor_base import Predictor
 
 logger = logging.getLogger(__name__)
 
 Datasets = Tuple[xr.Dataset, ...]
+MaybeDatasets = Tuple[Union[Datasets, None], ...]
 DatasetsOrDataArrays = Tuple[Union[xr.Dataset, xr.DataArray], ...]
 Paths = Tuple[epath.Path, ...]
 InputsTargetsForcingsIterator = DatasetIterator[InputsTargetsForcings]
@@ -127,18 +128,20 @@ def get_mask(data_path: epath.Path, configs: Configs) -> xr.DataArray:
   return mask
 
 
-def get_artifacts(data_path: epath.Path, configs: Configs) -> Datasets:
+def get_artifacts(data_path: epath.Path, configs: Configs) -> MaybeDatasets:
   path = data_path / configs.get('artifacts.filepath', required=True)
   logger.info(f"Loading normalization artifacts from {path}")
   artifacts = xr.open_datatree(path, engine='zarr')
 
   def _get_ds(name):
     logger.info(f"Getting {name} dataset from normalization artifacts.")
-    ds_path = configs.get(f"artifacts.{name}.path", required=True)
-    ds = artifacts[ds_path].dataset
-    postprocess = Process(steps=configs.get(f"artifacts.{name}.postprocess", None))
-    ds = postprocess(ds)
-    return ds
+    if ds_path := configs.get(f"artifacts.{name}.path"):
+      ds = artifacts[ds_path].dataset
+      postprocess = Process(steps=configs.get(f"artifacts.{name}.postprocess", None))
+      ds = postprocess(ds)
+      return ds
+    else:
+      return None
 
   return tuple(_get_ds(name) for name in ['mean_by_level', 'stddev_by_level', 'diffs_stddev_by_level'])
 
@@ -182,6 +185,7 @@ def get_predictor(configs: Configs,
                   mean_by_level: xr.Dataset,
                   stddev_by_level: xr.Dataset,
                   mask_da: xr.DataArray,
+                  diffs_stddev_by_level: xr.Dataset | None = None,
                   ) -> Predictor:
 
   # Deeper one-step predictor.
@@ -203,10 +207,11 @@ def get_predictor(configs: Configs,
 
   # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
   # normalization to the inputs/targets.
-  predictor = Normalize(
+  predictor = InputsAndResiduals(
     predictor,
     mean_by_level=mean_by_level,
     stddev_by_level=stddev_by_level,
+    diffs_stddev_by_level=diffs_stddev_by_level,
     skip_names=configs.get('artifacts.skip_names', []))
 
   # Mask inputs/outputs. Notice, other not finite values (i.e., inf) are not filled with mask.fill_value.
