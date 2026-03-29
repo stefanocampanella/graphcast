@@ -14,13 +14,13 @@
 """Abstract base classes for an xarray-based Predictor API."""
 
 import abc
-
 from typing import Tuple
+
+import jax.numpy as jnp
+import xarray
 
 from graphcast import losses
 from graphcast import xarray_jax
-import jax.numpy as jnp
-import xarray
 
 LossAndDiagnostics = losses.LossAndDiagnostics
 

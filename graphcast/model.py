@@ -203,9 +203,9 @@ class CheckPoint:
   grid_lat: np.ndarray
   grid_lon: np.ndarray
   grid_mask: Optional[np.ndarray]
-  params: dict[str, np.ndarray]
   description: str
   license: str
+  params: dict[str, Any] = dataclasses.field(default_factory=dict)
 
 
 # # TODO: add parameters documentation
@@ -588,18 +588,6 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       nodes=nodes,
       edges=edges)
     return mesh2grid_graph
-
-  def checkpoint(self, description: str | None, license: str | None) -> CheckPoint:
-    return CheckPoint(
-      model_config=self.model_config,
-      task_config=self.task_config,
-      mesh_data=self.mesh_data,
-      grid_lat=self.grid_lat,
-      grid_lon=self.grid_lon,
-      grid_mask=self.grid_mask,
-      params=jax.device_get(self.params_dict()),
-      description=description or '',
-      license=license or '')
 
   def __call__(self,
                inputs: xarray.Dataset,

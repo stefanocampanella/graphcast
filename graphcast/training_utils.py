@@ -476,22 +476,45 @@ def save_model(output_path: epath.Path,
 
   @hk.without_apply_rng
   @hk.transform
-  def _get_model_ckpt():
-    return GraphCast(
-      _model_config=get_model_config(configs),
-      _task_config=get_task_config(configs),
-      _grid_lat=grid_lat,
-      _grid_lon=grid_lon,
-      _grid_mask=grid_mask,
-      _mesh_data=mesh_data
-    ).checkpoint(description=configs.get('description'), license=configs.get('license'))
+  def _get_model_checkpoint():
+
+    @hk.without_apply_rng
+    @hk.transform
+    def _checkpoint_fn():
+      predictor = GraphCast(
+        _model_config=get_model_config(configs),
+        _task_config=get_task_config(configs),
+        _grid_lat=grid_lat,
+        _grid_lon=grid_lon,
+        _grid_mask=grid_mask,
+        _mesh_data=mesh_data
+      )
+      predictor = Bfloat16Cast(predictor)
+      description = configs.get('description', '')
+      license = configs.get('license', '')
+      return CheckPoint(
+        model_config=predictor.model_config,
+        task_config=predictor.task_config,
+        mesh_data=predictor.mesh_data,
+        grid_lat=predictor.grid_lat,
+        grid_lon=predictor.grid_lon,
+        grid_mask=predictor.grid_mask,
+        description=description,
+        license=license)
+
+    rng = hk.next_rng_key() if hk.running_init() else None
+    params = hk.transparent_lift(_checkpoint_fn.init)(rng)
+    checkpoint = _checkpoint_fn.apply(params)
+    checkpoint.params.clear()
+    checkpoint.params.update(params)
+    return checkpoint
 
   device_mesh = jax.make_mesh((jax.device_count(), jax.local_device_count()),
                               ('process', 'local_device'))
   with jax.sharding.set_mesh(device_mesh):
     best_step = ckpt_mngr.best_step()
     restored = ckpt_mngr.restore(step=best_step, args=ocp.args.Composite(params=None))
-    graphcast_ckpt = _get_model_ckpt.apply(restored.params)
+    graphcast_ckpt = _get_model_checkpoint.apply(restored.params)
     if jax.process_index() == 0:
       logger.info(f"Saving checkpoint to {output_path} ({best_step=}) ")
       with output_path.open('wb') as file:

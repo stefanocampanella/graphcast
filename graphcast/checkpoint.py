@@ -16,7 +16,7 @@
 import dataclasses
 import io
 import types
-from typing import Any, BinaryIO, TypeVar
+from typing import Any, Optional, BinaryIO, TypeVar
 
 import numpy as np
 
@@ -114,7 +114,7 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
       # directly (without pickle), and dataclasses are the only case where we
       # can know the full set of values and types and therefore know the
       # non-existence must mean None.
-      if isinstance(f.type, (types.UnionType, type(int | None))):
+      if isinstance(f.type, (types.UnionType, type(Optional[int]))):
         constructors = [t for t in f.type.__args__ if t is not types.NoneType]
         if len(constructors) != 1:
           raise TypeError(
