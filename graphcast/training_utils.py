@@ -403,7 +403,7 @@ def pull_latest_checkpoint(ckpt_mngr: ocp.CheckpointManager,
   test_iterator = restored.test_iterator
   params = jax.device_put(restored.params, device)
   opt_state = jax.device_put(restored.opt_state, device)
-  return params, opt_state, train_iterator, test_iterator
+  return train_iterator, test_iterator, params, opt_state
 
 
 def next_batches_on_device(train_iterator: InputsTargetsForcingsIterator,
