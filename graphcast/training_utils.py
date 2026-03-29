@@ -13,8 +13,7 @@ import orbax.checkpoint as ocp
 import xarray as xr
 from etils import epath
 from grain.checkpoint import (CheckpointSave as IterDatasetSave,
-                              CheckpointRestore as IterDatasetRestore,
-                              CheckpointHandler as IterDatasetHandler)
+                              CheckpointRestore as IterDatasetRestore)
 from grain.experimental import pick_performance_config
 from grain.python import IterDataset, DatasetIterator
 from jax import checkpoint_policies as cp
@@ -23,7 +22,6 @@ from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard_map import shard_map
 from jax.sharding import PartitionSpec as P, Mesh
 from orbax.checkpoint.args import PyTreeSave, PyTreeRestore
-from orbax.checkpoint.handlers import PyTreeCheckpointHandler
 
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
@@ -34,7 +32,7 @@ from graphcast.dataset_utils import Process
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
 from graphcast.mesh_graph import MeshData
-from graphcast.model import ModelConfig, TaskConfig, GraphCast
+from graphcast.model import ModelConfig, TaskConfig, GraphCast, CheckPoint
 from graphcast.normalization import InputsAndResiduals
 from graphcast.predictor_base import Predictor
 
@@ -46,6 +44,7 @@ DatasetsOrDataArrays = Tuple[Union[xr.Dataset, xr.DataArray], ...]
 Paths = Tuple[epath.Path, ...]
 InputsTargetsForcingsIterator = DatasetIterator[InputsTargetsForcings]
 InputsTargetsForcingsIterDataset = IterDataset[InputsTargetsForcings]
+Params = hk.Params | hk.MutableParams
 JAXLossAndDiagnostics = Tuple[jax.Array, Mapping[str, jax.Array]]
 
 
@@ -254,7 +253,7 @@ def get_dataset_iterator(data_path: epath.Path,
                          train: bool = True,
                          ) -> InputsTargetsForcingsIterDataset:
   dataset_path = data_path / configs.get('dataset.filepath', required=True)
-  logger.info(f"Loading training and test datasource from {dataset_path}")
+  logger.info(f"Loading datasource from {dataset_path}")
 
   task_config = get_task_config(configs)
 
@@ -325,11 +324,11 @@ def get_first_sample_and_reset(dataset_iterator: DatasetIterator[InputsTargetsFo
   return sample
 
 
-def get_params(init_fn: Callable[..., hk.MutableParams],
+def get_params(init_fn: Callable[..., Params],
                iterator: DatasetIterator[InputsTargetsForcings],
                configs: Configs,
                seed: int | None = None
-               ) -> hk.Params:
+               ) -> Params:
   seed = seed or configs['seed']
   rng_key = jax.random.key(seed)
   sample_on_host = get_first_sample_and_reset(iterator)
@@ -346,11 +345,6 @@ def get_checkpoint_manager(ckpt_path: epath.Path,
   ckpt_mngr_options = ocp.CheckpointManagerOptions(best_fn=lambda metrics: metrics[0],
                                                    best_mode='min',
                                                    **configs.get('checkpoints', {}))
-  registry = ocp.handlers.DefaultCheckpointHandlerRegistry()
-  registry.add(item=None, args=PyTreeSave, handler=ocp.handlers.PyTreeCheckpointHandler)
-  registry.add(item=None, args=PyTreeRestore, handler=PyTreeCheckpointHandler)
-  registry.add(item=None, args=IterDatasetSave, handler=IterDatasetHandler)
-  registry.add(item=None, args=IterDatasetRestore, handler=IterDatasetHandler)
   # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
   # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
   # generally different from the context mesh, causing an error.
@@ -361,7 +355,6 @@ def get_checkpoint_manager(ckpt_path: epath.Path,
   with jax.sharding.set_mesh(mesh):
     ckpt_mngr = ocp.CheckpointManager(ckpt_path,
                                       options=ckpt_mngr_options,
-                                      handler_registry=registry,
                                       logger=OrbaxLogger())
   return ckpt_mngr
 
@@ -369,10 +362,10 @@ def get_checkpoint_manager(ckpt_path: epath.Path,
 def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
                     step: int,
                     metrics: JAXLossAndDiagnostics,
-                    params: hk.Params,
-                    opt_state: hk.Params,
                     train_iterator: InputsTargetsForcingsIterator,
                     test_iterator: InputsTargetsForcingsIterator,
+                    params: Params,
+                    opt_state: Params,
                     ) -> None:
   metrics = jax.tree_util.tree_map(lambda x: x.item(), metrics)
   params_on_host = jax.device_get(params)
@@ -388,8 +381,12 @@ def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
 
 
 def pull_latest_checkpoint(ckpt_mngr: ocp.CheckpointManager,
+                           train_iterator: InputsTargetsForcingsIterator,
+                           test_iterator: InputsTargetsForcingsIterator,
+                           params: Params,
+                           opt_state: Params,
                            device = None,
-                           ) -> Tuple[hk.Params, hk.Params, InputsTargetsForcingsIterator, InputsTargetsForcingsIterDataset]:
+                           ) -> Tuple[InputsTargetsForcingsIterator, InputsTargetsForcingsIterDataset, Params, Params]:
   latest_step = ckpt_mngr.latest_step()
   logger.info(f"Restoring {latest_step=}")
   # TODO: check restore and save args options related to sharding and layout
@@ -397,10 +394,10 @@ def pull_latest_checkpoint(ckpt_mngr: ocp.CheckpointManager,
   restored = ckpt_mngr.restore(
     step=latest_step,
     args=ocp.args.Composite(
-      train_iterator=IterDatasetRestore,
-      test_iterator=IterDatasetRestore,
-      params=PyTreeRestore,
-      opt_state=PyTreeRestore))
+      train_iterator=IterDatasetRestore(train_iterator),
+      test_iterator=IterDatasetRestore(test_iterator),
+      params=PyTreeRestore(params),
+      opt_state=PyTreeRestore(opt_state)))
 
   train_iterator = restored.train_iterator
   test_iterator = restored.test_iterator

@@ -159,7 +159,11 @@ def launch(config_path: pathlib.Path,
 
   ckpt_mngr = trn_utils.get_checkpoint_manager(train_path, configs)
   if not start_fresh:
-    params, opt_state, train_iterator, test_iterator = trn_utils.pull_latest_checkpoint(ckpt_mngr)
+    train_iterator, test_iterator, params, opt_state = trn_utils.pull_latest_checkpoint(ckpt_mngr=ckpt_mngr,
+                                                                                        train_iterator=train_iterator,
+                                                                                        test_iterator=test_iterator,
+                                                                                        params=params,
+                                                                                        opt_state=opt_state)
 
   training_steps = configs.get("training_steps", required=True)
   logger.info(f"Training for {training_steps=} starting at {latest_step=}.")
@@ -199,7 +203,13 @@ def launch(config_path: pathlib.Path,
                                                                   data=batch,
                                                                   data_test=batch_test,
                                                                   static_data=static_data)
-    trn_utils.push_checkpoint(ckpt_mngr, current_step, train_metrics, params, opt_state, train_iterator, test_iterator)
+    trn_utils.push_checkpoint(ckpt_mngr=ckpt_mngr,
+                              step=current_step,
+                              metrics=train_metrics,
+                              train_iterator=train_iterator,
+                              test_iterator=test_iterator,
+                              params=params,
+                              opt_state=opt_state)
     tb_logger.log(current_step, train_metrics, test_metrics)
   logger.info(f"Training finished.")
   trn_utils.save_model(output_path=output_path,
