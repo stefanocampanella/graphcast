@@ -1,8 +1,11 @@
 import logging
 import pathlib
 import tomllib
+from copy import deepcopy
+from typing import Any
 
 import click
+import humanize
 import jax
 import orbax.checkpoint
 import orbax.checkpoint.logging
@@ -18,7 +21,7 @@ class Configs(dict):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
-  def get(self, maybe_dot_key, default=None, required=False):
+  def get(self, maybe_dot_key: str, default: Any | None = None, required: bool = False, copy: bool = True):
 
     def contains(keys, container):
       if keys:
@@ -40,10 +43,13 @@ class Configs(dict):
     if isinstance(value, dict):
       value = Configs(value)
 
+    if copy:
+      value = deepcopy(value)
+
     return value
 
   @staticmethod
-  def read(path: str | pathlib.Path):
+  def read(path: str | epath.Path):
     path = path if isinstance(path, pathlib.Path) else pathlib.Path(path)
     logger.info(f"Reading configs from {path}")
     with path.open('rb') as file:
@@ -128,14 +134,8 @@ def run_analysis_and_report(func_aot):
   cost_analysis = func_aot.cost_analysis()
 
   if memory_analysis is not None:
-    summary = memory_usage_summary(memory_analysis)
-    try:
-      import humanize
-
-      summary = jax.tree_util.tree_map(lambda x: humanize.naturalsize(x, binary=True),
-                                       memory_usage_summary(memory_analysis))
-    except ImportError:
-      logger.debug("Package `humanize` not found, using bytes instead.")
+    summary = jax.tree_util.tree_map(lambda x: humanize.naturalsize(x, binary=True),
+                                     memory_usage_summary(memory_analysis))
     logger.info(f"Memory usage: {summary}")
   else:
      logger.info("Memory usage: unknown")
