@@ -26,7 +26,7 @@ a 2D mesh over latitudes and longitudes.
 """
 import dataclasses
 import logging
-from typing import Any, Callable, Mapping, Optional, Tuple
+from typing import Any, Callable, Mapping, Tuple
 
 import chex
 import haiku as hk
@@ -190,9 +190,12 @@ class ModelConfig:
   gnn_msg_steps: int
   hidden_layers: int
   radius_query_fraction_edge_length: float
-  mesh2grid_edge_normalization_factor: Optional[float] = None
-  per_variable_weights: Optional[dict] = None
-  learnable_fourier_features: bool = True
+  mesh2grid_edge_normalization_factor: float | None = None
+  per_variable_weights: dict | None = None
+  learnable_fourier_features: bool = False
+  fourier_features_num_frequencies: int = 1,
+  fourier_features_hidden_dim: int | None = None,
+  fourier_features_encoding_dim: int | None = None,
 
 
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
@@ -202,7 +205,7 @@ class CheckPoint:
   mesh_data: MeshData
   grid_lat: np.ndarray
   grid_lon: np.ndarray
-  grid_mask: Optional[np.ndarray]
+  grid_mask: np.ndarray | None
   description: str
   license: str
   params: dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -271,9 +274,9 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # Positional encoder, which encodes the position of the grid and mesh nodes.
     self._positional_encoder_kwargs = dict(
       learnable_fourier_features=self._model_config.learnable_fourier_features,
-      num_frequencies=32,
-      hidden_dim=32,
-      encoding_dim=16,
+      num_frequencies=self._model_config.fourier_features_num_frequencies,
+      hidden_dim=self._model_config.fourier_features_hidden_dim,
+      encoding_dim=self._model_config.fourier_features_encoding_dim,
       remat=self._remat,
       policy=self._policy,
       prevent_cse=self._prevent_cse,
@@ -472,10 +475,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     n_mesh_node = np.array([self._num_mesh_nodes])
     assert len(senders) == len(receivers) == edge_features.shape[0]
     n_edge = np.array([len(senders)])
-    logger.info(f"Grid2mesh (encoder) graph contains: {n_grid_node[0]} grid nodes "
-                f"with {senders_node_features.shape[1]} features, "
-                f"{n_mesh_node[0]} mesh nodes with {receivers_node_features.shape[1]} features, "
-                f"and {n_edge[0]} edges with {edge_features.shape[1]} features.")
+    logger.info(f"Grid2mesh (encoder) graph contains: {n_grid_node[0]} grid nodes, {n_mesh_node[0]} mesh nodes, "
+                f"and {n_edge[0]} edges.")
     grid_node_set = typed_graph.NodeSet(
       n_node=n_grid_node, features=senders_node_features)
     mesh_node_set = typed_graph.NodeSet(
@@ -518,9 +519,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     assert len(senders) == len(receivers) == edge_features.shape[0]
     n_edge = np.array([len(senders)])
     assert n_mesh_node == len(node_features)
-    logger.info(f"Mesh (processor) graph contains: {n_mesh_node[0]} mesh nodes "
-                f"with {node_features.shape[1]} features, "
-                f"and {n_edge[0]} edges with {edge_features.shape[1]} features.")
+    logger.info(f"Mesh (processor) graph contains: {n_mesh_node[0]} mesh nodes and {n_edge[0]} edges.")
     mesh_node_set = typed_graph.NodeSet(
       n_node=n_mesh_node, features=node_features)
     edge_set = typed_graph.EdgeSet(
@@ -566,10 +565,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     n_grid_node = np.array([self._num_grid_nodes])
     assert len(senders) == len(receivers) == edge_features.shape[0]
     n_edge = np.array([len(senders)])
-    logger.info(f"Mesh2grid (decoder) graph contains: {n_mesh_node[0]} mesh nodes "
-                f"with {senders_node_features.shape[1]} features, "
-                f"{n_grid_node[0]} grid nodes with {receivers_node_features.shape[1]} features, "
-                f"and {n_edge[0]} edges with {edge_features.shape[1]} features.")
+    logger.info(f"Mesh2grid (decoder) graph contains: {n_mesh_node[0]} mesh nodes, {n_grid_node[0]} grid nodes, "
+                f"and {n_edge[0]} edges.")
     grid_node_set = typed_graph.NodeSet(
       n_node=n_grid_node, features=receivers_node_features)
     mesh_node_set = typed_graph.NodeSet(
@@ -703,12 +700,16 @@ class GraphCast(hk.Module, predictor_base.Predictor):
             "grid_nodes": new_grid_nodes,
             "mesh_nodes": new_mesh_nodes
         })
+
+    logger.info(f"Encoder input has {grid_node_features.shape[-1]} grid features, "
+                f"{mesh_node_features.shape[-1]} mesh features, and {edge_features.shape[-1]} edge features.")
     # Create the GNN.
     grid2mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._grid2mesh_gnn_kwargs)
     # Run the GNN.
     grid2mesh_out = grid2mesh_gnn(input_graph)
     latent_mesh_nodes = grid2mesh_out.nodes["mesh_nodes"].features
     latent_grid_nodes = grid2mesh_out.nodes["grid_nodes"].features
+    assert latent_grid_nodes.shape[0] == self._num_grid_nodes and  latent_mesh_nodes.shape[0] == self._num_mesh_nodes
     return latent_mesh_nodes, latent_grid_nodes
 
   def _run_mesh_gnn(self, latent_mesh_nodes: chex.Array) -> chex.Array:
@@ -736,6 +737,9 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     edge_features = _add_batch_second_axis(edges.features.astype(latent_mesh_nodes.dtype), batch_size)
     new_edges = edges._replace(features=edge_features)
 
+    logger.info(f"Processor input has {latent_mesh_nodes.shape[-1]} mesh features, "
+                f"and {edge_features.shape[-1]} edge features.")
+
     nodes = mesh_graph.nodes["mesh_nodes"]
     nodes = nodes._replace(features=latent_mesh_nodes)
 
@@ -745,7 +749,9 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh_gnn_kwargs)
     # Run the GNN.
     mesh_out = mesh_gnn(input_graph)
-    return mesh_out.nodes["mesh_nodes"].features
+    updated_latent_mesh_nodes = mesh_out.nodes["mesh_nodes"].features
+    assert updated_latent_mesh_nodes.shape[0] == self._num_mesh_nodes
+    return updated_latent_mesh_nodes
 
   def _run_mesh2grid_gnn(self,
                          updated_latent_mesh_nodes: chex.Array,
@@ -772,6 +778,9 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     edge_features = _add_batch_second_axis(edges.features.astype(latent_grid_nodes.dtype), batch_size)
     new_edges = edges._replace(features=edge_features)
 
+    logger.info(f"Decoder input has {latent_grid_nodes.shape[-1]} grid features, "
+                f"{updated_latent_mesh_nodes.shape[-1]} mesh features, and {edge_features.shape[-1]} features.")
+
     input_graph = mesh2grid_graph._replace(
         edges={mesh2grid_key: new_edges},
         nodes={
@@ -783,7 +792,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # Run the GNN.
     mesh2grid_out = mesh2grid_gnn(input_graph)
     output_grid_nodes = mesh2grid_out.nodes["grid_nodes"].features
-
+    assert output_grid_nodes.shape[0] == self._num_grid_nodes
     return output_grid_nodes
 
   def _inputs_to_grid_node_features(
