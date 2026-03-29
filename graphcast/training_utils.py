@@ -219,21 +219,15 @@ def get_predictor(configs: Configs,
   return predictor
 
 
-# FIXME: this should use cosine_decay_schedule_with_warmup instead of chaining schedules as it currently does.
 def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
   logger.info(f"Optimizing with {configs.get('optimizer')}")
   schedule_configs = configs.get('optimizer.schedule', [])
   if not schedule_configs:
     raise ValueError("No learning rate schedule specified.")
-  schedules = []
-  for schedule_config in schedule_configs:
-    schedule_name = schedule_config.pop('name')
-    schedule = getattr(optax, schedule_name)
-    schedules.append(schedule(**schedule_config))
-  boundaries = configs.get('optimizer.schedule_boundaries', [])
-  if not boundaries:
-    raise ValueError("No boundaries specified for learning rate schedule.")
-  scheduler = optax.join_schedules(schedules, boundaries=boundaries)
+  scheduler_configs = configs.get('optimizer.schedule')
+  scheduler_name = scheduler_configs.pop('name')
+  scheduler_init = getattr(optax.schedules, scheduler_name)
+  scheduler = scheduler_init(**scheduler_configs)
 
   gradient_transformation_configs = configs.get('optimizer.gradient_transformation', [])
   if not gradient_transformation_configs:
@@ -241,10 +235,11 @@ def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
   gradient_transformations = []
   for gradient_transformation_config in gradient_transformation_configs:
     gradient_transformation_name = gradient_transformation_config.pop('name')
-    gradient_transformation = getattr(optax, gradient_transformation_name)
+    gradient_transformation_init = getattr(optax, gradient_transformation_name)
     if gradient_transformation_name == 'adamw':
       gradient_transformation_config['learning_rate'] = scheduler
-    gradient_transformations.append(gradient_transformation(**gradient_transformation_config))
+    gradient_transformation = gradient_transformation_init(**gradient_transformation_config)
+    gradient_transformations.append(gradient_transformation)
   return optax.chain(*gradient_transformations)
 
 
