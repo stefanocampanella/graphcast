@@ -108,10 +108,9 @@ import jax.numpy as jnp
 import numpy as np
 import tree
 import xarray
-from grain._src.python.shared_memory_array import SharedMemoryArrayMetadata
-from grain.python import SharedMemoryArray
-from xarray.core.variable import as_compatible_data
+from grain.multiprocessing import SharedMemoryArray, SharedMemoryArrayMetadata
 from jax.sharding import Mesh, PartitionSpec as P, NamedSharding
+from xarray.core.variable import as_compatible_data
 
 # Types which we wrap with JaxArrayWrapper to allow creating xarray datatypes
 # from them.

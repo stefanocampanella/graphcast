@@ -33,7 +33,8 @@ dependencies = [
     "geoviews",
     "gmsh",
     "google-cloud-storage",
-    "grain >= 0.2.15",
+    # Needs to expose SharedMemoryArrayMetadata as part of the API
+    "grain >= 0.2.16",
     "graphviz >= 0.21",
     # TODO: hatchling is a build dependency of cgen, required by parcels, required by oceanbench.
     #  It should be moved elsewhere.
