@@ -101,8 +101,8 @@ class PositionalEncoder(hk.Module):
 
   learnable_fourier_features: bool
   num_frequencies: int
-  encoding_dim: int
-  hidden_dim: int
+  encoding_dim: int | None = None
+  hidden_dim: int | None = None
   gamma: float | None = 1.0
   remat: bool = False
   policy: Callable[..., bool] | None = None
@@ -114,6 +114,8 @@ class PositionalEncoder(hk.Module):
 
   def __call__(self, node_coordinates: jnp.ndarray) -> jnp.ndarray:
     if self.learnable_fourier_features:
+      if self.encoding_dim is None or self.hidden_dim is None:
+        raise ValueError("When using learnable features, encoding_dim and hidden_dim must be specified.")
       positional_encoder = FourierFeatures(self.num_frequencies, self.encoding_dim, self.hidden_dim,
                                            self.gamma, name=self.name + "_fourier_features")
       if self.remat:
