@@ -3,10 +3,10 @@
 ## Core
 * Train the f*cking model. **EXTREME PRIORITY**
 * Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
-* Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules. **HIGH PRIORITY**
 * Implement the validation code. **HIGH PRIORITY**
 
 ## Checks and improvements
+* Change implementation to directly save JAX arrays instead of converting them to numpy arrays before passing them to the Orbax checkpointing API. **HIGH PRIORITY**
 * Check if checkpointing rng data, and not rng JAX array, remove some of the warnings from Orbax. **HIGH PRIORITY**
 * Check if and why mesh and grid nodes must have the same number of features before applying the encoder graph (as it is currently implemented). **HIGH PRIORITY**
 * Investigate bug resulting in the release of SharedMemoryArrays when using multiple workers in Grain and checkpointing parameters as pytree in Orbax. **HIGH PRIORITY**
@@ -81,3 +81,4 @@
 * ~~Move mask and artifacts to GPU memory once.~~ **DONE**
 * ~~Move training stuff to `training_utils.py`~~ **DONE**
 * ~~Move from `Dataloader` to `Dataset` interface in Grain, try using performance autotune to avoid OOM.~~ **DONE**
+* ~~Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules.~~ **DONE**
