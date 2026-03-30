@@ -78,7 +78,11 @@ radius_query_fraction_edge_length = 0.6
 # The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
 # (except for 2m temperature?)
 per_variable_weights = {zos = 0.1, mlotst = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
-learnable_fourier_features = true
+learnable_fourier_features = false
+#learnable_fourier_features = true
+#fourier_features_num_frequencies = 32,
+#fourier_features_hidden_dim: 32,
+#fourier_features_encoding_dim: 16,
 
 [mesh]
 filepath = "data/geometry/uniform_coarse.msh"
