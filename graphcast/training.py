@@ -69,6 +69,7 @@ def cli():
                               dir_okay=True,
                               readable=True,
                               resolve_path=True))
+# TODO: update other-configs to work with Configs dot syntax or drop it
 @click.option("--other-configs",
               help="Other configs to override in the config file in the format 'key1:value1,key2:value2,...'",
               type=cli_utils.DictParamType())

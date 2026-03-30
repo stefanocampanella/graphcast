@@ -248,6 +248,7 @@ def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
   return optax.chain(*gradient_transformations)
 
 
+# TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
 def get_dataset_iterator(data_path: epath.Path,
                          configs: Configs,
                          train: bool = True,
