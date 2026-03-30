@@ -37,6 +37,8 @@ class ARCODataSource(grain.RandomAccessDataSource):
     idx = record_key.__index__()
     if idx < 0 or idx >= len(self):
       raise IndexError(f'Index {idx} is out of bounds.')
+    # FIXME: If target_lead_times is far away in the future, the datasource will load the full slice increasing memory
+    #  usage. Change the implementation to load in memory (and compute derived vars) only for the needed times.
     dataset = self._dataset.isel(time=slice(idx, idx + self._timesteps))
     dataset = dataset.expand_dims(dim='batch', axis=0)
     dataset = dataset.assign_coords({'datetime': dataset['time'].expand_dims(dim='batch', axis=0)})
