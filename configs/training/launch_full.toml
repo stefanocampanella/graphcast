@@ -18,14 +18,12 @@ license = """
   https://github.com/inogs/arco-ocean \
   for attribution statement. \
   """
-training_steps = 1024
-#training_steps = 32768
+training_steps = 300_000
 seed = 42
 
 [task]
 input_variables = [
     "zos",
-    "mlotst",
     "thetao",
     "siconc",
     "sithick",
@@ -150,9 +148,8 @@ min = 1e-16
 name = 'warmup_cosine_decay_schedule'
 init_value = 0.0
 peak_value = 1.0e-3
-warmup_steps = 128
-decay_steps = 996
-#decay_steps = 32640
+warmup_steps = 1000
+decay_steps = 299_000
 end_value = 3.0e-7
 
 [[optimizer.gradient_transformation]]
