@@ -18,7 +18,8 @@ license = """
   https://github.com/inogs/arco-ocean \
   for attribution statement. \
   """
-training_steps = 32768
+training_steps = 1024
+#training_steps = 32768
 seed = 42
 
 [task]
@@ -145,20 +146,14 @@ value = 1.0
 name = 'clip'
 min = 1e-16
 
-[optimizer]
-schedule_boundaries = [512]
-
-[[optimizer.schedule]]
-name = 'linear_schedule'
+[optimizer.schedule]
+name = 'warmup_cosine_decay_schedule'
 init_value = 0.0
-end_value = 1.0e-3
-transition_steps = 512
-
-[[optimizer.schedule]]
-name = 'cosine_decay_schedule'
-init_value = 1.0e-3
-decay_steps = 32640
-alpha = 3.0e-4
+peak_value = 1.0e-3
+warmup_steps = 128
+decay_steps = 996
+#decay_steps = 32640
+end_value = 3.0e-7
 
 [[optimizer.gradient_transformation]]
 name = 'clip_by_global_norm'

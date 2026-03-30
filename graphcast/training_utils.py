@@ -1,3 +1,4 @@
+import inspect
 import logging
 import os
 import pathlib
@@ -239,7 +240,8 @@ def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
   for gradient_transformation_config in gradient_transformation_configs:
     gradient_transformation_name = gradient_transformation_config.pop('name')
     gradient_transformation_init = getattr(optax, gradient_transformation_name)
-    if gradient_transformation_name == 'adamw':
+    gradient_transformation_init_signature = inspect.signature(gradient_transformation_init)
+    if 'learning_rate' in gradient_transformation_init_signature.parameters:
       gradient_transformation_config['learning_rate'] = scheduler
     gradient_transformation = gradient_transformation_init(**gradient_transformation_config)
     gradient_transformations.append(gradient_transformation)
