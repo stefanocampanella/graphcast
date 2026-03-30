@@ -471,7 +471,7 @@ def _get_steps_per_window(dataset: xarray.Dataset,
   time_window = time_window_ds[time_dim].max() - time_window_ds[time_dim].min()
   time_resolution = _get_time_resolution(ds_dummy, time_dim=time_dim)
   steps_per_window = np.floor(time_window / time_resolution).astype(int)
-  return steps_per_window.item()
+  return steps_per_window.item() + 1
 
 
 def _get_time_resolution(dataset: xarray.Dataset, time_dim: str = 'time') -> np.timedelta64:
