@@ -223,7 +223,7 @@ def get_predictor(configs: Configs,
   return predictor
 
 
-def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
+def get_optimizer(configs: Configs) -> Tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
   logger.info(f"Optimizing with {configs.get('optimizer')}")
   schedule_configs = configs.get('optimizer.schedule', [])
   if not schedule_configs:
@@ -245,7 +245,9 @@ def get_optimizer(configs: Configs) -> optax.GradientTransformationExtraArgs:
       gradient_transformation_config['learning_rate'] = scheduler
     gradient_transformation = gradient_transformation_init(**gradient_transformation_config)
     gradient_transformations.append(gradient_transformation)
-  return optax.chain(*gradient_transformations)
+  optimizer = optax.chain(*gradient_transformations)
+
+  return optimizer, scheduler
 
 
 # TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
@@ -448,7 +450,8 @@ class TensorboardLogger:
       self._summary = summary
       self._summary_writer = summary.create_file_writer(str(tb_path))
 
-  def log(self, current_step: int, train_metrics: JAXLossAndDiagnostics, test_metrics: JAXLossAndDiagnostics) -> None:
+  def log(self, current_step: int, train_metrics: JAXLossAndDiagnostics, test_metrics: JAXLossAndDiagnostics,
+          lr: float | None = None) -> None:
     with self._summary_writer.as_default():
 
       def _log(key, value):
@@ -461,6 +464,9 @@ class TensorboardLogger:
         _log(f'{set_name}/loss', loss)
         for key, value in diagnostics.items():
           _log(f'{set_name}/{key}', value)
+
+      if lr is not None:
+        _log('learning_rate', lr)
 
 
 def save_model(output_path: epath.Path,

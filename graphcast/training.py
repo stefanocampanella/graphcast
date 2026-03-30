@@ -145,7 +145,7 @@ def launch(config_path: pathlib.Path,
     # Wait to reduce the batch dimension until shard_map is called.
     return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(diagnostics)
 
-  optimizer = trn_utils.get_optimizer(configs)
+  optimizer, schedule = trn_utils.get_optimizer(configs)
 
   train_iterdataset = trn_utils.get_dataset_iterator(data_path, configs, train=True)
   train_iterator = iter(train_iterdataset)
@@ -211,7 +211,7 @@ def launch(config_path: pathlib.Path,
                               test_iterator=test_iterator,
                               params=params,
                               opt_state=opt_state)
-    tb_logger.log(current_step, train_metrics, test_metrics)
+    tb_logger.log(current_step, train_metrics, test_metrics, lr=schedule(current_step))
   logger.info(f"Training finished.")
   trn_utils.save_model(output_path=output_path,
                        ckpt_mngr=ckpt_mngr,
