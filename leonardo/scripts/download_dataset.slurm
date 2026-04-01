@@ -23,6 +23,9 @@ DESCRIPTION
     Options
         --no-array                              Whether to download dataset in a single SLURM job (default false).
         --overwrite                             Whether to overwrite destination (default false).
+        --start                                 Overwrite config start date.
+        --end                                   Overwrite config end date.
+        --output-dir                            Where to place the ouputs (default to $LEONARDO_DATA/data/dataset)
         --help                                  Shows this help.
 EOF
 }
@@ -31,7 +34,7 @@ EOF
 OVERWRITE=false
 ARRAY=true
 # Parse command line options
-ARGS=$(getopt --options '' --longoptions "overwrite,no-array,help" --name "$0" -- "${@}")
+ARGS=$(getopt --options '' --longoptions "overwrite,no-array,start:,end:,output-dir:,help" --name "$0" -- "${@}")
 if [[ ${?} -ne 0 ]]; then
     usage
     exit 1
@@ -47,6 +50,18 @@ while true; do
             OVERWRITE=true
             shift
             ;;
+        (--start)
+            START_DATE="${2}"
+            shift 2
+            ;;
+        (--end)
+           END_DATE="${2}"
+           shift 2
+           ;;
+        (--output-dir)
+           OUTPUT_DIR="${2}"
+           shift 2
+           ;;
         (--help)
             usage
             exit 0
@@ -66,11 +81,19 @@ done
 PROJECTROOT=$(git rev-parse --show-toplevel)
 cd "${PROJECTROOT}" || exit 1
 
+source leonardo/environment/activate
+
+# Define code/settings and data paths
+source leonardo/.env
+
 # Determine config file and output paths using the remaining argument
 CONFIG_PATH="${PROJECTROOT}/configs/download/${1}.toml"
-OUTPUT_PATH="${SCRATCH}/xcast/data/dataset/${1}"
 
-source leonardo/environment/activate
+if [[ -z ${OUTPUT_DIR} ]]; then
+    OUTPUT_PATH="${LEONARDO_DATA_ROOT}/data/dataset/${1}"
+else
+    OUTPUT_PATH="${OUTPUT_DIR}/${1}"
+fi
 
 if [[ ${OVERWRITE} == true ]]; then
     OVERWRITE_FLAG="--overwrite"
@@ -84,7 +107,22 @@ else
     ARRAY_FLAG=""
 fi
 
-python -m graphcast.dataset download ${OVERWRITE_FLAG} ${ARRAY_FLAG} -- "${CONFIG_PATH}" "${OUTPUT_PATH}"
+if [[ -z ${START_DATE} ]]; then
+    START_DATE_FLAG=""
+else
+    START_DATE_FLAG="--start=${START_DATE}"
+fi
+
+if [[ -z ${END_DATE} ]]; then
+    END_DATE_FLAG=""
+else
+    END_DATE_FLAG="--end=${END_DATE}"
+fi
+
+export PYTHONWARNINGS='ignore::RuntimeWarning'
+
+srun python -m graphcast.dataset download ${OVERWRITE_FLAG} ${START_DATE_FLAG} ${END_DATE_FLAG} ${ARRAY_FLAG} -- \
+    "${CONFIG_PATH}" "${OUTPUT_PATH}"
 
 # Deactivate all environments (useless when run in a SLURM job)
 source leonardo/environment/deactivate

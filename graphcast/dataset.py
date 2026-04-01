@@ -232,6 +232,14 @@ def download(
 @click.argument("config_path",
                 required=True,
                 type=click.Path(path_type=pathlib.Path, file_okay=True, readable=True))
+@click.option("--start",
+              help="Start of the date interval to download",
+              default=None,
+              type=click.DateTime())
+@click.option("--end",
+              help="End of the date interval to download",
+              default=None,
+              type = click.DateTime())
 @click.option("--sbatch-flag/--no-sbatch-flag",
               "sbatch_flag",
               default=False,
