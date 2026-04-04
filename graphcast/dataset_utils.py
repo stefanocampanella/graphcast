@@ -483,6 +483,7 @@ class Process:
     if ('regrid' in self.configs) and ('interpolate' in self.configs):
       logger.debug("Both 'regrid' and 'interpolate' are specified in the configuration. "
                       "'regrid' will be applied first, followed by 'interpolate'.")
+    logger.info("Processing dataset with the following steps: " + ", ".join(self.configs.keys()) + ". ")
     for step in self.configs:
       conf = self.configs.get(step, {})
       logger.info(f"Applying {step} with configuration {conf}")

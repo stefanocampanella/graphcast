@@ -180,10 +180,11 @@ def download(
         with tempfile.TemporaryDirectory() as tempdir:
           fragment_datasets = []
           for ds_conf in configs['datasets']:
+            logger.info(f"Downloading dataset: {ds_conf}")
             ds = provider.open_dataset(date_interval, tempdir, **ds_conf)
-            ds = postprocess(ds)
             fragment_datasets.append(ds)
           fragment = xr.merge(fragment_datasets, join='exact')
+          fragment = postprocess(fragment)
           # fragment = fragment.chunk(**{dim: -1 for dim in fragment.dims})
           with bar(progress):
             # Requires that fragment fits into memory
