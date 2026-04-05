@@ -156,22 +156,30 @@ def launch(config_path: pathlib.Path,
   params = trn_utils.get_params(lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
                                 train_iterator,
                                 configs)
+  device_mesh = jax.make_mesh((jax.device_count(),), ('batch',), axis_types=(AxisType.Explicit,))
+  params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
   opt_state = optimizer.init(params)
+  opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
 
   ckpt_mngr = trn_utils.get_checkpoint_manager(train_path, configs)
   if not start_fresh:
-    train_iterator, test_iterator, params, opt_state = trn_utils.pull_latest_checkpoint(ckpt_mngr=ckpt_mngr,
-                                                                                        train_iterator=train_iterator,
-                                                                                        test_iterator=test_iterator,
-                                                                                        params=params,
-                                                                                        opt_state=opt_state)
+    restored = trn_utils.pull_checkpoint(
+      ckpt_mngr=ckpt_mngr,
+      step=ckpt_mngr.latest_step(),
+      train_iterator=train_iterator,
+      test_iterator=test_iterator,
+      params=params,
+      opt_state=opt_state)
+    latest_step = ckpt_mngr.latest_step()
+    train_iterator: trn_utils.InputsTargetsForcingsIterator = restored['train_iterator']
+    test_iterator:trn_utils.InputsTargetsForcingsIterator = restored['test_iterator']
+    params: trn_utils.Params = restored['params']
+    opt_state: trn_utils.Params = restored['opt_state']
 
   training_steps = configs.get("training_steps", required=True)
   logger.info(f"Training for {training_steps=} starting at {latest_step=}.")
   tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
-  device_mesh = jax.make_mesh((jax.device_count(),), ('batch',), axis_types=(AxisType.Explicit,))
-  params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
-  opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
+  # TODO: are those device_put needed also when pulling checkpoints saved from JAX arrays (instead of numpy arrays)
 
   @partial(jax.jit, donate_argnums=(0, 1))
   def train_step(params, opt_state, data, data_test, static_data):
@@ -212,9 +220,10 @@ def launch(config_path: pathlib.Path,
                               params=params,
                               opt_state=opt_state)
     tb_logger.log(current_step, train_metrics, test_metrics, lr=schedule(current_step))
-  logger.info(f"Training finished.")
+  logger.info(f"Training finished, best checkpoint {ckpt_mngr.best_step()}.")
+  restored = trn_utils.pull_checkpoint(ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params)
   trn_utils.save_model(output_path=output_path,
-                       ckpt_mngr=ckpt_mngr,
+                       params=restored['params'],
                        configs=configs,
                        grid_lat=grid_lat,
                        grid_lon=grid_lon,

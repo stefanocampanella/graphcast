@@ -3,7 +3,7 @@ import logging
 import os
 import pathlib
 import typing
-from typing import Tuple, Union, Callable, Mapping
+from typing import Tuple, Union, Callable, Mapping, Dict, Any
 
 import grain.python as grain
 import haiku as hk
@@ -45,7 +45,7 @@ DatasetsOrDataArrays = Tuple[Union[xr.Dataset, xr.DataArray], ...]
 Paths = Tuple[epath.Path, ...]
 InputsTargetsForcingsIterator = DatasetIterator[InputsTargetsForcings]
 InputsTargetsForcingsIterDataset = IterDataset[InputsTargetsForcings]
-Params = hk.Params | hk.MutableParams
+Params = hk.Params | hk.MutableParams | Dict[str, Any]
 JAXLossAndDiagnostics = Tuple[jax.Array, Mapping[str, jax.Array]]
 
 
@@ -371,42 +371,38 @@ def push_checkpoint(ckpt_mngr: ocp.CheckpointManager,
                     opt_state: Params,
                     ) -> None:
   metrics = jax.tree_util.tree_map(lambda x: x.item(), metrics)
-  params_on_host = jax.device_get(params)
-  opt_state_on_host = jax.device_get(opt_state)
   # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
   ckpt_mngr.save(step,
                  args=ocp.args.Composite(
                    train_iterator=IterDatasetSave(train_iterator),
                    test_iterator=IterDatasetSave(test_iterator),
-                   params=PyTreeSave(params_on_host),
-                   opt_state=PyTreeSave(opt_state_on_host)),
+                   params=PyTreeSave(params),
+                   opt_state=PyTreeSave(opt_state)),
                  metrics=metrics)
 
 
-def pull_latest_checkpoint(ckpt_mngr: ocp.CheckpointManager,
-                           train_iterator: InputsTargetsForcingsIterator,
-                           test_iterator: InputsTargetsForcingsIterator,
-                           params: Params,
-                           opt_state: Params,
-                           device = None,
-                           ) -> Tuple[InputsTargetsForcingsIterator, InputsTargetsForcingsIterDataset, Params, Params]:
-  latest_step = ckpt_mngr.latest_step()
-  logger.info(f"Restoring {latest_step=}")
+def pull_checkpoint(ckpt_mngr: ocp.CheckpointManager,
+                    step: int,
+                    train_iterator: InputsTargetsForcingsIterator | None = None,
+                    test_iterator: InputsTargetsForcingsIterator | None = None,
+                    params: Params | None = None,
+                    opt_state: Params | None = None,
+                    ) -> Mapping[str, Any]:
+  logger.info(f"Restoring {step=}")
   # TODO: check restore and save args options related to sharding and layout
   # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
-  restored = ckpt_mngr.restore(
-    step=latest_step,
-    args=ocp.args.Composite(
-      train_iterator=IterDatasetRestore(train_iterator),
-      test_iterator=IterDatasetRestore(test_iterator),
-      params=PyTreeRestore(params),
-      opt_state=PyTreeRestore(opt_state)))
-
-  train_iterator = restored.train_iterator
-  test_iterator = restored.test_iterator
-  params = jax.device_put(restored.params, device)
-  opt_state = jax.device_put(restored.opt_state, device)
-  return train_iterator, test_iterator, params, opt_state
+  composite_args = {}
+  if train_iterator is not None:
+    composite_args['train_iterator'] = IterDatasetRestore(train_iterator)
+  if test_iterator is not None:
+    composite_args['test_iterator'] = IterDatasetRestore(test_iterator)
+  if params is not None:
+    composite_args['params'] = PyTreeRestore(params)
+  if opt_state is not None:
+    composite_args['opt_state'] = PyTreeRestore(opt_state)
+  if not composite_args:
+    raise ValueError("No restore arguments specified.")
+  return ckpt_mngr.restore(step=step, args=ocp.args.Composite(**composite_args))
 
 
 def next_batches_on_device(train_iterator: InputsTargetsForcingsIterator,
@@ -470,57 +466,30 @@ class TensorboardLogger:
 
 
 def save_model(output_path: epath.Path,
-               ckpt_mngr: ocp.CheckpointManager,
                configs: Configs,
                grid_lat: np.ndarray,
                grid_lon: np.ndarray,
                grid_mask: np.ndarray,
                mesh_data: MeshData,
+               params: Params,
                ) -> None:
 
-  @hk.without_apply_rng
-  @hk.transform
-  def _get_model_checkpoint():
-
-    @hk.without_apply_rng
-    @hk.transform
-    def _checkpoint_fn():
-      predictor = GraphCast(
-        _model_config=get_model_config(configs),
-        _task_config=get_task_config(configs),
-        _grid_lat=grid_lat,
-        _grid_lon=grid_lon,
-        _grid_mask=grid_mask,
-        _mesh_data=mesh_data
-      )
-      predictor = Bfloat16Cast(predictor)
-      description = configs.get('description', '')
-      license = configs.get('license', '')
-      return CheckPoint(
-        model_config=predictor.model_config,
-        task_config=predictor.task_config,
-        mesh_data=predictor.mesh_data,
-        grid_lat=predictor.grid_lat,
-        grid_lon=predictor.grid_lon,
-        grid_mask=predictor.grid_mask,
-        description=description,
-        license=license)
-
-    rng = hk.next_rng_key() if hk.running_init() else None
-    params = hk.transparent_lift(_checkpoint_fn.init)(rng)
-    checkpoint = _checkpoint_fn.apply(params)
-    checkpoint.params.clear()
-    checkpoint.params.update(params)
-    return checkpoint
+  graphcast_ckpt = CheckPoint(
+    model_config=get_model_config(configs),
+    task_config=get_task_config(configs),
+    mesh_data=mesh_data,
+    grid_lat=grid_lat,
+    grid_lon=grid_lon,
+    grid_mask=grid_mask,
+    description=configs.get('description', ''),
+    license=configs.get('license', ''),
+    params=params)
 
   device_mesh = jax.make_mesh((jax.device_count(), jax.local_device_count()),
                               ('process', 'local_device'))
   with jax.sharding.set_mesh(device_mesh):
-    best_step = ckpt_mngr.best_step()
-    restored = ckpt_mngr.restore(step=best_step, args=ocp.args.Composite(params=None))
-    graphcast_ckpt = _get_model_checkpoint.apply(restored.params)
     if jax.process_index() == 0:
-      logger.info(f"Saving checkpoint to {output_path} ({best_step=}) ")
+      logger.info(f"Saving checkpoint to {output_path}")
       with output_path.open('wb') as file:
         file = typing.cast(typing.BinaryIO, file)
         ckpt_dump(file, graphcast_ckpt)

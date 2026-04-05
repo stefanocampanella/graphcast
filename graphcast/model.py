@@ -208,7 +208,7 @@ class CheckPoint:
   grid_mask: np.ndarray | None
   description: str
   license: str
-  params: dict[str, Any] = dataclasses.field(default_factory=dict)
+  params: dict[str, dict[str, Any]]
 
 
 # # TODO: add parameters documentation
@@ -337,6 +337,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
         scan=self._scan,
         name="mesh_gnn")
 
+    if not _can_rollout(self._task_config):
+      raise ValueError(f"Input variables should be either predicted or forced.")
     num_surface_vars = len(set(self._task_config.target_variables) & set(ALL_SURFACE_VARS))
     assert num_surface_vars == len(set(self._task_config.target_variables) - set(ALL_VOLUME_VARS))
     num_volume_vars = len(set(self._task_config.target_variables) & set(ALL_VOLUME_VARS))
@@ -858,3 +860,7 @@ def _get_max_edge_distance(mesh: TriangleMesh | MeshGraph):
       mesh.vertices[senders] - mesh.vertices[receivers], axis=-1)
   # Notice: if edge_distances is empty, the following will raise an error.
   return edge_distances.max()
+
+
+def _can_rollout(task: TaskConfig):
+  return set(task.input_variables).issubset(set(task.target_variables) | set(task.forcing_variables))
