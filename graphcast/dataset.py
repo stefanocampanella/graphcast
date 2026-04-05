@@ -621,7 +621,7 @@ def unpack(
 
   logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
                       datefmt='%Y-%m-%dT%H:%M:%S',
-                      level=getattr(logging, log_level.upper()),
+                      level=log_level.upper(),
                       force=True)
   client = get_client(debug=debug, local=local)
 
@@ -650,8 +650,6 @@ def unpack(
   output_path.parent.mkdir(parents=True, exist_ok=True)
 
   save_to_zarr(dataset, output_path, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
-
-  client.close()
 
 
 if __name__ == '__main__':
