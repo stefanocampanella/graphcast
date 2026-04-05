@@ -25,16 +25,18 @@ DESCRIPTION
         --overwrite                             Whether to overwrite destination (default false).
         --start                                 Overwrite config start date.
         --end                                   Overwrite config end date.
-        --output-dir                            Where to place the ouputs (default to $LEONARDO_DATA/data/dataset)
+        --output-dir                            Where to place the ouputs (default to $LEONARDO_DATA_ROOT/data/dataset).
+        --progress                              Whether to show a progress bar.
         --help                                  Shows this help.
 EOF
 }
 
 # Options default values
-OVERWRITE=false
 ARRAY=true
+OVERWRITE=false
+PROGRESS=false
 # Parse command line options
-ARGS=$(getopt --options '' --longoptions "overwrite,no-array,start:,end:,output-dir:,help" --name "$0" -- "${@}")
+ARGS=$(getopt --options '' --longoptions "overwrite,no-array,start:,end:,output-dir:,progress,help" --name "$0" -- "${@}")
 if [[ ${?} -ne 0 ]]; then
     usage
     exit 1
@@ -62,67 +64,87 @@ while true; do
            OUTPUT_DIR="${2}"
            shift 2
            ;;
+        (--progress)
+           PROGRESS=true
+           shift
+           ;;
         (--help)
-            usage
-            exit 0
-            ;;
+           usage
+           exit 0
+           ;;
         (--)
-            shift
-            break
-            ;;
+           shift
+           break
+           ;;
         (*)
-            echo "Error: unrecognized option ${1}."
-            usage
-            exit 1
-            ;;
+           echo "Error: unrecognized option ${1}."
+           usage
+           exit 1
+           ;;
     esac
 done
 
 PROJECTROOT=$(git rev-parse --show-toplevel)
 cd "${PROJECTROOT}" || exit 1
 
+# Activate environment and set default path envs
 source leonardo/environment/activate
-
-# Define code/settings and data paths
 source leonardo/.env
+
+# Build command line flags
+FLAGS=""
+
+if [[ ${OVERWRITE} == true ]]; then
+    FLAGS="${FLAGS} --overwrite"
+else
+    FLAGS="${FLAGS} --no-overwrite"
+fi
+
+if [[ ${PROGRESS} == true ]]; then
+    FLAGS="${FLAGS} --progress"
+else
+    FLAGS="${FLAGS} --no-progress"
+fi
+
+FLAGS="${FLAGS} --log-level=info"
+
+if [[ ${ARRAY} == true ]]; then
+    FLAGS="${FLAGS} --array-id=${SLURM_ARRAY_TASK_ID}"
+fi
+
+if [[ -n ${START_DATE} ]]; then
+    FLAGS="${FLAGS} --start=${START_DATE}"
+fi
+
+if [[ -n ${END_DATE} ]]; then
+    FLAGS="${FLAGS} --end=${END_DATE}"
+fi
 
 # Determine config file and output paths using the remaining argument
 CONFIG_PATH="${PROJECTROOT}/configs/download/${1}.toml"
 
+# Set OUTPUT_PATH and ensure parent exists
 if [[ -z ${OUTPUT_DIR} ]]; then
-    OUTPUT_PATH="${LEONARDO_DATA_ROOT}/data/dataset/${1}"
-else
-    OUTPUT_PATH="${OUTPUT_DIR}/${1}"
+    OUTPUT_DIR="${LEONARDO_DATA_ROOT}/data/dataset"
 fi
-
-if [[ ${OVERWRITE} == true ]]; then
-    OVERWRITE_FLAG="--overwrite"
-else
-    OVERWRITE_FLAG="--no-overwrite"
+if [[ ! -d "${OUTPUT_DIR}" ]]; then
+    mkdir -p "${OUTPUT_DIR}"
 fi
-
-if [[ ${ARRAY} == true ]]; then
-    ARRAY_FLAG="--array-id=${SLURM_ARRAY_TASK_ID}"
-else
-    ARRAY_FLAG=""
-fi
-
-if [[ -z ${START_DATE} ]]; then
-    START_DATE_FLAG=""
-else
-    START_DATE_FLAG="--start=${START_DATE}"
-fi
-
-if [[ -z ${END_DATE} ]]; then
-    END_DATE_FLAG=""
-else
-    END_DATE_FLAG="--end=${END_DATE}"
-fi
+OUTPUT_PATH="${OUTPUT_DIR}/${1}"
 
 export PYTHONWARNINGS='ignore::RuntimeWarning'
+srun python -m graphcast.dataset download ${FLAGS} -- "${CONFIG_PATH}" "${OUTPUT_PATH}"
 
-srun python -m graphcast.dataset download ${OVERWRITE_FLAG} ${START_DATE_FLAG} ${END_DATE_FLAG} ${ARRAY_FLAG} -- \
-    "${CONFIG_PATH}" "${OUTPUT_PATH}"
+DOWNLOAD_EXIT_CODE=$?
+
+if [[ ${DOWNLOAD_EXIT_CODE} -eq 0 ]]; then
+    echo "----------------------------------------"
+    echo "Download completed successfully."
+else
+    echo "----------------------------------------"
+    echo "Download failed with exit code: ${DOWNLOAD_EXIT_CODE}"
+    exit ${MERGE_EXIT_CODE}
+fi
 
 # Deactivate all environments (useless when run in a SLURM job)
 source leonardo/environment/deactivate

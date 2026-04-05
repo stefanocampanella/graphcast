@@ -21,8 +21,12 @@ DESCRIPTION
     Options
         --no-array                              Whether to merge dataset in a single SLURM job (default false).
         --overwrite                             Whether to overwrite destination (default false).
-        --progress                              Whether to display a progress bar (default false).
+        --start                                 Overwrite config start date.
+        --end                                   Overwrite config end date.
+        --output-dir                            Where to place the ouputs (default to $LEONARDO_DATA_ROOT/data/dataset).
+        --data-dir                              Where to look for data (defaut to $LEONARDO_DATA_ROOT/data/dataset).
         --debug                                 Use synchronous Dask scheduler (default false).
+        --progress                              Whether to display a progress bar (default false).
         --help                                  Shows this help.
 EOF
 }
@@ -34,7 +38,7 @@ DEBUG=false
 ARRAY=true
 
 # Parse command line options
-ARGS=$(getopt --options '' --longoptions "overwrite,progress,debug,no-array,help" --name "$0" -- "${@}")
+ARGS=$(getopt --options '' --longoptions "overwrite,no-array,start:,end:,output-dir:,data-dir:,debug,progress,help" --name "$0" -- "${@}")
 if [[ ${?} -ne 0 ]]; then
     usage
     exit 1
@@ -42,20 +46,36 @@ fi
 eval "set -- ${ARGS}"
 while true; do
     case "${1}" in
+        (--no-array)
+            ARRAY=false
+            shift
+            ;;
         (--overwrite)
             OVERWRITE=true
             shift
             ;;
-        (--progress)
-            PROGRESS=true
-            shift
+        (--start)
+            START_DATE="${2}"
+            shift 2
+            ;;
+        (--end)
+            END_DATE="${2}"
+            shift 2
+            ;;
+        (--output-dir)
+            OUTPUT_DIR="${2}"
+            shift 2
+            ;;
+        (--data-dir)
+            DATA_DIR="${2}"
+            shift 2
             ;;
         (--debug)
             DEBUG=true
             shift
             ;;
-        (--no-array)
-            ARRAY=false
+        (--progress)
+            PROGRESS=true
             shift
             ;;
         (--help)
@@ -75,14 +95,11 @@ while true; do
 done
 
 PROJECTROOT=$(git rev-parse --show-toplevel)
-WORKDIR="${SCRATCH}/xcast"
+cd "${PROJECTROOT}" || exit 1
 
-# Determine config file and output paths using the remaining arguments
-CONFIG_PATH="${PROJECTROOT}/configs/merge/${1}.toml"
-DATA_DIR="${WORKDIR}/data/dataset"
-OUTPUT_PATH="${WORKDIR}/data/dataset/${1}"
-
+# Activate environment and set default path envs
 source leonardo/environment/activate
+source leonardo/.env
 
 # Build command line flags
 FLAGS=""
@@ -111,12 +128,34 @@ if [[ ${ARRAY} == true ]]; then
     FLAGS="${FLAGS} --array-id=${SLURM_ARRAY_TASK_ID}"
 fi
 
-OUTPUT_DIR=$(dirname "${OUTPUT_PATH}")
+if [[ -n ${START_DATE} ]]; then
+    FLAGS="${FLAGS} --start=${START_DATE}"
+fi
+
+if [[ -n ${END_DATE} ]]; then
+    FLAGS="${FLAGS} --end=${END_DATE}"
+fi
+
+# Determine config file and output paths using the remaining arguments
+CONFIG_PATH="${PROJECTROOT}/configs/merge/${1}.toml"
+
+# Set default DATA_DIR
+if [[ -z ${DATA_DIR} ]]; then
+    DATA_DIR="${LEONARDO_DATA_ROOT}/data/dataset"
+fi
+
+# Set OUTPUT_PATH and ensure parent exists
+if [[ -z ${OUTPUT_DIR} ]]; then
+    OUTPUT_DIR="${LEONARDO_DATA_ROOT}/data/dataset"
+fi
 if [[ ! -d "${OUTPUT_DIR}" ]]; then
     mkdir -p "${OUTPUT_DIR}"
 fi
+OUTPUT_PATH="${OUTPUT_DIR}/${1}"
 
-python -m graphcast.dataset merge ${FLAGS} -- "${CONFIG_PATH}" "${DATA_DIR}" "${OUTPUT_PATH}"
+export PYTHONWARNINGS='ignore::RuntimeWarning'
+
+srun python -m graphcast.dataset merge ${FLAGS} -- "${CONFIG_PATH}" "${DATA_DIR}" "${OUTPUT_PATH}"
 
 MERGE_EXIT_CODE=$?
 
@@ -126,8 +165,6 @@ if [[ ${MERGE_EXIT_CODE} -eq 0 ]]; then
 else
     echo "----------------------------------------"
     echo "Dataset merge failed with exit code: ${MERGE_EXIT_CODE}"
-    echo "Job failed. Re-submitting..."
-    scontrol requeue $SLURM_JOB_ID
     exit ${MERGE_EXIT_CODE}
 fi
 
