@@ -143,7 +143,7 @@ if [[ ${DOWNLOAD_EXIT_CODE} -eq 0 ]]; then
 else
     echo "----------------------------------------"
     echo "Download failed with exit code: ${DOWNLOAD_EXIT_CODE}"
-    exit ${MERGE_EXIT_CODE}
+    exit ${DOWNLOAD_EXIT_CODE}
 fi
 
 # Deactivate all environments (useless when run in a SLURM job)
