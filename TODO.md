@@ -1,11 +1,18 @@
 # TODO list
 
 ## Core
-* Train the f*cking model. **EXTREME PRIORITY**
 * Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
+* Make the training preemptible (e.g., check why Orbax is not detecting SIGTERM). **HIGH PRIORITY**
+* Fix retrieve shape does not match expected shape bug, and find out what cause recompilation. **HIGH PRIORITY**
+* Measure dataloader performance. **HIGH PRIORITY**
 * Implement the validation code. **HIGH PRIORITY**
+* Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
+* Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 
 ## Checks and improvements
+* Implement CLI and document train.slurm script the same way as for the other scripts (e.g., download_dataset.slurm). (Medium priority)
+* Debug PGLE, currently broken. (Medium priority) 
+* Simplify SLURM scripts by forwarding arguments to Python CLI, without building flags using getopt. (Medium priority)
 * Change implementation to directly save JAX arrays instead of converting them to numpy arrays before passing them to the Orbax checkpointing API. **HIGH PRIORITY**
 * Check if checkpointing rng data, and not rng JAX array, remove some of the warnings from Orbax. **HIGH PRIORITY**
 * Check if and why mesh and grid nodes must have the same number of features before applying the encoder graph (as it is currently implemented). **HIGH PRIORITY**
@@ -82,3 +89,6 @@
 * ~~Move training stuff to `training_utils.py`~~ **DONE**
 * ~~Move from `Dataloader` to `Dataset` interface in Grain, try using performance autotune to avoid OOM.~~ **DONE**
 * ~~Use `optax.schedule.warmup_cosine_decay_schedule` instead of chaining schedules.~~ **DONE**
+* ~~Train the f*cking (PoC) model.~~ **DONE**
+* ~~Fix 'start-fresh' bug (if start-fresh is false and there are no checkpoints don't try restoring one).~~ **DONE**
+* ~~Revise implementation of the dataloader to allow a subset of dates (used in validation) but not slices (those should be implemented outside the dataloader by selecting the relevant part of the dataset).~~ **DONE**
