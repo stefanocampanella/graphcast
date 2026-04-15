@@ -65,7 +65,7 @@ class Box(NamedTuple):
 def get_connected_mesh_nodes(grid_lat: np.ndarray,
                              grid_lon: np.ndarray,
                              mesh_graph: Mesh,
-                             mask: xr.DataArray,
+                             mask: np.ndarray,
                              query_radius: float | np.ndarray,
                              workers: int = 1) -> set[int]:
   """Returns the set of mesh vertices connected to a valid grid point.
@@ -172,7 +172,7 @@ def prune_mesh_from_mask(mesh: TriangleMesh,
   connected_mesh_vertices = get_connected_mesh_nodes(grid_lat=mask[latitude_dim_name].to_numpy(),
                                                      grid_lon=mask[longitude_dim_name].to_numpy(),
                                                      mesh_graph=mesh,
-                                                     mask=mask,
+                                                     mask=mask.to_numpy(),
                                                      query_radius=query_radius,
                                                      workers=workers)
   logger.info(f"Extracted {len(connected_mesh_vertices)} mesh vertices connected to the grid.")

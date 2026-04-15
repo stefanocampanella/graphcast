@@ -21,7 +21,6 @@ import numpy as np
 import numpy.typing as npt
 import scipy
 import trimesh
-import xarray
 
 from graphcast.gis_utils import equirectangular_srs, cartesian_srs, get_transform
 from graphcast.mesh_graph import Mesh, TriangleMesh, faces_to_edges
@@ -57,7 +56,7 @@ def radius_query_indices(
     grid_longitude: np.ndarray,
     mesh: Mesh,
     radius: float | np.ndarray,
-    mask: xarray.DataArray | None = None,
+    mask: np.ndarray | None = None,
     workers: int = 1) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
@@ -77,21 +76,15 @@ def radius_query_indices(
     * mesh_indices: Indices of shape [num_edges], that index into mesh.vertices.
   """
   if mask is None:
-    mask_data = np.ones((grid_latitude.shape[0], grid_longitude.shape[0]), dtype=bool)
-  else:
-    # FIXME: the following can probably have a more straightforward implementation, the crucial point is to be consistent
-    #  with the order of lat/lon dimensions and indexing
-    assert np.array_equal(mask['lat'].to_numpy(), grid_latitude)
-    assert np.array_equal(mask['lon'].to_numpy(), grid_longitude)
-    mask_data = mask.transpose('lat', 'lon').to_numpy()
+    mask = np.ones((grid_latitude.shape[0], grid_longitude.shape[0]), dtype=bool)
   # [num_grid_points=num_lat_points * num_lon_points]
-  grid_mask = mask_data.reshape([-1])
+  mask = mask.reshape([-1])
   # [num_grid_points=num_lat_points * num_lon_points, 3]
   grid_positions = _grid_lat_lon_to_coordinates(grid_latitude, grid_longitude).reshape([-1, 3])
   # [num_mesh_points, 3]
   mesh_positions = mesh.vertices
-  # [num_valid_grid_points=sum(grid_mask)]
-  valid_grid_positions = grid_positions[grid_mask]
+  # [num_valid_grid_points=sum(mask)]
+  valid_grid_positions = grid_positions[mask]
 
   # NOTICE:
   #   1. the number of grid points per mesh point is not constant, so `query_ball_point` return an array of lists,
@@ -104,7 +97,7 @@ def radius_query_indices(
   # [num_grid_points, num_mesh_points_per_grid_point (variable)]
   # noinspection PyTypeChecker
   query_indices: npt.NDArray[list[int]] = kd_tree.query_ball_point(x=mesh_positions, r=radius, workers=workers)
-  _, masked_to_unmasked_fn = get_masking_indices_fns(grid_mask)
+  _, masked_to_unmasked_fn = get_masking_indices_fns(mask)
   # noinspection PyTypeChecker
   grid_senders = np.concatenate(list(map(masked_to_unmasked_fn, query_indices)), axis=0).astype(int)
   mesh_receivers = np.repeat(np.arange(mesh_positions.shape[0], dtype=int),
