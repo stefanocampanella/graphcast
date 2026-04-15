@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import xarray
 
+from graphcast.data_utils import fix_longitude as _fix_longitude
 from graphcast.mesh_graph import EquirectangularGraph
 
 Point = tuple[float, float]
@@ -129,31 +130,6 @@ def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) ->  mc.LineCo
   line_segments = np.array(line_segments)
   line_collection = mc.LineCollection(line_segments, **kwargs)
   return line_collection
-
-
-def _wrap(da: xarray.DataArray, longitude_dim='lon'):
-  """ Wraps around longitude dimension."""
-  longitudes = da[longitude_dim].to_numpy()
-  size = len(longitudes)
-  dayline_index = int(np.argwhere(longitudes > 180.0)[0])
-  wrapped = da.copy()
-  wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[{longitude_dim: slice(dayline_index, None)}].to_numpy()
-  wrapped[{longitude_dim: slice(size - dayline_index, None)}] = da[{longitude_dim: slice(None, dayline_index)}].to_numpy()
-  return wrapped
-
-
-def _fix_longitude(da: xarray.DataArray, longitude_dim: str = 'lon'):
-  da_wrapped = _wrap(da, longitude_dim=longitude_dim)
-  longitude_orig = da[longitude_dim].to_numpy()
-  longitude_orig = xarray.DataArray(data=longitude_orig, coords={longitude_dim: longitude_orig},
-                                    dims=longitude_dim, name=longitude_dim + '_orig', attrs=da[longitude_dim].attrs)
-  lon_wrapped = _wrap(longitude_orig, longitude_dim=longitude_dim)
-  lon_wrapped = lon_wrapped.to_numpy()
-  lon_wrapped = np.where(lon_wrapped <= 180.0, lon_wrapped, lon_wrapped - 360.0)
-  lon_wrapped = xarray.DataArray(data=lon_wrapped, coords={longitude_dim: lon_wrapped}, dims=longitude_dim,
-                             name=longitude_dim, attrs=longitude_orig.attrs)
-  da_wrapped = da_wrapped.assign_coords({longitude_dim: lon_wrapped})
-  return da_wrapped
 
 
 def fix_longitude(plot_f):

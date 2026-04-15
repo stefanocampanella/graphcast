@@ -483,3 +483,29 @@ def _get_time_resolution(dataset: xarray.Dataset, time_dim: str = 'time') -> np.
   delta = delta.item()
   delta = np.timedelta64(delta, 'ns')
   return delta
+
+
+def _wrap(da: xarray.DataArray, longitude_dim='lon'):
+  """ Wraps around longitude dimension."""
+  longitudes = da[longitude_dim].to_numpy()
+  size = len(longitudes)
+  dayline_index = int(np.argwhere(longitudes > 180.0)[0][0])
+  wrapped = da.copy()
+  wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[{longitude_dim: slice(dayline_index, None)}].to_numpy()
+  wrapped[{longitude_dim: slice(size - dayline_index, None)}] = da[{longitude_dim: slice(None, dayline_index)}].to_numpy()
+  return wrapped
+
+
+def fix_longitude(da: xarray.DataArray, longitude_dim: str = 'lon'):
+  """Wraps longitudes around -180 to 180 degrees."""
+  da_wrapped = _wrap(da, longitude_dim=longitude_dim)
+  longitude_orig = da[longitude_dim].to_numpy()
+  longitude_orig = xarray.DataArray(data=longitude_orig, coords={longitude_dim: longitude_orig},
+                                    dims=longitude_dim, name=longitude_dim + '_orig', attrs=da[longitude_dim].attrs)
+  lon_wrapped = _wrap(longitude_orig, longitude_dim=longitude_dim)
+  lon_wrapped = lon_wrapped.to_numpy()
+  lon_wrapped = np.where(lon_wrapped <= 180.0, lon_wrapped, lon_wrapped - 360.0)
+  lon_wrapped = xarray.DataArray(data=lon_wrapped, coords={longitude_dim: lon_wrapped}, dims=longitude_dim,
+                                 name=longitude_dim, attrs=longitude_orig.attrs)
+  da_wrapped = da_wrapped.assign_coords({longitude_dim: lon_wrapped})
+  return da_wrapped
