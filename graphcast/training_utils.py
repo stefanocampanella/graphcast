@@ -261,11 +261,15 @@ def get_dataset_iterator(data_path: epath.Path,
   task_config = get_task_config(configs)
 
   split_date = configs.get('dataset.split_date', required=True)
-  datasource = ARCODataSource(dataset_path,
+  xarray_dataset = xr.open_dataset(dataset_path, engine='zarr')
+  # Split the dataset "causally"
+  if train:
+    xarray_dataset = xarray_dataset.sel(time=slice(None, split_date))
+  else:
+    xarray_dataset = xarray_dataset.sel(time=slice(split_date, None))
+  datasource = ARCODataSource(xarray_dataset,
                               task=task_config,
-                              target_lead_times=configs.get('dataset.target_lead_times', required=True),
-                              from_date=None if train else split_date,
-                              to_date=split_date if train else None)
+                              target_lead_times=configs.get('dataset.target_lead_times', required=True))
 
   dataset = (grain.MapDataset.source(datasource)
              .repeat(num_epochs=None)

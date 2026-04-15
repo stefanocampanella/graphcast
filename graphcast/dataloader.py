@@ -1,5 +1,4 @@
-import pathlib
-from typing import SupportsIndex, Tuple
+from typing import SupportsIndex, Tuple, Sequence
 
 import grain.python as grain
 import numpy as np
@@ -14,29 +13,35 @@ InputsTargetsForcings = Tuple[xr.Dataset, xr.Dataset, xr.Dataset]
 class ARCODataSource(grain.RandomAccessDataSource):
   """A data source for analysis-ready cloud-optimized datasets containing time-series."""
   def __init__(self,
-               path: pathlib.Path,
+               dataset: xr.Dataset,
                task: TaskConfig,
                target_lead_times: TargetLeadTimes = "1d",
                fill_value: float = 0.0,
-               from_date: str | None = None,
-               to_date: str | None = None,
+               valid_dates: Sequence[np.datetime64] | None = None,
                ):
-    self._dataset = xr.open_dataset(path, engine='zarr').sel(time=slice(from_date, to_date))
+    self._dataset = dataset
     self._task = task
     self._target_lead_times = target_lead_times
     self._fill_value = fill_value
     self._timesteps = _get_steps_per_window(dataset=self._dataset,
                                             input_duration=self._task.input_duration,
                                             target_lead_times=self._target_lead_times)
+    # TODO: check that rollouts starting from valid dates are within dataset
+    self._valid_dates = valid_dates
 
   def __len__(self):
-    return len(self._dataset['time']) - self._timesteps + 1
+    if self._valid_dates is None:
+      num_samples = len(self._dataset['time']) - self._timesteps + 1
+    else:
+      num_samples = len(self._valid_dates)
+    return num_samples
 
   def __getitem__(self, record_key: SupportsIndex) -> InputsTargetsForcings:
     """A single element drawn from the ARCODataSource is a time-series starting from `record_key` and followed by `_timesteps` timesteps. """
     idx = record_key.__index__()
-    if idx < 0 or idx >= len(self):
-      raise IndexError(f'Index {idx} is out of bounds.')
+    if self._valid_dates is not None:
+      date = self._valid_dates[idx]
+      idx = self._dataset.get_index("time").get_loc(date)
     # FIXME: If target_lead_times is far away in the future, the datasource will load the full slice increasing memory
     #  usage. Change the implementation to load in memory (and compute derived vars) only for the needed times.
     dataset = self._dataset.isel(time=slice(idx, idx + self._timesteps))

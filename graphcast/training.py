@@ -73,7 +73,7 @@ def cli():
 @click.option("--other-configs",
               help="Other configs to override in the config file in the format 'key1:value1,key2:value2,...'",
               type=cli_utils.DictParamType())
-@click.option("--start-fresh",
+@click.option("--restart",
               help="Whether to start the training from scratch.",
               default=False,
               is_flag=True)
@@ -94,7 +94,7 @@ def launch(config_path: pathlib.Path,
            train_path: pathlib.Path,
            data_path: pathlib.Path | None = None,
            other_configs: Mapping[str, Any] | None = None,
-           start_fresh: bool = False,
+           restart: bool = False,
            overwrite: bool = False,
            tensorboard_logdir: pathlib.Path | None = None,
            log_level: str = 'info'):
@@ -111,7 +111,7 @@ def launch(config_path: pathlib.Path,
   output_path, train_path, tensorboard_logdir = trn_utils.check_writable_paths(output_path,
                                                                                train_path,
                                                                                tensorboard_logdir,
-                                                                               start_fresh=start_fresh,
+                                                                               start_fresh=not restart,
                                                                                overwrite=overwrite)
 
   configs = Configs.read(config_path)
@@ -162,7 +162,9 @@ def launch(config_path: pathlib.Path,
   opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
 
   ckpt_mngr = trn_utils.get_checkpoint_manager(train_path, configs)
-  if not start_fresh:
+  if restart:
+    if not ckpt_mngr.all_steps(read=True):
+      raise ValueError(f"Found no checkpoint to restore while restarting training.")
     restored = trn_utils.pull_checkpoint(
       ckpt_mngr=ckpt_mngr,
       step=ckpt_mngr.latest_step(),
