@@ -109,6 +109,7 @@ dataset = "graphcast.dataset:cli"
 geospatial-mesh = "graphcast.geospatial_mesh:cli"
 stats = "graphcast.stats:cli"
 training = "graphcast.training:cli"
+oceanbench-challenger = "graphcast.oceanbench_challenger:cli"
 
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/graphcast"
