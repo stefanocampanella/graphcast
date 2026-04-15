@@ -57,7 +57,7 @@
 # For this reason, we use a thin wrapper around osr.SpatialReference objects with such methods.
 # Finally, a few recurring CRS objects are declared here for convenience. SRSRegistry is intended to be used to reach
 # these CRS objects from short strings in config files.
-
+import warnings
 from typing import Literal, Union, Callable
 
 import numpy as np
@@ -233,7 +233,8 @@ def get_transform(source: CoordinateReferenceSystem, destination: CoordinateRefe
     assert len(result) >= num_coords_out, f"Expected {num_coords_out} coordinates, got {len(result)}"
     # We don't use elevation, in case of conversion to equirectangular projection drop it.
     if len(result) == 3 and num_coords_out == 2:
-      assert np.allclose(result[2], 0.0), f"Expected elevation to be zero, got {result[2]}"
+      if not np.allclose(result[2], 0.0):
+        warnings.warn(f"Expected elevation to be zero, got {result[2]}")
       result = result[0], result[1]
     if isinstance(coordinates, np.ndarray) and pack_back:
       result = np.stack(result, axis=-1)
