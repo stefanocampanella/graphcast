@@ -32,6 +32,22 @@ input_variables = [
     "usi",
     "vo",
     "vsi",
+    "year_progress_sin",
+    "year_progress_cos",
+]
+# Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts and include them in forcings
+target_variables = [
+    "zos",
+    "thetao",
+    "so",
+    "uo",
+    "vo",
+]
+forcing_variables = [
+    "siconc",
+    "sithick",
+    "usi",
+    "vsi",
     "deptho",
     "z",
     "glofas_mask",
@@ -40,19 +56,6 @@ input_variables = [
     "uparea",
     "waverys_deptho",
     "waverys_mask",
-    "year_progress_sin",
-    "year_progress_cos",
-]
-# Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts
-target_variables = [
-    "zos",
-    "mlotst",
-    "thetao",
-    "so",
-    "uo",
-    "vo",
-]
-forcing_variables = [
     "10u",
     "10v",
     "2d",
@@ -76,12 +79,8 @@ hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 # The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
 # (except for 2m temperature?)
-per_variable_weights = {zos = 0.1, mlotst = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
+per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
 learnable_fourier_features = false
-#learnable_fourier_features = true
-#fourier_features_num_frequencies = 32,
-#fourier_features_hidden_dim: 32,
-#fourier_features_encoding_dim: 16,
 
 [mesh]
 filepath = "data/geometry/uniform_coarse.msh"
@@ -103,7 +102,7 @@ local_batch_size = 1
 # Multiprocessing dataloader is currently broken, we only use a multithreaded reader.
 [dataset.read_options]
 num_threads = 8
-prefetch_buffer_size = 32
+prefetch_buffer_size = 48
 
 [policy]
 names_which_can_be_saved = []
