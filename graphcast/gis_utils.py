@@ -249,7 +249,7 @@ def wrap_longitude(da: xr.DataArray, longitude_dim: str = 'lon'):
     """ Wraps around longitude dimension."""
     longitudes = da[longitude_dim].to_numpy()
     size = len(longitudes)
-    dayline_index = int(np.argwhere(longitudes > 180.0)[0])
+    dayline_index = np.argwhere(longitudes > 180.0)[0].item()
     wrapped = da.copy()
     wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[
       {longitude_dim: slice(dayline_index, None)}].to_numpy()
