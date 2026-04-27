@@ -3,7 +3,7 @@
 ## Core
 * Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
 * Make the training preemptible (e.g., check why Orbax is not detecting SIGTERM). **HIGH PRIORITY**
-* Fix retrieve shape does not match expected shape bug, and find out what cause recompilation. **HIGH PRIORITY**
+* Fix retrieve shape does not match expected shape bug, and find out what causes recompilation. **HIGH PRIORITY**
 * Measure dataloader performance. **HIGH PRIORITY**
 * Implement the validation code. **HIGH PRIORITY**
 * Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
@@ -63,6 +63,8 @@
 * Create a similar model for Mediterranean sea biogeochemistry, it should require minimal changes to download scripts and model code. However, more thinking is needed on how to deal with open boundaries. (Low priority)
 * Implement pipeline-parallelism for the autoregressive predictor. (Medium priority)
 * Implement the algorithm sketched in `graph_pruning.py`, then implement a derived predictor class that does domain decomposition and measure memory consumption of the graph pruned version. (Low priority)
+* Implement hierarchical graph model.
+* Implement latent space rollout.
 
 ## Completed tasks
 * ~~Add `oceanbench` to dependencies~~ **DONE**
