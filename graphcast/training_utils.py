@@ -62,6 +62,7 @@ def check_writable_paths(output: epath.Path,
     sync_global_devices(f"ensure_{path}_exists")
 
   def empty_directory(path: epath.Path):
+    logger.info(f"Emptying {path}")
     if jax.process_index() == 0:
       if path.exists():
         path.rmtree()
