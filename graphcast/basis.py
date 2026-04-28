@@ -117,7 +117,7 @@ def compute(mesh_path: epath.Path,
     basis_values_on_grid = sparse.csr_matrix(basis_values_on_grid)
     basis_value_blocks.append(basis_values_on_grid)
   logger.info("Merging blocks")
-  basis_values_on_grid = sparse.hstack(basis_value_blocks)
+  basis_values_on_grid = sparse.vstack(basis_value_blocks)
 
   logger.info(f"Computed {basis_values_on_grid.shape[1]} basis values, saving to {output_path}")
   sparse.save_npz(output_path, basis_values_on_grid)
