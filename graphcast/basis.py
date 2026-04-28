@@ -2,15 +2,11 @@ import logging
 
 import click
 import numpy as np
-import tqdm
-import xarray as xr
 from etils import epath
 from scipy import sparse
-from scipy.interpolate import LinearNDInterpolator
 
-from graphcast.data_utils import fix_longitude
+from graphcast.basis_utils import compute_basis, load_mask
 from graphcast.geospatial_mesh_utils import read_mesh_data
-from graphcast.gis_utils import get_transform, cartesian_srs, equirectangular_srs, stereographic_srs
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +38,14 @@ def cli():
 @click.option("--longitude-dim",
               default="lon",
               help="Name of the longitude variable")
+@click.option("--latitude-dim",
+              default="lat",
+              help="Name of the longitude variable")
 @click.option("--overwrite/--no-overwrite",
               default=False,
               help="Whether to overwrite existing outputs",
               is_flag=True)
-@click.option("--n-blocks",
+@click.option("--num-blocks",
               default=10,
               help="Number of blocks for the computation",
               show_default=True)
@@ -66,8 +65,9 @@ def compute(mesh_path: epath.Path,
             mesh_size_tag_step: int,
             mask_name: str,
             longitude_dim: str,
+            latitude_dim: str,
             overwrite: bool,
-            n_blocks: int,
+            num_blocks: int,
             log_level: str,
             progress: bool = False):
 
@@ -82,44 +82,20 @@ def compute(mesh_path: epath.Path,
   mesh_data = read_mesh_data(mesh_path,
                              mesh_size_tag_name=mesh_size_tag_name,
                              mesh_size_tag_step=mesh_size_tag_step)
-  cart2stereo = get_transform(cartesian_srs, stereographic_srs)
-  mesh_pts = cart2stereo(mesh_data.mesh_graph.vertices)
-  num_mesh_pts = mesh_pts.shape[0]
-  values = np.eye(num_mesh_pts, dtype=np.float32)
-  logger.info(f"Building interpolator for {num_mesh_pts} basis functions.")
-  interp = LinearNDInterpolator(mesh_pts, values, fill_value=0.0)
 
-  logger.info(f"Loading mask ({mask_name}) from {dataset_path}")
-  ds = xr.open_dataset(dataset_path, engine='zarr')
-  da = ds[mask_name].isel(level=0)
-  da = fix_longitude(da, longitude_dim=longitude_dim)
-  mask = da.to_numpy()
-  lats, lons = np.meshgrid(da['lat'], da['lon'], indexing='ij')
-  valid_coords = (lons[mask], lats[mask])
-  latlon2stereo = get_transform(equirectangular_srs, stereographic_srs)
-  valid_stereo = latlon2stereo(valid_coords)
-  grid_pts = np.stack(valid_stereo, axis=-1)
+  mask = load_mask(dataset_path, mask_name, longitude_dim=longitude_dim)
 
-  num_grid_pts = grid_pts.shape[0]
-  block_size = num_grid_pts // n_blocks
-  logger.info(f"Found {num_grid_pts} valid grid points, splitting into {n_blocks} blocks of size {block_size}")
-  # FIXME: This should be processed in parallel using multithreading (not multiprocessing, `values` is large, better
-  #  not to serialize it, and, for the same reason, it is better to use just a few threads).
-  #  However, scipy.interpolate.LinearNDInterpolator does not release the GIL, see:
-  #    1. https://github.com/scipy/scipy/blob/f1f7a63f990660662841c326cf4951b44298d20d/scipy/interpolate/_interpnd.pyx#L356-L358
-  #    2. https://github.com/scipy/scipy/issues/21885
-  #  Hence some other workaround has to be found.
-  basis_value_blocks = []
-  for block_start in tqdm.trange(0, num_grid_pts, block_size, disable=not progress):
-    block_end = min(num_grid_pts, block_start + block_size)
-    grid_pts_block = grid_pts[block_start:block_end, :]
-    basis_values_on_grid = interp(grid_pts_block)
-    basis_values_on_grid = sparse.csr_matrix(basis_values_on_grid)
-    basis_value_blocks.append(basis_values_on_grid)
-  logger.info("Merging blocks")
-  basis_values_on_grid = sparse.vstack(basis_value_blocks)
+  basis_values_on_grid = compute_basis(nodes=mesh_data.mesh_graph.vertices,
+                                       mask=mask.to_numpy(),
+                                       latitudes=mask[latitude_dim].to_numpy(),
+                                       longitudes=mask[longitude_dim].to_numpy(),
+                                       num_blocks=num_blocks,
+                                       format='coo',
+                                       dtype=np.float32,
+                                       disable_progress=not progress)
 
   logger.info(f"Computed {basis_values_on_grid.shape[1]} basis values, saving to {output_path}")
+  # noinspection PyTypeChecker
   sparse.save_npz(output_path, basis_values_on_grid)
 
 
