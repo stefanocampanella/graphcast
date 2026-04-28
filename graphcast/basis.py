@@ -108,9 +108,10 @@ def compute(mesh_path: epath.Path,
   #  However, scipy.interpolate.LinearNDInterpolator does not release the GIL, see:
   #    1. https://github.com/scipy/scipy/blob/f1f7a63f990660662841c326cf4951b44298d20d/scipy/interpolate/_interpnd.pyx#L356-L358
   #    2. https://github.com/scipy/scipy/issues/21885
+  #  Hence some other workaround has to be found.
   basis_value_blocks = []
-  for block_start in tqdm.trange(0, num_mesh_pts, block_size, disable=not progress):
-    block_end = min(num_mesh_pts, block_start + block_size)
+  for block_start in tqdm.trange(0, num_grid_pts, block_size, disable=not progress):
+    block_end = min(num_grid_pts, block_start + block_size)
     grid_pts_block = grid_pts[block_start:block_end, :]
     basis_values_on_grid = interp(grid_pts_block)
     basis_values_on_grid = sparse.csr_matrix(basis_values_on_grid)
@@ -118,7 +119,7 @@ def compute(mesh_path: epath.Path,
   logger.info("Merging blocks")
   basis_values_on_grid = sparse.hstack(basis_value_blocks)
 
-  logger.info(f"Computed {basis_values_on_grid.shape[0]} basis values, saving to {output_path}")
+  logger.info(f"Computed {basis_values_on_grid.shape[1]} basis values, saving to {output_path}")
   sparse.save_npz(output_path, basis_values_on_grid)
 
 
