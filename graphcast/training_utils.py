@@ -155,10 +155,7 @@ def get_model_config(configs: Configs) -> ModelConfig:
     hidden_layers=configs.get('model.hidden_layers', required=True),
     radius_query_fraction_edge_length=configs.get('model.radius_query_fraction_edge_length', required=True),
     per_variable_weights=configs.get('model.per_variable_weights', {}),
-    learnable_fourier_features=configs.get('model.learnable_fourier_features', False),
-    fourier_features_num_frequencies=configs.get('model.fourier_features_num_frequencies', 1),
-    fourier_features_hidden_dim=configs.get('model.fourier_features_hidden_dim'),
-    fourier_features_encoding_dim=configs.get('model.fourier_features_encoding_dim'))
+    fourier_features_num_frequencies=configs.get('model.fourier_features_num_frequencies', 1))
 
 
 def get_task_config(configs: Configs) -> TaskConfig:

@@ -18,7 +18,7 @@ license = """
   https://github.com/inogs/arco-ocean \
   for attribution statement. \
   """
-training_steps = 300_000
+training_steps = 40_000
 seed = 42
 
 [task]
@@ -50,40 +50,34 @@ forcing_variables = [
     "vsi",
     "deptho",
     "z",
-    "glofas_mask",
     "glorys_mask",
     "lsm",
-    "uparea",
-    "waverys_deptho",
-    "waverys_mask",
     "10u",
     "10v",
     "2d",
     "2t",
-    "dis24",
     "sp",
     "ssrd",
     "strd",
     "tp",
-    "swh",
     "year_progress_sin",
     "year_progress_cos",
 ]
 levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
-input_duration = "2d"
+input_duration = "1d"
 
 [model]
 latent_size = 512
-gnn_msg_steps = 16
+gnn_msg_steps = 8
 hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 # The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
 # (except for 2m temperature?)
 per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
-learnable_fourier_features = false
+fourier_features_num_frequencies = 32
 
 [mesh]
-filepath = "data/geometry/uniform_coarse.msh"
+filepath = "data/geometry/uniform_fine.msh"
 mesh_size_tag_name = "MeshSize"
 step = 0
 
@@ -106,7 +100,7 @@ prefetch_buffer_size = 48
 
 [policy]
 names_which_can_be_saved = []
-names_which_can_be_offloaded = ["positional_encoder", "graph_embedder", "message_passing", "graph_output"]
+names_which_can_be_offloaded = ["positional_encoder", "embedder", "graph_embedder", "message_passing", "graph_output"]
 offload_src = "device"
 offload_dst = "pinned_host"
 
@@ -148,7 +142,7 @@ name = 'warmup_cosine_decay_schedule'
 init_value = 0.0
 peak_value = 1.0e-3
 warmup_steps = 1000
-decay_steps = 299_000
+decay_steps = 39_000
 end_value = 3.0e-7
 
 [[optimizer.gradient_transformation]]

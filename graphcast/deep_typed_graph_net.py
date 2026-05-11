@@ -43,6 +43,7 @@ import jax.numpy as jnp
 import jraph
 from jax.ad_checkpoint import checkpoint_name
 
+from graphcast import deep_typed_graph_net_utils as utils
 from graphcast import typed_graph
 from graphcast import typed_graph_net
 
@@ -90,6 +91,7 @@ class DeepTypedGraphNet(hk.Module):
                edge_output_size: Optional[Mapping[str, int]] = None,
                include_sent_messages_in_node_update: bool = False,
                use_layer_norm: bool = True,
+               use_concatenation: bool = True,
                activation: str = "relu",
                f32_aggregation: bool = False,
                aggregate_edges_for_nodes_fn: str = "segment_sum",
@@ -153,6 +155,7 @@ class DeepTypedGraphNet(hk.Module):
     self._include_sent_messages_in_node_update = (
         include_sent_messages_in_node_update)
     self._use_layer_norm = use_layer_norm
+    self._use_concatenation = use_concatenation
     self._activation = _get_activation_fn(activation)
     self._initialized = False
     self._f32_aggregation = f32_aggregation
@@ -191,7 +194,10 @@ class DeepTypedGraphNet(hk.Module):
       mlp = hk.nets.MLP(
           output_sizes=[self._mlp_hidden_size] * self._mlp_num_hidden_layers + [
               output_size], name=name + "_mlp", activation=self._activation)
-      return jraph.concatenated_args(mlp)
+      if self._use_concatenation:
+        return utils.concatenated_args(mlp)
+      else:
+        return utils.summed_args(mlp)
 
     def build_mlp_with_maybe_layer_norm(name, output_size):
       network = build_mlp(name, output_size)
@@ -200,7 +206,10 @@ class DeepTypedGraphNet(hk.Module):
             axis=-1, create_scale=True, create_offset=True,
             name=name + "_layer_norm")
         network = hk.Sequential([network, layer_norm])
-      return jraph.concatenated_args(network)
+      if self._use_concatenation:
+        return utils.concatenated_args(network)
+      else:
+        return utils.summed_args(network)
 
     # The embedder graph network independently embeds edge and node features.
     if self._embed_edges:

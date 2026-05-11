@@ -50,8 +50,8 @@ export XLA_FLAGS='--xla_gpu_triton_gemm_any=true --xla_gpu_enable_latency_hiding
 # Flags to consider for execution time optimization
 #export JAX_OPTIMIZATION_LEVEL=O3
 # Flags to consider for memory optimizations
-#export JAX_MEMORY_FITTING_EFFORT=1.0
-#export JAX_MEMORY_FITTING_LEVEL=O3
+export JAX_MEMORY_FITTING_EFFORT=1.0
+export JAX_MEMORY_FITTING_LEVEL=O3
 # Could it reduce compilation time on large multi-host setups?
 #export JAX_SHARE_BINARY_BETWEEN_HOSTS=True
 
