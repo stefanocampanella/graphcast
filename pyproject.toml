@@ -7,6 +7,7 @@ build-backend = "setuptools.build_meta"
 name = "graphcast"
 version = "0.1"
 dependencies = [
+    "botocore[crt]",
     "cartopy >= 0.25.0",
     "cdsapi",
     "cfgrib",
@@ -27,8 +28,8 @@ dependencies = [
     "gdal-utils == 3.11.4 ; sys_platform == 'linux'",
     "gdal[numpy] == 3.11.4 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
-    "gdal-utils == 3.12.3 ; sys_platform == 'darwin'",
-    "gdal[numpy] == 3.12.3 ; sys_platform == 'darwin'",
+    "gdal-utils == 3.13 ; sys_platform == 'darwin'",
+    "gdal[numpy] == 3.13 ; sys_platform == 'darwin'",
     "geopy",
     "geoviews",
     "gmsh",
@@ -69,7 +70,8 @@ dependencies = [
     "rich",
     # Rtree is a (unlisted?) dependency of trimesh
     "rtree",
-    "s3fs",
+    # https://github.com/dask/dask/issues/10397
+    "s3fs>2026",
     "scipy",
     # Notice: Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work.
     # We'll use our own fork anyway, on Linux too.
