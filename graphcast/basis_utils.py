@@ -21,7 +21,8 @@ def load_mask(path: epath.PathLike, mask_name: str, longitude_dim: str = 'longit
   mask = fix_longitude(mask, longitude_dim=longitude_dim)
   return mask
 
-
+# TODO: change the implementation to compute basis functions for the whole grid (not just masked values), taking care
+#  of singular points at the south pole. Also, `fill_value` should be an argument of the function.
 def compute_basis(nodes: np.ndarray,
                   mask: np.ndarray,
                   latitudes: np.ndarray,

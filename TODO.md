@@ -8,6 +8,8 @@
 * Implement the validation code. **HIGH PRIORITY**
 * Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
+* Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
+* Use climatology instead of the averages for input and output normalizations. **HIGH PRIORITY**
 
 ## Checks and improvements
 * Implement CLI and document train.slurm script the same way as for the other scripts (e.g., download_dataset.slurm). (Medium priority)
