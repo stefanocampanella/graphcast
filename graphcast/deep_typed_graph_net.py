@@ -33,17 +33,16 @@ Generalization to TypedGraphs of the deep Graph Neural Network from:
   organization={PMLR}
 }
 """
-
 from functools import partial
 from typing import Mapping, Optional
 
 import haiku as hk
 import jax
 import jax.numpy as jnp
+import jax.tree_util as tree
 import jraph
 from jax.ad_checkpoint import checkpoint_name
 
-from graphcast import deep_typed_graph_net_utils as utils
 from graphcast import typed_graph
 from graphcast import typed_graph_net
 
@@ -91,7 +90,7 @@ class DeepTypedGraphNet(hk.Module):
                edge_output_size: Optional[Mapping[str, int]] = None,
                include_sent_messages_in_node_update: bool = False,
                use_layer_norm: bool = True,
-               use_concatenation: bool = True,
+               use_concat_trick: bool = True,
                activation: str = "relu",
                f32_aggregation: bool = False,
                aggregate_edges_for_nodes_fn: str = "segment_sum",
@@ -155,7 +154,7 @@ class DeepTypedGraphNet(hk.Module):
     self._include_sent_messages_in_node_update = (
         include_sent_messages_in_node_update)
     self._use_layer_norm = use_layer_norm
-    self._use_concatenation = use_concatenation
+    self._use_concat_trick = use_concat_trick
     self._activation = _get_activation_fn(activation)
     self._initialized = False
     self._f32_aggregation = f32_aggregation
@@ -191,13 +190,27 @@ class DeepTypedGraphNet(hk.Module):
     self._initialized = True
 
     def build_mlp(name, output_size):
-      mlp = hk.nets.MLP(
-          output_sizes=[self._mlp_hidden_size] * self._mlp_num_hidden_layers + [
+      if self._use_concat_trick:
+
+        # Implements the concat trick in PhysicsNemo by NVIDIA, see:
+        # https://github.com/NVIDIA/physicsnemo/blob/f4bc2336af73f9ab3e73f43e8a911267076b79ed/physicsnemo/nn/module/gnn_layers/mesh_graph_mlp.py#L369
+        def concat_trick_mlp(*args, **kwargs):
+          combined_args = tree.tree_flatten(args)[0] + tree.tree_flatten(kwargs)[0]
+          linear_layers = [hk.Linear(output_size, name=name + f"_linear_concat_trick_arg_{n}")
+                           for n, _ in enumerate(combined_args)]
+          mlp = hk.nets.MLP(
+            output_sizes=[self._mlp_hidden_size] * (self._mlp_num_hidden_layers - 1) + [
               output_size], name=name + "_mlp", activation=self._activation)
-      if self._use_concatenation:
-        return utils.concatenated_args(mlp)
+          single_arg = sum(layer(arg) for layer, arg in zip(linear_layers, combined_args))
+          single_arg = self._activation(single_arg)
+          return mlp(single_arg)
+
+        return concat_trick_mlp
       else:
-        return utils.summed_args(mlp)
+        mlp = hk.nets.MLP(
+          output_sizes=[self._mlp_hidden_size] * self._mlp_num_hidden_layers + [
+            output_size], name=name + "_mlp", activation=self._activation)
+        return jraph.concatenated_args(mlp)
 
     def build_mlp_with_maybe_layer_norm(name, output_size):
       network = build_mlp(name, output_size)
@@ -206,10 +219,7 @@ class DeepTypedGraphNet(hk.Module):
             axis=-1, create_scale=True, create_offset=True,
             name=name + "_layer_norm")
         network = hk.Sequential([network, layer_norm])
-      if self._use_concatenation:
-        return utils.concatenated_args(network)
-      else:
-        return utils.summed_args(network)
+      return network
 
     # The embedder graph network independently embeds edge and node features.
     if self._embed_edges:
