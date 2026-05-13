@@ -13,13 +13,15 @@
 # limitations under the License.
 """Data-structure for storing graphs with typed edges and nodes."""
 
+from collections.abc import Mapping
+from typing import Any, NamedTuple, TypeVar, Union
+
 from jax.tree_util import register_pytree_node_class
-from typing import NamedTuple, Any, Union, Tuple, Mapping, TypeVar
 
 ArrayLike = Union[Any]  # np.ndarray, jnp.ndarray, tf.tensor
 ArrayLikeTree = Union[Any, ArrayLike]  # Nest of ArrayLike
 
-_T = TypeVar('_T')
+_T = TypeVar("_T")
 
 
 # All tensors have a "flat_batch_axis", which is similar to the leading
@@ -46,10 +48,11 @@ _T = TypeVar('_T')
 @register_pytree_node_class
 class NodeSet(NamedTuple):
   """Represents a set of nodes."""
+
   n_node: ArrayLike  # [num_flat_graphs]
   features: ArrayLikeTree  # Prev. `nodes`: [num_flat_nodes] + feature_shape
 
-  def tree_flatten(self) -> Tuple[ArrayLikeTree, ArrayLike]:
+  def tree_flatten(self) -> tuple[ArrayLikeTree, ArrayLike]:
     children = (self.features,)
     aux_data = self.n_node
     return (children, aux_data)
@@ -63,6 +66,7 @@ class NodeSet(NamedTuple):
 
 class EdgesIndices(NamedTuple):
   """Represents indices to nodes adjacent to the edges."""
+
   senders: ArrayLike  # [num_flat_edges]
   receivers: ArrayLike  # [num_flat_edges]
 
@@ -70,17 +74,18 @@ class EdgesIndices(NamedTuple):
 @register_pytree_node_class
 class EdgeSet(NamedTuple):
   """Represents a set of edges."""
+
   n_edge: ArrayLike  # [num_flat_graphs]
   indices: EdgesIndices
   features: ArrayLikeTree  # Prev. `edges`: [num_flat_edges] + feature_shape
 
-  def tree_flatten(self) -> Tuple[ArrayLikeTree, Tuple[ArrayLike, EdgesIndices]]:
+  def tree_flatten(self) -> tuple[ArrayLikeTree, tuple[ArrayLike, EdgesIndices]]:
     children = (self.features,)
     aux_data = (self.n_edge, self.indices)
     return (children, aux_data)
 
   @classmethod
-  def tree_unflatten(cls, aux_data: Tuple[ArrayLike, EdgesIndices], children: ArrayLikeTree):
+  def tree_unflatten(cls, aux_data: tuple[ArrayLike, EdgesIndices], children: ArrayLikeTree):
     n_edge, indices = aux_data
     features = children[0]
     return cls(n_edge=n_edge, indices=indices, features=features)
@@ -93,7 +98,7 @@ class Context(NamedTuple):
   n_graph: ArrayLike  # [num_flat_graphs]
   features: ArrayLikeTree  # Prev. `globals`: [num_flat_graphs] + feature_shape
 
-  def tree_flatten(self) -> Tuple[ArrayLike, ArrayLikeTree]:
+  def tree_flatten(self) -> tuple[ArrayLike, ArrayLikeTree]:
     children = (self.features,)
     aux_data = self.n_graph
     return (children, aux_data)
@@ -106,10 +111,10 @@ class Context(NamedTuple):
 
 
 class EdgeSetKey(NamedTuple):
-  name: str   # Name of the EdgeSet.
+  name: str  # Name of the EdgeSet.
 
   # Sender node set name and receiver node set name connected by the edge set.
-  node_sets: Tuple[str, str]
+  node_sets: tuple[str, str]
 
 
 class TypedGraph(NamedTuple):
@@ -126,8 +131,11 @@ class TypedGraph(NamedTuple):
   def edge_key_by_name(self, name: str) -> EdgeSetKey:
     found_key = [k for k in self.edges.keys() if k.name == name]
     if len(found_key) != 1:
-      raise KeyError("invalid edge key '{}'. Available edges: [{}]".format(
-          name, ', '.join(x.name for x in self.edges.keys())))
+      raise KeyError(
+        "invalid edge key '{}'. Available edges: [{}]".format(
+          name, ", ".join(x.name for x in self.edges.keys())
+        )
+      )
     return found_key[0]
 
   def edge_by_name(self, name: str) -> EdgeSet:

@@ -34,8 +34,8 @@ https://confluence.ecmwf.int/display/CKB/ERA5%3A+data+documentation and
 https://codes.ecmwf.int/grib/param-db/?id=212.
 """
 
-from collections.abc import Callable, Sequence
 import dataclasses
+from collections.abc import Callable, Sequence
 
 import chex
 import jax
@@ -87,9 +87,9 @@ _REFERENCE_TSI = 1361.0
 def reference_tsi_data() -> xa.DataArray:
   """A TsiDataProvider that returns a single reference TSI value."""
   return xa.DataArray(
-      np.array([_REFERENCE_TSI]),
-      dims=["time"],
-      coords={"time": np.array([0.0])},
+    np.array([_REFERENCE_TSI]),
+    dims=["time"],
+    coords={"time": np.array([0.0])},
   )
 
 
@@ -99,32 +99,100 @@ def era5_tsi_data() -> xa.DataArray:
   # 41r2). The values were scaled down to agree better with more recent
   # observations of the sun.
   time = np.arange(1951.5, 2035.5, 1.0)
-  tsi = 0.9965 * np.array([
+  tsi = 0.9965 * np.array(
+    [
       # fmt: off
       # 1951-1995 (non-repeating sequence)
-      1365.7765, 1365.7676, 1365.6284, 1365.6564, 1365.7773,
-      1366.3109, 1366.6681, 1366.6328, 1366.3828, 1366.2767,
-      1365.9199, 1365.7484, 1365.6963, 1365.6976, 1365.7341,
-      1365.9178, 1366.1143, 1366.1644, 1366.2476, 1366.2426,
-      1365.9580, 1366.0525, 1365.7991, 1365.7271, 1365.5345,
-      1365.6453, 1365.8331, 1366.2747, 1366.6348, 1366.6482,
-      1366.6951, 1366.2859, 1366.1992, 1365.8103, 1365.6416,
-      1365.6379, 1365.7899, 1366.0826, 1366.6479, 1366.5533,
-      1366.4457, 1366.3021, 1366.0286, 1365.7971, 1365.6996,
+      1365.7765,
+      1365.7676,
+      1365.6284,
+      1365.6564,
+      1365.7773,
+      1366.3109,
+      1366.6681,
+      1366.6328,
+      1366.3828,
+      1366.2767,
+      1365.9199,
+      1365.7484,
+      1365.6963,
+      1365.6976,
+      1365.7341,
+      1365.9178,
+      1366.1143,
+      1366.1644,
+      1366.2476,
+      1366.2426,
+      1365.9580,
+      1366.0525,
+      1365.7991,
+      1365.7271,
+      1365.5345,
+      1365.6453,
+      1365.8331,
+      1366.2747,
+      1366.6348,
+      1366.6482,
+      1366.6951,
+      1366.2859,
+      1366.1992,
+      1365.8103,
+      1365.6416,
+      1365.6379,
+      1365.7899,
+      1366.0826,
+      1366.6479,
+      1366.5533,
+      1366.4457,
+      1366.3021,
+      1366.0286,
+      1365.7971,
+      1365.6996,
       # 1996-2008 (13 year cycle, repeated below)
-      1365.6121, 1365.7399, 1366.1021, 1366.3851, 1366.6836,
-      1366.6022, 1366.6807, 1366.2300, 1366.0480, 1365.8545,
-      1365.8107, 1365.7240, 1365.6918,
+      1365.6121,
+      1365.7399,
+      1366.1021,
+      1366.3851,
+      1366.6836,
+      1366.6022,
+      1366.6807,
+      1366.2300,
+      1366.0480,
+      1365.8545,
+      1365.8107,
+      1365.7240,
+      1365.6918,
       # 2009-2021
-      1365.6121, 1365.7399, 1366.1021, 1366.3851, 1366.6836,
-      1366.6022, 1366.6807, 1366.2300, 1366.0480, 1365.8545,
-      1365.8107, 1365.7240, 1365.6918,
+      1365.6121,
+      1365.7399,
+      1366.1021,
+      1366.3851,
+      1366.6836,
+      1366.6022,
+      1366.6807,
+      1366.2300,
+      1366.0480,
+      1365.8545,
+      1365.8107,
+      1365.7240,
+      1365.6918,
       # 2022-2034
-      1365.6121, 1365.7399, 1366.1021, 1366.3851, 1366.6836,
-      1366.6022, 1366.6807, 1366.2300, 1366.0480, 1365.8545,
-      1365.8107, 1365.7240, 1365.6918,
+      1365.6121,
+      1365.7399,
+      1366.1021,
+      1366.3851,
+      1366.6836,
+      1366.6022,
+      1366.6807,
+      1366.2300,
+      1366.0480,
+      1365.8545,
+      1365.8107,
+      1365.7240,
+      1365.6918,
       # fmt: on
-  ])
+    ]
+  )
   return xa.DataArray(tsi, dims=["time"], coords={"time": time})
 
 
@@ -141,9 +209,7 @@ def era5_tsi_data() -> xa.DataArray:
 _DEFAULT_TSI_DATA_LOADER: TsiDataLoader = era5_tsi_data
 
 
-def get_tsi(
-    timestamps: Sequence[_TimestampLike], tsi_data: xa.DataArray
-) -> chex.Array:
+def get_tsi(timestamps: Sequence[_TimestampLike], tsi_data: xa.DataArray) -> chex.Array:
   """Returns TSI values for the given timestamps.
 
   TSI values are interpolated from the provided yearly TSI data.
@@ -258,10 +324,8 @@ def _get_orbital_parameters(j2000_days: chex.Array) -> _OrbitalParameters:
 
   # Ecliptic longitude of the Sun - RLLLS(PTETA).
   rllls = jnp.dot(
-      jnp.stack(
-          [one, theta, sin_rel, cos_rel, sin_two_rel, cos_two_rel], axis=-1
-      ),
-      jnp.array([4.8952, 6.283320, -0.0075, -0.0326, -0.0003, 0.0002]),
+    jnp.stack([one, theta, sin_rel, cos_rel, sin_two_rel, cos_two_rel], axis=-1),
+    jnp.array([4.8952, 6.283320, -0.0075, -0.0326, -0.0003, 0.0002]),
   )
 
   # Angle in radians between the Earth's rotational axis and its orbital axis.
@@ -274,40 +338,40 @@ def _get_orbital_parameters(j2000_days: chex.Array) -> _OrbitalParameters:
 
   # Equation of time in seconds - RET(PTETA).
   eq_of_time_seconds = jnp.dot(
-      jnp.stack(
-          [
-              sin_two_rlls,
-              sin_rem,
-              sin_rem * cos_two_rlls,
-              sin_four_rlls,
-              sin_two_rem,
-          ],
-          axis=-1,
-      ),
-      jnp.array([591.8, -459.4, 39.5, -12.7, -4.8]),
+    jnp.stack(
+      [
+        sin_two_rlls,
+        sin_rem,
+        sin_rem * cos_two_rlls,
+        sin_four_rlls,
+        sin_two_rem,
+      ],
+      axis=-1,
+    ),
+    jnp.array([591.8, -459.4, 39.5, -12.7, -4.8]),
   )
 
   # Earth-Sun distance in astronomical units - RRS(PTETA).
   solar_distance_au = jnp.dot(
-      jnp.stack([one, sin_rel, cos_rel], axis=-1),
-      jnp.array([1.0001, -0.0163, 0.0037]),
+    jnp.stack([one, sin_rel, cos_rel], axis=-1),
+    jnp.array([1.0001, -0.0163, 0.0037]),
   )
 
   return _OrbitalParameters(
-      theta=theta,
-      rotational_phase=rotational_phase,
-      sin_declination=sin_declination,
-      cos_declination=cos_declination,
-      eq_of_time_seconds=eq_of_time_seconds,
-      solar_distance_au=solar_distance_au,
+    theta=theta,
+    rotational_phase=rotational_phase,
+    sin_declination=sin_declination,
+    cos_declination=cos_declination,
+    eq_of_time_seconds=eq_of_time_seconds,
+    solar_distance_au=solar_distance_au,
   )
 
 
 def _get_solar_sin_altitude(
-    op: _OrbitalParameters,
-    sin_latitude: chex.Array,
-    cos_latitude: chex.Array,
-    longitude: chex.Array,
+  op: _OrbitalParameters,
+  sin_latitude: chex.Array,
+  cos_latitude: chex.Array,
+  longitude: chex.Array,
 ) -> chex.Array:
   """Returns the sine of the solar altitude angle.
 
@@ -332,18 +396,17 @@ def _get_solar_sin_altitude(
   hour_angle = 2.0 * jnp.pi * solar_time + longitude
   # https://en.wikipedia.org/wiki/Solar_zenith_angle
   sin_altitude = (
-      cos_latitude * op.cos_declination * jnp.cos(hour_angle)
-      + sin_latitude * op.sin_declination
+    cos_latitude * op.cos_declination * jnp.cos(hour_angle) + sin_latitude * op.sin_declination
   )
   return sin_altitude
 
 
 def _get_radiation_flux(
-    j2000_days: chex.Array,
-    sin_latitude: chex.Array,
-    cos_latitude: chex.Array,
-    longitude: chex.Array,
-    tsi: chex.Array,
+  j2000_days: chex.Array,
+  sin_latitude: chex.Array,
+  cos_latitude: chex.Array,
+  longitude: chex.Array,
+  tsi: chex.Array,
 ) -> chex.Array:
   """Computes the instantaneous TOA incident solar radiation flux.
 
@@ -372,20 +435,18 @@ def _get_radiation_flux(
   op = _get_orbital_parameters(j2000_days)
   # Attenuation of the solar radiation based on the solar distance.
   solar_factor = (1.0 / op.solar_distance_au) ** 2
-  sin_altitude = _get_solar_sin_altitude(
-      op, sin_latitude, cos_latitude, longitude
-  )
+  sin_altitude = _get_solar_sin_altitude(op, sin_latitude, cos_latitude, longitude)
   return tsi * solar_factor * jnp.maximum(sin_altitude, 0.0)
 
 
 def _get_integrated_radiation(
-    j2000_days: chex.Array,
-    sin_latitude: chex.Array,
-    cos_latitude: chex.Array,
-    longitude: chex.Array,
-    tsi: chex.Array,
-    integration_period: pd.Timedelta,
-    num_integration_bins: int,
+  j2000_days: chex.Array,
+  sin_latitude: chex.Array,
+  cos_latitude: chex.Array,
+  longitude: chex.Array,
+  tsi: chex.Array,
+  integration_period: pd.Timedelta,
+  num_integration_bins: int,
 ) -> chex.Array:
   """Returns the TOA solar radiation flux integrated over a time period.
 
@@ -420,12 +481,12 @@ def _get_integrated_radiation(
   """
   # Offsets for the integration time steps.
   offsets = (
-      pd.timedelta_range(
-          start=-integration_period,
-          end=pd.Timedelta(0),
-          periods=num_integration_bins + 1,
-      )
-      / pd.Timedelta(days=1)
+    pd.timedelta_range(
+      start=-integration_period,
+      end=pd.Timedelta(0),
+      periods=num_integration_bins + 1,
+    )
+    / pd.Timedelta(days=1)
   ).to_numpy()
 
   # Integration happens over the time dimension. Compute the instantaneous
@@ -433,11 +494,11 @@ def _get_integrated_radiation(
   # to all the inputs and adding `offsets` to `j2000_days` (will be broadcast
   # over all the other dimensions).
   fluxes = _get_radiation_flux(
-      j2000_days=jnp.expand_dims(j2000_days, axis=-1) + offsets,
-      sin_latitude=jnp.expand_dims(sin_latitude, axis=-1),
-      cos_latitude=jnp.expand_dims(cos_latitude, axis=-1),
-      longitude=jnp.expand_dims(longitude, axis=-1),
-      tsi=jnp.expand_dims(tsi, axis=-1),
+    j2000_days=jnp.expand_dims(j2000_days, axis=-1) + offsets,
+    sin_latitude=jnp.expand_dims(sin_latitude, axis=-1),
+    cos_latitude=jnp.expand_dims(cos_latitude, axis=-1),
+    longitude=jnp.expand_dims(longitude, axis=-1),
+    tsi=jnp.expand_dims(tsi, axis=-1),
   )
 
   # Size of each bin in seconds. The instantaneous solar radiation flux is
@@ -448,20 +509,20 @@ def _get_integrated_radiation(
 
 
 _get_integrated_radiation_jitted = jax.jit(
-    _get_integrated_radiation,
-    static_argnames=["integration_period", "num_integration_bins"],
+  _get_integrated_radiation,
+  static_argnames=["integration_period", "num_integration_bins"],
 )
 
 
 def get_toa_incident_solar_radiation(
-    timestamps: Sequence[_TimestampLike],
-    latitude: chex.Array,
-    longitude: chex.Array,
-    tsi_data: xa.DataArray | None = None,
-    integration_period: _TimedeltaLike = _DEFAULT_INTEGRATION_PERIOD,
-    num_integration_bins: int = _DEFAULT_NUM_INTEGRATION_BINS,
-    use_jit: bool = False,
-    forward: bool = False,
+  timestamps: Sequence[_TimestampLike],
+  latitude: chex.Array,
+  longitude: chex.Array,
+  tsi_data: xa.DataArray | None = None,
+  integration_period: _TimedeltaLike = _DEFAULT_INTEGRATION_PERIOD,
+  num_integration_bins: int = _DEFAULT_NUM_INTEGRATION_BINS,
+  use_jit: bool = False,
+  forward: bool = False,
 ) -> chex.Array:
   """Computes the solar radiation incident at the top of the atmosphere.
 
@@ -515,9 +576,7 @@ def get_toa_incident_solar_radiation(
   if tsi_data is None:
     tsi_data = _DEFAULT_TSI_DATA_LOADER()
   tsi = get_tsi(timestamps, tsi_data)
-  fn = (
-      _get_integrated_radiation_jitted if use_jit else _get_integrated_radiation
-  )
+  fn = _get_integrated_radiation_jitted if use_jit else _get_integrated_radiation
 
   # Compute integral for each timestamp individually. Although this could be
   # done in one step, peak memory usage would be proportional to
@@ -529,27 +588,30 @@ def get_toa_incident_solar_radiation(
   results = []
   for idx, timestamp in enumerate(timestamps):
     results.append(
-        fn(
-            j2000_days=jnp.array(_get_j2000_days(
-              pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp))),
-            sin_latitude=sin_lat,
-            cos_latitude=cos_lat,
-            longitude=lon,
-            tsi=tsi[idx],
-            integration_period=integration_period,
-            num_integration_bins=num_integration_bins,
-        )
+      fn(
+        j2000_days=jnp.array(
+          _get_j2000_days(
+            pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp)
+          )
+        ),
+        sin_latitude=sin_lat,
+        cos_latitude=cos_lat,
+        longitude=lon,
+        tsi=tsi[idx],
+        integration_period=integration_period,
+        num_integration_bins=num_integration_bins,
+      )
     )
   return jnp.stack(results, axis=0)
 
 
 def get_toa_incident_solar_radiation_for_xarray(
-    data_array_like: xa.DataArray | xa.Dataset,
-    tsi_data: xa.DataArray | None = None,
-    integration_period: _TimedeltaLike = _DEFAULT_INTEGRATION_PERIOD,
-    num_integration_bins: int = _DEFAULT_NUM_INTEGRATION_BINS,
-    use_jit: bool = False,
-    forward: bool = False
+  data_array_like: xa.DataArray | xa.Dataset,
+  tsi_data: xa.DataArray | None = None,
+  integration_period: _TimedeltaLike = _DEFAULT_INTEGRATION_PERIOD,
+  num_integration_bins: int = _DEFAULT_NUM_INTEGRATION_BINS,
+  use_jit: bool = False,
+  forward: bool = False,
 ) -> xa.DataArray:
   """Computes the solar radiation incident at the top of the atmosphere.
 
@@ -600,15 +662,11 @@ def get_toa_incident_solar_radiation_for_xarray(
   """
   missing_dims = set(["lat", "lon"]) - set(data_array_like.dims)
   if missing_dims:
-    raise ValueError(
-        f"'{missing_dims}' dimensions are missing in `data_array_like`."
-    )
+    raise ValueError(f"'{missing_dims}' dimensions are missing in `data_array_like`.")
 
   missing_coords = set(["datetime", "lat", "lon"]) - set(data_array_like.coords)
   if missing_coords:
-    raise ValueError(
-        f"'{missing_coords}' coordinates are missing in `data_array_like`."
-    )
+    raise ValueError(f"'{missing_coords}' coordinates are missing in `data_array_like`.")
 
   if "time" in data_array_like.dims:
     timestamps = data_array_like.coords["datetime"].data
@@ -616,14 +674,14 @@ def get_toa_incident_solar_radiation_for_xarray(
     timestamps = [data_array_like.coords["datetime"].data.item()]
 
   radiation = get_toa_incident_solar_radiation(
-      timestamps=timestamps,
-      latitude=data_array_like.coords["lat"].data,
-      longitude=data_array_like.coords["lon"].data,
-      tsi_data=tsi_data,
-      integration_period=integration_period,
-      num_integration_bins=num_integration_bins,
-      use_jit=use_jit,
-      forward=forward,
+    timestamps=timestamps,
+    latitude=data_array_like.coords["lat"].data,
+    longitude=data_array_like.coords["lon"].data,
+    tsi_data=tsi_data,
+    integration_period=integration_period,
+    num_integration_bins=num_integration_bins,
+    use_jit=use_jit,
+    forward=forward,
   )
   radiation = wrap(radiation)
 

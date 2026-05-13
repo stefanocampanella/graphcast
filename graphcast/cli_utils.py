@@ -21,8 +21,13 @@ class Configs(dict):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
-  def get(self, maybe_dot_key: str, default: Any | None = None, required: bool = False, copy: bool = True):
-
+  def get(
+    self,
+    maybe_dot_key: str,
+    default: Any | None = None,
+    required: bool = False,
+    copy: bool = True,
+  ):
     def contains(keys, container):
       if keys:
         head, tail = keys[0], keys[1:]
@@ -30,7 +35,7 @@ class Configs(dict):
       else:
         return True
 
-    keys = maybe_dot_key.split('.')
+    keys = maybe_dot_key.split(".")
     if contains(keys, self):
       value = self
       for key in keys:
@@ -52,7 +57,7 @@ class Configs(dict):
   def read(path: str | epath.Path):
     path = path if isinstance(path, pathlib.Path) else pathlib.Path(path)
     logger.info(f"Reading configs from {path}")
-    with path.open('rb') as file:
+    with path.open("rb") as file:
       configs = Configs(tomllib.load(file))
     return configs
 
@@ -97,7 +102,11 @@ class DictParamType(click.ParamType):
     result: dict[str, int] = {}
     for item in items:
       if ":" not in item:
-        self.fail(f"Invalid item {item!r}. Expected 'key:value' pairs separated by commas.", param, ctx)
+        self.fail(
+          f"Invalid item {item!r}. Expected 'key:value' pairs separated by commas.",
+          param,
+          ctx,
+        )
       key, val = item.split(":", 1)
       key = key.strip()
       val = val.strip()
@@ -111,7 +120,6 @@ class DictParamType(click.ParamType):
 
 
 class OrbaxLogger(orbax.checkpoint.logging.AbstractLogger):
-
   def __init__(self):
     self._logger = logging.getLogger(orbax.checkpoint.__name__)
 
@@ -121,11 +129,15 @@ class OrbaxLogger(orbax.checkpoint.logging.AbstractLogger):
 
 def memory_usage_summary(compiled_stats):
   summary = {}
-  summary['argument_size'] = compiled_stats.argument_size_in_bytes
-  summary['output_size'] = compiled_stats.output_size_in_bytes
-  summary['temp_size'] = compiled_stats.temp_size_in_bytes
-  summary['total_size'] = compiled_stats.temp_size_in_bytes + compiled_stats.argument_size_in_bytes \
-      + compiled_stats.output_size_in_bytes - compiled_stats.alias_size_in_bytes
+  summary["argument_size"] = compiled_stats.argument_size_in_bytes
+  summary["output_size"] = compiled_stats.output_size_in_bytes
+  summary["temp_size"] = compiled_stats.temp_size_in_bytes
+  summary["total_size"] = (
+    compiled_stats.temp_size_in_bytes
+    + compiled_stats.argument_size_in_bytes
+    + compiled_stats.output_size_in_bytes
+    - compiled_stats.alias_size_in_bytes
+  )
   return summary
 
 
@@ -134,11 +146,12 @@ def run_analysis_and_report(func_aot):
   cost_analysis = func_aot.cost_analysis()
 
   if memory_analysis is not None:
-    summary = jax.tree_util.tree_map(lambda x: humanize.naturalsize(x, binary=True),
-                                     memory_usage_summary(memory_analysis))
+    summary = jax.tree_util.tree_map(
+      lambda x: humanize.naturalsize(x, binary=True), memory_usage_summary(memory_analysis)
+    )
     logger.info(f"Memory usage: {summary}")
   else:
-     logger.info("Memory usage: unknown")
+    logger.info("Memory usage: unknown")
 
   if cost_analysis is not None:
     logger.info(f"Cost: {cost_analysis['flops'] * 1e-12} TFLOPs")

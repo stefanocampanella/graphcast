@@ -16,17 +16,23 @@
 # TODO: MeshGraph and TriangleMesh share most of the code, refactor
 # TODO: TriangleMesh could easily hold possibly square meshes, not just triangular ones.
 """Utils for working with (multi-)mesh graphs and geospatial graphs."""
+
 import itertools
-from typing import Sequence, Tuple
-from typing import Union, Optional
+from collections.abc import Sequence
+from typing import Union
 
 import chex
 import networkx as nx
 import numpy as np
 
 from graphcast import typed_graph
-from graphcast.gis_utils import (_cartesian_wkt, cartesian_srs, cartesian_unit_sphere_srs, equirectangular_srs,
-                                 get_transform)
+from graphcast.gis_utils import (
+  _cartesian_wkt,
+  cartesian_srs,
+  cartesian_unit_sphere_srs,
+  equirectangular_srs,
+  get_transform,
+)
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -38,6 +44,7 @@ class Graph:
     edges: tuple of senders, receivers nodes
     spatial_reference_system: reference system of coordinates of the vertices.
   """
+
   vertices: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
   spatial_reference_system: str = "cartesian"
@@ -52,6 +59,7 @@ class EquirectangularGraph:
     vertices: tuple of (latitudes, longitudes) of the nodes, it assumes ECMWF convention (lon wrapping at 180)
     edges: tuple of senders, receivers nodes
   """
+
   vertices: tuple[np.ndarray, np.ndarray]
   edges: tuple[np.ndarray, np.ndarray]
 
@@ -69,11 +77,12 @@ class TriangleMesh:
     spatial_reference_system: reference system of coordinates of the vertices.
     node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
   """
+
   vertices: np.ndarray
   faces: np.ndarray
-  boundary: Optional[np.ndarray] = None
+  boundary: np.ndarray | None = None
   spatial_reference_system: str = _cartesian_wkt
-  node_tags: Optional[np.ndarray] = None
+  node_tags: np.ndarray | None = None
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -88,12 +97,13 @@ class MeshGraph:
     spatial_reference_system: reference system of coordinates of the vertices.
     node_tags: (optional) integer array of shape [num_vertices] with tags for interoperability with seamsh.
   """
+
   vertices: np.ndarray
   faces: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
-  boundary: Optional[np.ndarray] = None
+  boundary: np.ndarray | None = None
   spatial_reference_system: str = _cartesian_wkt
-  node_tags: Optional[np.ndarray] = None
+  node_tags: np.ndarray | None = None
 
 
 # FIXME: graphcast.checkpoint isn't able to deserialize a union with anything except None.
@@ -101,6 +111,7 @@ class MeshGraph:
 @chex.dataclass(frozen=True, eq=True)
 class MeshData:
   """Data structure containing mesh graph and additional information."""
+
   mesh_graph: MeshGraph
   mesh_size: np.ndarray
   description: list[str]
@@ -110,8 +121,7 @@ class MeshData:
 Mesh = Union[TriangleMesh, MeshGraph]
 
 
-def merge_meshes(
-    mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
+def merge_meshes(mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
   """Merges all meshes into one. Assumes the last mesh is the finest.
 
   Args:
@@ -132,13 +142,10 @@ def merge_meshes(
   finest_mesh_vertices = mesh_list[-1].vertices
   finest_mesh_faces = mesh_list[-1].faces
 
-  return MeshGraph(
-    vertices=finest_mesh_vertices,
-    edges=all_edges,
-    faces=finest_mesh_faces)
+  return MeshGraph(vertices=finest_mesh_vertices, edges=all_edges, faces=finest_mesh_faces)
 
 
-def faces_to_edges(faces: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   """Transforms polygonal faces to sender and receiver indices.
 
   It does so by transforming every face into N_i edges. Such if the triangular
@@ -173,7 +180,9 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 
   """
   senders, receivers = edges
-  undirected_edges = set((s, r) if s <= r else (r, s) for (s, r) in zip(senders, receivers))
+  undirected_edges = set(
+    (s, r) if s <= r else (r, s) for (s, r) in zip(senders, receivers, strict=False)
+  )
   senders = np.array([edge[0] for edge in undirected_edges])
   receivers = np.array([edge[1] for edge in undirected_edges])
   return senders, receivers
@@ -183,9 +192,12 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
-  transformer = get_transform(cartesian_unit_sphere_srs if unit_sphere else cartesian_srs,
-                              equirectangular_srs, pack_back=False)
-  longitudes, latitudes  = transformer(graph.vertices)
+  transformer = get_transform(
+    cartesian_unit_sphere_srs if unit_sphere else cartesian_srs,
+    equirectangular_srs,
+    pack_back=False,
+  )
+  longitudes, latitudes = transformer(graph.vertices)
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.
   vertices = (latitudes, longitudes)
@@ -193,7 +205,9 @@ def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularG
 
 
 # TODO: add tests
-def mesh_to_latlon(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> EquirectangularGraph:
+def mesh_to_latlon(
+  mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False
+) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D mesh.
 
   Args:
@@ -245,19 +259,23 @@ def typed_to_latlon(graph: typed_graph.TypedGraph, edge_set_name: str) -> Equire
 def latlon_to_nx(wgs_graph: EquirectangularGraph) -> nx.DiGraph:
   graph = nx.DiGraph()
   latitudes, longitudes = wgs_graph.vertices
-  vertices = [(node, {'latitude': latitude, 'longitude': longitude}) for node, (latitude, longitude) in
-              enumerate(zip(longitudes, latitudes))]
+  vertices = [
+    (node, {"latitude": latitude, "longitude": longitude})
+    for node, (latitude, longitude) in enumerate(zip(longitudes, latitudes, strict=False))
+  ]
   graph.add_nodes_from(vertices)
   senders, receivers = wgs_graph.edges
-  edges = [(sender, receiver) for sender, receiver in zip(senders, receivers)]
+  edges = [(sender, receiver) for sender, receiver in zip(senders, receivers, strict=False)]
   graph.add_edges_from(edges)
 
   return graph
 
 
 def graph_summary(graph: nx.Graph) -> str:
-  summary = f"Nodes: {graph.number_of_nodes()}, " \
-            f"Edges: {graph.number_of_edges()}, " \
-            f"Average degree: {sum(d for _, d in graph.degree()) / graph.number_of_nodes()}"
+  summary = (
+    f"Nodes: {graph.number_of_nodes()}, "
+    f"Edges: {graph.number_of_edges()}, "
+    f"Average degree: {sum(d for _, d in graph.degree()) / graph.number_of_nodes()}"
+  )
 
   return summary

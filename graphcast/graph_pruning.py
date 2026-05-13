@@ -42,14 +42,16 @@
 # The current implementation of pruning routines should return results roughly similar to the one above with 0
 # message-passing steps on the mesh graph.
 """Tools for pruning meshes."""
+
 import logging
-from typing import Iterable, Tuple, Dict, Literal, NamedTuple
+from collections.abc import Iterable
+from typing import Literal, NamedTuple
 
 import numpy as np
 import xarray as xr
 
-from graphcast.mesh_connectivity import radius_query_indices, get_mesh_to_grid_edges
-from graphcast.mesh_graph import Mesh, TriangleMesh, MeshGraph, faces_to_edges, mesh_to_latlon
+from graphcast.mesh_connectivity import get_mesh_to_grid_edges, radius_query_indices
+from graphcast.mesh_graph import Mesh, MeshGraph, TriangleMesh, faces_to_edges, mesh_to_latlon
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +64,14 @@ class Box(NamedTuple):
 
 
 # TODO: add tests
-def get_connected_mesh_nodes(grid_lat: np.ndarray,
-                             grid_lon: np.ndarray,
-                             mesh_graph: Mesh,
-                             mask: np.ndarray,
-                             query_radius: float | np.ndarray,
-                             workers: int = 1) -> set[int]:
+def get_connected_mesh_nodes(
+  grid_lat: np.ndarray,
+  grid_lon: np.ndarray,
+  mesh_graph: Mesh,
+  mask: np.ndarray,
+  query_radius: float | np.ndarray,
+  workers: int = 1,
+) -> set[int]:
   """Returns the set of mesh vertices connected to a valid grid point.
 
   It does so by excluding the mesh vertices that are not connected to a valid grid point by at least one edge of the
@@ -83,8 +87,9 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
     Set of indices of mesh vertices connected to a valid grid point.
   """
   if isinstance(query_radius, np.ndarray):
-    assert mesh_graph.vertices.shape[0] == query_radius.shape[0], \
+    assert mesh_graph.vertices.shape[0] == query_radius.shape[0], (
       "The number of vertices in the mesh graph must match the number of query radii."
+    )
 
   (_, mesh_receivers) = radius_query_indices(
     grid_latitude=grid_lat,
@@ -92,25 +97,27 @@ def get_connected_mesh_nodes(grid_lat: np.ndarray,
     mesh=mesh_graph,
     radius=query_radius,
     mask=mask,
-    workers=workers)
+    workers=workers,
+  )
 
   (mesh_senders, _) = get_mesh_to_grid_edges(
-    grid_latitude=grid_lat,
-    grid_longitude=grid_lon,
-    mesh=mesh_graph,
-    mask=mask)
+    grid_latitude=grid_lat, grid_longitude=grid_lon, mesh=mesh_graph, mask=mask
+  )
 
   grid2mesh_connected_mesh_vertices = set(mesh_receivers)
   mesh2grid_connected_mesh_vertices = set(mesh_senders)
-  connected_mesh_vertices = set.intersection(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
+  connected_mesh_vertices = set.intersection(
+    grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices
+  )
 
   return connected_mesh_vertices
 
 
 # TODO: add tests
 # TODO: reimplement the following using get_masking_indices_fns
-def prune_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 'all'] = 'any') -> Tuple[
-  Mesh, Dict[int, int]]:
+def prune_mesh(
+  marked_vertices: Iterable[int], mesh: Mesh, mode: Literal["any", "all"] = "any"
+) -> tuple[Mesh, dict[int, int]]:
   """Filters the mesh to include only vertices belonging to triangles with at least one marked vertex (when `mode='any'`),
   or with all marked vertices (when `mode='all'`).
 
@@ -120,7 +127,7 @@ def prune_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 
   Returns:
     Tuple containint a masked multimesh graph, and a mapping from the old vertex indices to the new vertex indices.
   """
-  predicate = np.any if mode == 'any' else np.all
+  predicate = np.any if mode == "any" else np.all
   if isinstance(marked_vertices, set):
     marked_vertices = list(marked_vertices)
   valid_faces_mask = predicate(np.isin(mesh.faces, marked_vertices), axis=1)
@@ -147,44 +154,58 @@ def prune_mesh(marked_vertices: Iterable[int], mesh: Mesh, mode: Literal['any', 
 
 
 # FIXME: add docstring
-def prune_mesh_from_mask(mesh: TriangleMesh,
-                         boundary_nodes: np.ndarray,
-                         mask: xr.DataArray,
-                         query_radius: float | np.ndarray,
-                         latitude_dim_name='lat',
-                         longitude_dim_name='lon',
-                         mode: Literal['all', 'any'] = 'all',
-                         workers: int = 1):
+def prune_mesh_from_mask(
+  mesh: TriangleMesh,
+  boundary_nodes: np.ndarray,
+  mask: xr.DataArray,
+  query_radius: float | np.ndarray,
+  latitude_dim_name="lat",
+  longitude_dim_name="lon",
+  mode: Literal["all", "any"] = "all",
+  workers: int = 1,
+):
   num_boundary_nodes = boundary_nodes.shape[0]
   num_vertices = mesh.vertices.shape[0]
   num_faces = mesh.faces.shape[0]
-  logger.info(f"Read mesh with {num_vertices} vertices, "
-              f"{num_boundary_nodes} boundary nodes, "
-              f"and {num_faces} faces")
+  logger.info(
+    f"Read mesh with {num_vertices} vertices, "
+    f"{num_boundary_nodes} boundary nodes, "
+    f"and {num_faces} faces"
+  )
   if isinstance(query_radius, np.ndarray):
     # TODO: add min and max radius to logger
     mean_radius = query_radius.mean()
-    logger.info("Looking for mesh vertices connected to the grid "
-                f"with an average search radius of {(mean_radius / 1e3):.2f} km.")
+    logger.info(
+      "Looking for mesh vertices connected to the grid "
+      f"with an average search radius of {(mean_radius / 1e3):.2f} km."
+    )
   else:
-    logger.info("Looking for mesh vertices connected to the grid "
-                f"within a radius of {(query_radius / 1e3):.2f} km.")
-  connected_mesh_vertices = get_connected_mesh_nodes(grid_lat=mask[latitude_dim_name].to_numpy(),
-                                                     grid_lon=mask[longitude_dim_name].to_numpy(),
-                                                     mesh_graph=mesh,
-                                                     mask=mask.to_numpy(),
-                                                     query_radius=query_radius,
-                                                     workers=workers)
+    logger.info(
+      "Looking for mesh vertices connected to the grid "
+      f"within a radius of {(query_radius / 1e3):.2f} km."
+    )
+  connected_mesh_vertices = get_connected_mesh_nodes(
+    grid_lat=mask[latitude_dim_name].to_numpy(),
+    grid_lon=mask[longitude_dim_name].to_numpy(),
+    mesh_graph=mesh,
+    mask=mask.to_numpy(),
+    query_radius=query_radius,
+    workers=workers,
+  )
   logger.info(f"Extracted {len(connected_mesh_vertices)} mesh vertices connected to the grid.")
   mesh_mskd, valid_vertices_map = prune_mesh(connected_mesh_vertices, mesh, mode=mode)
-  boundary_nodes_mskd = np.vectorize(lambda n: valid_vertices_map.get(n, -1), otypes=[np.int32])(boundary_nodes)
+  boundary_nodes_mskd = np.vectorize(lambda n: valid_vertices_map.get(n, -1), otypes=[np.int32])(
+    boundary_nodes
+  )
   boundary_nodes_mskd = boundary_nodes_mskd[boundary_nodes_mskd >= 0]
   num_boundary_nodes_mskd = boundary_nodes_mskd.shape[0]
   num_vertices_mskd = mesh_mskd.vertices.shape[0]
   num_faces_mskd = mesh_mskd.faces.shape[0]
-  logger.info(f"Masked mesh contains {num_vertices_mskd} vertices ({num_vertices_mskd / num_vertices:.2%}), "
-              f"{num_boundary_nodes_mskd} boundary nodes ({num_boundary_nodes_mskd / num_boundary_nodes:.2%}), "
-              f"and {num_faces_mskd} faces ({num_faces_mskd / num_faces:.2%}).")
+  logger.info(
+    f"Masked mesh contains {num_vertices_mskd} vertices ({num_vertices_mskd / num_vertices:.2%}), "
+    f"{num_boundary_nodes_mskd} boundary nodes ({num_boundary_nodes_mskd / num_boundary_nodes:.2%}), "
+    f"and {num_faces_mskd} faces ({num_faces_mskd / num_faces:.2%})."
+  )
 
   return mesh_mskd, boundary_nodes_mskd
 
@@ -194,7 +215,9 @@ def get_mesh_within_box(mesh: Mesh, box: Box):
     return (box.lat_min < lat < box.lat_max) and (box.lon_min < lon < box.lon_max)
 
   wgs_graph = mesh_to_latlon(mesh)
-  vertices_within_bounds = np.array([_is_within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices)])
+  vertices_within_bounds = np.array(
+    [_is_within_bounds(lat, lon) for (lat, lon) in zip(*wgs_graph.vertices, strict=False)]
+  )
   marked_vertices = np.nonzero(vertices_within_bounds)[0]
-  new_mesh, vertices_map = prune_mesh(marked_vertices, mesh, mode='all')
+  new_mesh, vertices_map = prune_mesh(marked_vertices, mesh, mode="all")
   return new_mesh, vertices_map

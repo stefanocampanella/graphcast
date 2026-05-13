@@ -58,7 +58,8 @@
 # Finally, a few recurring CRS objects are declared here for convenience. SRSRegistry is intended to be used to reach
 # these CRS objects from short strings in config files.
 import warnings
-from typing import Literal, Union, Callable
+from collections.abc import Callable
+from typing import Literal, Union
 
 import numpy as np
 import xarray as xr
@@ -184,25 +185,31 @@ GEOGCRS["unknown",
 
 osr.UseExceptions()
 
-class CoordinateReferenceSystem(osr.SpatialReference):
 
+class CoordinateReferenceSystem(osr.SpatialReference):
   def to_wkt(self):
     return self.ExportToWkt()
+
 
 stereographic_srs = CoordinateReferenceSystem(_stereographic_wkt)
 cartesian_srs = CoordinateReferenceSystem(_cartesian_wkt)
 cartesian_unit_sphere_srs = CoordinateReferenceSystem(_cartesian_unit_sphere_wkt)
 equirectangular_srs = CoordinateReferenceSystem(_equirectangular_wkt)
 
-CRSName = Literal['stereographic', 'cartesian', 'equirectangular']
+CRSName = Literal["stereographic", "cartesian", "equirectangular"]
 CRSRegistry = {
-  'stereographic': stereographic_srs,
-  'cartesian': cartesian_srs,
-  'equirectangular': equirectangular_srs}
+  "stereographic": stereographic_srs,
+  "cartesian": cartesian_srs,
+  "equirectangular": equirectangular_srs,
+}
 
 
-def get_transform(source: CoordinateReferenceSystem, destination: CoordinateReferenceSystem, pack_back=True, **kwargs) \
-    -> Callable[[Coordinates], Coordinates]:
+def get_transform(
+  source: CoordinateReferenceSystem,
+  destination: CoordinateReferenceSystem,
+  pack_back=True,
+  **kwargs,
+) -> Callable[[Coordinates], Coordinates]:
   """Gets a function that transforms coordinates from one projection to another."""
   transformer = Transformer.from_crs(source, destination)
   num_coords_in = len(transformer.source_crs.axis_info)
@@ -211,14 +218,18 @@ def get_transform(source: CoordinateReferenceSystem, destination: CoordinateRefe
   def wrapped(coordinates: Coordinates) -> Coordinates:
     # We assume that the coordinate dimension is the last one.
     if isinstance(coordinates, tuple):
-      assert len(coordinates) == num_coords_in, f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
+      assert len(coordinates) == num_coords_in, (
+        f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
+      )
       if num_coords_in == 2:
         xx, yy = coordinates
         zz = np.zeros_like(xx)
       else:
         xx, yy, zz = coordinates
     elif isinstance(coordinates, np.ndarray):
-      assert coordinates.shape[-1] == num_coords_in, f"Expected {num_coords_in} coordinates, got {coordinates.shape[-1]}"
+      assert coordinates.shape[-1] == num_coords_in, (
+        f"Expected {num_coords_in} coordinates, got {coordinates.shape[-1]}"
+      )
       if coordinates.shape[-1] == 2:
         xx = coordinates[..., 0]
         yy = coordinates[..., 1]
@@ -230,7 +241,9 @@ def get_transform(source: CoordinateReferenceSystem, destination: CoordinateRefe
     else:
       raise ValueError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
     result = transformer.transform(xx=xx, yy=yy, zz=zz, inplace=False, **kwargs)
-    assert len(result) >= num_coords_out, f"Expected {num_coords_out} coordinates, got {len(result)}"
+    assert len(result) >= num_coords_out, (
+      f"Expected {num_coords_out} coordinates, got {len(result)}"
+    )
     # We don't use elevation, in case of conversion to equirectangular projection drop it.
     if len(result) == 3 and num_coords_out == 2:
       if not np.allclose(result[2], 0.0):
@@ -243,29 +256,40 @@ def get_transform(source: CoordinateReferenceSystem, destination: CoordinateRefe
   return wrapped
 
 
-def wrap_longitude(da: xr.DataArray, longitude_dim: str = 'lon'):
-
+def wrap_longitude(da: xr.DataArray, longitude_dim: str = "lon"):
   def _wrap(da: xr.DataArray):
-    """ Wraps around longitude dimension."""
+    """Wraps around longitude dimension."""
     longitudes = da[longitude_dim].to_numpy()
     size = len(longitudes)
     dayline_index = np.argwhere(longitudes > 180.0)[0].item()
     wrapped = da.copy()
     wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[
-      {longitude_dim: slice(dayline_index, None)}].to_numpy()
+      {longitude_dim: slice(dayline_index, None)}
+    ].to_numpy()
     wrapped[{longitude_dim: slice(size - dayline_index, None)}] = da[
-      {longitude_dim: slice(None, dayline_index)}].to_numpy()
+      {longitude_dim: slice(None, dayline_index)}
+    ].to_numpy()
     return wrapped
 
   da_wrapped = _wrap(da)
   longitude_orig = da[longitude_dim].to_numpy()
-  longitude_orig = xr.DataArray(data=longitude_orig, coords={longitude_dim: longitude_orig},
-                                dims=longitude_dim, name=longitude_dim + '_orig', attrs=da[longitude_dim].attrs)
+  longitude_orig = xr.DataArray(
+    data=longitude_orig,
+    coords={longitude_dim: longitude_orig},
+    dims=longitude_dim,
+    name=longitude_dim + "_orig",
+    attrs=da[longitude_dim].attrs,
+  )
   lon_wrapped = _wrap(longitude_orig)
   lon_wrapped = lon_wrapped.to_numpy()
   lon_wrapped = np.where(lon_wrapped <= 180.0, lon_wrapped, lon_wrapped - 360.0)
-  lon_wrapped = xr.DataArray(data=lon_wrapped, coords={longitude_dim: lon_wrapped}, dims=longitude_dim,
-                             name=longitude_dim, attrs=longitude_orig.attrs)
+  lon_wrapped = xr.DataArray(
+    data=lon_wrapped,
+    coords={longitude_dim: lon_wrapped},
+    dims=longitude_dim,
+    name=longitude_dim,
+    attrs=longitude_orig.attrs,
+  )
   da_wrapped = da_wrapped.assign_coords({longitude_dim: lon_wrapped})
   return da_wrapped
 
@@ -275,22 +299,27 @@ def map_on_grid(func, latitude: xr.DataArray, longitude: xr.DataArray) -> xr.Dat
   assumes GIS convention for inputs and outputs (not wrapping longitudes at 180)."""
   num_lats = len(latitude)
   num_lons = len(longitude)
-  xx, yy = np.meshgrid(longitude, latitude, indexing='ij')
+  xx, yy = np.meshgrid(longitude, latitude, indexing="ij")
   coordinates = np.stack([xx, yy], axis=-1)
   values = func(coordinates, equirectangular_srs)
   values = values.reshape(num_lons, num_lats)
-  values = xr.DataArray(values, dims=(longitude.name, latitude.name),
-                        coords={longitude.name: longitude, latitude.name: latitude})
+  values = xr.DataArray(
+    values,
+    dims=(longitude.name, latitude.name),
+    coords={longitude.name: longitude, latitude.name: latitude},
+  )
   values = values.transpose(latitude.name, longitude.name)
 
   return values
 
 
-def xarray_to_gdal_raster(da: xr.DataArray,
-                          latitude_dim: str = 'lat',
-                          longitude_dim: str = 'lon',
-                          no_data_value: FloatingPoint | None = np.nan,
-                          gdal_dtype: GDFloatingPoint = gdal.GDT_Float32) -> gdal.Dataset:
+def xarray_to_gdal_raster(
+  da: xr.DataArray,
+  latitude_dim: str = "lat",
+  longitude_dim: str = "lon",
+  no_data_value: FloatingPoint | None = np.nan,
+  gdal_dtype: GDFloatingPoint = gdal.GDT_Float32,
+) -> gdal.Dataset:
   """
   Convert an xarray Dataset on a regular lat/lon grid to a GDAL raster Dataset.
 
@@ -307,8 +336,9 @@ def xarray_to_gdal_raster(da: xr.DataArray,
   Returns:
     In-memory GDAL raster dataset of type gdal.Dataset.
   """
-  assert da.dims == (latitude_dim, longitude_dim), \
+  assert da.dims == (latitude_dim, longitude_dim), (
     f"Dataset must have dimensions ({latitude_dim}, {longitude_dim}), got {da.dims}"
+  )
   da = wrap_longitude(da, longitude_dim)
   da = da.transpose(latitude_dim, longitude_dim)
   data = da.to_numpy()
@@ -323,7 +353,9 @@ def xarray_to_gdal_raster(da: xr.DataArray,
   assert np.all(lat_delta == lat_res), f"Latitude grid must be uniformly spaced, got {lat_delta}"
   lon_delta = np.diff(lon)
   lon_res = lon_delta[0]
-  assert np.all(lon_delta == lon_delta[0]), f"Longitude grid must be uniformly spaced, got {lon_delta}"
+  assert np.all(lon_delta == lon_delta[0]), (
+    f"Longitude grid must be uniformly spaced, got {lon_delta}"
+  )
 
   # Ensure north-up orientation, as GDAL expects
   if lat_res > 0:

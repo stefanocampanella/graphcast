@@ -106,6 +106,13 @@ classifiers = ["Development Status :: 3 - Alpha",
     "Topic :: Scientific/Engineering :: Oceanography",
     "Topic :: Scientific/Engineering :: Physics"]
 
+[project.optional-dependencies]
+dev = [
+    "pre-commit",
+    "ruff",
+    "ty",
+]
+
 [project.scripts]
 dataset = "graphcast.dataset:cli"
 geospatial-mesh = "graphcast.geospatial_mesh:cli"
@@ -119,4 +126,42 @@ Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [tool.setuptools]
 packages = ["graphcast"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+indent-width = 2
+extend-exclude = [
+    ".venv",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# TODO: fix linter checks for "B", "UP", and "SIM"
+select = ["E", "F", "I"]
+ignore = ["E501", "B", "UP", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["graphcast"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.ty]
+# Keep defaults; configure project environment explicitly.
+
+[tool.ty.environment]
+python-version = "3.13"
+
+[tool.ty.src]
+root = "."
+include = ["graphcast/**/*.py"]
+respect-ignore-files = true
+
+[tool.ty.rules]
+# Disable strict type-checking for now.
+all = "warn"
 

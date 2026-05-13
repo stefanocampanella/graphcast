@@ -13,7 +13,8 @@
 # limitations under the License.
 """Dataset utilities for extracting inputs, targets, and forcings."""
 
-from typing import Any, Mapping, Sequence, Tuple, Union
+from collections.abc import Mapping, Sequence
+from typing import Any, Union
 
 import chex
 import jax
@@ -29,9 +30,7 @@ TimedeltaLike = Any  # Something convertible to pd.Timedelta.
 TimedeltaStr = str  # A string convertible to pd.Timedelta.
 
 TargetLeadTimes = Union[
-    TimedeltaLike,
-    Sequence[TimedeltaLike],
-    slice  # with TimedeltaLike as its start and stop.
+  TimedeltaLike, Sequence[TimedeltaLike], slice  # with TimedeltaLike as its start and stop.
 ]
 
 _SEC_PER_HOUR = 3600
@@ -43,12 +42,12 @@ AVG_SEC_PER_YEAR = SEC_PER_DAY * _AVG_DAY_PER_YEAR
 DAY_PROGRESS = "day_progress"
 YEAR_PROGRESS = "year_progress"
 _DERIVED_VARS = {
-    DAY_PROGRESS,
-    f"{DAY_PROGRESS}_sin",
-    f"{DAY_PROGRESS}_cos",
-    YEAR_PROGRESS,
-    f"{YEAR_PROGRESS}_sin",
-    f"{YEAR_PROGRESS}_cos",
+  DAY_PROGRESS,
+  f"{DAY_PROGRESS}_sin",
+  f"{DAY_PROGRESS}_cos",
+  YEAR_PROGRESS,
+  f"{YEAR_PROGRESS}_sin",
+  f"{YEAR_PROGRESS}_cos",
 }
 _DEFAULT_TISR_NAME = "toa_incident_solar_radiation"
 
@@ -66,9 +65,7 @@ def get_year_progress(seconds_since_epoch: np.ndarray) -> np.ndarray:
 
   # Start with the pure integer division, and then float at the very end.
   # We will try to keep as much precision as possible.
-  years_since_epoch = (
-      seconds_since_epoch / SEC_PER_DAY / np.float64(_AVG_DAY_PER_YEAR)
-  )
+  years_since_epoch = seconds_since_epoch / SEC_PER_DAY / np.float64(_AVG_DAY_PER_YEAR)
   # Note depending on how these ops are down, we may end up with a "weak_type"
   # which can cause issues in subtle ways, and hard to track here.
   # In any case, casting to float32 should get rid of the weak type.
@@ -77,8 +74,8 @@ def get_year_progress(seconds_since_epoch: np.ndarray) -> np.ndarray:
 
 
 def get_day_progress(
-    seconds_since_epoch: np.ndarray,
-    longitude: np.ndarray,
+  seconds_since_epoch: np.ndarray,
+  longitude: np.ndarray,
 ) -> np.ndarray:
   """Computes day progress for times in seconds at each longitude.
 
@@ -93,20 +90,16 @@ def get_day_progress(
   """
 
   # [0.0, 1.0) Interval.
-  day_progress_greenwich = (
-      np.mod(seconds_since_epoch, SEC_PER_DAY) / SEC_PER_DAY
-  )
+  day_progress_greenwich = np.mod(seconds_since_epoch, SEC_PER_DAY) / SEC_PER_DAY
 
   # Offset the day progress to the longitude of each point on Earth.
   longitude_offsets = np.deg2rad(longitude) / (2 * np.pi)
-  day_progress = np.mod(
-      day_progress_greenwich[..., np.newaxis] + longitude_offsets, 1.0
-  )
+  day_progress = np.mod(day_progress_greenwich[..., np.newaxis] + longitude_offsets, 1.0)
   return day_progress.astype(np.float32)
 
 
 def featurize_progress(
-    name: str, dims: Sequence[str], progress: chex.Array
+  name: str, dims: Sequence[str], progress: chex.Array
 ) -> Mapping[str, xarray.Variable]:
   """Derives features used by ML models from the `progress` variable.
 
@@ -126,8 +119,8 @@ def featurize_progress(
   """
   if len(dims) != progress.ndim:
     raise ValueError(
-        f"Number of feature dimensions ({len(dims)}) must be equal to the"
-        f" number of data dimensions: {progress.ndim}."
+      f"Number of feature dimensions ({len(dims)}) must be equal to the"
+      f" number of data dimensions: {progress.ndim}."
     )
   if isinstance(progress, jax.Array):
     progress_phase = progress * (2 * jnp.pi)
@@ -138,9 +131,9 @@ def featurize_progress(
     progress_sin = np.sin(progress_phase)
     progress_cos = np.cos(progress_phase)
   return {
-      name: xarray.Variable(dims, progress),
-      name + "_sin": xarray.Variable(dims, progress_sin),
-      name + "_cos": xarray.Variable(dims, progress_cos),
+    name: xarray.Variable(dims, progress),
+    name + "_sin": xarray.Variable(dims, progress_sin),
+    name + "_cos": xarray.Variable(dims, progress_cos),
   }
 
 
@@ -163,9 +156,7 @@ def add_derived_vars(data: xarray.Dataset, to_jax=False, device=None) -> None:
   # Compute seconds since epoch.
   # Note `data.coords["datetime"].astype("datetime64[s]").astype(np.int64)`
   # does not work as xarrays always cast dates into nanoseconds!
-  seconds_since_epoch = (
-      data.coords["datetime"].data.astype("datetime64[s]").astype(np.int64)
-  )
+  seconds_since_epoch = data.coords["datetime"].data.astype("datetime64[s]").astype(np.int64)
   batch_dim = ("batch",) if "batch" in data.dims else ()
 
   # Add year progress features if missing.
@@ -174,11 +165,11 @@ def add_derived_vars(data: xarray.Dataset, to_jax=False, device=None) -> None:
     if to_jax:
       year_progress = jax.device_put(year_progress, device=device)
     data.update(
-        featurize_progress(
-            name=YEAR_PROGRESS,
-            dims=batch_dim + ("time",),
-            progress=year_progress,
-        )
+      featurize_progress(
+        name=YEAR_PROGRESS,
+        dims=batch_dim + ("time",),
+        progress=year_progress,
+      )
     )
 
   # Add day progress features if missing.
@@ -188,19 +179,21 @@ def add_derived_vars(data: xarray.Dataset, to_jax=False, device=None) -> None:
     if to_jax:
       day_progress = jax.device_put(day_progress, device=device)
     data.update(
-        featurize_progress(
-            name=DAY_PROGRESS,
-            dims=batch_dim + ("time",) + longitude_coord.dims,
-            progress=day_progress,
-        )
+      featurize_progress(
+        name=DAY_PROGRESS,
+        dims=batch_dim + ("time",) + longitude_coord.dims,
+        progress=day_progress,
+      )
     )
 
 
-def add_tisr_var(data: xarray.Dataset,
-                 tisr_name: str = _DEFAULT_TISR_NAME,
-                 integration_period: TimedeltaLike = solar_radiation._DEFAULT_INTEGRATION_PERIOD,
-                 forward=False,
-                 device=None) -> None:
+def add_tisr_var(
+  data: xarray.Dataset,
+  tisr_name: str = _DEFAULT_TISR_NAME,
+  integration_period: TimedeltaLike = solar_radiation._DEFAULT_INTEGRATION_PERIOD,
+  forward=False,
+  device=None,
+) -> None:
   """Adds ERA5-compatible TISR to `data` in place if missing.
 
   Computes top-of-atmosphere incident solar radiation integrated over a
@@ -246,7 +239,7 @@ def add_tisr_var(data: xarray.Dataset,
   data_no_batch = data.squeeze("batch") if "batch" in data.dims else data
 
   tisr = solar_radiation.get_toa_incident_solar_radiation_for_xarray(
-      data_no_batch, use_jit=True, integration_period=integration_period, forward=forward
+    data_no_batch, use_jit=True, integration_period=integration_period, forward=forward
   )
 
   if device is not None:
@@ -259,10 +252,10 @@ def add_tisr_var(data: xarray.Dataset,
 
 
 def extract_input_target_times(
-    dataset: xarray.Dataset,
-    input_duration: TimedeltaLike,
-    target_lead_times: TargetLeadTimes,
-    ) -> Tuple[xarray.Dataset, xarray.Dataset]:
+  dataset: xarray.Dataset,
+  input_duration: TimedeltaLike,
+  target_lead_times: TargetLeadTimes,
+) -> tuple[xarray.Dataset, xarray.Dataset]:
   """Extracts inputs and targets for prediction, from a Dataset with a time dim.
 
   The input period is assumed to be contiguous (specified by a duration), but
@@ -316,8 +309,9 @@ def extract_input_target_times(
       for targets the time coordinates will refer to the lead times requested.
   """
 
-  (target_lead_times, target_duration
-   ) = _process_target_lead_times_and_get_duration(target_lead_times)
+  (target_lead_times, target_duration) = _process_target_lead_times_and_get_duration(
+    target_lead_times
+  )
 
   # Shift the coordinates for the time axis so that a timedelta of zero
   # corresponds to the forecast reference time. That is, the final timestep
@@ -342,7 +336,8 @@ def extract_input_target_times(
 
 
 def _process_target_lead_times_and_get_duration(
-    target_lead_times: TargetLeadTimes) -> Tuple[Any, TimedeltaLike]:
+  target_lead_times: TargetLeadTimes,
+) -> tuple[Any, TimedeltaLike]:
   """Returns the minimum duration for the target lead times."""
   if isinstance(target_lead_times, slice):
     # A slice of lead times. xarray already accepts timedelta-like values for
@@ -351,7 +346,7 @@ def _process_target_lead_times_and_get_duration(
       # If the start isn't specified, we assume it starts at the next timestep
       # after lead time 0 (lead time 0 is the final input timestep):
       target_lead_times = slice(
-          pd.Timedelta(1, "ns"), target_lead_times.stop, target_lead_times.step
+        pd.Timedelta(1, "ns"), target_lead_times.stop, target_lead_times.step
       )
     target_duration = pd.Timedelta(target_lead_times.stop)
   else:
@@ -368,20 +363,20 @@ def _process_target_lead_times_and_get_duration(
 
 
 def extract_inputs_targets_forcings(
-    dataset: xarray.Dataset,
-    *,
-    input_variables: Tuple[str, ...],
-    target_variables: Tuple[str, ...],
-    forcing_variables: Tuple[str, ...],
-    levels: Tuple[int, ...],
-    input_duration: TimedeltaLike,
-    target_lead_times: TargetLeadTimes,
-    tisr_name: str = _DEFAULT_TISR_NAME,
-    integration_period: TimedeltaLike = "1d",
-    forward: bool = False,
-    to_jax=False,
-    derived_vars_device=None,
-    ) -> Tuple[xarray.Dataset, xarray.Dataset, xarray.Dataset]:
+  dataset: xarray.Dataset,
+  *,
+  input_variables: tuple[str, ...],
+  target_variables: tuple[str, ...],
+  forcing_variables: tuple[str, ...],
+  levels: tuple[int, ...],
+  input_duration: TimedeltaLike,
+  target_lead_times: TargetLeadTimes,
+  tisr_name: str = _DEFAULT_TISR_NAME,
+  integration_period: TimedeltaLike = "1d",
+  forward: bool = False,
+  to_jax=False,
+  derived_vars_device=None,
+) -> tuple[xarray.Dataset, xarray.Dataset, xarray.Dataset]:
   """Extracts inputs, targets, and forcings from a batch.
 
   This helper slices the time dimension of an `xarray.Dataset`
@@ -433,21 +428,25 @@ def extract_inputs_targets_forcings(
   if (set(forcing_variables) | set(input_variables)) & _DERIVED_VARS:
     add_derived_vars(dataset, to_jax=to_jax, device=derived_vars_device)
   if (set(forcing_variables) | set(input_variables)) & {tisr_name}:
-    add_tisr_var(dataset, tisr_name=tisr_name, integration_period=integration_period, forward=forward,
-                 device=derived_vars_device)
+    add_tisr_var(
+      dataset,
+      tisr_name=tisr_name,
+      integration_period=integration_period,
+      forward=forward,
+      device=derived_vars_device,
+    )
 
   # `datetime` is needed by add_derived_vars but breaks autoregressive rollouts.
   dataset = dataset.drop_vars("datetime")
 
   inputs, targets = extract_input_target_times(
-      dataset,
-      input_duration=input_duration,
-      target_lead_times=target_lead_times)
+    dataset, input_duration=input_duration, target_lead_times=target_lead_times
+  )
 
   if set(forcing_variables) & set(target_variables):
     raise ValueError(
-        f"Forcing variables {forcing_variables} should not "
-        f"overlap with target variables {target_variables}."
+      f"Forcing variables {forcing_variables} should not "
+      f"overlap with target variables {target_variables}."
     )
 
   inputs = inputs[list(input_variables)]
@@ -458,15 +457,17 @@ def extract_inputs_targets_forcings(
   return inputs, targets, forcings
 
 
-def _get_steps_per_window(dataset: xarray.Dataset,
-                          input_duration: TimedeltaLike,
-                          target_lead_times: TargetLeadTimes,
-                          time_dim: str = 'time') -> int:
+def _get_steps_per_window(
+  dataset: xarray.Dataset,
+  input_duration: TimedeltaLike,
+  target_lead_times: TargetLeadTimes,
+  time_dim: str = "time",
+) -> int:
   """Returns the number of timesteps per window."""
   ds_dummy = xarray.Dataset(coords=dataset.coords)
-  inputs_dummy, targets_dummy = extract_input_target_times(dataset=ds_dummy,
-                                                           input_duration=input_duration,
-                                                           target_lead_times=target_lead_times)
+  inputs_dummy, targets_dummy = extract_input_target_times(
+    dataset=ds_dummy, input_duration=input_duration, target_lead_times=target_lead_times
+  )
   time_window_ds = xarray.concat([inputs_dummy, targets_dummy], dim=time_dim)
   time_window = time_window_ds[time_dim].max() - time_window_ds[time_dim].min()
   time_resolution = _get_time_resolution(ds_dummy, time_dim=time_dim)
@@ -474,38 +475,52 @@ def _get_steps_per_window(dataset: xarray.Dataset,
   return steps_per_window.item() + 1
 
 
-def _get_time_resolution(dataset: xarray.Dataset, time_dim: str = 'time') -> np.timedelta64:
+def _get_time_resolution(dataset: xarray.Dataset, time_dim: str = "time") -> np.timedelta64:
   """Checks if the dataset has a fixed time resolution and returns it."""
   time_coord = dataset[time_dim]
   diffs = time_coord.diff(time_dim)
   delta = diffs.isel({time_dim: 0})
   assert (diffs == delta).all().item(), "The time coordinate is not uniformly spaced."
   delta = delta.item()
-  delta = np.timedelta64(delta, 'ns')
+  delta = np.timedelta64(delta, "ns")
   return delta
 
 
-def _wrap(da: xarray.DataArray, longitude_dim='lon'):
-  """ Wraps around longitude dimension."""
+def _wrap(da: xarray.DataArray, longitude_dim="lon"):
+  """Wraps around longitude dimension."""
   longitudes = da[longitude_dim].to_numpy()
   size = len(longitudes)
   dayline_index = int(np.argwhere(longitudes > 180.0)[0][0])
   wrapped = da.copy()
-  wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[{longitude_dim: slice(dayline_index, None)}].to_numpy()
-  wrapped[{longitude_dim: slice(size - dayline_index, None)}] = da[{longitude_dim: slice(None, dayline_index)}].to_numpy()
+  wrapped[{longitude_dim: slice(None, size - dayline_index)}] = da[
+    {longitude_dim: slice(dayline_index, None)}
+  ].to_numpy()
+  wrapped[{longitude_dim: slice(size - dayline_index, None)}] = da[
+    {longitude_dim: slice(None, dayline_index)}
+  ].to_numpy()
   return wrapped
 
 
-def fix_longitude(da: xarray.DataArray, longitude_dim: str = 'lon'):
+def fix_longitude(da: xarray.DataArray, longitude_dim: str = "lon"):
   """Wraps longitudes around -180 to 180 degrees."""
   da_wrapped = _wrap(da, longitude_dim=longitude_dim)
   longitude_orig = da[longitude_dim].to_numpy()
-  longitude_orig = xarray.DataArray(data=longitude_orig, coords={longitude_dim: longitude_orig},
-                                    dims=longitude_dim, name=longitude_dim + '_orig', attrs=da[longitude_dim].attrs)
+  longitude_orig = xarray.DataArray(
+    data=longitude_orig,
+    coords={longitude_dim: longitude_orig},
+    dims=longitude_dim,
+    name=longitude_dim + "_orig",
+    attrs=da[longitude_dim].attrs,
+  )
   lon_wrapped = _wrap(longitude_orig, longitude_dim=longitude_dim)
   lon_wrapped = lon_wrapped.to_numpy()
   lon_wrapped = np.where(lon_wrapped <= 180.0, lon_wrapped, lon_wrapped - 360.0)
-  lon_wrapped = xarray.DataArray(data=lon_wrapped, coords={longitude_dim: lon_wrapped}, dims=longitude_dim,
-                                 name=longitude_dim, attrs=longitude_orig.attrs)
+  lon_wrapped = xarray.DataArray(
+    data=lon_wrapped,
+    coords={longitude_dim: lon_wrapped},
+    dims=longitude_dim,
+    name=longitude_dim,
+    attrs=longitude_orig.attrs,
+  )
   da_wrapped = da_wrapped.assign_coords({longitude_dim: lon_wrapped})
   return da_wrapped

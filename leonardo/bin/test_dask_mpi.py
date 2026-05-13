@@ -23,7 +23,6 @@ Exit codes:
 """
 
 import time
-from typing import Tuple
 
 import click
 import mpi4py
@@ -34,12 +33,20 @@ from graphcast.dask_distributed_utils import dask_mpi_initialize
 
 
 @click.command()
-@click.option("--timeout", "-t", type=float, default=60.0, show_default=True,
-              help="Seconds to wait for workers.")
-@click.option("--log-level",
-              default='info',
-              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False),
-              show_default=True)
+@click.option(
+  "--timeout",
+  "-t",
+  type=float,
+  default=60.0,
+  show_default=True,
+  help="Seconds to wait for workers.",
+)
+@click.option(
+  "--log-level",
+  default="info",
+  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
+  show_default=True,
+)
 def cli(timeout: float) -> int:
   """Validate a running Dask cluster launched with dask-mpi.
 
@@ -69,10 +76,12 @@ def cli(timeout: float) -> int:
     return 1
 
 
-def _get_info(client: Client) -> Tuple[str, int, int]:
+def _get_info(client: Client) -> tuple[str, int, int]:
   scheduler_info = client.scheduler_info(n_workers=-1)
   n_workers = len(scheduler_info["workers"])
-  total_threads = sum(int(worker.get("nthreads", 0)) for worker in scheduler_info["workers"].values())
+  total_threads = sum(
+    int(worker.get("nthreads", 0)) for worker in scheduler_info["workers"].values()
+  )
   addr = scheduler_info["address"]
   return addr, n_workers, total_threads
 

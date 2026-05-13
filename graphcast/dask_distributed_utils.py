@@ -9,8 +9,8 @@ import distributed
 
 logger = logging.getLogger(__name__)
 
-class DummyClient:
 
+class DummyClient:
   def close(self):
     pass
 
@@ -19,9 +19,7 @@ MaybeClient = distributed.Client | DummyClient
 
 
 def get_dask_env_options(suffix=None, inherit_params_from=None):
-
   def decorator(func):
-
     @functools.wraps(func)
     def wrapped(*args, **kwargs):
       dask_config = dask.config.collect_env()
@@ -43,7 +41,9 @@ def get_dask_env_options(suffix=None, inherit_params_from=None):
 
 
 def filter_kwargs(kwargs, func):
-  filtered = {p.name: kwargs[p.name] for p in inspect.signature(func).parameters.values() if p.name in kwargs}
+  filtered = {
+    p.name: kwargs[p.name] for p in inspect.signature(func).parameters.values() if p.name in kwargs
+  }
   return filtered
 
 
@@ -58,7 +58,6 @@ def LocalCluster(*args, **kwargs):
 
 
 def get_client(local=False, debug=False) -> MaybeClient:
-
   if debug:
     dask.config.set(scheduler="synchronous")
 
@@ -73,7 +72,7 @@ def get_client(local=False, debug=False) -> MaybeClient:
     dask_mpi_initialize()
     client = distributed.Client()
     host = client.run_on_scheduler(socket.gethostname)
-    port = client.scheduler_info()['services']['dashboard']
+    port = client.scheduler_info()["services"]["dashboard"]
     logger.info(f"Using dask_mpi, Dask dashboard available at {host}:{port}")
 
   return client

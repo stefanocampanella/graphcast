@@ -48,66 +48,83 @@ def cli():
 
 
 @cli.command()
-@click.argument("stats",
-                required=True,
-                type=click.Choice(StatsRegistry.keys()))
-@click.argument("input",
-                required=True,
-                type=click.Path(path_type=pathlib.Path, file_okay=True, dir_okay=True, exists=True, readable=True))
-@click.argument("output",
-                required=True,
-                type=click.Path(path_type=pathlib.Path, file_okay=True, dir_okay=True, writable=True))
-@click.option("--local/--no-local",
-              default=False,
-              help="Whether to use Dask LocalCluster.",
-              show_default=True)
-@click.option("--time-dim",
-              default="time",
-              help="Name of the time dimension to average over.",
-              show_default=True)
-@click.option("--chunks",
-              default=None,
-              show_default=True,
-              type=DictParamType(),
-              help="String containing chunking specs used when reading.")
-@click.option("--compressor-name",
-              "cname",
-              default="lz4",
-              show_default=True,
-              help="Name of the compressor to use.")
-@click.option("--compressor-level",
-              "clevel",
-              default=1,
-              show_default=True,
-              help="Compressor level to use.")
-@click.option("--skipna/--no-skipna",
-              default=False,
-              help="Whether to skip NaNs when averaging.",
-              show_default=True)
-@click.option("--overwrite/--no-overwrite",
-              default=False,
-              is_flag=True,
-              help="Whether to overwrite existing outputs.")
-@click.option("--debug/--no-debug",
-              default=False,
-              is_flag=True,
-              help="Whether to use the serial Dask scheduler.")
-@click.option("--log-level",
-              default='info',
-              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False),
-              show_default=True)
-def compute(stats: Stats,
-            input: pathlib.Path,
-            output: pathlib.Path,
-            local: bool = False,
-            time_dim: str = "time",
-            chunks: str | None = None,
-            skipna: bool = False,
-            debug: bool = False,
-            log_level: str = "info",
-            overwrite: bool = False,
-            cname: str = "lz4",
-            clevel: int = 1):
+@click.argument("stats", required=True, type=click.Choice(StatsRegistry.keys()))
+@click.argument(
+  "input",
+  required=True,
+  type=click.Path(
+    path_type=pathlib.Path, file_okay=True, dir_okay=True, exists=True, readable=True
+  ),
+)
+@click.argument(
+  "output",
+  required=True,
+  type=click.Path(path_type=pathlib.Path, file_okay=True, dir_okay=True, writable=True),
+)
+@click.option(
+  "--local/--no-local", default=False, help="Whether to use Dask LocalCluster.", show_default=True
+)
+@click.option(
+  "--time-dim",
+  default="time",
+  help="Name of the time dimension to average over.",
+  show_default=True,
+)
+@click.option(
+  "--chunks",
+  default=None,
+  show_default=True,
+  type=DictParamType(),
+  help="String containing chunking specs used when reading.",
+)
+@click.option(
+  "--compressor-name",
+  "cname",
+  default="lz4",
+  show_default=True,
+  help="Name of the compressor to use.",
+)
+@click.option(
+  "--compressor-level", "clevel", default=1, show_default=True, help="Compressor level to use."
+)
+@click.option(
+  "--skipna/--no-skipna",
+  default=False,
+  help="Whether to skip NaNs when averaging.",
+  show_default=True,
+)
+@click.option(
+  "--overwrite/--no-overwrite",
+  default=False,
+  is_flag=True,
+  help="Whether to overwrite existing outputs.",
+)
+@click.option(
+  "--debug/--no-debug",
+  default=False,
+  is_flag=True,
+  help="Whether to use the serial Dask scheduler.",
+)
+@click.option(
+  "--log-level",
+  default="info",
+  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
+  show_default=True,
+)
+def compute(
+  stats: Stats,
+  input: pathlib.Path,
+  output: pathlib.Path,
+  local: bool = False,
+  time_dim: str = "time",
+  chunks: str | None = None,
+  skipna: bool = False,
+  debug: bool = False,
+  log_level: str = "info",
+  overwrite: bool = False,
+  cname: str = "lz4",
+  clevel: int = 1,
+):
   """
   Compute the mean, std, and diff std over time.
 
@@ -130,10 +147,11 @@ def compute(stats: Stats,
   """
 
   logging.basicConfig(
-    format='%(levelname)s - %(asctime)s: %(message)s',
-    datefmt='%Y-%m-%dT%H:%M:%S',
+    format="%(levelname)s - %(asctime)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
     level=log_level.upper(),
-    force=True)
+    force=True,
+  )
 
   client = get_client(debug=debug, local=local)
 
@@ -156,11 +174,15 @@ def compute(stats: Stats,
   # which would further distort the results. However, the quantities computed here are used to standardize the input features, and
   # therefore such approximations are reasonably acceptable.
 
-  logger.info(f"Computing daily {stats} over dimension '{time_dim}' (skipna={skipna}), saving to {output}")
+  logger.info(
+    f"Computing daily {stats} over dimension '{time_dim}' (skipna={skipna}), saving to {output}"
+  )
   stats_ds = StatsRegistry[stats](dataset, time_dim=time_dim, skipna=skipna, keep_attrs=True)
   # At the beginning of `write_dataset_serial`, stats_ds is computed, meaning that there must be enough memory
   # available to the client process to hold stats_ds in memory. This could be a problem for climatology in some cases.
-  save_to_zarr(stats_ds, output, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel))
+  save_to_zarr(
+    stats_ds, output, overwrite=overwrite, compressor_kwargs=dict(cname=cname, clevel=clevel)
+  )
 
   client.close()
 

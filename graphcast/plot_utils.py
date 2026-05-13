@@ -1,6 +1,6 @@
 import datetime
 import math
-from typing import Callable, Sequence
+from collections.abc import Callable, Sequence
 
 import cartopy.crs as ccrs
 import matplotlib
@@ -19,10 +19,7 @@ Lines = Sequence[Line]
 
 
 def select(
-    data: xarray.Dataset,
-    variable: str,
-    level: int | None = None,
-    max_steps: int | None = None
+  data: xarray.Dataset, variable: str, level: int | None = None, max_steps: int | None = None
 ) -> xarray.DataArray:
   data = data[variable]
   if "batch" in data.dims:
@@ -33,10 +30,11 @@ def select(
     data = data.sel(level=level)
   return data
 
+
 def scale(
-    data: xarray.Dataset,
-    center: float | None = None,
-    robust: bool = False,
+  data: xarray.Dataset,
+  center: float | None = None,
+  robust: bool = False,
 ) -> tuple[xarray.Dataset, matplotlib.colors.Normalize, str]:
   vmin = np.nanpercentile(data, (2 if robust else 0))
   vmax = np.nanpercentile(data, (98 if robust else 100))
@@ -44,38 +42,40 @@ def scale(
     diff = max(vmax - center, center - vmin)
     vmin = center - diff
     vmax = center + diff
-  return (data, matplotlib.colors.Normalize(vmin, vmax),
-          ("RdBu_r" if center is not None else "viridis"))
+  return (
+    data,
+    matplotlib.colors.Normalize(vmin, vmax),
+    ("RdBu_r" if center is not None else "viridis"),
+  )
+
 
 def plot_data(
-    data: dict[str, xarray.Dataset],
-    fig_title: str,
-    plot_size: float = 5,
-    robust: bool = False,
-    cols: int = 4
+  data: dict[str, xarray.Dataset],
+  fig_title: str,
+  plot_size: float = 5,
+  robust: bool = False,
+  cols: int = 4,
 ) -> tuple[matplotlib.figure, Callable, int]:
-
   first_data = next(iter(data.values()))[0]
   max_steps = first_data.sizes.get("time", 1)
   assert all(max_steps == d.sizes.get("time", 1) for d, _, _ in data.values())
 
   cols = min(cols, len(data))
   rows = math.ceil(len(data) / cols)
-  figure = plt.figure(figsize=(plot_size * 2 * cols,
-                               plot_size * rows))
+  figure = plt.figure(figsize=(plot_size * 2 * cols, plot_size * rows))
   figure.suptitle(fig_title, fontsize=16)
   figure.subplots_adjust(wspace=0, hspace=0)
   figure.tight_layout()
 
   images = []
   for i, (title, (plot_data, norm, cmap)) in enumerate(data.items()):
-    ax = figure.add_subplot(rows, cols, i+1)
+    ax = figure.add_subplot(rows, cols, i + 1)
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(title)
     im = ax.imshow(
-      plot_data.isel(time=0, missing_dims="ignore"), norm=norm,
-      origin="lower", cmap=cmap)
+      plot_data.isel(time=0, missing_dims="ignore"), norm=norm, origin="lower", cmap=cmap
+    )
     plt.colorbar(
       mappable=im,
       ax=ax,
@@ -84,7 +84,8 @@ def plot_data(
       aspect=16,
       shrink=0.75,
       cmap=cmap,
-      extend=("both" if robust else "neither"))
+      extend=("both" if robust else "neither"),
+    )
     images.append(im)
 
   def update(frame):
@@ -93,7 +94,7 @@ def plot_data(
       figure.suptitle(f"{fig_title}, {td}", fontsize=16)
     else:
       figure.suptitle(fig_title, fontsize=16)
-    for im, (plot_data, norm, cmap) in zip(images, data.values()):
+    for im, (plot_data, norm, cmap) in zip(images, data.values(), strict=False):
       im.set_data(plot_data.isel(time=frame, missing_dims="ignore"))
 
   return figure, update, max_steps
@@ -110,13 +111,16 @@ def get_points_and_lines(wgs_graph: EquirectangularGraph) -> tuple[Points, Lines
   """
   latitudes, longitudes = wgs_graph.vertices
   # points use (longitude, latitude) ordering to comply with other plot utils and notebooks.
-  points = [(lon, lat) for lon, lat in zip(longitudes, latitudes)]
-  lines = [[points[n1], points[n2]] for (n1, n2) in zip(wgs_graph.edges[0], wgs_graph.edges[1])]
+  points = [(lon, lat) for lon, lat in zip(longitudes, latitudes, strict=False)]
+  lines = [
+    [points[n1], points[n2]]
+    for (n1, n2) in zip(wgs_graph.edges[0], wgs_graph.edges[1], strict=False)
+  ]
 
   return points, lines
 
 
-def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) ->  mc.LineCollection:
+def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) -> mc.LineCollection:
   """Gets a LineCollection for plotting the graph.
 
   Args:
@@ -133,7 +137,6 @@ def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) ->  mc.LineCo
 
 
 def fix_longitude(plot_f):
-
   def new_plot_f(*args, **kwargs):
     args = map(lambda da: _fix_longitude(da) if isinstance(da, xarray.DataArray) else da, args)
     return plot_f(*args, **kwargs)
@@ -150,6 +153,6 @@ def mesh_size_plot(alpha, q_low=0.2, q_high=0.8, normalize=False):
     alpha = (alpha - min) / (max - min)
   fig = plt.figure()
   ax = fig.add_subplot(111, projection=ccrs.Robinson())
-  imshow = ax.imshow(alpha, origin='lower', transform=ccrs.PlateCarree())
-  fig.colorbar(imshow, orientation='vertical')
+  imshow = ax.imshow(alpha, origin="lower", transform=ccrs.PlateCarree())
+  fig.colorbar(imshow, orientation="vertical")
   return fig

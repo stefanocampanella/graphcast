@@ -13,15 +13,17 @@
 # limitations under the License.
 """Utils for creating icosahedral meshes."""
 
-from typing import List, Literal
+from typing import Literal
 
 import numpy as np
 from scipy.spatial import transform
+
 from graphcast.mesh_graph import TriangleMesh
 
 
 def get_hierarchy_of_triangular_meshes_for_sphere(
-    splits: int, radius: Literal['unit'] | float = 'unit') -> List[TriangleMesh]:
+  splits: int, radius: Literal["unit"] | float = "unit"
+) -> list[TriangleMesh]:
   """Returns a sequence of meshes, each with triangularization sphere.
 
   Starting with a regular icosahedron (12 vertices, 20 faces, 30 edges) with
@@ -50,7 +52,7 @@ def get_hierarchy_of_triangular_meshes_for_sphere(
     current_mesh = _two_split_unit_sphere_triangle_faces(current_mesh)
     unit_sphere_meshes.append(current_mesh)
 
-  if radius == 'unit':
+  if radius == "unit":
     output_meshes = unit_sphere_meshes
   else:
     output_meshes = []
@@ -82,37 +84,38 @@ def get_icosahedron() -> TriangleMesh:
   """
   phi = (1 + np.sqrt(5)) / 2
   vertices = []
-  for c1 in [1., -1.]:
+  for c1 in [1.0, -1.0]:
     for c2 in [phi, -phi]:
-      vertices.append((c1, c2, 0.))
-      vertices.append((0., c1, c2))
-      vertices.append((c2, 0., c1))
+      vertices.append((c1, c2, 0.0))
+      vertices.append((0.0, c1, c2))
+      vertices.append((c2, 0.0, c1))
 
   vertices = np.array(vertices, dtype=np.float32)
-  vertices /= np.linalg.norm([1., phi])
+  vertices /= np.linalg.norm([1.0, phi])
 
   # I did this manually, checking the orientation one by one.
-  faces = [(0, 1, 2),
-           (0, 6, 1),
-           (8, 0, 2),
-           (8, 4, 0),
-           (3, 8, 2),
-           (3, 2, 7),
-           (7, 2, 1),
-           (0, 4, 6),
-           (4, 11, 6),
-           (6, 11, 5),
-           (1, 5, 7),
-           (4, 10, 11),
-           (4, 8, 10),
-           (10, 8, 3),
-           (10, 3, 9),
-           (11, 10, 9),
-           (11, 9, 5),
-           (5, 9, 7),
-           (9, 3, 7),
-           (1, 6, 5),
-           ]
+  faces = [
+    (0, 1, 2),
+    (0, 6, 1),
+    (8, 0, 2),
+    (8, 4, 0),
+    (3, 8, 2),
+    (3, 2, 7),
+    (7, 2, 1),
+    (0, 4, 6),
+    (4, 11, 6),
+    (6, 11, 5),
+    (1, 5, 7),
+    (4, 10, 11),
+    (4, 8, 10),
+    (10, 8, 3),
+    (10, 3, 9),
+    (11, 10, 9),
+    (11, 9, 5),
+    (5, 9, 7),
+    (9, 3, 7),
+    (1, 6, 5),
+  ]
 
   # By default the top is an aris parallel to the Y axis.
   # Need to rotate around the y axis by half the supplementary to the
@@ -139,12 +142,10 @@ def get_icosahedron() -> TriangleMesh:
   rotation_matrix = rotation.as_matrix()
   vertices = np.dot(vertices, rotation_matrix)
 
-  return TriangleMesh(vertices=vertices.astype(np.float32),
-                        faces=np.array(faces, dtype=np.int32))
+  return TriangleMesh(vertices=vertices.astype(np.float32), faces=np.array(faces, dtype=np.int32))
 
 
-def _two_split_unit_sphere_triangle_faces(
-    triangular_mesh: TriangleMesh) -> TriangleMesh:
+def _two_split_unit_sphere_triangle_faces(triangular_mesh: TriangleMesh) -> TriangleMesh:
   """Splits each triangular face into 4 triangles keeping the orientation."""
 
   # Every time we split a triangle into 4 we will be adding 3 extra vertices,
@@ -175,20 +176,23 @@ def _two_split_unit_sphere_triangle_faces(
     # vertices to preserve the orientation of the original face. As the input
     # face should always be counter-clockwise as specified in the diagram,
     # this means child faces should also be counter-clockwise.
-    new_faces.extend([[ind1, ind12, ind31],  # 1
-                      [ind12, ind2, ind23],  # 2
-                      [ind31, ind23, ind3],  # 3
-                      [ind12, ind23, ind31],  # 4
-                      ])
-  return TriangleMesh(vertices=new_vertices_builder.get_all_vertices(),
-                        faces=np.array(new_faces, dtype=np.int32))
+    new_faces.extend(
+      [
+        [ind1, ind12, ind31],  # 1
+        [ind12, ind2, ind23],  # 2
+        [ind31, ind23, ind3],  # 3
+        [ind12, ind23, ind31],  # 4
+      ]
+    )
+  return TriangleMesh(
+    vertices=new_vertices_builder.get_all_vertices(), faces=np.array(new_faces, dtype=np.int32)
+  )
 
 
-class _ChildVerticesBuilder(object):
+class _ChildVerticesBuilder:
   """Bookkeeping of new child vertices added to an existing set of vertices."""
 
   def __init__(self, parent_vertices):
-
     # Because the same new vertex will be required when splitting adjacent
     # triangles (which share an edge) we keep them in a hash table indexed by
     # sorted indices of the vertices adjacent to the edge, to avoid creating
@@ -205,15 +209,13 @@ class _ChildVerticesBuilder(object):
     """Creates a new vertex."""
     # Position for new vertex is the middle point, between the parent points,
     # projected to unit sphere.
-    child_vertex_position = self._parent_vertices[
-        list(parent_vertex_indices)].mean(0)
+    child_vertex_position = self._parent_vertices[list(parent_vertex_indices)].mean(0)
     child_vertex_position /= np.linalg.norm(child_vertex_position)
 
     # Add the vertex to the output list. The index for this new vertex will
     # match the length of the list before adding it.
     child_vertex_key = self._get_child_vertex_key(parent_vertex_indices)
-    self._child_vertices_index_mapping[child_vertex_key] = len(
-        self._all_vertices_list)
+    self._child_vertices_index_mapping[child_vertex_key] = len(self._all_vertices_list)
     self._all_vertices_list.append(child_vertex_position)
 
   def get_new_child_vertex_index(self, parent_vertex_indices):

@@ -14,8 +14,9 @@
 import atexit
 import logging
 import pathlib
+from collections.abc import Mapping
 from functools import partial
-from typing import Mapping, Any
+from typing import Any
 
 import click
 import haiku as hk
@@ -23,9 +24,11 @@ import jax
 import optax
 from etils import epath
 from jax.experimental.shard_map import shard_map
-from jax.sharding import PartitionSpec as P, NamedSharding, AxisType
+from jax.sharding import AxisType, NamedSharding
+from jax.sharding import PartitionSpec as P
 
-from graphcast import cli_utils, xarray_jax, training_utils as trn_utils
+from graphcast import cli_utils, xarray_jax
+from graphcast import training_utils as trn_utils
 from graphcast.cli_utils import Configs
 from graphcast.training_utils import Datasets, DatasetsOrDataArrays, JAXLossAndDiagnostics
 
@@ -44,75 +47,90 @@ def cli():
 
 # FIXME: add docstring
 @cli.command()
-@click.argument("config_path",
-                required=True,
-                type=click.Path(path_type=epath.Path,
-                                exists=True,
-                                file_okay=True,
-                                dir_okay=False,
-                                readable=True,
-                                resolve_path=True))
-@click.argument("output_path",
-                required=True,
-                type=click.Path(path_type=epath.Path,
-                                resolve_path=True))
-@click.argument("train_path",
-                required=True,
-                type=click.Path(path_type=epath.Path,
-                                resolve_path=True))
-@click.option("--data-path",
-              help="Path to the data directory.",
-              default=cli_utils.get_cwd(),
-              type=click.Path(path_type=epath.Path,
-                              exists=True,
-                              file_okay=False,
-                              dir_okay=True,
-                              readable=True,
-                              resolve_path=True))
+@click.argument(
+  "config_path",
+  required=True,
+  type=click.Path(
+    path_type=epath.Path,
+    exists=True,
+    file_okay=True,
+    dir_okay=False,
+    readable=True,
+    resolve_path=True,
+  ),
+)
+@click.argument(
+  "output_path", required=True, type=click.Path(path_type=epath.Path, resolve_path=True)
+)
+@click.argument(
+  "train_path", required=True, type=click.Path(path_type=epath.Path, resolve_path=True)
+)
+@click.option(
+  "--data-path",
+  help="Path to the data directory.",
+  default=cli_utils.get_cwd(),
+  type=click.Path(
+    path_type=epath.Path,
+    exists=True,
+    file_okay=False,
+    dir_okay=True,
+    readable=True,
+    resolve_path=True,
+  ),
+)
 # TODO: update other-configs to work with Configs dot syntax or drop it
-@click.option("--other-configs",
-              help="Other configs to override in the config file in the format 'key1:value1,key2:value2,...'",
-              type=cli_utils.DictParamType())
-@click.option("--restart",
-              help="Whether to start the training from scratch.",
-              default=False,
-              is_flag=True)
-@click.option("--overwrite/--no-overwrite",
-              help="Whether to overwrite the final checkpoint.",
-              default=False,
-              is_flag=True)
-@click.option("--tensorboard-logdir",
-              help="Tensorboard log directory.",
-              default=cli_utils.get_cwd() / 'tb_logdir',
-              type=click.Path(path_type=epath.Path,
-                              resolve_path=True))
-@click.option('--log-level',
-              default='info',
-              type=click.Choice(['debug', 'info', 'warning', 'error', 'critical'], case_sensitive=False))
-def launch(config_path: pathlib.Path,
-           output_path: pathlib.Path,
-           train_path: pathlib.Path,
-           data_path: pathlib.Path | None = None,
-           other_configs: Mapping[str, Any] | None = None,
-           restart: bool = False,
-           overwrite: bool = False,
-           tensorboard_logdir: pathlib.Path | None = None,
-           log_level: str = 'info'):
-
-  logging.basicConfig(format='%(levelname)s - %(asctime)s: %(message)s',
-                      datefmt='%Y-%m-%dT%H:%M:%S',
-                      level=log_level.upper(),
-                      force=True)
+@click.option(
+  "--other-configs",
+  help="Other configs to override in the config file in the format 'key1:value1,key2:value2,...'",
+  type=cli_utils.DictParamType(),
+)
+@click.option(
+  "--restart", help="Whether to start the training from scratch.", default=False, is_flag=True
+)
+@click.option(
+  "--overwrite/--no-overwrite",
+  help="Whether to overwrite the final checkpoint.",
+  default=False,
+  is_flag=True,
+)
+@click.option(
+  "--tensorboard-logdir",
+  help="Tensorboard log directory.",
+  default=cli_utils.get_cwd() / "tb_logdir",
+  type=click.Path(path_type=epath.Path, resolve_path=True),
+)
+@click.option(
+  "--log-level",
+  default="info",
+  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
+)
+def launch(
+  config_path: pathlib.Path,
+  output_path: pathlib.Path,
+  train_path: pathlib.Path,
+  data_path: pathlib.Path | None = None,
+  other_configs: Mapping[str, Any] | None = None,
+  restart: bool = False,
+  overwrite: bool = False,
+  tensorboard_logdir: pathlib.Path | None = None,
+  log_level: str = "info",
+):
+  logging.basicConfig(
+    format="%(levelname)s - %(asctime)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    level=log_level.upper(),
+    force=True,
+  )
 
   jax.distributed.initialize()
-  logger.info(f"Using a JAX mesh with {jax.device_count()} devices "
-              f"({'multi-host setup' if jax.process_count() > 1 else 'single-host setup'}).")
+  logger.info(
+    f"Using a JAX mesh with {jax.device_count()} devices "
+    f"({'multi-host setup' if jax.process_count() > 1 else 'single-host setup'})."
+  )
 
-  output_path, train_path, tensorboard_logdir = trn_utils.check_writable_paths(output_path,
-                                                                               train_path,
-                                                                               tensorboard_logdir,
-                                                                               start_fresh=not restart,
-                                                                               overwrite=overwrite)
+  output_path, train_path, tensorboard_logdir = trn_utils.check_writable_paths(
+    output_path, train_path, tensorboard_logdir, start_fresh=not restart, overwrite=overwrite
+  )
 
   configs = Configs.read(config_path)
   if other_configs is not None:
@@ -120,9 +138,9 @@ def launch(config_path: pathlib.Path,
 
   mesh_data = trn_utils.get_mesh(data_path, configs)
   mask = trn_utils.get_mask(data_path, configs)
-  grid_lat = mask['lat'].to_numpy()
-  grid_lon = mask['lon'].to_numpy()
-  grid_mask = mask.transpose('lat', 'lon').to_numpy()
+  grid_lat = mask["lat"].to_numpy()
+  grid_lon = mask["lon"].to_numpy()
+  grid_mask = mask.transpose("lat", "lon").to_numpy()
   artifacts = trn_utils.get_artifacts(data_path, configs)
   static_data = xarray_jax.wrap_data(artifacts + (mask,), to_jax=True, np_contiguous=False)
 
@@ -131,17 +149,21 @@ def launch(config_path: pathlib.Path,
   def loss_fn(data: Datasets, static_data: DatasetsOrDataArrays) -> JAXLossAndDiagnostics:
     inputs, targets, forcings = data
     mean_by_level, stddev_by_level, diffs_stddev_by_level, mask_da = static_data
-    predictor = trn_utils.get_predictor(configs=configs,
-                                        mesh_data=mesh_data,
-                                        grid_lat=grid_lat,
-                                        grid_lon=grid_lon,
-                                        grid_mask=grid_mask,
-                                        mean_by_level=mean_by_level,
-                                        stddev_by_level=stddev_by_level,
-                                        mask_da=mask_da,
-                                        diffs_stddev_by_level=diffs_stddev_by_level)
+    predictor = trn_utils.get_predictor(
+      configs=configs,
+      mesh_data=mesh_data,
+      grid_lat=grid_lat,
+      grid_lon=grid_lon,
+      grid_mask=grid_mask,
+      mean_by_level=mean_by_level,
+      stddev_by_level=stddev_by_level,
+      mask_da=mask_da,
+      diffs_stddev_by_level=diffs_stddev_by_level,
+    )
     loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
-    assert loss.dims == ('batch',) and all(scalar.dims == ('batch', ) for scalar in diagnostics.values())
+    assert loss.dims == ("batch",) and all(
+      scalar.dims == ("batch",) for scalar in diagnostics.values()
+    )
     # Wait to reduce the batch dimension until shard_map is called.
     return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(diagnostics)
 
@@ -153,10 +175,12 @@ def launch(config_path: pathlib.Path,
   test_iterator = iter(test_iterdataset)
 
   latest_step = 0
-  params = trn_utils.get_params(lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
-                                train_iterator,
-                                configs)
-  device_mesh = jax.make_mesh((jax.device_count(),), ('batch',), axis_types=(AxisType.Explicit,))
+  params = trn_utils.get_params(
+    lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
+    train_iterator,
+    configs,
+  )
+  device_mesh = jax.make_mesh((jax.device_count(),), ("batch",), axis_types=(AxisType.Explicit,))
   params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
   opt_state = optimizer.init(params)
   opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
@@ -164,19 +188,20 @@ def launch(config_path: pathlib.Path,
   ckpt_mngr = trn_utils.get_checkpoint_manager(train_path, configs)
   if restart:
     if not ckpt_mngr.all_steps(read=True):
-      raise ValueError(f"Found no checkpoint to restore while restarting training.")
+      raise ValueError("Found no checkpoint to restore while restarting training.")
     restored = trn_utils.pull_checkpoint(
       ckpt_mngr=ckpt_mngr,
       step=ckpt_mngr.latest_step(),
       train_iterator=train_iterator,
       test_iterator=test_iterator,
       params=params,
-      opt_state=opt_state)
+      opt_state=opt_state,
+    )
     latest_step = ckpt_mngr.latest_step()
-    train_iterator: trn_utils.InputsTargetsForcingsIterator = restored['train_iterator']
-    test_iterator:trn_utils.InputsTargetsForcingsIterator = restored['test_iterator']
-    params: trn_utils.Params = restored['params']
-    opt_state: trn_utils.Params = restored['opt_state']
+    train_iterator: trn_utils.InputsTargetsForcingsIterator = restored["train_iterator"]
+    test_iterator: trn_utils.InputsTargetsForcingsIterator = restored["test_iterator"]
+    params: trn_utils.Params = restored["params"]
+    opt_state: trn_utils.Params = restored["opt_state"]
 
   training_steps = configs.get("training_steps", required=True)
   logger.info(f"Training for {training_steps=} starting at {latest_step=}.")
@@ -185,13 +210,16 @@ def launch(config_path: pathlib.Path,
 
   @partial(jax.jit, donate_argnums=(0, 1))
   def train_step(params, opt_state, data, data_test, static_data):
-
-    def fsdp_loss_fn(params, data: Datasets, static_data: DatasetsOrDataArrays) -> JAXLossAndDiagnostics:
-      _fsdp_loss_fn = shard_map(loss_fn.apply,
-                                mesh=device_mesh,
-                                in_specs=(P(), P('batch'), None),
-                                out_specs=P('batch'),
-                                check_rep=False)
+    def fsdp_loss_fn(
+      params, data: Datasets, static_data: DatasetsOrDataArrays
+    ) -> JAXLossAndDiagnostics:
+      _fsdp_loss_fn = shard_map(
+        loss_fn.apply,
+        mesh=device_mesh,
+        in_specs=(P(), P("batch"), None),
+        out_specs=P("batch"),
+        check_rep=False,
+      )
       loss, diagnostics = _fsdp_loss_fn(params, data, static_data)
       return jax.tree_util.tree_map(jax.numpy.mean, (loss, diagnostics))
 
@@ -203,34 +231,46 @@ def launch(config_path: pathlib.Path,
 
     return updated_params, next_opt_state, loss_and_diagnostics, test_metrics
 
-  mp_prefetch = (configs.get("dataset.multiprocessing_options") is not None or
-                 configs.get("dataset.pick_performance_config") is not None)
+  mp_prefetch = (
+    configs.get("dataset.multiprocessing_options") is not None
+    or configs.get("dataset.pick_performance_config") is not None
+  )
   for current_step in range(latest_step, training_steps):
-    batch, batch_test = trn_utils.next_batches_on_device(train_iterator, test_iterator, device_mesh=device_mesh,
-                                                         mp_prefetch=mp_prefetch)
+    batch, batch_test = trn_utils.next_batches_on_device(
+      train_iterator, test_iterator, device_mesh=device_mesh, mp_prefetch=mp_prefetch
+    )
     with jax.sharding.set_mesh(device_mesh):
-      params, opt_state, train_metrics, test_metrics = train_step(params=params,
-                                                                  opt_state=opt_state,
-                                                                  data=batch,
-                                                                  data_test=batch_test,
-                                                                  static_data=static_data)
-    trn_utils.push_checkpoint(ckpt_mngr=ckpt_mngr,
-                              step=current_step,
-                              metrics=train_metrics,
-                              train_iterator=train_iterator,
-                              test_iterator=test_iterator,
-                              params=params,
-                              opt_state=opt_state)
+      params, opt_state, train_metrics, test_metrics = train_step(
+        params=params,
+        opt_state=opt_state,
+        data=batch,
+        data_test=batch_test,
+        static_data=static_data,
+      )
+    trn_utils.push_checkpoint(
+      ckpt_mngr=ckpt_mngr,
+      step=current_step,
+      metrics=train_metrics,
+      train_iterator=train_iterator,
+      test_iterator=test_iterator,
+      params=params,
+      opt_state=opt_state,
+    )
     tb_logger.log(current_step, train_metrics, test_metrics, lr=schedule(current_step))
   logger.info(f"Training finished, best checkpoint {ckpt_mngr.best_step()}.")
-  restored = trn_utils.pull_checkpoint(ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params)
-  trn_utils.save_model(output_path=output_path,
-                       params=restored['params'],
-                       configs=configs,
-                       grid_lat=grid_lat,
-                       grid_lon=grid_lon,
-                       grid_mask=grid_mask,
-                       mesh_data=mesh_data)
+  restored = trn_utils.pull_checkpoint(
+    ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params
+  )
+  trn_utils.save_model(
+    output_path=output_path,
+    params=restored["params"],
+    configs=configs,
+    grid_lat=grid_lat,
+    grid_lon=grid_lon,
+    grid_mask=grid_mask,
+    mesh_data=mesh_data,
+  )
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
   cli()

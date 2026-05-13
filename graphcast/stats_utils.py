@@ -1,6 +1,8 @@
+from typing import Literal
+
 import numpy as np
 import xarray as xr
-from typing import Literal
+
 from graphcast.dataset_utils import valid_time_coordinate
 
 
@@ -18,13 +20,19 @@ def compute_diff_std(dataset: xr.Dataset, time_dim: str = "time", **kwargs) -> x
   # Also, Graphcast computes the increment between the present and next system state rescaled by diff_std.
   # This accounts to standardizing the targets. Whatever the rationale, one can reasonably approximate here the mean with zero.
   diff = dataset.diff(dim=time_dim)
-  diff_var= (diff * diff).mean(dim=time_dim, **kwargs)
+  diff_var = (diff * diff).mean(dim=time_dim, **kwargs)
   diff_std = xr.ufuncs.sqrt(diff_var)
   return diff_std
 
 
-def compute_climatology(dataset: xr.Dataset, time_dim: str = "time", climatology_dim: str = "dayofyear",
-                        calendar: Literal["365_day", "366_day", "360_day"] = "365_day", skipna=False, **kwargs) -> xr.Dataset:
+def compute_climatology(
+  dataset: xr.Dataset,
+  time_dim: str = "time",
+  climatology_dim: str = "dayofyear",
+  calendar: Literal["365_day", "366_day", "360_day"] = "365_day",
+  skipna=False,
+  **kwargs,
+) -> xr.Dataset:
   # The current implementation assumes that, among other things, the time coordinate is daily, contiguous and without
   # duplicates. Finally, that it contains a whole number of years. Incomplete years data is considered as missing.
   if not valid_time_coordinate(dataset, time_dim):
@@ -68,5 +76,11 @@ def compute_climatology(dataset: xr.Dataset, time_dim: str = "time", climatology
   avg = avg.chunk({climatology_dim: 1})
   return avg
 
+
 Stats = Literal["climatology", "mean", "std", "diff_std"]
-StatsRegistry = {'climatology': compute_climatology, 'mean': compute_mean, 'std': compute_std, 'diff_std': compute_diff_std}
+StatsRegistry = {
+  "climatology": compute_climatology,
+  "mean": compute_mean,
+  "std": compute_std,
+  "diff_std": compute_diff_std,
+}

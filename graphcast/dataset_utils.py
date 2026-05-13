@@ -15,10 +15,10 @@ import pathlib
 import tempfile
 import warnings
 from collections import OrderedDict
-from collections.abc import Iterable
+from collections.abc import Generator, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Dict, Sequence, Generator
+from typing import Any
 from zipfile import ZipFile
 
 import cdsapi
@@ -49,12 +49,12 @@ class DateInterval:
     end (datetime.datetime): The stop date of the interval.
     step (datetime.timedelta): The step size used when iterating over the interval.
   """
+
   start: datetime
   end: datetime
   step: timedelta = timedelta(days=1)
 
   def __iter__(self):
-
     def _date_iterator():
       current = self.start
       while current < self.end:
@@ -66,18 +66,19 @@ class DateInterval:
 
   def to_numpy(self) -> np.ndarray:
     """Convert the DateInterval to a numpy array of datetime64[ns].
-    
+
     Returns:
       np.ndarray: Array of datetime64[ns] values from start to end (inclusive) with the given step.
     """
     # Create a Pandas date range from start to end (inclusive) with the given step
     date_range = pd.date_range(start=self.start, end=self.end, freq=self.step)
-    
+
     # Convert to numpy array with datetime64[ns] dtype
-    return date_range.to_numpy(dtype='datetime64[ns]')
+    return date_range.to_numpy(dtype="datetime64[ns]")
 
   def __repr__(self):
     return f"[{self.start.isoformat()}, {self.end.isoformat()}]"
+
 
 # DateInterval`s include the extrema (as open_dataset in copernicusmarine do).
 # DateIntervalsRange uses Python convention (right open).
@@ -95,19 +96,23 @@ class DateIntervalsRange(Iterable):
     step (str | datetime.timedelta, optional): Size of the sub-intervals. Defaults to 1 week.
     delta (datetime.timedelta, optional): The step size used when iterating over the interval. Defaults to 1 day.
   """
-  def __init__(self,
-               start: datetime | str,
-               end: datetime | str,
-               step: timedelta | str | None = None,
-               delta: timedelta | str | None = None):
 
+  def __init__(
+    self,
+    start: datetime | str,
+    end: datetime | str,
+    step: timedelta | str | None = None,
+    delta: timedelta | str | None = None,
+  ):
     def may_parse_datetime(date: datetime | str) -> datetime:
       if isinstance(date, datetime):
         return date
       elif isinstance(date, str):
         return datetime.fromisoformat(date)
       else:
-        raise ValueError(f"Invalid date format: {date}. Must be a datetime or a string in ISO format.")
+        raise ValueError(
+          f"Invalid date format: {date}. Must be a datetime or a string in ISO format."
+        )
 
     def may_parse_timedelta(delta: timedelta | str) -> timedelta:
       if isinstance(delta, timedelta):
@@ -115,7 +120,9 @@ class DateIntervalsRange(Iterable):
       elif isinstance(delta, str):
         return pd.Timedelta(delta).to_pytimedelta()
       else:
-        raise ValueError(f"Invalid timedelta format: {delta}. Must be a timedelta or a string in ISO format.")
+        raise ValueError(
+          f"Invalid timedelta format: {delta}. Must be a timedelta or a string in ISO format."
+        )
 
     self.start = may_parse_datetime(start)
     self.end = may_parse_datetime(end)
@@ -133,9 +140,7 @@ class DateIntervalsRange(Iterable):
     return f"from {self.start.isoformat()} to {(self.last_valid_date).isoformat()} (included)"
 
   def __iter__(self):
-
-    def _date_iterator() -> Generator[DateInterval, Any, None]:
-
+    def _date_iterator() -> Generator[DateInterval, Any]:
       current = self.start
       next = min(current + self.step, self.end)
       while current < self.end:
@@ -152,13 +157,12 @@ class DateIntervalsRange(Iterable):
   def last_valid_date(self):
     return self.end - self.delta
 
-  def __len__(self ):
+  def __len__(self):
     return sum(1 for _ in self)
 
 
-class Provider():
-
-  def __init__(self, progress=True, log_level = 'info', client_logger=None):
+class Provider:
+  def __init__(self, progress=True, log_level="info", client_logger=None):
     """
     Initializes the Provider object.
 
@@ -171,7 +175,9 @@ class Provider():
     self.log_level = log_level
     self.client_logger = client_logger
 
-  def open_dataset(date_interval: DateInterval | None, dir=pathlib.Path | None, **kwargs) -> xr.Dataset:
+  def open_dataset(
+    date_interval: DateInterval | None, dir=pathlib.Path | None, **kwargs
+  ) -> xr.Dataset:
     """Provides a common interface, whether one is downloading from Copernicus Marine, Climate Data Store, etc.
     Depending on the particular implementation, it might download temporary files to `dir`
 
@@ -182,13 +188,12 @@ class Provider():
     """
     pass
 
+
 class CopernicusMarine(Provider):
-
   def __init__(self, *args, **kwargs):
-
     super().__init__(*args, **kwargs)
     # Avoid annoying copernicusmarine log handling
-    cm_logger = logging.getLogger('copernicus_marine_root_logger')
+    cm_logger = logging.getLogger("copernicus_marine_root_logger")
     for handler in cm_logger.handlers:
       cm_logger.removeHandler(handler)
     cm_logger.setLevel(level=getattr(logging, self.log_level.upper()))
@@ -196,7 +201,11 @@ class CopernicusMarine(Provider):
   def open_dataset(self, date_interval=None, dir=None, **kwargs):
     if date_interval is not None:
       # Note! Copernicus Marine Data Store uses Python convention (right open)
-      kwargs = {'start_datetime': date_interval.start, 'end_datetime': date_interval.end + date_interval.step, **kwargs}
+      kwargs = {
+        "start_datetime": date_interval.start,
+        "end_datetime": date_interval.end + date_interval.step,
+        **kwargs,
+      }
     ds = cm.open_dataset(**kwargs)
     return ds
 
@@ -205,7 +214,6 @@ class ClimateDataStore(Provider):
   """Support for cdsapi. ARCO-ERA5 (WeatherBench datasets) should be preferred."""
 
   def open_dataset(self, date_interval=None, dir=None, **kwargs):
-
     if date_interval is None:
       dataset_name, request = self._get_request()
       ds = self._process_request(dataset_name, request, dir, self.progress, self.client_logger)
@@ -217,13 +225,15 @@ class ClimateDataStore(Provider):
         ds = self._process_request(dataset_name, request, dir, self.progress, self.client_logger)
         # _process_request drops the time dimension if of length one
         if len(dates) == 1:
-          ds = ds.expand_dims(dim='time', axis=0)
+          ds = ds.expand_dims(dim="time", axis=0)
         datasets.append(ds)
       ds = xr.merge(datasets)
       if date_interval is not None:
-        if not np.array_equal(date_interval.to_numpy(), ds['time']):
-          warnings.warn(f"The requested date interval {date_interval!r} "
-                        f"is not matching the time coordinate {ds['time']!r}")
+        if not np.array_equal(date_interval.to_numpy(), ds["time"]):
+          warnings.warn(
+            f"The requested date interval {date_interval!r} "
+            f"is not matching the time coordinate {ds['time']!r}"
+          )
     return ds
 
   @staticmethod
@@ -250,7 +260,7 @@ class ClimateDataStore(Provider):
   def _get_request(self, dates=None, **kwargs):
     "Returns a request to the Climate Data Store using the provided dates."
     request = kwargs.copy()
-    dataset_name = request.pop('dataset')
+    dataset_name = request.pop("dataset")
     if dates is not None:
       request = {
         **request,
@@ -258,14 +268,15 @@ class ClimateDataStore(Provider):
         "hmonth": [f"{dates[0].month:02}"],
         "hday": [f"{date.day:02}" for date in dates],
         "data_format": "grib2",
-        "download_format": "zip"}
+        "download_format": "zip",
+      }
     return dataset_name, request
 
   def _process_request(self, dataset_name, request, dir, progress, client_logger):
     """Submit a request to the Climate Data Store, download some temporary NetCDFs, and returns a dataset.
     Temporary files are deleted on exit.
     """
-    file = tempfile.NamedTemporaryFile("w+", dir=dir, suffix='.zip', delete=False)
+    file = tempfile.NamedTemporaryFile("w+", dir=dir, suffix=".zip", delete=False)
     file.close()
 
     client = self.get_cdsapi_client(progress=progress, client_logger=client_logger)
@@ -277,9 +288,13 @@ class ClimateDataStore(Provider):
       with ZipFile(file.name) as zipfile:
         zipfile.extractall(path=path)
       # noinspection PyTypeChecker
-      ds = xr.open_mfdataset(path.glob('*'), engine='cfgrib', decode_timedelta=True)  # cdsapi download one NetCDF per variable :(
+      ds = xr.open_mfdataset(
+        path.glob("*"), engine="cfgrib", decode_timedelta=True
+      )  # cdsapi download one NetCDF per variable :(
       # ds = ds.rename(valid_time='time')
-      if extra_coords := [name for name in ds.coords if name not in ['latitude', 'longitude', 'time']]:
+      if extra_coords := [
+        name for name in ds.coords if name not in ["latitude", "longitude", "time"]
+      ]:
         ds = ds.drop_vars(extra_coords)
       # The dataset must be loaded in memory, since the temporary directory will be deleted with all the NetCDFs within it.
       # However, ds should be rather small. Hence, there should be no need to lazily load the dataset.
@@ -287,9 +302,7 @@ class ClimateDataStore(Provider):
     return ds
 
   # Credits to the amazing Stefano Piani from OGS
-  def get_cdsapi_client(
-      url: str | None = None, client_logger=None, **kwargs
-  ):
+  def get_cdsapi_client(url: str | None = None, client_logger=None, **kwargs):
     """Returns a cdsapi.Client instance.
 
     It also configures the returned client to use a specific logger (if
@@ -349,13 +362,11 @@ class ClimateDataStore(Provider):
 
 
 class GoogleCloudStorage(Provider):
-
   def open_dataset(self, date_interval=None, dir=None, **kwargs):
-
-    fs = gcs.GCSFileSystem(token='anon', access='read_only', consistency='md5')
-    store = fs.get_mapper(kwargs['url'])
+    fs = gcs.GCSFileSystem(token="anon", access="read_only", consistency="md5")
+    store = fs.get_mapper(kwargs["url"])
     ds = xr.open_zarr(store=store)
-    if (variables := kwargs.get('variables')) is not None:
+    if (variables := kwargs.get("variables")) is not None:
       if variables_not_found := [name for name in variables if name not in ds.data_vars]:
         logger.warning(f"{', '.join(variables_not_found)} variables not found")
       ds = ds.drop_vars(names=[name for name in ds.data_vars if name not in variables])
@@ -387,14 +398,14 @@ class URLProvider(Provider):
     Raises:
       ValueError: If 'url' is not provided in kwargs.
     """
-    if 'url' not in kwargs:
+    if "url" not in kwargs:
       raise ValueError("URL must be provided for URLProvider")
 
-    url = kwargs['url']
+    url = kwargs["url"]
     logger.info(f"Downloading NetCDF from URL: {url}")
 
     # Create a temporary file to download the NetCDF
-    with tempfile.NamedTemporaryFile(dir=dir, suffix='.nc', delete=False) as temp_file:
+    with tempfile.NamedTemporaryFile(dir=dir, suffix=".nc", delete=False) as temp_file:
       temp_path = temp_file.name
 
     try:
@@ -402,7 +413,7 @@ class URLProvider(Provider):
       response = requests.get(url, stream=True)
       response.raise_for_status()  # Raise an exception for HTTP errors
 
-      with open(temp_path, 'wb') as f:
+      with open(temp_path, "wb") as f:
         for chunk in response.iter_content(chunk_size=8192):
           f.write(chunk)
 
@@ -410,13 +421,13 @@ class URLProvider(Provider):
       ds = xr.open_dataset(temp_path)
 
       # Filter by variables if specified
-      if (variables := kwargs.get('variables')) is not None:
+      if (variables := kwargs.get("variables")) is not None:
         if variables_not_found := [name for name in variables if name not in ds.data_vars]:
           logger.warning(f"{', '.join(variables_not_found)} variables not found")
         ds = ds.drop_vars(names=[name for name in ds.data_vars if name not in variables])
 
       # Filter by date interval if specified
-      if date_interval is not None and 'time' in ds.dims:
+      if date_interval is not None and "time" in ds.dims:
         ds = ds.sel(time=slice(date_interval.start, date_interval.end))
 
       return ds
@@ -428,10 +439,10 @@ class URLProvider(Provider):
 
 
 ProvidersRegistry = {
-  'cds': ClimateDataStore,
-  'cm': CopernicusMarine,
-  'gcs': GoogleCloudStorage,
-  'url': URLProvider
+  "cds": ClimateDataStore,
+  "cm": CopernicusMarine,
+  "gcs": GoogleCloudStorage,
+  "url": URLProvider,
 }
 
 
@@ -462,7 +473,7 @@ class Process:
       for step in steps:
         # Copy to avoid mutating the arguments
         step = step.copy()
-        name = step.pop('name')
+        name = step.pop("name")
         self.configs[name] = step
     self.mask = mask
 
@@ -480,10 +491,14 @@ class Process:
       xr.Dataset: The processed dataset.
     """
 
-    if ('regrid' in self.configs) and ('interpolate' in self.configs):
-      logger.debug("Both 'regrid' and 'interpolate' are specified in the configuration. "
-                      "'regrid' will be applied first, followed by 'interpolate'.")
-    logger.info("Processing dataset with the following steps: " + ", ".join(self.configs.keys()) + ". ")
+    if ("regrid" in self.configs) and ("interpolate" in self.configs):
+      logger.debug(
+        "Both 'regrid' and 'interpolate' are specified in the configuration. "
+        "'regrid' will be applied first, followed by 'interpolate'."
+      )
+    logger.info(
+      "Processing dataset with the following steps: " + ", ".join(self.configs.keys()) + ". "
+    )
     for step in self.configs:
       conf = self.configs.get(step, {})
       logger.info(f"Applying {step} with configuration {conf}")
@@ -496,15 +511,20 @@ class Process:
     return ds
 
   def transpose(self, ds: xr.Dataset, dims: Sequence[str] | None = None, **kwargs):
-
     if dims is None:
-      warnings.warn('dims must be specified')
+      warnings.warn("dims must be specified")
     else:
       ds = ds.transpose(*dims, **kwargs)
     return ds
 
-  def regrid(self, ds: xr.Dataset, grid=None, latitude_dim='latitude', longitude_dim='longitude', **kwargs) \
-      -> xr.Dataset:
+  def regrid(
+    self,
+    ds: xr.Dataset,
+    grid=None,
+    latitude_dim="latitude",
+    longitude_dim="longitude",
+    **kwargs,
+  ) -> xr.Dataset:
     """
     Regrids the dataset to a new grid using xarray-regrid (default using nearest neighbor algorithm).
 
@@ -521,15 +541,21 @@ class Process:
     """
 
     if grid is None:
-      warnings.warn('Grid must be specified')
+      warnings.warn("Grid must be specified")
     else:
       new_grid = xarray_regrid.Grid(**grid)
-      target_dataset = new_grid.create_regridding_dataset(lat_name=latitude_dim, lon_name=longitude_dim)
-      method = kwargs.get('method', 'nearest')
-      target_dataset = target_dataset.assign_coords({latitude_dim: target_dataset[latitude_dim].astype(np.float32),
-                                                     longitude_dim: target_dataset[longitude_dim].astype(np.float32)})
-      regrid_conf = kwargs.get('kwargs', {})
-      if method == 'conservative':
+      target_dataset = new_grid.create_regridding_dataset(
+        lat_name=latitude_dim, lon_name=longitude_dim
+      )
+      method = kwargs.get("method", "nearest")
+      target_dataset = target_dataset.assign_coords(
+        {
+          latitude_dim: target_dataset[latitude_dim].astype(np.float32),
+          longitude_dim: target_dataset[longitude_dim].astype(np.float32),
+        }
+      )
+      regrid_conf = kwargs.get("kwargs", {})
+      if method == "conservative":
         regrid_conf |= dict(latitude_coord=latitude_dim)
       ds = getattr(ds.regrid, method)(target_dataset, **regrid_conf)
     return ds
@@ -551,31 +577,30 @@ class Process:
     """
 
     if reduce is None:
-      warnings.warn('Reduce method must be specified')
+      warnings.warn("Reduce method must be specified")
     else:
       ds_resample = ds.resample(**kwargs)
       ds = getattr(ds_resample, reduce)()
     return ds
 
   def rescale(self, ds: xr.Dataset, values=None) -> xr.Dataset:
-
     if values is None:
-      warnings.warn('Values must be specified')
+      warnings.warn("Values must be specified")
     else:
       for var, da in ds.data_vars.items():
         if var in values:
           ds[var] = values[var] * da
     return ds
 
-
   def rename_coordinates(self, ds: xr.Dataset, name_dict=None, set_new_coordinate=None):
-
     if name_dict is None:
-      warnings.warn('Name dictionary must be specified')
+      warnings.warn("Name dictionary must be specified")
     else:
-      name_dict = {old_name: new_name for old_name, new_name in name_dict.items() if old_name in ds.coords}
+      name_dict = {
+        old_name: new_name for old_name, new_name in name_dict.items() if old_name in ds.coords
+      }
       ds = ds.rename(name_dict=name_dict)
-      for (old_name, new_name) in name_dict.items():
+      for old_name, new_name in name_dict.items():
         if (set_new_coordinate is not None) and (new_name in set_new_coordinate):
           # Keep old coordinate values as a non-index coordinate (with new name)
           old_coordinate = ds.coords[new_name]
@@ -587,22 +612,19 @@ class Process:
     return ds
 
   def clip_negative(self, ds: xr.Dataset, variables: bool | Sequence[str] = True):
-
     for var, da in ds.data_vars.items():
       if variables is True or var in variables:
         ds[var] = da.clip(min=0.0)
     return ds
 
   def select_vars(self, ds: xr.Dataset, variables: Sequence[str] = None) -> xr.Dataset:
-
     if variables is None:
-      warnings.warn('Variables must be specified')
+      warnings.warn("Variables must be specified")
     else:
       ds = ds.drop_vars(names=[var for var in ds.data_vars if var not in variables])
     return ds
 
   def apply_mask(self, ds: xr.Dataset, fill_value: float = np.nan, **kwargs) -> xr.Dataset:
-
     for var, da in ds.data_vars.items():
       mask = self.mask.isel({dim: 0 for dim in self.mask.dims if dim not in da.dims}, drop=True)
       ds[var] = da.where(mask, fill_value, **kwargs)
@@ -610,7 +632,7 @@ class Process:
 
   def fill(self, ds: xr.Dataset, fill_value: float = 0.0, variables=None) -> xr.Dataset:
     if variables is None:
-      warnings.warn('Variables must be specified')
+      warnings.warn("Variables must be specified")
     else:
       for var, da in ds.data_vars.items():
         mask = self.mask.isel({dim: 0 for dim in self.mask.dims if dim not in da.dims}, drop=True)
@@ -619,66 +641,60 @@ class Process:
     return ds
 
   def gauss_fill(self, ds: xr.Dataset, variables=None, **kwargs) -> xr.Dataset:
-
     if variables is None:
-      warnings.warn('Variables must be specified')
+      warnings.warn("Variables must be specified")
     else:
       for var, da in ds.data_vars.items():
         if var in variables:
           mask = self.mask.isel({dim: 0 for dim in self.mask.dims if dim not in da.dims}, drop=True)
           # TODO: check that does as intended (why was I seeing less and less nans with increasing radius?)
-          ds[var] = da.map_blocks(gauss_filter_nan,
-                                  args=(mask,),
-                                  kwargs=kwargs,
-                                  template=da)
+          ds[var] = da.map_blocks(gauss_filter_nan, args=(mask,), kwargs=kwargs, template=da)
     return ds
 
   # FIXME: poor choice of the name, misleading. Rename it to `not_null_mask`, and revise toml configuration files accordingly
   def get_land_mask(self, ds: xr.Dataset, variable=None, mask_name=None) -> xr.Dataset:
-
     if variable is None:
-      warnings.warn('Variable must be specified')
+      warnings.warn("Variable must be specified")
     elif mask_name is None:
-      warnings.warn('Mask name must be specified')
+      warnings.warn("Mask name must be specified")
     else:
       ds[mask_name] = xr.where(ds[variable].notnull(), True, False)
     return ds
 
   def time_shift(self, ds: xr.Dataset, quantity=None) -> xr.Dataset:
-
     if quantity is None:
-      warnings.warn('Shift amount must be specified')
+      warnings.warn("Shift amount must be specified")
     else:
-      ds = ds.assign_coords(time = ds.time - pd.Timedelta(quantity))
+      ds = ds.assign_coords(time=ds.time - pd.Timedelta(quantity))
     return ds
 
   def flip(self, ds: xr.Dataset, dim=None) -> xr.Dataset:
-
     if dim is None:
-      warnings.warn('Dim must be specified')
+      warnings.warn("Dim must be specified")
     else:
       ds = ds.isel({dim: slice(None, None, -1)})
     return ds
 
   def interpolate_na(self, ds, **kwargs) -> xr.Dataset:
-
-    dim = kwargs.get('dim', 'time')
-    output_chunks = kwargs.pop('output_chunks', {})
+    dim = kwargs.get("dim", "time")
+    output_chunks = kwargs.pop("output_chunks", {})
     ds = ds.chunk({dim: -1})
     ds = ds.interpolate_na(**kwargs)
     ds = ds.chunk(**output_chunks)
     return ds
 
-  def interpolate(self,
-                  ds: xr.Dataset,
-                  minimum_latitude: float = -90.0,
-                  maximum_latitude: float = 90.0,
-                  minimum_longitude: float = -180.0,
-                  maximum_longitude: float = 179.0,
-                  resolution: float = 1.0,
-                  method: InterpOptions = 'linear',
-                  assume_sorted: bool = True,
-                  kwargs: Dict[str, Any] | None = None) -> xr.Dataset:
+  def interpolate(
+    self,
+    ds: xr.Dataset,
+    minimum_latitude: float = -90.0,
+    maximum_latitude: float = 90.0,
+    minimum_longitude: float = -180.0,
+    maximum_longitude: float = 179.0,
+    resolution: float = 1.0,
+    method: InterpOptions = "linear",
+    assume_sorted: bool = True,
+    kwargs: dict[str, Any] | None = None,
+  ) -> xr.Dataset:
     """
     Interpolates the dataset to a regular latitude/longitude grid.
 
@@ -698,23 +714,36 @@ class Process:
     """
 
     eps = np.finfo(ds.latitude.dtype).eps
-    latitude = np.arange(start=minimum_latitude, stop=maximum_latitude + eps, step=resolution, dtype=np.float32)
-    longitude = np.arange(start=minimum_longitude, stop=maximum_longitude, step=resolution, dtype=np.float32)
-    ds = ds.interp(latitude=latitude, longitude=longitude, method=method, assume_sorted=assume_sorted, kwargs=kwargs).astype(np.float32)
+    latitude = np.arange(
+      start=minimum_latitude, stop=maximum_latitude + eps, step=resolution, dtype=np.float32
+    )
+    longitude = np.arange(
+      start=minimum_longitude, stop=maximum_longitude, step=resolution, dtype=np.float32
+    )
+    ds = ds.interp(
+      latitude=latitude,
+      longitude=longitude,
+      method=method,
+      assume_sorted=assume_sorted,
+      kwargs=kwargs,
+    ).astype(np.float32)
     return ds
 
-  def get_sea_mask(self,
-                   ds: xr.Dataset,
-                   bathymetry='deptho',
-                   depth_coordinate='depth',
-                   depth_dim = 'depth',
-                   mask_name = 'sea_land_mask') -> xr.Dataset:
-
+  def get_sea_mask(
+    self,
+    ds: xr.Dataset,
+    bathymetry="deptho",
+    depth_coordinate="depth",
+    depth_dim="depth",
+    mask_name="sea_land_mask",
+  ) -> xr.Dataset:
     bathymetry_values = ds[bathymetry].values
     depth = ds[depth_coordinate].values
 
-    def get_mask(depth_map: np.ndarray, column_depths: np.ndarray, dtype='bool') -> np.ndarray:
-      cell_center_depths = np.insert(column_depths[:-1], 0, 0.0) + 0.5 * np.diff(column_depths, prepend=0.0)
+    def get_mask(depth_map: np.ndarray, column_depths: np.ndarray, dtype="bool") -> np.ndarray:
+      cell_center_depths = np.insert(column_depths[:-1], 0, 0.0) + 0.5 * np.diff(
+        column_depths, prepend=0.0
+      )
       mask = np.stack([depth_map >= d for d in cell_center_depths], axis=0)
       return mask.astype(dtype)
 
@@ -743,8 +772,8 @@ def gauss_filter_nan(data, mask, **kwargs):
   data = xr.where(data.isnull() & mask, data_u, data)
   return data
 
-def check_values(variables: None | Sequence[str] = None, mask: None | xr.DataArray = None):
 
+def check_values(variables: None | Sequence[str] = None, mask: None | xr.DataArray = None):
   def checker(block, dataset_info=None, block_info=None):
     try:
       if mask is not None:
@@ -754,8 +783,10 @@ def check_values(variables: None | Sequence[str] = None, mask: None | xr.DataArr
       else:
         nonvalid_values = block.isnull()
       if nonvalid_values.any():
-        warnings.warn(f"{nonvalid_values.sum().values} NaN values found "
-                      f"in dataset {dataset_info['dataset']} for variable {dataset_info['variable']}")
+        warnings.warn(
+          f"{nonvalid_values.sum().values} NaN values found "
+          f"in dataset {dataset_info['dataset']} for variable {dataset_info['variable']}"
+        )
     except UserWarning as w:
       # FIXME: block_info here is None, find a way to forward information about the location of the nans
       w.add_note(f"{block_info=}")
@@ -770,9 +801,10 @@ def check_values(variables: None | Sequence[str] = None, mask: None | xr.DataArr
       allowed_variables = variables or ds.data_vars
       for var, da in ds.data_vars.items():
         if var in allowed_variables:
-          checker_kwargs = {'dataset_info': {'dataset': pathlike, 'variable': var}}
+          checker_kwargs = {"dataset_info": {"dataset": pathlike, "variable": var}}
           ds[var] = da.map_blocks(checker, kwargs=checker_kwargs, template=da)
       return ds
+
     return decorated
 
   return decorator
@@ -783,72 +815,69 @@ def check_date_range(start_date: datetime, end_date: datetime):
   """
   Decorator to check that all dates in a dataset are within the specified range
   and that each day is included in the interval.
-  
+
   Args:
     start_date: Start date in YYYY-MM-DD format (required)
     end_date: End date in YYYY-MM-DD format (required)
   """
+
   def decorator(reader):
     @functools.wraps(reader)
     def decorated(pathlike: str | pathlib.Path, *args, **kwargs) -> xr.Dataset:
       ds = reader(pathlike, *args, **kwargs)
 
       logger.info("Checking for mismatching dates")
-      if 'time' in ds.dims:
-
-        # Convert datetime.datetime to pd.Timestamps
-        start_dt = pd.to_datetime(start_date)
-        end_dt = pd.to_datetime(end_date)
-
+      if "time" in ds.dims:
         # Check that each day is included in the interval
-        expected_dates = pd.date_range(start=start_date, end=end_date, freq='D')
+        expected_dates = pd.date_range(start=start_date, end=end_date, freq="D")
         dataset_dates = pd.to_datetime(ds.time.values)
-        
+
         # Find missing dates within the expected range
         missing_dates = []
         for expected_date in expected_dates:
           if expected_date not in dataset_dates:
             missing_dates.append(expected_date)
-        
+
         if missing_dates:
-          missing_str = [date.strftime('%Y-%m-%d') for date in missing_dates[:10]]  # Show first 10
+          missing_str = [date.strftime("%Y-%m-%d") for date in missing_dates[:10]]  # Show first 10
           if len(missing_dates) > 10:
             missing_str.append(f"... and {len(missing_dates) - 10} more")
-          warnings.warn(f"Dataset at {pathlike} is missing {len(missing_dates)} dates "
-                       f"from the expected interval [{start_date}, {end_date}]: {missing_str}")
-      
+          warnings.warn(
+            f"Dataset at {pathlike} is missing {len(missing_dates)} dates "
+            f"from the expected interval [{start_date}, {end_date}]: {missing_str}"
+          )
+
       return ds
-    
+
     return decorated
-  
+
   return decorator
 
 
 def check_coordinates(reader):
-
   @functools.wraps(reader)
   def decorated(pathlike: str | pathlib.Path, *args, **kwargs) -> xr.Dataset:
     ds = reader(pathlike, *args, **kwargs)
 
     logger.info("Checking for mismatching coordinates")
     # 1. Check that each dataset contains all the days between beginning and end
-    if 'time' in ds.dims:
-      time_range = pd.date_range(start=ds.time.min().item(), end=ds.time.max().item(), freq='D')
+    if "time" in ds.dims:
+      time_range = pd.date_range(start=ds.time.min().item(), end=ds.time.max().item(), freq="D")
       if not all(date in ds.time.values for date in time_range):
         missing_dates = [date for date in time_range if date not in ds.time.values]
         warnings.warn(f"Dataset at {pathlike} is missing dates: {missing_dates}")
 
     # 2. Check that each dataset uses the [0, 360) convention for longitude
-    if 'longitude' in ds.dims or 'lon' in ds.dims:
-      lon_dim = 'longitude' if 'longitude' in ds.dims else 'lon'
+    if "longitude" in ds.dims or "lon" in ds.dims:
+      lon_dim = "longitude" if "longitude" in ds.dims else "lon"
       if ds[lon_dim].min().item() < 0 or ds[lon_dim].max().item() >= 360:
         warnings.warn(f"Dataset at {pathlike} does not use the [0, 360) convention for longitude")
 
     # 3. Check that each dataset contains all latitudes in [-90, 90], and use the [-90, 90] convention
-    if 'latitude' in ds.dims or 'lat' in ds.dims:
-      lat_dim = 'latitude' if 'latitude' in ds.dims else 'lat'
+    if "latitude" in ds.dims or "lat" in ds.dims:
+      lat_dim = "latitude" if "latitude" in ds.dims else "lat"
       if ds[lat_dim].min().item() < -90 or ds[lat_dim].max().item() > 90:
-        warnings.warn(f"Dataset has latitudes outside the [-90, 90] range")
+        warnings.warn("Dataset has latitudes outside the [-90, 90] range")
       if ds[lat_dim][0].item() > ds[lat_dim][-1].item():
         warnings.warn(f"Dataset at {pathlike} does not use the [90, -90] convention for latitude")
 
@@ -881,12 +910,14 @@ def open_dataset_wo_static(path: pathlib.Path, time_dim: str = "time", chunks=No
     zip_files = sorted(p for p in path.glob("*.zip"))
     if zip_files:
       # noinspection PyTypeChecker
-      ds = xr.open_mfdataset([str(p) for p in zip_files],
-                             preprocess=lambda ds: _drop_static_vars(ds, time_dim),
-                             engine="zarr",
-                             combine="by_coords",
-                             inline_array=False,
-                             chunks=chunks)
+      ds = xr.open_mfdataset(
+        [str(p) for p in zip_files],
+        preprocess=lambda ds: _drop_static_vars(ds, time_dim),
+        engine="zarr",
+        combine="by_coords",
+        inline_array=False,
+        chunks=chunks,
+      )
       return ds
 
   ds = xr.open_dataset(str(path), engine="zarr", inline_array=False, chunks=chunks)
@@ -895,7 +926,9 @@ def open_dataset_wo_static(path: pathlib.Path, time_dim: str = "time", chunks=No
   return ds
 
 
-def open_mfdataset(paths: Sequence[str | pathlib.Path], time_dim: str = "time", chunks=None) -> xr.Dataset:
+def open_mfdataset(
+  paths: Sequence[str | pathlib.Path], time_dim: str = "time", chunks=None
+) -> xr.Dataset:
   """
   Open multiple zipped Zarr datasets and combine them as xarray.open_mfdataset would, with a
   specific behavior for static variables (those without the provided time dimension):
@@ -942,7 +975,8 @@ def open_mfdataset(paths: Sequence[str | pathlib.Path], time_dim: str = "time", 
           # Ensure equality (values and coordinates). Attributes are ignored.
           if not var.equals(static_vars[name]):
             raise ValueError(
-              f"Static variable '{name}' differs across inputs. All static variables must be identical.")
+              f"Static variable '{name}' differs across inputs. All static variables must be identical."
+            )
         else:
           static_vars[name] = var
 
@@ -980,25 +1014,31 @@ def open_mfdataset(paths: Sequence[str | pathlib.Path], time_dim: str = "time", 
   return ds_dynamic
 
 
-def save_to_zarr(dataset: xr.Dataset, output_path: pathlib.Path, overwrite=False, precompute=False, compressor_kwargs=None):
+def save_to_zarr(
+  dataset: xr.Dataset,
+  output_path: pathlib.Path,
+  overwrite=False,
+  precompute=False,
+  compressor_kwargs=None,
+):
   compressor_kwargs = compressor_kwargs or {}
 
   if precompute:
     dataset = dataset.compute()
 
   for var in dataset.data_vars:
-    if 'chunks' in dataset[var].encoding:
-      del dataset[var].encoding['chunks']
+    if "chunks" in dataset[var].encoding:
+      del dataset[var].encoding["chunks"]
 
   for var in dataset.data_vars:
-    dataset[var].encoding['compressor'] = Blosc(**compressor_kwargs)
+    dataset[var].encoding["compressor"] = Blosc(**compressor_kwargs)
 
   if output_path.exists() and not overwrite:
     raise ValueError(f"Output path {output_path} already exists")
 
   # Notice that parallel writes to Zarr using zip store are (apparently) not supported.
   logger.info(f"Saving dataset to {output_path} as Zarr")
-  dataset.to_zarr(output_path, compute=True, consolidated=True, mode='w')
+  dataset.to_zarr(output_path, compute=True, consolidated=True, mode="w")
 
 
 def valid_datetime_index(idx: pd.DatetimeIndex) -> bool:
@@ -1018,7 +1058,12 @@ def valid_datetime_index(idx: pd.DatetimeIndex) -> bool:
       # Report missing or irregular timestamps for easier debugging
       # Compute missing by comparing against the sorted unique expected sequence
       sorted_idx = idx.sort_values()
-      expected_full = pd.date_range(start=sorted_idx[0], end=sorted_idx[-1], freq="D", tz=getattr(sorted_idx, "tz", None))
+      expected_full = pd.date_range(
+        start=sorted_idx[0],
+        end=sorted_idx[-1],
+        freq="D",
+        tz=getattr(sorted_idx, "tz", None),
+      )
       missing = expected_full.difference(sorted_idx)
       preview = ", ".join(str(ts) for ts in missing[:5])
       more = "" if len(missing) <= 5 else f" and {len(missing) - 5} more"
@@ -1047,7 +1092,9 @@ def valid_cftime_index(idx: xr.CFTimeIndex) -> bool:
     if not idx.equals(expected):
       # Compute missing days between min and max dates for helpful diagnostics
       sorted_idx = idx.sort_values()
-      expected_full = xr.cftime_range(start=sorted_idx[0], end=sorted_idx[-1], freq="D", calendar=calendar)
+      expected_full = xr.cftime_range(
+        start=sorted_idx[0], end=sorted_idx[-1], freq="D", calendar=calendar
+      )
       missing = expected_full.difference(sorted_idx)
       preview = ", ".join(str(ts) for ts in missing[:5])
       more = "" if len(missing) <= 5 else f" and {len(missing) - 5} more"

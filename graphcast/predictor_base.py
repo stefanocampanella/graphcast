@@ -14,13 +14,11 @@
 """Abstract base classes for an xarray-based Predictor API."""
 
 import abc
-from typing import Tuple
 
 import jax.numpy as jnp
 import xarray
 
-from graphcast import losses
-from graphcast import xarray_jax
+from graphcast import losses, xarray_jax
 
 LossAndDiagnostics = losses.LossAndDiagnostics
 
@@ -42,12 +40,13 @@ class Predictor(abc.ABC):
   """
 
   @abc.abstractmethod
-  def __call__(self,
-               inputs: xarray.Dataset,
-               targets_template: xarray.Dataset,
-               forcings: xarray.Dataset,
-               **optional_kwargs
-               ) -> xarray.Dataset:
+  def __call__(
+    self,
+    inputs: xarray.Dataset,
+    targets_template: xarray.Dataset,
+    forcings: xarray.Dataset,
+    **optional_kwargs,
+  ) -> xarray.Dataset:
     """Makes predictions.
 
     This is only used by the Experiment for inference / evaluation, with
@@ -84,12 +83,13 @@ class Predictor(abc.ABC):
       an additional 'sample' dimension.
     """
 
-  def loss(self,
-           inputs: xarray.Dataset,
-           targets: xarray.Dataset,
-           forcings: xarray.Dataset,
-           **optional_kwargs,
-           ) -> LossAndDiagnostics:
+  def loss(
+    self,
+    inputs: xarray.Dataset,
+    targets: xarray.Dataset,
+    forcings: xarray.Dataset,
+    **optional_kwargs,
+  ) -> LossAndDiagnostics:
     """Computes a training loss, for predictors that are trainable.
 
     Why make this the Predictor's responsibility, rather than letting callers
@@ -126,17 +126,17 @@ class Predictor(abc.ABC):
         you.
     """
     del targets, forcings, optional_kwargs
-    batch_size = inputs.sizes['batch']
-    dummy_loss = xarray_jax.DataArray(jnp.zeros(batch_size), dims=('batch',))
+    batch_size = inputs.sizes["batch"]
+    dummy_loss = xarray_jax.DataArray(jnp.zeros(batch_size), dims=("batch",))
     return dummy_loss, {}  # pytype: disable=bad-return-type
 
   def loss_and_predictions(
-      self,
-      inputs: xarray.Dataset,
-      targets: xarray.Dataset,
-      forcings: xarray.Dataset,
-      **optional_kwargs,
-      ) -> Tuple[LossAndDiagnostics, xarray.Dataset]:
+    self,
+    inputs: xarray.Dataset,
+    targets: xarray.Dataset,
+    forcings: xarray.Dataset,
+    **optional_kwargs,
+  ) -> tuple[LossAndDiagnostics, xarray.Dataset]:
     """Like .loss but also returns corresponding predictions.
 
     Implementing this is optional as it's not used directly by the Experiment,

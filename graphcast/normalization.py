@@ -20,59 +20,62 @@ to the original domain.
 # TODO: fix implementation for sea ice variables, that have residual scales equal to zero on most of the domain.
 
 import logging
-from typing import Tuple, Iterable
+from collections.abc import Iterable
 
 import xarray
 
-from graphcast import predictor_base
-from graphcast import xarray_tree
+from graphcast import predictor_base, xarray_tree
 
 logger = logging.getLogger(__name__)
 
 
-def normalize(values: xarray.Dataset,
-              scales: xarray.Dataset,
-              locations: xarray.Dataset | None,
-              skip_names: Iterable[str] | None = None,
-              ) -> xarray.Dataset:
+def normalize(
+  values: xarray.Dataset,
+  scales: xarray.Dataset,
+  locations: xarray.Dataset | None,
+  skip_names: Iterable[str] | None = None,
+) -> xarray.Dataset:
   """Normalize variables using the given scales and (optionally) locations."""
   skip_names = skip_names or {}
+
   def normalize_array(array):
     if array.name is None:
-      raise ValueError(
-          "Can't look up normalization constants because array has no name.")
+      raise ValueError("Can't look up normalization constants because array has no name.")
     if locations is not None:
       if array.name in locations:
         array = array - locations[array.name].astype(array.dtype)
       elif array.name not in skip_names:
-        logging.warning('No normalization location found for %s', array.name)
+        logging.warning("No normalization location found for %s", array.name)
     if array.name in scales:
       array = array / scales[array.name].astype(array.dtype)
     elif array.name not in skip_names:
-      logging.warning('No normalization scale found for %s', array.name)
+      logging.warning("No normalization scale found for %s", array.name)
     return array
+
   return xarray_tree.map_structure(normalize_array, values)
 
 
-def unnormalize(values: xarray.Dataset,
-                scales: xarray.Dataset,
-                locations: xarray.Dataset | None,
-                ) -> xarray.Dataset:
+def unnormalize(
+  values: xarray.Dataset,
+  scales: xarray.Dataset,
+  locations: xarray.Dataset | None,
+) -> xarray.Dataset:
   """Unnormalize variables using the given scales and (optionally) locations."""
+
   def unnormalize_array(array):
     if array.name is None:
-      raise ValueError(
-          "Can't look up normalization constants because array has no name.")
+      raise ValueError("Can't look up normalization constants because array has no name.")
     if array.name in scales:
       array = array * scales[array.name].astype(array.dtype)
     else:
-      logging.warning('No normalization scale found for %s', array.name)
+      logging.warning("No normalization scale found for %s", array.name)
     if locations is not None:
       if array.name in locations:
         array = array + locations[array.name].astype(array.dtype)
       else:
-        logging.warning('No normalization location found for %s', array.name)
+        logging.warning("No normalization location found for %s", array.name)
     return array
+
   return xarray_tree.map_structure(unnormalize_array, values)
 
 
@@ -107,12 +110,13 @@ class InputsAndResiduals(predictor_base.Predictor):
   """
 
   def __init__(
-      self,
-      predictor: predictor_base.Predictor,
-      stddev_by_level: xarray.Dataset,
-      mean_by_level: xarray.Dataset,
-      diffs_stddev_by_level: xarray.Dataset | None = None,
-      skip_names: Iterable[str] | None = None):
+    self,
+    predictor: predictor_base.Predictor,
+    stddev_by_level: xarray.Dataset,
+    mean_by_level: xarray.Dataset,
+    diffs_stddev_by_level: xarray.Dataset | None = None,
+    skip_names: Iterable[str] | None = None,
+  ):
     self._predictor = predictor
     self._scales = stddev_by_level
     self._locations = mean_by_level
@@ -123,16 +127,15 @@ class InputsAndResiduals(predictor_base.Predictor):
     self._skip_names = skip_names
 
   def _unnormalize_prediction_and_add_input(self, inputs, norm_prediction):
-    if norm_prediction.sizes.get('time') != 1:
+    if norm_prediction.sizes.get("time") != 1:
       raise ValueError(
-          'normalization.InputsAndResiduals only supports predicting a '
-          'single timestep.')
+        "normalization.InputsAndResiduals only supports predicting a single timestep."
+      )
     if norm_prediction.name in inputs:
       # Residuals are assumed to be predicted as normalized (unit variance),
       # but the scale and location they need mapping to is that of the residuals
       # not of the values themselves.
-      prediction = unnormalize(
-          norm_prediction, self._residual_scales, self._residual_locations)
+      prediction = unnormalize(norm_prediction, self._residual_scales, self._residual_locations)
       # A prediction for which we have a corresponding input -- we are
       # predicting the residual:
       last_input = inputs[norm_prediction.name].isel(time=-1)
@@ -144,69 +147,77 @@ class InputsAndResiduals(predictor_base.Predictor):
       return unnormalize(norm_prediction, self._scales, self._locations)
 
   def _subtract_input_and_normalize_target(self, inputs, target):
-    if target.sizes.get('time') != 1:
+    if target.sizes.get("time") != 1:
       raise ValueError(
-          'normalization.InputsAndResiduals only supports wrapping predictors'
-          'that predict a single timestep.')
+        "normalization.InputsAndResiduals only supports wrapping predictors"
+        "that predict a single timestep."
+      )
     if target.name in inputs:
       target_residual = target
       last_input = inputs[target.name].isel(time=-1)
       target_residual = target_residual - last_input
-      return normalize(
-          target_residual, self._residual_scales, self._residual_locations)
+      return normalize(target_residual, self._residual_scales, self._residual_locations)
     else:
       return normalize(target, self._scales, self._locations)
 
-  def __call__(self,
-               inputs: xarray.Dataset,
-               targets_template: xarray.Dataset,
-               forcings: xarray.Dataset,
-               **kwargs
-               ) -> xarray.Dataset:
+  def __call__(
+    self,
+    inputs: xarray.Dataset,
+    targets_template: xarray.Dataset,
+    forcings: xarray.Dataset,
+    **kwargs,
+  ) -> xarray.Dataset:
     norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
     norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     norm_predictions = self._predictor(
-        inputs=norm_inputs, targets_template=targets_template, forcings=norm_forcings, **kwargs)
+      inputs=norm_inputs, targets_template=targets_template, forcings=norm_forcings, **kwargs
+    )
     if self._residual_locations is not None:
       return xarray_tree.map_structure(
-          lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
-          norm_predictions)
+        lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
+        norm_predictions,
+      )
     else:
       return unnormalize(norm_predictions, self._scales, self._locations)
 
-  def loss(self,
-           inputs: xarray.Dataset,
-           targets: xarray.Dataset,
-           forcings: xarray.Dataset,
-           **kwargs,
-           ) -> predictor_base.LossAndDiagnostics:
+  def loss(
+    self,
+    inputs: xarray.Dataset,
+    targets: xarray.Dataset,
+    forcings: xarray.Dataset,
+    **kwargs,
+  ) -> predictor_base.LossAndDiagnostics:
     """Returns the loss computed on normalized inputs and targets."""
-    loss_and_diagnostics, _ = self.loss_and_predictions(inputs=inputs, targets=targets, forcings=forcings, **kwargs)
+    loss_and_diagnostics, _ = self.loss_and_predictions(
+      inputs=inputs, targets=targets, forcings=forcings, **kwargs
+    )
     return loss_and_diagnostics
 
   def loss_and_predictions(  # pytype: disable=signature-mismatch  # jax-ndarray
-      self,
-      inputs: xarray.Dataset,
-      targets: xarray.Dataset,
-      forcings: xarray.Dataset,
-      **kwargs,
-      ) -> Tuple[predictor_base.LossAndDiagnostics,
-                 xarray.Dataset]:
+    self,
+    inputs: xarray.Dataset,
+    targets: xarray.Dataset,
+    forcings: xarray.Dataset,
+    **kwargs,
+  ) -> tuple[predictor_base.LossAndDiagnostics, xarray.Dataset]:
     """The loss computed on normalized data, with unnormalized predictions."""
     norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
     norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
     if self._residual_locations is not None:
       norm_target_residuals = xarray_tree.map_structure(
-          lambda t: self._subtract_input_and_normalize_target(inputs, t),
-          targets)
+        lambda t: self._subtract_input_and_normalize_target(inputs, t), targets
+      )
       (loss, scalars), norm_predictions = self._predictor.loss_and_predictions(
-          inputs=norm_inputs, targets=norm_target_residuals, forcings=norm_forcings, **kwargs)
+        inputs=norm_inputs, targets=norm_target_residuals, forcings=norm_forcings, **kwargs
+      )
       predictions = xarray_tree.map_structure(
-          lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
-          norm_predictions)
+        lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
+        norm_predictions,
+      )
     else:
       norm_targets = normalize(targets, self._scales, self._locations, skip_names=self._skip_names)
       (loss, scalars), norm_predictions = self._predictor.loss_and_predictions(
-          inputs=norm_inputs, targets=norm_targets, forcings=norm_forcings, **kwargs)
+        inputs=norm_inputs, targets=norm_targets, forcings=norm_forcings, **kwargs
+      )
       predictions = unnormalize(norm_predictions, self._scales, self._locations)
     return (loss, scalars), predictions

@@ -16,7 +16,7 @@
 import dataclasses
 import io
 import types
-from typing import Any, Optional, BinaryIO, TypeVar
+from typing import Any, BinaryIO, Optional, TypeVar
 
 import numpy as np
 
@@ -61,8 +61,7 @@ def _flatten(tree: Any) -> dict[str, Any]:
   """Flatten a tree of dicts/dataclasses/lists/tuples to a single dict."""
   if dataclasses.is_dataclass(tree):
     # Don't use dataclasses.asdict as it is recursive so skips dropping None.
-    tree = {f.name: v for f in dataclasses.fields(tree)
-            if (v := getattr(tree, f.name)) is not None}
+    tree = {f.name: v for f in dataclasses.fields(tree) if (v := getattr(tree, f.name)) is not None}
   elif isinstance(tree, (list, tuple)):
     tree = dict(enumerate(tree))
 
@@ -117,8 +116,7 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
       if isinstance(f.type, (types.UnionType, type(Optional[int]))):
         constructors = [t for t in f.type.__args__ if t is not types.NoneType]
         if len(constructors) != 1:
-          raise TypeError(
-              "Optional works, Union with anything except None doesn't")
+          raise TypeError("Optional works, Union with anything except None doesn't")
         if f.name not in value:
           kwargs[f.name] = None
           continue
@@ -137,34 +135,38 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
   if base_type is dict:
     assert len(typ.__args__) == 2
     key_type, value_type = typ.__args__
-    return {_convert_types(key_type, k): _convert_types(value_type, v)
-            for k, v in value.items()}
+    return {_convert_types(key_type, k): _convert_types(value_type, v) for k, v in value.items()}
 
   if base_type is list:
     assert len(typ.__args__) == 1
     value_type = typ.__args__[0]
-    return [_convert_types(value_type, v)
-            for _, v in sorted(value.items(), key=lambda x: int(x[0]))]
+    return [
+      _convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))
+    ]
 
   if base_type is tuple:
     if len(typ.__args__) == 2 and typ.__args__[1] == ...:
       # An arbitrary length tuple of a single type, eg: tuple[int, ...]
       value_type = typ.__args__[0]
-      return tuple(_convert_types(value_type, v)
-                   for _, v in sorted(value.items(), key=lambda x: int(x[0])))
+      return tuple(
+        _convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))
+      )
     else:
       # A fixed length tuple of arbitrary types, eg: tuple[int, str, float]
       assert len(typ.__args__) == len(value)
       return tuple(
-          _convert_types(t, v)
-          for t, (_, v) in zip(
-              typ.__args__, sorted(value.items(), key=lambda x: int(x[0]))))
+        _convert_types(t, v)
+        for t, (_, v) in zip(
+          typ.__args__, sorted(value.items(), key=lambda x: int(x[0])), strict=False
+        )
+      )
 
   # This is probably unreachable with reasonable serializable inputs.
   try:
     return typ(value)
   except TypeError as e:
     raise TypeError(
-        "_convert_types expects the type argument to be a dataclass defined "
-        "with types that are valid constructors (eg tuple is fine, Tuple "
-        "isn't), and accept a numpy array as the sole argument.") from e
+      "_convert_types expects the type argument to be a dataclass defined "
+      "with types that are valid constructors (eg tuple is fine, Tuple "
+      "isn't), and accept a numpy array as the sole argument."
+    ) from e

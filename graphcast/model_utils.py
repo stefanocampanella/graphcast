@@ -15,8 +15,8 @@
 https://arxiv.org/pdf/2106.02795 and https://arxiv.org/abs/2006.10739."""
 
 import dataclasses
-from typing import Any, Mapping, Tuple
-from typing import Callable
+from collections.abc import Callable, Mapping
+from typing import Any
 
 import haiku as hk
 import jax
@@ -26,23 +26,26 @@ import pyproj
 import xarray
 from jax.ad_checkpoint import checkpoint_name
 
-from graphcast.gis_utils import get_transform, equirectangular_srs, cartesian_unit_sphere_srs
+from graphcast.gis_utils import cartesian_unit_sphere_srs, equirectangular_srs, get_transform
 
 NumpyInterface = Any
 TransformInterface = Any
 
 
 def get_graph_spatial_features(
-    *, node_lon: np.ndarray, node_lat: np.ndarray,
-    senders: np.ndarray, receivers: np.ndarray,
-    add_node_position: bool,
-    add_node_coordinates: bool,
-    add_edge_fwd_azimuth: bool,
-    add_edge_direction: bool,
-    add_edge_length: bool,
-    add_edge_receiver_coordinates: bool,
-    edge_normalization: Tuple[float, float] | None = None,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+  *,
+  node_lon: np.ndarray,
+  node_lat: np.ndarray,
+  senders: np.ndarray,
+  receivers: np.ndarray,
+  add_node_position: bool,
+  add_node_coordinates: bool,
+  add_edge_fwd_azimuth: bool,
+  add_edge_direction: bool,
+  add_edge_length: bool,
+  add_edge_receiver_coordinates: bool,
+  edge_normalization: tuple[float, float] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
   Args:
@@ -94,8 +97,9 @@ def get_graph_spatial_features(
   edge_features = []
 
   geoid = pyproj.Geod(ellps="WGS84")
-  edge_azimuths, _, edge_lengths = geoid.inv(node_lon[senders], node_lat[senders],
-                                             node_lon[receivers], node_lat[receivers])
+  edge_azimuths, _, edge_lengths = geoid.inv(
+    node_lon[senders], node_lat[senders], node_lon[receivers], node_lat[receivers]
+  )
   edge_azimuths = np.rad2deg(edge_azimuths)
   if edge_normalization is None:
     # Normalize to the maximum edge length.
@@ -127,8 +131,7 @@ def get_graph_spatial_features(
   return node_features, edge_features
 
 
-def lat_lon_to_leading_axes(
-    grid_xarray: xarray.DataArray) -> xarray.DataArray:
+def lat_lon_to_leading_axes(grid_xarray: xarray.DataArray) -> xarray.DataArray:
   """Reorders xarray so lat/lon axes come first."""
   # leading + ["lat", "lon"] + trailing
   # to
@@ -152,31 +155,32 @@ def restore_leading_axes(grid_xarray: xarray.DataArray) -> xarray.DataArray:
   return grid_xarray.transpose(*output_dims)
 
 
-def lat_lon_deg_to_spherical(node_lon: np.ndarray,
-                             node_lat: np.ndarray,
-                             np_: NumpyInterface = np,
-                            ) -> Tuple[np.ndarray, np.ndarray]:
+def lat_lon_deg_to_spherical(
+  node_lon: np.ndarray,
+  node_lat: np.ndarray,
+  np_: NumpyInterface = np,
+) -> tuple[np.ndarray, np.ndarray]:
   phi = np_.deg2rad(node_lon)
   theta = np_.deg2rad(90 - node_lat)
   return phi, theta
 
 
 def get_bipartite_graph_spatial_features(
-    *,
-    senders_node_lon: np.ndarray,
-    senders_node_lat: np.ndarray,
-    senders: np.ndarray,
-    receivers_node_lon: np.ndarray,
-    receivers_node_lat: np.ndarray,
-    receivers: np.ndarray,
-    add_node_position: bool,
-    add_node_coordinates: bool,
-    add_edge_fwd_azimuth: bool,
-    add_edge_direction: bool,
-    add_edge_length: bool,
-    add_edge_receiver_coordinates: bool,
-    edge_normalization: Tuple[float, float] | None = None,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+  *,
+  senders_node_lon: np.ndarray,
+  senders_node_lat: np.ndarray,
+  senders: np.ndarray,
+  receivers_node_lon: np.ndarray,
+  receivers_node_lat: np.ndarray,
+  receivers: np.ndarray,
+  add_node_position: bool,
+  add_node_coordinates: bool,
+  add_edge_fwd_azimuth: bool,
+  add_edge_direction: bool,
+  add_edge_length: bool,
+  add_edge_receiver_coordinates: bool,
+  edge_normalization: tuple[float, float] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
   This function is almost identical to `get_graph_spatial_features`. The only
@@ -218,9 +222,11 @@ def get_bipartite_graph_spatial_features(
   dtype = senders_node_lat.dtype
   assert receivers_node_lat.dtype == dtype
   senders_node_phi, senders_node_theta = lat_lon_deg_to_spherical(
-      senders_node_lat, senders_node_lon)
+    senders_node_lat, senders_node_lon
+  )
   receivers_node_phi, receivers_node_theta = lat_lon_deg_to_spherical(
-      receivers_node_lat, receivers_node_lon)
+    receivers_node_lat, receivers_node_lon
+  )
 
   # Computing some node features.
   senders_node_features = []
@@ -229,10 +235,8 @@ def get_bipartite_graph_spatial_features(
   if add_node_position:
     # Already in [-1, 1.] range.
     latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
-    senders_node_features.extend(
-        latlon_to_unit_sphere((senders_node_lon, senders_node_lat)))
-    receivers_node_features.extend(
-        latlon_to_unit_sphere((receivers_node_lon, receivers_node_lat)))
+    senders_node_features.extend(latlon_to_unit_sphere((senders_node_lon, senders_node_lat)))
+    receivers_node_features.extend(latlon_to_unit_sphere((receivers_node_lon, receivers_node_lat)))
 
   if add_node_coordinates:
     # Normalize in [-1, 1.] range.
@@ -252,8 +256,12 @@ def get_bipartite_graph_spatial_features(
   edge_features = []
 
   geoid = pyproj.Geod(ellps="WGS84")
-  edge_azimuths, _, edge_lengths = geoid.inv(senders_node_lon[senders], senders_node_lat[senders],
-                                             receivers_node_lon[receivers], receivers_node_lat[receivers])
+  edge_azimuths, _, edge_lengths = geoid.inv(
+    senders_node_lon[senders],
+    senders_node_lat[senders],
+    receivers_node_lon[receivers],
+    receivers_node_lat[receivers],
+  )
   edge_azimuths = np.rad2deg(edge_azimuths)
   if edge_normalization is None:
     # Normalize to the maximum edge length.
@@ -272,7 +280,9 @@ def get_bipartite_graph_spatial_features(
 
   # TODO: this should probably be deprecated
   if add_edge_receiver_coordinates:
-    edge_phi, edge_theta = lat_lon_deg_to_spherical(receivers_node_lon[receivers], receivers_node_lat[receivers])
+    edge_phi, edge_theta = lat_lon_deg_to_spherical(
+      receivers_node_lon[receivers], receivers_node_lat[receivers]
+    )
     edge_features.append(edge_phi / (2 * np.pi))
     edge_features.append(edge_theta / (2 * np.pi))
 
@@ -285,10 +295,10 @@ def get_bipartite_graph_spatial_features(
 
 
 def variable_to_stacked(
-    variable: xarray.Variable,
-    sizes: Mapping[str, int],
-    preserved_dims: Tuple[str, ...] = ("batch", "lat", "lon"),
-    ) -> xarray.Variable:
+  variable: xarray.Variable,
+  sizes: Mapping[str, int],
+  preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
+) -> xarray.Variable:
   """Converts an xarray.Variable to preserved_dims + ("channels",).
 
   Any dimensions other than those included in preserved_dims get stacked into a
@@ -307,8 +317,7 @@ def variable_to_stacked(
   Returns:
     An xarray.Variable with dimensions preserved_dims + ("channels",).
   """
-  stack_to_channels_dims = [
-      d for d in variable.dims if d not in preserved_dims]
+  stack_to_channels_dims = [d for d in variable.dims if d not in preserved_dims]
   if stack_to_channels_dims:
     variable = variable.stack(channels=stack_to_channels_dims)
   dims = {dim: variable.sizes.get(dim) or sizes[dim] for dim in preserved_dims}
@@ -317,9 +326,9 @@ def variable_to_stacked(
 
 
 def dataset_to_stacked(
-    dataset: xarray.Dataset,
-    sizes: Mapping[str, int] | None = None,
-    preserved_dims: Tuple[str, ...] = ("batch", "lat", "lon"),
+  dataset: xarray.Dataset,
+  sizes: Mapping[str, int] | None = None,
+  preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
 ) -> xarray.DataArray:
   """Converts an xarray.Dataset to a single stacked array.
 
@@ -339,24 +348,18 @@ def dataset_to_stacked(
     there will be no coordinates for "channels".
   """
   data_vars = [
-      variable_to_stacked(dataset.variables[name], sizes or dataset.sizes,
-                          preserved_dims)
-      for name in sorted(dataset.data_vars.keys())
+    variable_to_stacked(dataset.variables[name], sizes or dataset.sizes, preserved_dims)
+    for name in sorted(dataset.data_vars.keys())
   ]
-  coords = {
-      dim: coord
-      for dim, coord in dataset.coords.items()
-      if dim in preserved_dims
-  }
-  return xarray.DataArray(
-      data=xarray.Variable.concat(data_vars, dim="channels"), coords=coords)
+  coords = {dim: coord for dim, coord in dataset.coords.items() if dim in preserved_dims}
+  return xarray.DataArray(data=xarray.Variable.concat(data_vars, dim="channels"), coords=coords)
 
 
 def stacked_to_dataset(
-    stacked_array: xarray.Variable,
-    template_dataset: xarray.Dataset,
-    preserved_dims: Tuple[str, ...] = ("batch", "lat", "lon"),
-    ) -> xarray.Dataset:
+  stacked_array: xarray.Variable,
+  template_dataset: xarray.Dataset,
+  preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
+) -> xarray.Dataset:
   """The inverse of dataset_to_stacked.
 
   Requires a template dataset to demonstrate the variables/shapes/coordinates
@@ -384,21 +387,25 @@ def stacked_to_dataset(
     template_var = template_dataset[name]
     if not all(dim in template_var.dims for dim in preserved_dims):
       raise ValueError(
-          f"stacked_to_dataset requires all Variables to have {preserved_dims} "
-          f"dimensions, but found only {template_var.dims}.")
+        f"stacked_to_dataset requires all Variables to have {preserved_dims} "
+        f"dimensions, but found only {template_var.dims}."
+      )
     unstack_from_channels_sizes[name] = {
-        dim: size for dim, size in template_var.sizes.items()
-        if dim not in preserved_dims}
+      dim: size for dim, size in template_var.sizes.items() if dim not in preserved_dims
+    }
 
-  channels = {name: np.prod(list(unstack_sizes.values()), dtype=np.int64)
-              for name, unstack_sizes in unstack_from_channels_sizes.items()}
+  channels = {
+    name: np.prod(list(unstack_sizes.values()), dtype=np.int64)
+    for name, unstack_sizes in unstack_from_channels_sizes.items()
+  }
   total_expected_channels = sum(channels.values())
   found_channels = stacked_array.sizes["channels"]
   if total_expected_channels != found_channels:
     raise ValueError(
-        f"Expected {total_expected_channels} channels but found "
-        f"{found_channels}, when trying to convert a stacked array of shape "
-        f"{stacked_array.sizes} to a dataset of shape {template_dataset}.")
+      f"Expected {total_expected_channels} channels but found "
+      f"{found_channels}, when trying to convert a stacked array of shape "
+      f"{stacked_array.sizes} to a dataset of shape {template_dataset}."
+    )
 
   data_vars = {}
   index = 0
@@ -409,12 +416,12 @@ def stacked_to_dataset(
     var = var.unstack({"channels": unstack_from_channels_sizes[name]})
     var = var.transpose(*template_var.dims)
     data_vars[name] = xarray.DataArray(
-        data=var,
-        coords=template_var.coords,
-        # This might not always be the same as the name it's keyed under; it
-        # will refer to the original variable name, whereas the key might be
-        # some alias e.g. temperature_850 under which it should be logged:
-        name=template_var.name,
+      data=var,
+      coords=template_var.coords,
+      # This might not always be the same as the name it's keyed under; it
+      # will refer to the original variable name, whereas the key might be
+      # some alias e.g. temperature_850 under which it should be logged:
+      name=template_var.name,
     )
   return type(template_dataset)(data_vars)  # pytype:disable=not-callable,wrong-arg-count
 
@@ -423,13 +430,14 @@ def stacked_to_dataset(
 class FourierFeatures(hk.Module):
   """A simple MLP applied to Fourier features of values. see: https://arxiv.org/abs/2006.10739.
 
-    Args:
-      num_frequencies: Number of frequencies to use.
-      encoding_dim: Encoding dimension, i.e., output dimension of the MLP.
-      mlp_hidden_dim: Hidden dimension of the MLP.
-      gamma: Scaling factor for the variance of the frequency random matrix elements, default is 1.0.
-      name: Name of the module.
-    """
+  Args:
+    num_frequencies: Number of frequencies to use.
+    encoding_dim: Encoding dimension, i.e., output dimension of the MLP.
+    mlp_hidden_dim: Hidden dimension of the MLP.
+    gamma: Scaling factor for the variance of the frequency random matrix elements, default is 1.0.
+    name: Name of the module.
+  """
+
   num_frequencies: int
   encoding_dim: int
   mlp_hidden_dim: int
@@ -440,9 +448,12 @@ class FourierFeatures(hk.Module):
     super().__post_init__(name=self.name)
 
   def __call__(self, values: jnp.ndarray) -> jnp.ndarray:
-    frequencies = hk.get_parameter("frequencies", shape=(values.shape[-1], self.num_frequencies),
-                                   dtype=values.dtype,
-                                   init=hk.initializers.RandomNormal(stddev=self.gamma ** -2))
+    frequencies = hk.get_parameter(
+      "frequencies",
+      shape=(values.shape[-1], self.num_frequencies),
+      dtype=values.dtype,
+      init=hk.initializers.RandomNormal(stddev=self.gamma**-2),
+    )
     # The following initialization (and comment) is taken from GenCast, quote:
     #   "Scale of 2 is appropriate for input layer as sin/cos fourier features
     #   have variance 0.5 for random inputs. Also, reasonable to use for later
@@ -450,8 +461,12 @@ class FourierFeatures(hk.Module):
     #   layers and gelu something close enough too."
     input_shape = values.shape
     w_init = hk.initializers.VarianceScaling(2.0, mode="fan_in", distribution="uniform")
-    mlp = hk.nets.MLP(output_sizes=(self.mlp_hidden_dim, self.encoding_dim), w_init=w_init, activation=jax.nn.gelu,
-                      activate_final=False)
+    mlp = hk.nets.MLP(
+      output_sizes=(self.mlp_hidden_dim, self.encoding_dim),
+      w_init=w_init,
+      activation=jax.nn.gelu,
+      activate_final=False,
+    )
     # Keep only last dimensions
     values = values.reshape(-1, input_shape[-1])
     features = mlp(self.fourier_features_fn(values, frequencies))
@@ -460,18 +475,17 @@ class FourierFeatures(hk.Module):
 
     return features
 
-  def fourier_features_fn(
-      self,
-      values: jnp.ndarray,
-      frequencies: jnp.ndarray) -> jnp.ndarray:
-    values = 2 * np.pi * values @  frequencies
-    return jnp.concatenate([jnp.cos(values), jnp.sin(values)], axis=-1) / jnp.sqrt(self.num_frequencies)
+  def fourier_features_fn(self, values: jnp.ndarray, frequencies: jnp.ndarray) -> jnp.ndarray:
+    values = 2 * np.pi * values @ frequencies
+    return jnp.concatenate([jnp.cos(values), jnp.sin(values)], axis=-1) / jnp.sqrt(
+      self.num_frequencies
+    )
 
 
 # TODO: disabling learnable fourier features has not been tested, the following might be broken
 def fourier_features(
-    values: jnp.ndarray,
-    num_frequencies: int,
+  values: jnp.ndarray,
+  num_frequencies: int,
 ) -> jnp.ndarray:
   """Maps values to sin/cos features for a range of frequencies.
 
@@ -513,11 +527,20 @@ class PositionalEncoder(hk.Module):
   def __call__(self, node_coordinates: jnp.ndarray) -> jnp.ndarray:
     if self.learnable_fourier_features:
       if self.encoding_dim is None or self.mlp_hidden_dim is None:
-        raise ValueError("When using learnable features, encoding_dim and hidden_dim must be specified.")
-      positional_encoder = FourierFeatures(self.num_frequencies, self.encoding_dim, self.mlp_hidden_dim,
-                                           self.gamma, name=self.name + "_fourier_features")
+        raise ValueError(
+          "When using learnable features, encoding_dim and hidden_dim must be specified."
+        )
+      positional_encoder = FourierFeatures(
+        self.num_frequencies,
+        self.encoding_dim,
+        self.mlp_hidden_dim,
+        self.gamma,
+        name=self.name + "_fourier_features",
+      )
       if self.remat:
-        positional_encoder = hk.remat(positional_encoder, policy=self.policy, prevent_cse=self.prevent_cse)
+        positional_encoder = hk.remat(
+          positional_encoder, policy=self.policy, prevent_cse=self.prevent_cse
+        )
       codes = positional_encoder(node_coordinates)
     else:
       codes = fourier_features(node_coordinates, self.num_frequencies)
@@ -543,10 +566,11 @@ class Embedder(hk.Module):
   def __call__(self, input_features: jnp.ndarray) -> jnp.ndarray:
     network = hk.nets.MLP(
       [self.mlp_hidden_dim] * self.mlp_num_hidden_layers + [self.output_dim],
-      name=self.name + "_mlp")
+      name=self.name + "_mlp",
+    )
     layer_norm = hk.LayerNorm(
-      axis=-1, create_scale=True, create_offset=True,
-      name=self.name + "_layer_norm")
+      axis=-1, create_scale=True, create_offset=True, name=self.name + "_layer_norm"
+    )
     network = hk.Sequential([network, layer_norm])
     if self.remat:
       network = hk.remat(network, policy=self.policy, prevent_cse=self.prevent_cse)
