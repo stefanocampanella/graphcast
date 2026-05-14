@@ -155,9 +155,9 @@ line-ending = "lf"
 
 [tool.ty.environment]
 python-version = "3.13"
+root = ["."]
 
 [tool.ty.src]
-root = "."
 include = ["graphcast/**/*.py"]
 respect-ignore-files = true
 
