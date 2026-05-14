@@ -11,10 +11,10 @@ class Mask(predictor_base.Predictor):
     self,
     predictor: predictor_base.Predictor,
     mask: xr.DataArray,
-    value: np.floating | float = np.float32(0.0),
+    value: np.floating | float = 0.0,
   ):
     self._predictor = predictor
-    self._value = value
+    self._value = np.float32(value)
     self._mask = mask
 
   def __call__(

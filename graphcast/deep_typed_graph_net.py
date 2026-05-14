@@ -291,7 +291,7 @@ class DeepTypedGraphNet(hk.Module):
     self._processor_networks = []
     for step_i in range(self._num_message_passing_steps):
 
-      def _processor_network(graph):
+      def _processor_network(graph, step_i=step_i):
         graph = typed_graph_net.InteractionNetwork(
           update_edge_fn=_build_update_fns_for_edge_types(
             build_mlp_with_maybe_layer_norm,
@@ -380,7 +380,7 @@ class DeepTypedGraphNet(hk.Module):
     if hk.running_init():
       # When running init there's no need to remat and checkpoint.
       latent_graph = latent_graph_0
-      for unused_repetition_i in range(self._num_processor_repetitions):
+      for _unused_repetition_i in range(self._num_processor_repetitions):
         for processor_network in self._processor_networks:
           latent_graph = self._process_step(processor_network, latent_graph)
     else:
@@ -407,7 +407,7 @@ class DeepTypedGraphNet(hk.Module):
         )
       else:
         latent_graph = latent_graph_0
-        for unused_repetition_i in range(self._num_processor_repetitions):
+        for _unused_repetition_i in range(self._num_processor_repetitions):
           for processor_network in self._processor_networks:
             latent_graph = self._process_step(processor_network, latent_graph)
         latent_graph = latent_graph_0

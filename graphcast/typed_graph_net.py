@@ -159,8 +159,9 @@ def _node_update(graph, node_fn, node_set_key, aggregation_fn):  # pylint: disab
       assert isinstance(edge_set.indices, typed_graph.EdgesIndices)
       senders = edge_set.indices.senders
       sent_features[edge_set_key.name] = tree.tree_map(
-        lambda e: aggregation_fn(e, senders, sum_n_node), edge_set.features
-      )  # pylint: disable=cell-var-from-loop
+        lambda e: aggregation_fn(e, senders, sum_n_node),
+        edge_set.features,  # noqa: B023
+      )
 
   received_features = {}
   for edge_set_key, edge_set in graph.edges.items():
@@ -169,8 +170,9 @@ def _node_update(graph, node_fn, node_set_key, aggregation_fn):  # pylint: disab
       assert isinstance(edge_set.indices, typed_graph.EdgesIndices)
       receivers = edge_set.indices.receivers
       received_features[edge_set_key.name] = tree.tree_map(
-        lambda e: aggregation_fn(e, receivers, sum_n_node), edge_set.features
-      )  # pylint: disable=cell-var-from-loop
+        lambda e: aggregation_fn(e, receivers, sum_n_node),
+        edge_set.features,  # noqa: B023
+      )
 
   n_node = node_set.n_node
   global_features = tree.tree_map(
@@ -192,7 +194,7 @@ def _global_update(graph, global_fn, edge_aggregation_fn, node_aggregation_fn): 
     sum_n_edge = edge_set.indices.senders.shape[0]
     edge_gr_idx = jnp.repeat(graph_idx, edge_set.n_edge, axis=0, total_repeat_length=sum_n_edge)
     edge_features[edge_set_key.name] = tree.tree_map(
-      lambda e: edge_aggregation_fn(e, edge_gr_idx, n_graph),  # pylint: disable=cell-var-from-loop
+      lambda e: edge_aggregation_fn(e, edge_gr_idx, n_graph),  # noqa: B023
       edge_set.features,
     )
 
@@ -201,7 +203,7 @@ def _global_update(graph, global_fn, edge_aggregation_fn, node_aggregation_fn): 
     sum_n_node = tree.tree_leaves(node_set.features)[0].shape[0]
     node_gr_idx = jnp.repeat(graph_idx, node_set.n_node, axis=0, total_repeat_length=sum_n_node)
     node_features[node_set_key] = tree.tree_map(
-      lambda n: node_aggregation_fn(n, node_gr_idx, n_graph),  # pylint: disable=cell-var-from-loop
+      lambda n: node_aggregation_fn(n, node_gr_idx, n_graph),  # noqa: B023
       node_set.features,
     )
 

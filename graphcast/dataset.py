@@ -186,8 +186,8 @@ def download(
     for date_interval in date_intervals:
 
       def _download_step(**kwargs):
-        if date_interval is not None:
-          logger.info(f"Processing step {date_interval}")
+        if date_interval is not None:  # noqa: B023
+          logger.info(f"Processing step {date_interval}")  # noqa: B023
         # When downloading from Copernicus Marine Data Store or Climate Data Store, the typical case is a large dataset,
         # spanning a long time period, with several sets of variables in different datasets (bio, phys, etc.),
         # which needs to be downloaded one piece at a time. Hence, `datasets` array values in the TOML configuration file
@@ -197,7 +197,7 @@ def download(
           fragment_datasets = []
           for ds_conf in configs["datasets"]:
             logger.info(f"Downloading dataset: {ds_conf}")
-            ds = provider.open_dataset(date_interval, tempdir, **ds_conf)
+            ds = provider.open_dataset(date_interval, tempdir, **ds_conf)  # noqa: B023
             fragment_datasets.append(ds)
           fragment = xr.merge(fragment_datasets, join="exact")
           fragment = postprocess(fragment)
@@ -400,13 +400,13 @@ def merge(
   for dataset_conf in configs.get("datasets", []):
     if mask_conf := dataset_conf.get("mask"):
       postprocess_mask_conf = mask_conf.get("postprocess")
-      mask_var = mask_conf["variable"]
+      mask_var: str = mask_conf["variable"]
 
       @check_coordinates
       @check_values(variables=[mask_var])
       def mask_reader(path, **kwargs):
         ds = reader(path, **kwargs)
-        postprocess = Process(steps=postprocess_mask_conf)
+        postprocess = Process(steps=postprocess_mask_conf)  # noqa: B023
         ds = postprocess(ds)
         return ds
 
@@ -424,10 +424,10 @@ def merge(
     def dataset_reader(path, **kwargs):
       # FIXME: we should have really done most of processing at download time...
       ds = reader(path, **kwargs)
-      postprocess = Process(steps=postprocess_confs, mask=mask_da)
+      postprocess = Process(steps=postprocess_confs, mask=mask_da)  # noqa: B023
       ds = postprocess(ds)
-      if mask_ds is not None:
-        ds = xr.merge([ds, mask_ds])
+      if mask_ds is not None:  # noqa: B023
+        ds = xr.merge([ds, mask_ds])  # noqa: B023
       return ds
 
     (

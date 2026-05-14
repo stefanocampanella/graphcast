@@ -91,9 +91,9 @@ def check_workers(client: Client, timeout: float) -> None:
   t0 = time.time()
   try:
     client.wait_for_workers(n_workers, timeout=timeout)
-  except DaskTimeoutError:
+  except DaskTimeoutError as err:
     n = len(client.scheduler_info().get("workers", {}))
-    raise RuntimeError(f"Timed out waiting for {n_workers} workers (have {n}).")
+    raise RuntimeError(f"Timed out waiting for {n_workers} workers (have {n}).") from err
   dt = time.time() - t0
 
   # Basic per-worker sanity: nthreads>=1

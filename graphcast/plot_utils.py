@@ -94,7 +94,7 @@ def plot_data(
       figure.suptitle(f"{fig_title}, {td}", fontsize=16)
     else:
       figure.suptitle(fig_title, fontsize=16)
-    for im, (plot_data, norm, cmap) in zip(images, data.values(), strict=False):
+    for im, (plot_data, _norm, _cmap) in zip(images, data.values(), strict=False):
       im.set_data(plot_data.isel(time=frame, missing_dims="ignore"))
 
   return figure, update, max_steps

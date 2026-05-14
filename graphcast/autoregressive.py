@@ -13,8 +13,6 @@
 # limitations under the License.
 """A Predictor wrapping a one-step Predictor to make autoregressive predictions."""
 
-from typing import cast
-
 import haiku as hk
 import jax
 import xarray
@@ -271,7 +269,6 @@ class Predictor(predictor_base.Predictor):
       # Unwrap to jax arrays shape (batch,):
       loss, diagnostics = xarray_tree.map_structure(xarray_jax.unwrap_data, (loss, diagnostics))
 
-      predictions = cast(xarray.Dataset, predictions)  # Keeps pytype happy.
       next_frame = xarray.merge([predictions, forcings])
       next_inputs = self._update_inputs(inputs, next_frame)
 
