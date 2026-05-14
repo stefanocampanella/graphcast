@@ -59,17 +59,17 @@
 # these CRS objects from short strings in config files.
 import warnings
 from collections.abc import Callable
-from typing import Literal, Union, cast
+from typing import Literal, cast
 
 import numpy as np
 import xarray as xr
 from osgeo import gdal, osr
 from pyproj import Transformer
 
-FloatingPoint = Union[np.float32, np.float64, float]
+FloatingPoint = np.float32 | np.float64 | float
 GDFloatingPoint = int
-CoordinatesTuple = Union[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray, np.ndarray]]
-Coordinates = Union[np.ndarray, CoordinatesTuple]
+CoordinatesTuple = tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]
+Coordinates = np.ndarray | CoordinatesTuple
 
 _stereographic_wkt = """
 PROJCRS["unknown",

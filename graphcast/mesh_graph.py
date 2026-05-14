@@ -19,7 +19,6 @@
 
 import itertools
 from collections.abc import Sequence
-from typing import Union
 
 import chex
 import networkx as nx
@@ -118,7 +117,7 @@ class MeshData:
   license: list[str]
 
 
-Mesh = Union[TriangleMesh, MeshGraph]
+Mesh = TriangleMesh | MeshGraph
 
 
 def merge_meshes(mesh_list: Sequence[TriangleMesh]) -> MeshGraph:

@@ -228,7 +228,7 @@ class ClimateDataStore(Provider):
           ds = ds.expand_dims(dim="time", axis=0)
         datasets.append(ds)
       ds = xr.merge(datasets)
-      if date_interval is not None:
+      if date_interval is not None:  # noqa: SIM102
         if not np.array_equal(date_interval.to_numpy(), ds["time"]):
           warnings.warn(
             f"The requested date interval {date_interval!r} "
@@ -276,7 +276,7 @@ class ClimateDataStore(Provider):
     """Submit a request to the Climate Data Store, download some temporary NetCDFs, and returns a dataset.
     Temporary files are deleted on exit.
     """
-    file = tempfile.NamedTemporaryFile("w+", dir=dir, suffix=".zip", delete=False)
+    file = tempfile.NamedTemporaryFile("w+", dir=dir, suffix=".zip", delete=False)  # noqa: SIM115
     file.close()
 
     client = self.get_cdsapi_client(progress=progress, client_logger=client_logger)
@@ -354,7 +354,7 @@ class ClimateDataStore(Provider):
     # This is a horrible hack that probably will become not necessary in the
     # next version of cdsapi. It removes the "logging decorator", which is a
     # context manager that changes the configuration of the logger
-    if cdsapi_client.__class__.__name__.startswith("Legacy"):
+    if cdsapi_client.__class__.__name__.startswith("Legacy"):  # noqa: SIM102
       if hasattr(cdsapi_client, "logging_decorator"):
         cdsapi_client.logging_decorator = lambda x: x
 

@@ -14,7 +14,7 @@
 """Dataset utilities for extracting inputs, targets, and forcings."""
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Union
+from typing import Any
 
 import chex
 import jax
@@ -29,9 +29,8 @@ from graphcast.xarray_jax import wrap
 TimedeltaLike = Any  # Something convertible to pd.Timedelta.
 TimedeltaStr = str  # A string convertible to pd.Timedelta.
 
-TargetLeadTimes = Union[
-  TimedeltaLike, Sequence[TimedeltaLike], slice  # with TimedeltaLike as its start and stop.
-]
+# TargetLeadTimes has TimedeltaLike as its start and stop.
+TargetLeadTimes = TimedeltaLike | Sequence[TimedeltaLike] | slice
 
 _SEC_PER_HOUR = 3600
 _HOUR_PER_DAY = 24

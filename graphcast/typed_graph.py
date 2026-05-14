@@ -14,14 +14,12 @@
 """Data-structure for storing graphs with typed edges and nodes."""
 
 from collections.abc import Mapping
-from typing import Any, NamedTuple, TypeVar, Union
+from typing import Any, NamedTuple
 
 from jax.tree_util import register_pytree_node_class
 
-ArrayLike = Union[Any]  # np.ndarray, jnp.ndarray, tf.tensor
-ArrayLikeTree = Union[Any, ArrayLike]  # Nest of ArrayLike
-
-_T = TypeVar("_T")
+ArrayLike = Any  # np.ndarray, jnp.ndarray, tf.tensor
+ArrayLikeTree = Any | ArrayLike  # Nest of ArrayLike
 
 
 # All tensors have a "flat_batch_axis", which is similar to the leading

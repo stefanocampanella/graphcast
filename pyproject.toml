@@ -141,8 +141,8 @@ extend-exclude = [
 
 [tool.ruff.lint]
 # TODO: fix linter checks for "B", "UP", and "SIM"
-select = ["E", "F", "I", "B"]
-ignore = ["E501", "B028", "UP", "SIM"]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501", "B028", "UP047", "SIM118"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["graphcast"]

@@ -125,7 +125,7 @@ def GraphNetwork(  # pylint: disable=invalid-name
   return _apply_graph_net
 
 
-def _edge_update(graph, edge_fn, edge_set_key):  # pylint: disable=invalid-name
+def _edge_update(graph, edge_fn, edge_set_key):
   """Updates an edge set of a given key."""
 
   sender_nodes = graph.nodes[edge_set_key.node_sets[0]]
@@ -147,7 +147,7 @@ def _edge_update(graph, edge_fn, edge_set_key):  # pylint: disable=invalid-name
   return edge_set._replace(features=new_features)
 
 
-def _node_update(graph, node_fn, node_set_key, aggregation_fn):  # pylint: disable=invalid-name
+def _node_update(graph, node_fn, node_set_key, aggregation_fn):
   """Updates an edge set of a given key."""
   node_set = graph.nodes[node_set_key]
   sum_n_node = node_set.n_node[0]
@@ -159,8 +159,8 @@ def _node_update(graph, node_fn, node_set_key, aggregation_fn):  # pylint: disab
       assert isinstance(edge_set.indices, typed_graph.EdgesIndices)
       senders = edge_set.indices.senders
       sent_features[edge_set_key.name] = tree.tree_map(
-        lambda e: aggregation_fn(e, senders, sum_n_node),
-        edge_set.features,  # noqa: B023
+        lambda e: aggregation_fn(e, senders, sum_n_node),  # noqa: B023
+        edge_set.features,
       )
 
   received_features = {}
@@ -170,8 +170,8 @@ def _node_update(graph, node_fn, node_set_key, aggregation_fn):  # pylint: disab
       assert isinstance(edge_set.indices, typed_graph.EdgesIndices)
       receivers = edge_set.indices.receivers
       received_features[edge_set_key.name] = tree.tree_map(
-        lambda e: aggregation_fn(e, receivers, sum_n_node),
-        edge_set.features,  # noqa: B023
+        lambda e: aggregation_fn(e, receivers, sum_n_node),  # noqa: B023
+        edge_set.features,
       )
 
   n_node = node_set.n_node

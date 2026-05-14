@@ -388,10 +388,7 @@ def merge(
 
   def reader(path, **kwargs):
     logger.info(f"Reading {path}")
-    if path.is_dir():
-      path = list(path.glob("*.zip"))
-    else:
-      path = path.with_suffix(".zip")
+    path = list(path.glob("*.zip")) if path.is_dir() else path.with_suffix(".zip")
     # noinspection PyTypeChecker
     ds = xr.open_mfdataset(path, engine="zarr", **kwargs)
     return ds
