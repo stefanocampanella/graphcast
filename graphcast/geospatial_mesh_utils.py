@@ -1,10 +1,25 @@
+# Copyright 2026 Stefano Campanella.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 # TODO:
 #   1. Some StereoMeshSizeField classes require several samples to average otherwise noisy criterion fields. These are
 #      The one based on the hessian norm (SST might be a good target) and the one leveraging the
 #      Courant–Friedrichs–Lewy condition. These require both to be implemented and some other machinery (a command in
-#      ocean_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
+#      geospatial_mesh.py, and possibly a slurm script in leonardo/scripts) to compute the relevant statistics before a
 #      field object can be instantiated.
 #   3. Seamsh can ingest raster fields, use this feature to implement HessianField, BathymetryField and CourantField.
+import abc
 import atexit
 import logging
 import pathlib
@@ -21,11 +36,12 @@ from scipy.ndimage import gaussian_filter
 
 from graphcast.gis_utils import (
   CoordinateReferenceSystem,
+  Coordinates,
   CRSName,
   CRSRegistry,
-  cartesian_srs,
+  cartesian_crs,
   get_transform,
-  stereographic_srs,
+  stereographic_crs,
   xarray_to_gdal_raster,
 )
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
@@ -40,7 +56,7 @@ def _maybe_gmsh_finalize():
     gmsh.finalize()
 
 
-class StereoMeshSizeField:
+class StereoMeshSizeField(abc.ABC):
   """
   Base class that computes a mesh size field in stereographic projection coordinates.
 
@@ -60,18 +76,21 @@ class StereoMeshSizeField:
   See https://doi.org/10.1007/s10236-008-0148-3.
   """
 
-  def mesh_size_3d(self, x: np.ndarray, projection: CoordinateReferenceSystem) -> np.ndarray:
+  @abc.abstractmethod
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the mesh size field in 3D space."""
     pass
 
-  def __call__(self, x: np.ndarray, projection: CoordinateReferenceSystem) -> np.ndarray:
+  def __call__(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the mesh size field in stereographic projection coordinates,
     possibly as a function of the coordinates in parametric space."""
     mesh_size = self.mesh_size_3d(x, projection)
-    if not stereographic_srs.IsSame(projection):
-      transform = get_transform(projection, stereographic_srs)
-      x = transform(x)
-    earth_radius_squared = stereographic_srs.GetSemiMajor() * stereographic_srs.GetSemiMinor()
+    projection_crs = CoordinateReferenceSystem.from_osr(projection)
+    if not stereographic_crs.IsSame(projection_crs):
+      transform = get_transform(projection_crs, stereographic_crs)
+      x = transform(x)  # type: ignore
+    assert isinstance(x, np.ndarray) and x.shape[1] == 2
+    earth_radius_squared = stereographic_crs.GetSemiMajor() * stereographic_crs.GetSemiMinor()
     stereo_factor = (4 * earth_radius_squared) / (
       4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2
     )
@@ -84,7 +103,7 @@ class UniformField(StereoMeshSizeField):
   def __init__(self, value: float):
     self.value = value
 
-  def mesh_size_3d(self, x, projection):
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     return np.full(x.shape[0], self.value)
 
 
@@ -100,6 +119,7 @@ class BoundedStereoMeshSizeField(StereoMeshSizeField):
     self.size_min = size_min
     self.size_max = size_max
 
+  @abc.abstractmethod
   def criterion(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the criterion field in 3D space."""
     pass
@@ -132,9 +152,9 @@ class BoundaryProximityField(BoundedStereoMeshSizeField):
 
     self.field_min = field_min
     self.field_max = field_max
-    self.distance_from_boundary = seamsh.field.Distance(domain, sampling, projection=cartesian_srs)
+    self.distance_from_boundary = seamsh.field.Distance(domain, sampling, projection=cartesian_crs)
 
-  def criterion(self, x, projection):
+  def criterion(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     value = np.clip(self.distance_from_boundary(x, projection), self.field_min, self.field_max)
     alpha = (value - self.field_min) / (self.field_max - self.field_min)
     return alpha
@@ -155,7 +175,6 @@ class RasterField(BoundedStereoMeshSizeField):
     q_high: float = 1.0,
     longitude_dim: str = "lon",
     latitude_dim: str = "lat",
-    srs_name: str = "cartesian",
   ):
     super().__init__(size_min, size_max)
     if q_low <= 0.0:
@@ -172,8 +191,7 @@ class RasterField(BoundedStereoMeshSizeField):
     )
     self.field = seamsh.field.Raster(gdal_raster)
 
-  # noinspection PyTypeChecker
-  def criterion(self, x, projection):
+  def criterion(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     value = np.clip(self.field(x, projection), self.field_min, self.field_max)
     alpha = (value - self.field_min) / (self.field_max - self.field_min)
     return alpha
@@ -190,7 +208,7 @@ class BathymetryField(RasterField):
     assert np.all(np.logical_or(grid_da.isnull(), grid_da >= 0.0)), (
       f"Variable {var_name} contain negative depth values."
     )
-    bathy_sqrt = np.sqrt(grid_da)
+    bathy_sqrt: xr.DataArray = xr.apply_ufunc(np.sqrt, grid_da)
     super().__init__(bathy_sqrt, size_min, size_max, **kwargs)
 
 
@@ -242,11 +260,11 @@ class BathymetryHessianField(RasterField):
     and assumes latitude and longitude are in degrees."""
 
     spline_kwargs = spline_kwargs or {}
+    filter_kwargs = filter_kwargs or {}
     # Use canonical coordinates order and fill missing values.
     da = da.transpose(latitude_dim, longitude_dim)
     da = da.fillna(0.0)
     data = da.to_numpy()
-    filter_kwargs = filter_kwargs or {}
     sigma = filter_kwargs.pop("sigma", 1.0)
     data = gaussian_filter(data, sigma, **filter_kwargs)
     latitudes = da[latitude_dim].to_numpy()
@@ -321,7 +339,7 @@ class CompositeMeshSizeField(StereoMeshSizeField):
       fields[field_name] = FieldsRegistry[field_name](**config)
     self.fields = fields
 
-  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+  def mesh_size_3d(self, x: Coordinates, projection: osr.SpatialReference) -> np.ndarray:
     return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
 
 
@@ -337,11 +355,13 @@ def read_mesh(
 
   Args:
     mesh_path: path to the gmsh file containing the mesh.
+    mesh_size_tag_name: name of the view containing mesh size data, or None if no mesh size data is present.
+    srs_attribute_name: name of the attribute containing the spatial reference system in WKT format.
+    step: time step index for the mesh size view data.
   Returns:
-    A tuple (mesh, boundary_nodes, mesh_size) where:
+    A tuple (mesh, mesh_size) where:
       - mesh is the computed TriangleMesh
-      - boundary_nodes is a 1D numpy array of unique 0-based node indices that lie on the boundary.
-      - mesh_size is the target mesh size at each node.
+      - mesh_size is the target mesh size at each node, or None if mesh_size_tag_name is None.
   """
   logger.info(
     "Reading mesh from %s, with mesh size tag name %s and step %d",
@@ -446,7 +466,7 @@ def load_domain(
   # Path must be a shapefile.
   if not path.name.endswith(".shp"):
     raise ValueError(f"Path must be a shapefile, got {path}")
-  domain = seamsh.geometry.Domain(projection=stereographic_srs)
+  domain = seamsh.geometry.Domain(projection=stereographic_crs)
   domain.add_boundary_curves_shp(
     str(path), physical_name_field, getattr(seamsh.geometry.CurveType, curve_type.upper())
   )
@@ -457,10 +477,10 @@ def coarsen_boundaries(
   domain: seamsh.geometry.Domain,
   mesh_size: float,
   x0: tuple[float, float] = (0.0, 0.0),
-  x0_projection: CRSName = "stereographic",
+  x0_projection_name: CRSName = "stereographic",
 ):
   """Creates a new Domain with the same projection and coarsened boundaries."""
-  x0_projection = CRSRegistry[x0_projection]
+  x0_projection = CRSRegistry[x0_projection_name]
   mesh_size_f = UniformField(mesh_size)
   coarse = seamsh.geometry.coarsen_boundaries(
     domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f

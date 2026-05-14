@@ -26,7 +26,7 @@ import pyproj
 import xarray
 from jax.ad_checkpoint import checkpoint_name
 
-from graphcast.gis_utils import cartesian_unit_sphere_srs, equirectangular_srs, get_transform
+from graphcast.gis_utils import cartesian_unit_sphere_crs, equirectangular_crs, get_transform
 
 NumpyInterface = Any
 TransformInterface = Any
@@ -79,7 +79,7 @@ def get_graph_spatial_features(
 
   if add_node_position:
     # Already in [-1, 1.] range.
-    latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
+    latlon_to_unit_sphere = get_transform(equirectangular_crs, cartesian_unit_sphere_crs)
     node_features.extend(*latlon_to_unit_sphere((node_lon, node_lat)))
 
   if add_node_coordinates:
@@ -234,7 +234,7 @@ def get_bipartite_graph_spatial_features(
 
   if add_node_position:
     # Already in [-1, 1.] range.
-    latlon_to_unit_sphere = get_transform(equirectangular_srs, cartesian_unit_sphere_srs)
+    latlon_to_unit_sphere = get_transform(equirectangular_crs, cartesian_unit_sphere_crs)
     senders_node_features.extend(latlon_to_unit_sphere((senders_node_lon, senders_node_lat)))
     receivers_node_features.extend(latlon_to_unit_sphere((receivers_node_lon, receivers_node_lat)))
 

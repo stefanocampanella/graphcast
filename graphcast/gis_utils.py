@@ -59,14 +59,14 @@
 # these CRS objects from short strings in config files.
 import warnings
 from collections.abc import Callable
-from typing import Literal, Union
+from typing import Literal, Union, cast
 
 import numpy as np
 import xarray as xr
 from osgeo import gdal, osr
 from pyproj import Transformer
 
-FloatingPoint = Union[np.float32, np.float64]
+FloatingPoint = Union[np.float32, np.float64, float]
 GDFloatingPoint = int
 CoordinatesTuple = Union[tuple[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray, np.ndarray]]
 Coordinates = Union[np.ndarray, CoordinatesTuple]
@@ -187,20 +187,34 @@ osr.UseExceptions()
 
 
 class CoordinateReferenceSystem(osr.SpatialReference):
+  # Dumb hack: StereoMeshSizeField in geospatial_mesh_utils.py exists to be used as a callback inside seamsh functions,
+  # which will pass an `osr.SpatialReference`.
+  # However, pyproj.Transformer.from_crs (used in `get_transform` and hence in StereoMeshSizeField objects) expects an
+  # object with a `to_wkt` method, so `CoordinateReferenceSystem` has been defined here.
+  # An alternative way of switching between the two is to get a `projection_crs` of type CoordinateReferenceSystem
+  # from a `projection` of type `osr.SpatialReference` with
+  # projection_crs = CoordinateReferenceSystem(projection.ExportToWkt())
+  # The previous however is slow (requires convertions to and from WKT strings at each call).
+  @classmethod
+  def from_osr(cls, sr: osr.SpatialReference) -> "CoordinateReferenceSystem":
+    sr.__class__ = cls
+    sr = cast("CoordinateReferenceSystem", sr)
+    return sr
+
   def to_wkt(self):
     return self.ExportToWkt()
 
 
-stereographic_srs = CoordinateReferenceSystem(_stereographic_wkt)
-cartesian_srs = CoordinateReferenceSystem(_cartesian_wkt)
-cartesian_unit_sphere_srs = CoordinateReferenceSystem(_cartesian_unit_sphere_wkt)
-equirectangular_srs = CoordinateReferenceSystem(_equirectangular_wkt)
+stereographic_crs = CoordinateReferenceSystem(_stereographic_wkt)
+cartesian_crs = CoordinateReferenceSystem(_cartesian_wkt)
+cartesian_unit_sphere_crs = CoordinateReferenceSystem(_cartesian_unit_sphere_wkt)
+equirectangular_crs = CoordinateReferenceSystem(_equirectangular_wkt)
 
 CRSName = Literal["stereographic", "cartesian", "equirectangular"]
 CRSRegistry = {
-  "stereographic": stereographic_srs,
-  "cartesian": cartesian_srs,
-  "equirectangular": equirectangular_srs,
+  "stereographic": stereographic_crs,
+  "cartesian": cartesian_crs,
+  "equirectangular": equirectangular_crs,
 }
 
 
@@ -212,6 +226,7 @@ def get_transform(
 ) -> Callable[[Coordinates], Coordinates]:
   """Gets a function that transforms coordinates from one projection to another."""
   transformer = Transformer.from_crs(source, destination)
+  assert transformer.source_crs is not None and transformer.target_crs is not None
   num_coords_in = len(transformer.source_crs.axis_info)
   num_coords_out = len(transformer.target_crs.axis_info)
 
@@ -221,11 +236,11 @@ def get_transform(
       assert len(coordinates) == num_coords_in, (
         f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
       )
-      if num_coords_in == 2:
-        xx, yy = coordinates
+      if len(coordinates) == 2:
+        xx, yy = coordinates  # type: ignore
         zz = np.zeros_like(xx)
       else:
-        xx, yy, zz = coordinates
+        xx, yy, zz = coordinates  # type: ignore
     elif isinstance(coordinates, np.ndarray):
       assert coordinates.shape[-1] == num_coords_in, (
         f"Expected {num_coords_in} coordinates, got {coordinates.shape[-1]}"
@@ -301,7 +316,7 @@ def map_on_grid(func, latitude: xr.DataArray, longitude: xr.DataArray) -> xr.Dat
   num_lons = len(longitude)
   xx, yy = np.meshgrid(longitude, latitude, indexing="ij")
   coordinates = np.stack([xx, yy], axis=-1)
-  values = func(coordinates, equirectangular_srs)
+  values = func(coordinates, equirectangular_crs)
   values = values.reshape(num_lons, num_lats)
   values = xr.DataArray(
     values,

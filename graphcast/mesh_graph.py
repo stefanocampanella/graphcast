@@ -1,4 +1,4 @@
-# Copyright 2025 OGS.
+# Copyright 2026 Stefano Campanella.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,9 +28,9 @@ import numpy as np
 from graphcast import typed_graph
 from graphcast.gis_utils import (
   _cartesian_wkt,
-  cartesian_srs,
-  cartesian_unit_sphere_srs,
-  equirectangular_srs,
+  cartesian_crs,
+  cartesian_unit_sphere_crs,
+  equirectangular_crs,
   get_transform,
 )
 
@@ -113,7 +113,7 @@ class MeshData:
   """Data structure containing mesh graph and additional information."""
 
   mesh_graph: MeshGraph
-  mesh_size: np.ndarray
+  mesh_size: np.ndarray | None
   description: list[str]
   license: list[str]
 
@@ -193,8 +193,8 @@ def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularG
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
   transformer = get_transform(
-    cartesian_unit_sphere_srs if unit_sphere else cartesian_srs,
-    equirectangular_srs,
+    cartesian_unit_sphere_crs if unit_sphere else cartesian_crs,
+    equirectangular_crs,
     pack_back=False,
   )
   longitudes, latitudes = transformer(graph.vertices)

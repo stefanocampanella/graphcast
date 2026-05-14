@@ -54,8 +54,8 @@ class Configs(dict):
     return value
 
   @staticmethod
-  def read(path: str | epath.Path):
-    path = path if isinstance(path, pathlib.Path) else pathlib.Path(path)
+  def read(path: str | epath.Path | pathlib.Path):
+    path = path if isinstance(path, pathlib.Path | epath.Path) else pathlib.Path(path)
     logger.info(f"Reading configs from {path}")
     with path.open("rb") as file:
       configs = Configs(tomllib.load(file))

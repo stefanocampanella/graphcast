@@ -22,7 +22,7 @@ import numpy.typing as npt
 import scipy
 import trimesh
 
-from graphcast.gis_utils import cartesian_srs, equirectangular_srs, get_transform
+from graphcast.gis_utils import cartesian_crs, equirectangular_crs, get_transform
 from graphcast.mesh_graph import Mesh, TriangleMesh, faces_to_edges
 from graphcast.typed_graph import Context, EdgeSet, EdgeSetKey, EdgesIndices, NodeSet, TypedGraph
 
@@ -43,7 +43,7 @@ def _grid_lat_lon_to_coordinates(
   lon = lon.reshape(-1)
   lat = lat.reshape(-1)
   lonlat_coordinates = np.stack([lon, lat], axis=-1)
-  transform = get_transform(equirectangular_srs, cartesian_srs)
+  transform = get_transform(equirectangular_crs, cartesian_crs)
   cartesian_coordinates = transform(lonlat_coordinates)
   cartesian_coordinates = cartesian_coordinates.reshape(num_lon, num_lat, 3)
   cartesian_coordinates = cartesian_coordinates.transpose(1, 0, 2)

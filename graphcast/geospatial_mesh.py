@@ -1,4 +1,4 @@
-# Copyright 2025 Stefano Campanella.
+# Copyright 2026 Stefano Campanella.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -124,7 +124,7 @@ def make(
     domain,
     configs.get("coarsen_boundaries.mesh_size"),
     x0=configs.get("coarsen_boundaries.x0", (0.0, 0.0)),
-    x0_projection=configs.get("coarsen_boundaries.x0_projection", "stereographic"),
+    x0_projection_name=configs.get("coarsen_boundaries.x0_projection", "stereographic"),
   )
   # Build mesh size field
   fields_config = configs.get("fields", [])
