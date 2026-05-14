@@ -135,12 +135,14 @@ extend-exclude = [
     ".venv",
     "build",
     "dist",
+    "scripts",
+    "notebooks",
 ]
 
 [tool.ruff.lint]
 # TODO: fix linter checks for "B", "UP", and "SIM"
-select = ["E", "F", "I"]
-ignore = ["E501", "B", "UP", "SIM"]
+select = ["E", "F", "I", "B"]
+ignore = ["E501", "B028", "UP", "SIM"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["graphcast"]
