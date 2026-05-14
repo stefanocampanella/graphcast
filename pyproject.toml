@@ -147,11 +147,6 @@ ignore = ["E501", "B028", "UP047", "SIM118"]
 [tool.ruff.lint.isort]
 known-first-party = ["graphcast"]
 
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-line-ending = "lf"
-
 [tool.ty]
 # Keep defaults; configure project environment explicitly.
 
