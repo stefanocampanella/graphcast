@@ -92,7 +92,7 @@ dependencies = [
     # TODO: Port to Zarr v3
     "zarr >= 2, < 3",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.12, <3.13"
 authors = [{name = "Stefano Campanella", email = "scampanella@ogs.it"}]
 description = "Data-driven global ocean circulation model based on Graphcast by Google DeepMind."
 readme = { file = "README.md", content-type = "text/markdown" }
@@ -150,7 +150,7 @@ known-first-party = ["graphcast"]
 # Keep defaults; configure project environment explicitly.
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.12"
 root = ["."]
 
 [tool.ty.src]

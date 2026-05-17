@@ -1,0 +1,57 @@
+Bootstrap: docker
+From: nvcr.io/nvidia/jax:26.04-py3
+
+%labels
+    Maintainer Stefano Campanella
+    Version 0.1
+    Description Singularity image for GraphCast (based on NVIDIA-JAX).
+
+%files
+    pyproject.toml /app/pyproject.toml
+    graphcast /app/graphcast
+    uv.lock /app/uv.lock
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    export LANG=C.UTF-8
+    export LC_ALL=C.UTF-8
+    apt-get update && apt-get install -y \
+        git \
+        build-essential \
+        curl \
+        ca-certificates \
+        gdal-bin \
+        libgdal-dev \
+        pkg-config \
+        proj-bin \
+        libproj-dev \
+        wget \
+        xz-utils \
+        file \
+        locales
+
+    # Install uv by Astral
+    curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+
+    # Create uv environment
+    cd /app
+    uv venv --python=$(which python3) --system-site-packages
+    uv sync --frozen
+
+%environment
+    # Add uv environment to PATH
+    export PATH="/app/.venv/bin:$PATH"
+    
+    # Set PYTHONPATH to include environment
+    export PYTHONPATH="/app/environment:$PYTHONPATH"
+
+%runscript
+    cd /app
+    if [ $# -eq 0 ]; then
+        /bin/bash
+    else
+        exec "$@"
+    fi
+
+%help
+    This container provides an environment for running GraphCast.
