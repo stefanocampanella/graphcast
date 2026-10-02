@@ -1,0 +1,30 @@
+spack:
+  specs:
+    - gdal@3.13.1
+    - proj@9.7.0
+  concretizer:
+    reuse: true
+    duplicates:
+      strategy: minimal
+    unify: true
+  mirrors:
+    spack-cache:
+      url: https://binaries.spack.io/v2026.06.0
+      signed: true
+  config:
+    template_dirs:
+      - $PWD/spack/templates
+  container:
+    os_packages:
+      command: apt
+      final:
+        - gmsh
+        - python3
+        - python3-venv
+        - python3-pip
+        - python3-gmsh
+    format: singularity
+    template: container/graphcast.def
+    images:
+      build: ghcr.io/spack/ubuntu-noble:1.2.2
+      final: nvcr.io/nvidia/jax:26.09-py3

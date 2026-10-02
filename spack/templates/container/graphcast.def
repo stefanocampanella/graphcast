@@ -1,0 +1,135 @@
+Bootstrap: docker
+From: {{ build.image }}
+Stage: build
+
+%post
+{% block build_stage %}
+{% if os_packages_build.list %}
+  # Update, install and cleanup of system packages needed at build-time
+  {% if os_package_update %}
+  {{ os_packages_build.update }}
+  {% endif %}
+  {{ os_packages_build.install }} {{ os_packages_build.list | join | replace('\n', ' ') }}
+  {{ os_packages_build.clean }}
+
+{% endif %}
+  # Create the manifest file for the installation in /opt/spack-environment
+  mkdir {{ paths.environment }} && cd {{ paths.environment }}
+  cat << EOF > spack.yaml
+{{ manifest }}
+EOF
+
+  # Install all the required software
+  . /opt/spack/share/spack/setup-env.sh
+
+  # Build spack binary cache to speed up installation
+  spack -e {{ paths.environment }} buildcache keys --install --trust --force --yes-to-all
+
+  spack -e . concretize
+{% if depfile %}
+  spack -e . env depfile -o Makefile
+  make -j $(nproc)
+{% else %}
+  spack -e . install
+{% endif %}
+  spack gc -y
+  spack env activate --sh -d . >> {{ paths.environment }}/environment_modifications.sh
+{% if strip %}
+
+  # Strip the binaries to reduce the size of the image
+  find -L {{ paths.view }}/* -type f -exec readlink -f '{}' \; | \
+    xargs file -i | \
+    grep 'charset=binary' | \
+    grep 'x-executable\|x-archive\|x-sharedlib' | \
+    awk -F: '{print $1}' | xargs strip
+{% endif %}
+
+{% endblock build_stage %}
+{% if apps %}
+{% for application, help_text in apps.items() %}
+
+%apprun {{ application }}
+    exec {{ paths.view }}/bin/{{ application }} "$@"
+
+%apphelp {{ application }}
+    {{help_text }}
+{% endfor %}
+{% endif %}
+
+Bootstrap: docker
+From: {{ run.image }}
+Stage: final
+
+%files from build
+  {{ paths.environment }} /opt
+  {{ paths.store }} /opt
+  {{ paths.view_parent }} /opt
+  {{ paths.environment }}/environment_modifications.sh {{ paths.environment }}/environment_modifications.sh
+
+%files
+  pyproject.toml /app/pyproject.toml
+  graphcast /app/graphcast
+
+%post
+
+  # Symlink the old view location
+  ln -s {{ paths.view }} {{ paths.former_view }}
+
+{% block final_stage %}
+{% if os_packages_final.list %}
+  # Update, install and cleanup of system packages needed at run-time
+  {% if os_package_update %}
+  {{ os_packages_final.update }}
+  {% endif %}
+  {{ os_packages_final.install }} {{ os_packages_final.list | join | replace('\n', ' ') }}
+  {{ os_packages_final.clean }}
+{% endif %}
+  # Modify the environment without relying on sourcing shell specific files at startup
+  cat {{ paths.environment }}/environment_modifications.sh >> $SINGULARITY_ENVIRONMENT
+
+  # Export build stage
+  . {{ paths.environment }}/environment_modifications.sh
+
+  # Install Python requirements
+  python3 -m venv --system-site-packages {{ paths.store }}/venv
+  . {{ paths.store }}/venv/bin/activate
+  pip install /app
+  echo "Check that raster (numpy) gdal support is working"
+  python -c "from osgeo import gdal_array" || exit 1
+  deactivate
+
+  # Modify environment to include Python venv
+  cat << EOF >> $SINGULARITY_ENVIRONMENT
+export PATH={{ paths.store }}/venv/bin:$PATH
+export PYTHONDONTWRITEBYTECODE=1
+EOF
+
+{% endblock final_stage %}
+
+{% if runscript %}
+
+%runscript
+{{ runscript }}
+{% endif %}
+{% if startscript %}
+
+%startscript
+{{ startscript }}
+{% endif %}
+{% if test %}
+
+%test
+{{ test }}
+{% endif %}
+{% if help %}
+
+%help
+{{ help }}
+{% endif %}
+{% if labels %}
+
+%labels
+{% for label, value in labels.items() %}
+  {{ label }} {{ value }}
+{% endfor %}
+{% endif %}
