@@ -30,7 +30,11 @@ from jax.sharding import PartitionSpec as P
 from graphcast import cli_utils, xarray_jax
 from graphcast import training_utils as trn_utils
 from graphcast.cli_utils import Configs
-from graphcast.training_utils import Datasets, DatasetsOrDataArrays, JAXLossAndDiagnostics
+from graphcast.training_utils import (
+    Datasets,
+    DatasetsOrDataArrays,
+    JAXLossAndDiagnostics,
+)
 
 logger = logging.getLogger(__name__)
 
