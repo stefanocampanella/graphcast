@@ -68,7 +68,7 @@ Stage: final
 
 %files
   pyproject.toml /app/pyproject.toml
-  graphcast /app/graphcast
+  src/graphcast /app/src/graphcast
 
 %post
 
