@@ -62,7 +62,7 @@ logger = logging.getLogger(__name__)
   default="info",
   type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
 )
-def make(
+def make_ocean_mesh(
   config_path: pathlib.Path,
   output_path: pathlib.Path,
   data_path: pathlib.Path | None = None,
@@ -157,7 +157,3 @@ def make(
   write_model_data(view_tag_name, mesh_size)
   for field_name, field in mesh_size.fields.items():
     write_model_data(field_name, field, append=True)
-
-
-if __name__ == "__main__":
-  cli()

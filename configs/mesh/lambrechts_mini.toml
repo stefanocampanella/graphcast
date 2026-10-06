@@ -45,7 +45,7 @@ size_max = 300_000.0
 
 [[fields]]
 name = "bathymetry"
-filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
+filepath = "data/dataset/glorys12_static_res-0p0625_levels-10"
 var_name = "deptho"
 q_low = 0.1
 q_high = 0.9
