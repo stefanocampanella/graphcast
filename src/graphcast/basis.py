@@ -11,12 +11,7 @@ from graphcast.geospatial_mesh_utils import read_mesh_data
 logger = logging.getLogger(__name__)
 
 
-@click.group()
-def cli():
-  pass
-
-
-@cli.command()
+@click.command()
 @click.argument(
   "mesh_path", required=True, type=click.Path(path_type=epath.Path, file_okay=True, readable=True)
 )

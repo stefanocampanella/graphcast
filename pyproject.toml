@@ -1,95 +1,48 @@
-[build-system]
-# Minimum version required by gdal and jax
-requires = ["setuptools (>= 67.0)"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "graphcast"
 version = "0.1"
 dependencies = [
-    "botocore[crt]",
     "cartopy >= 0.25.0",
-    "cdsapi",
-    "cfgrib",
     "cftime",
     "chex",
     "click",
-    "copernicusmarine",
-    "cython >= 3.1", # Needed to build pyproj
     "dask",
-    "dask_mpi",
     "dm-haiku",
     "dm-tree",
-    "etils",
-    # haiku.experimental.flax requires flax as a dependency
     "flax",
-    "gcsfs",
-    # Versions listed here should agree with the one compiled in leonardo/setup.sh
-    "gdal-utils == 3.11.4 ; sys_platform == 'linux'",
-    "gdal[numpy] == 3.11.4 ; sys_platform == 'linux'",
+    "gdal-utils == 3.13.1 ; sys_platform == 'linux'",
+    "gdal[numpy] == 3.13.1 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
-    "gdal-utils == 3.13 ; sys_platform == 'darwin'",
-    "gdal[numpy] == 3.13 ; sys_platform == 'darwin'",
-    "geopy",
-    "geoviews",
+    "gdal-utils == 3.13.1 ; sys_platform == 'darwin'",
+    "gdal[numpy] == 3.13.1 ; sys_platform == 'darwin'",
     "gmsh",
-    "google-cloud-storage",
-    # Needs to expose SharedMemoryArrayMetadata as part of the API
     "grain >= 0.2.16",
     "graphviz >= 0.21",
-    # TODO: hatchling is a build dependency of cgen, required by parcels, required by oceanbench.
-    #  It should be moved elsewhere.
-    "hatchling",
-    "h5netcdf",
     "humanize",
-    "hvplot",
     "ipywidgets",
-    # Jax >= 0.8 seems to be incompatible with dm-haiku
-    # Install cuda using pip, building jaxlib from source is a pain in the neck...
-    "jax[cuda12] < 0.8, >= 0.7.2; sys_platform == 'linux'",
-    # Disable HW acceleration on macOS (jax-metal is unstable/early stage).
-    "jax < 0.8, >= 0.7.2; sys_platform == 'darwin'",
+    "jax",
     "jraph",
-    "jupyterlab",
     "matplotlib",
     "mpi4py",
-    "nc-time-axis",
-    "netCDF4",
     "networkx",
-    # numcodecs v0.16 seems to make copernicusmarine import fail on Leonardo
     "numcodecs",
     "numpy",
-    "oceanbench",
     "optax",
     "orbax-checkpoint >= 0.11.30",
     "pandas",
-    "papermill",
-    # MacOS package distributes his own binary of proj, but Spilhouse projection requires proj >= 9.6.0
-    "pyproj@git+https://github.com/pyproj4/pyproj.git@3.7.2",
-    # Necessary to visualize array sharding in JAX
+    "pydantic",
+    "pyproj",
     "rich",
-    # Rtree is a (unlisted?) dependency of trimesh
     "rtree",
-    # https://github.com/dask/dask/issues/10397
-    "s3fs>2026",
     "scipy",
-    # Notice: Installing seamsh from PyPI on macOS fails, but fetching it from git seems to work.
-    # We'll use our own fork anyway, on Linux too.
     "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
-    # FIXME: find a way to have a functioning xprof and tensorboard on MacOS with ARM.
-    #   See: https://github.com/tensorflow/tensorflow/issues/99464 and
-    #   https://github.com/tensorflow/tensorflow/issues/98563#issuecomment-3536220032
-    #   Using tensorflow<2.20 and pyarrow==22.0.0 seems to solve the issue.
-    #   See: https://github.com/google-deepmind/gemma/pull/466
     "tensorboard",
     "tensorflow >= 2.21.0",
     "tqdm",
     "trimesh",
     "treescope",
     "xarray",
-    "xarray-regrid[accel]",
     "xprof",
-    # TODO: Port to Zarr v3
     "zarr >= 2, < 3",
 ]
 requires-python = ">=3.12, <3.13"
@@ -106,58 +59,12 @@ classifiers = ["Development Status :: 3 - Alpha",
     "Topic :: Scientific/Engineering :: Oceanography",
     "Topic :: Scientific/Engineering :: Physics"]
 
-[project.optional-dependencies]
-dev = [
-    "pre-commit",
-    "ruff",
-    "ty",
-]
-
 [project.scripts]
-dataset = "graphcast.dataset:cli"
-geospatial-mesh = "graphcast.geospatial_mesh:cli"
-stats = "graphcast.stats:cli"
-training = "graphcast.training:cli"
-oceanbench-challenger = "graphcast.oceanbench_challenger:cli"
-basis = "graphcast.basis:cli"
+graphcast = "graphcast:cli"
 
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
-[tool.setuptools]
-packages = ["graphcast"]
-
-[tool.ruff]
-target-version = "py313"
-line-length = 100
-indent-width = 2
-extend-exclude = [
-    ".venv",
-    "build",
-    "dist",
-    "scripts",
-    "notebooks",
-]
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
-ignore = ["E501", "B028", "UP047", "SIM118"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["graphcast"]
-
-[tool.ty]
-# Keep defaults; configure project environment explicitly.
-
-[tool.ty.environment]
-python-version = "3.12"
-root = ["."]
-
-[tool.ty.src]
-include = ["graphcast/**/*.py"]
-respect-ignore-files = true
-
-[tool.ty.rules]
-# Disable strict type-checking for now.
-all = "warn"
-
+[build-system]
+requires = ["setuptools (>= 67.0)"]
+build-backend = "setuptools.build_meta"

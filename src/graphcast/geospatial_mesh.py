@@ -33,12 +33,7 @@ from graphcast.gis_utils import CRSRegistry
 logger = logging.getLogger(__name__)
 
 
-@click.group()
-def cli():
-  pass
-
-
-@cli.command()
+@click.command()
 @click.argument(
   "config_path",
   required=True,

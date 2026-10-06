@@ -44,13 +44,8 @@ def _shutdown_jax_distributed():
   jax.distributed.shutdown()
 
 
-@click.group()
-def cli():
-  pass
-
-
 # FIXME: add docstring
-@cli.command()
+@click.command()
 @click.argument(
   "config_path",
   required=True,
