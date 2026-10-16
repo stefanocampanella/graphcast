@@ -31,7 +31,6 @@ from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
 from graphcast.cli_utils import Configs, OrbaxLogger
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
-from graphcast.dataset_utils import Process
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
 from graphcast.mesh_graph import MeshData
@@ -142,8 +141,9 @@ def get_artifacts(data_path: epath.Path, configs: Configs) -> MaybeDatasets:
     logger.info(f"Getting {name} dataset from normalization artifacts.")
     if ds_path := configs.get(f"artifacts.{name}.path"):
       ds = artifacts[ds_path].dataset
-      postprocess = Process(steps=configs.get(f"artifacts.{name}.postprocess", None))
-      ds = postprocess(ds)
+      logger.warning(f"Postprocessing needs implementation.")
+      # postprocess = Process(steps=configs.get(f"artifacts.{name}.postprocess", None))
+      # ds = postprocess(ds)
       return ds
     else:
       return None

@@ -31,9 +31,9 @@ from graphcast import cli_utils, xarray_jax
 from graphcast import training_utils as trn_utils
 from graphcast.cli_utils import Configs
 from graphcast.training_utils import (
-    Datasets,
-    DatasetsOrDataArrays,
-    JAXLossAndDiagnostics,
+  Datasets,
+  DatasetsOrDataArrays,
+  JAXLossAndDiagnostics,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,10 +59,14 @@ def _shutdown_jax_distributed():
   ),
 )
 @click.argument(
-  "output_path", required=True, type=click.Path(path_type=epath.Path, resolve_path=True)
+  "output_path",
+  required=True,
+  type=click.Path(path_type=epath.Path, resolve_path=True),
 )
 @click.argument(
-  "train_path", required=True, type=click.Path(path_type=epath.Path, resolve_path=True)
+  "train_path",
+  required=True,
+  type=click.Path(path_type=epath.Path, resolve_path=True),
 )
 @click.option(
   "--data-path",
@@ -84,7 +88,11 @@ def _shutdown_jax_distributed():
   type=cli_utils.DictParamType(),
 )
 @click.option(
-  "--restart", help="Whether to start the training from scratch.", default=False, is_flag=True
+  "--continue",
+  "continue_from_previous_checkpoint",
+  help="Whether to continue previous training.",
+  default=False,
+  is_flag=True,
 )
 @click.option(
   "--overwrite/--no-overwrite",
@@ -101,18 +109,20 @@ def _shutdown_jax_distributed():
 @click.option(
   "--log-level",
   default="info",
-  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
+  type=click.Choice(
+    ["debug", "info", "warning", "error", "critical"], case_sensitive=False
+  ),
 )
-def launch(
-  config_path: pathlib.Path,
-  output_path: pathlib.Path,
-  train_path: pathlib.Path,
-  data_path: pathlib.Path | None = None,
-  other_configs: Mapping[str, Any] | None = None,
-  restart: bool = False,
-  overwrite: bool = False,
-  tensorboard_logdir: pathlib.Path | None = None,
-  log_level: str = "info",
+def train(
+    config_path: pathlib.Path,
+    output_path: pathlib.Path,
+    train_path: pathlib.Path,
+    data_path: pathlib.Path | None = None,
+    other_configs: Mapping[str, Any] | None = None,
+    restart_from_previous_checkpoint: bool = False,
+    overwrite: bool = False,
+    tensorboard_logdir: pathlib.Path | None = None,
+    log_level: str = "info",
 ):
   logging.basicConfig(
     format="%(levelname)s - %(asctime)s: %(message)s",
@@ -128,7 +138,11 @@ def launch(
   )
 
   output_path, train_path, tensorboard_logdir = trn_utils.check_writable_paths(
-    output_path, train_path, tensorboard_logdir, start_fresh=not restart, overwrite=overwrite
+    output_path,
+    train_path,
+    tensorboard_logdir,
+    start_fresh=not restart_from_previous_checkpoint,
+    overwrite=overwrite,
   )
 
   configs = Configs.read(config_path)
@@ -141,11 +155,15 @@ def launch(
   grid_lon = mask["lon"].to_numpy()
   grid_mask = mask.transpose("lat", "lon").to_numpy()
   artifacts = trn_utils.get_artifacts(data_path, configs)
-  static_data = xarray_jax.wrap_data(artifacts + (mask,), to_jax=True, np_contiguous=False)
+  static_data = xarray_jax.wrap_data(
+    artifacts + (mask,), to_jax=True, np_contiguous=False
+  )
 
   @hk.without_apply_rng
   @hk.transform
-  def loss_fn(data: Datasets, static_data: DatasetsOrDataArrays) -> JAXLossAndDiagnostics:
+  def loss_fn(
+      data: Datasets, static_data: DatasetsOrDataArrays
+  ) -> JAXLossAndDiagnostics:
     inputs, targets, forcings = data
     mean_by_level, stddev_by_level, diffs_stddev_by_level, mask_da = static_data
     predictor = trn_utils.get_predictor(
@@ -159,12 +177,16 @@ def launch(
       mask_da=mask_da,
       diffs_stddev_by_level=diffs_stddev_by_level,
     )
-    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
+    loss, diagnostics = predictor.loss(
+      inputs=inputs, targets=targets, forcings=forcings
+    )
     assert loss.dims == ("batch",) and all(
       scalar.dims == ("batch",) for scalar in diagnostics.values()
     )
     # Wait to reduce the batch dimension until shard_map is called.
-    return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(diagnostics)
+    return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(
+      diagnostics
+    )
 
   optimizer, schedule = trn_utils.get_optimizer(configs)
 
@@ -175,19 +197,27 @@ def launch(
 
   latest_step = 0
   params = trn_utils.get_params(
-    lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
+    lambda rng_key, sample: loss_fn.init(
+      rng_key, data=sample, static_data=static_data
+    ),
     train_iterator,
     configs,
   )
-  device_mesh = jax.make_mesh((jax.device_count(),), ("batch",), axis_types=(AxisType.Explicit,))
+  device_mesh = jax.make_mesh(
+    (jax.device_count(),), ("batch",), axis_types=(AxisType.Explicit,)
+  )
   params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
   opt_state = optimizer.init(params)
-  opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
+  opt_state = jax.device_put(
+    opt_state, device=NamedSharding(mesh=device_mesh, spec=P())
+  )
 
   ckpt_mngr = trn_utils.get_checkpoint_manager(train_path, configs)
-  if restart:
+  if restart_from_previous_checkpoint:
     if not ckpt_mngr.all_steps(read=True):
-      raise ValueError("Found no checkpoint to restore while restarting training.")
+      raise ValueError(
+        "Found no checkpoint to restore while restarting training."
+      )
     restored = trn_utils.pull_checkpoint(
       ckpt_mngr=ckpt_mngr,
       step=ckpt_mngr.latest_step(),
@@ -197,20 +227,25 @@ def launch(
       opt_state=opt_state,
     )
     latest_step = ckpt_mngr.latest_step()
-    train_iterator: trn_utils.InputsTargetsForcingsIterator = restored["train_iterator"]
-    test_iterator: trn_utils.InputsTargetsForcingsIterator = restored["test_iterator"]
+    train_iterator: trn_utils.InputsTargetsForcingsIterator = restored[
+      "train_iterator"
+    ]
+    test_iterator: trn_utils.InputsTargetsForcingsIterator = restored[
+      "test_iterator"
+    ]
     params: trn_utils.Params = restored["params"]
     opt_state: trn_utils.Params = restored["opt_state"]
 
   training_steps = configs.get("training_steps", required=True)
   logger.info(f"Training for {training_steps=} starting at {latest_step=}.")
   tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
+
   # TODO: are those device_put needed also when pulling checkpoints saved from JAX arrays (instead of numpy arrays)
 
   @partial(jax.jit, donate_argnums=(0, 1))
   def train_step(params, opt_state, data, data_test, static_data):
     def fsdp_loss_fn(
-      params, data: Datasets, static_data: DatasetsOrDataArrays
+        params, data: Datasets, static_data: DatasetsOrDataArrays
     ) -> JAXLossAndDiagnostics:
       _fsdp_loss_fn = shard_map(
         loss_fn.apply,
@@ -224,19 +259,24 @@ def launch(
 
     fsdp_grad_fn = jax.value_and_grad(fsdp_loss_fn, has_aux=True)
     test_metrics = fsdp_loss_fn(params, data=data_test, static_data=static_data)
-    loss_and_diagnostics, grads = fsdp_grad_fn(params, data=data, static_data=static_data)
+    loss_and_diagnostics, grads = fsdp_grad_fn(
+      params, data=data, static_data=static_data
+    )
     updates, next_opt_state = optimizer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)
 
     return updated_params, next_opt_state, loss_and_diagnostics, test_metrics
 
   mp_prefetch = (
-    configs.get("dataset.multiprocessing_options") is not None
-    or configs.get("dataset.pick_performance_config") is not None
+      configs.get("dataset.multiprocessing_options") is not None
+      or configs.get("dataset.pick_performance_config") is not None
   )
   for current_step in range(latest_step, training_steps):
     batch, batch_test = trn_utils.next_batches_on_device(
-      train_iterator, test_iterator, device_mesh=device_mesh, mp_prefetch=mp_prefetch
+      train_iterator,
+      test_iterator,
+      device_mesh=device_mesh,
+      mp_prefetch=mp_prefetch,
     )
     with jax.sharding.set_mesh(device_mesh):
       params, opt_state, train_metrics, test_metrics = train_step(
@@ -255,7 +295,9 @@ def launch(
       params=params,
       opt_state=opt_state,
     )
-    tb_logger.log(current_step, train_metrics, test_metrics, lr=schedule(current_step))
+    tb_logger.log(
+      current_step, train_metrics, test_metrics, lr=schedule(current_step)
+    )
   logger.info(f"Training finished, best checkpoint {ckpt_mngr.best_step()}.")
   restored = trn_utils.pull_checkpoint(
     ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params
@@ -269,7 +311,3 @@ def launch(
     grid_mask=grid_mask,
     mesh_data=mesh_data,
   )
-
-
-if __name__ == "__main__":
-  cli()

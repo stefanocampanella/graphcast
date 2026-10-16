@@ -4,7 +4,7 @@ import click
 
 from graphcast.basis import compute
 from graphcast.geospatial_mesh import make_ocean_mesh
-from graphcast.training import launch
+from graphcast.training import train
 
 
 @click.group()
@@ -12,7 +12,7 @@ def cli():
     pass
 
 
-cli.add_command(launch)
+cli.add_command(train)
 cli.add_command(make_ocean_mesh)
 cli.add_command(compute)
 
