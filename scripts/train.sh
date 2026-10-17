@@ -20,13 +20,11 @@ Options override environment defaults; relative host paths use PROJECT_DIR.
   --log-level LEVEL    debug, info, warning, error, critical (default: info)
   --help               Show help without checking dependencies
 
-DATA_ROOT defaults to PROJECT_DIR/data. Required readable SquashFS files:
-DATASET_SQSH, CLIMATOLOGY_SQSH, ANOMALY_STD_SQSH, TENDENCY_STD_SQSH.
-Extra geometry/normalization inputs depend on the config; see README.md.
-Execution requires GNU getopt (util-linux); --help has no dependencies.
+DATA_ROOT defaults to PROJECT_DIR/data.
+Required readable SquashFS files: DATASET_SQSH, CLIMATOLOGY_SQSH, ANOMALY_STD_SQSH, TENDENCY_STD_SQSH.
+Required paths: GEOMETRY_DIR.
 Bind paths cannot contain ':' or ',' (Apptainer separators).
 Site setup, --env-file and --log-dir belong to the cluster launcher.
-The Python CLI still requires automatic JAX distributed initialization.
 EOF
 }
 
@@ -50,6 +48,10 @@ readable_file() {
     [[ -f $2 && -r $2 ]] || fail "$1 is not a readable file: $2"
 }
 
+readable_directory() {
+    [[ -d $2 && -r $2 ]] || fail "$1 is not a readable directory: $2"
+}
+
 writable_directory() {
     local directory
     directory=$(absolute_path "$2")
@@ -59,13 +61,22 @@ writable_directory() {
     printf '%s\n' "$directory"
 }
 
+add_directory_bind() {
+    local source
+    [[ -n $2 ]] || fail "$1 must name a readable directory"
+    source=$(absolute_path "$2")
+    readable_directory "$1" "$source"
+    check_bind_path "$source"
+    APPTAINER_ARGS+=(--bind "$source:$DATA_DIR/$3:ro")
+}
+
 add_squashfs_bind() {
     local source
     [[ -n $2 ]] || fail "$1 must name a readable SquashFS file"
     source=$(absolute_path "$2")
     readable_file "$1" "$source"
     check_bind_path "$source"
-    APPTAINER_ARGS+=(--bind "$source:$DATA_DIR/$3:image-src=/")
+    APPTAINER_ARGS+=(--bind "$source:$DATA_DIR/$3:image-src=/,ro")
 }
 
 # Parse execution options. GNU getopt handles quoting, --option=value and
@@ -189,6 +200,7 @@ add_squashfs_bind DATASET_SQSH "${DATASET_SQSH:-}" dataset
 add_squashfs_bind CLIMATOLOGY_SQSH "${CLIMATOLOGY_SQSH:-}" climatology
 add_squashfs_bind ANOMALY_STD_SQSH "${ANOMALY_STD_SQSH:-}" anomaly_std
 add_squashfs_bind TENDENCY_STD_SQSH "${TENDENCY_STD_SQSH:-}" tendency_std
+add_directory_bind GEOMETRY_DIR "${GEOMETRY_DIR:-}" geometry
 
 # The conditional array expansion supports empty arrays under Bash 3's nounset.
 for BIND in ${EXTRA_BINDS[@]+"${EXTRA_BINDS[@]}"}; do
