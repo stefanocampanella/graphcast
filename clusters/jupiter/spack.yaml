@@ -13,7 +13,7 @@ spack:
       signed: true
   config:
     template_dirs:
-      - $PWD/clusters/jupiter/spack/templates
+      - $PWD/spack/templates
   container:
     os_packages:
       command: apt
