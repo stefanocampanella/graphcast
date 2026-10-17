@@ -13,7 +13,7 @@ spack:
       signed: true
   config:
     template_dirs:
-      - $PWD/spack/templates
+      - $PWD/clusters/jupiter/spack/templates
   container:
     os_packages:
       command: apt
@@ -27,4 +27,4 @@ spack:
     template: container/graphcast.def
     images:
       build: ghcr.io/spack/ubuntu-noble:1.2.2
-      final: nvcr.io/nvidia/jax:26.09-py3
+      final: nvcr.io/nvidia/jax:26.05-py3
