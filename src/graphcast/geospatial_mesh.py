@@ -127,7 +127,6 @@ def make_ocean_mesh(
     raise ValueError("At least one field must be specified in the config file.")
   mesh_size = CompositeMeshSizeField(fields_config, prefix=data_path)
   # Mesh using seamsh
-  # noinspection PyTypeChecker
   seamsh.gmsh.mesh(
     boundary,
     mesh_size,
