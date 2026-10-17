@@ -9,7 +9,7 @@ dependencies = [
     "dask",
     "dm-haiku",
     "dm-tree",
-    "flax",
+    # Should be kept in sync with version used in spack containerize
     "gdal-utils == 3.13.1 ; sys_platform == 'linux'",
     "gdal[numpy] == 3.13.1 ; sys_platform == 'linux'",
     # On macOS, gdal is installed via brew and should be updated to the latest version
@@ -20,10 +20,10 @@ dependencies = [
     "graphviz >= 0.21",
     "humanize",
     "ipywidgets",
-    "jax",
+    # Should be kept it in sync with the version used in NVIDIA container
+    "jax==0.10.0",
     "jraph",
     "matplotlib",
-    "mpi4py",
     "networkx",
     "numcodecs",
     "numpy",
