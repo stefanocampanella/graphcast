@@ -235,7 +235,6 @@ done
 # Replace the shell so the container's exit status reaches the caller unchanged.
 TRAIN_ARGS=(
     "--log-level=$LOG_LEVEL"
-    "--data-path=${DATA_DIR:-/}"
     "--tensorboard-logdir=$TB_DIR"
 )
 if $OVERWRITE; then
