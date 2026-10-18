@@ -2,15 +2,41 @@ import logging
 import pathlib
 import tomllib
 from copy import deepcopy
-from typing import Any
+from typing import Any, TypeVar, overload
 
 import click
 import humanize
 import jax
 import orbax.checkpoint
 import orbax.checkpoint.logging
+from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
+ModelT = TypeVar("ModelT", bound=BaseModel)
+
+
+@overload
+def read_configs(path: str | pathlib.Path, schema: type[ModelT],
+                 inject: dict[str, Any] | None = None) -> ModelT: ...
+
+
+@overload
+def read_configs(path: str | pathlib.Path, schema: None = None,
+                 inject: dict[str, Any] | None = None) -> dict[str, Any]: ...
+
+
+def read_configs(path: str | pathlib.Path, schema: type[ModelT] | None = None,
+                 inject: dict[str, Any] | None = None) -> ModelT | dict[str, Any]:
+  """Read local TOML, apply shallow overrides, and optionally validate a schema."""
+  logger.info(f"Reading configs from {path}")
+  try:
+    with pathlib.Path(path).open("rb") as file:
+      configs = tomllib.load(file)
+    if inject is not None:
+      configs.update(inject)
+    return schema.model_validate(configs) if schema is not None else configs
+  except (OSError, tomllib.TOMLDecodeError, ValidationError) as error:
+    raise click.ClickException(f"Invalid configuration in {path}:\n{error}") from error
 
 
 class Configs(dict):
@@ -53,7 +79,7 @@ class Configs(dict):
     return value
 
   @staticmethod
-  def read(path: str | pathlib.Path | pathlib.Path):
+  def read(path: str | pathlib.Path):
     path = path if isinstance(path, pathlib.Path | pathlib.Path) else pathlib.Path(path)
     logger.info(f"Reading configs from {path}")
     with path.open("rb") as file:

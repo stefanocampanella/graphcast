@@ -29,8 +29,8 @@ from orbax.checkpoint.args import PyTreeRestore, PyTreeSave
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
-from graphcast.cli_utils import Configs, OrbaxLogger
-from graphcast.climatology import align_climatology
+from graphcast.cli_utils import OrbaxLogger
+from graphcast.climatology import align_with
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
@@ -38,6 +38,7 @@ from graphcast.mesh_graph import MeshData
 from graphcast.model import CheckPoint, GraphCast, ModelConfig, TaskConfig
 from graphcast.normalization import InputsAndResiduals
 from graphcast.predictor_base import Predictor
+from graphcast.training_config import TrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -110,108 +111,93 @@ def check_writable_paths(
         raise PermissionError(f"{tb} is not writable.")
 
 
-def get_mesh(configs: Configs) -> MeshData:
-  mesh_data_path = configs.get("mesh.path", required=True)
+def get_mesh(configs: TrainingConfig) -> MeshData:
+  mesh_data_path = configs.mesh.path
   logger.info(f"Loading mesh from {mesh_data_path}")
   mesh_data = read_mesh_data(
     mesh_data_path,
-    mesh_size_tag_name=configs.get("mesh.mesh_size_tag_name", "MeshSize"),
-    mesh_size_tag_step=configs.get("mesh.mesh_size_tag_step", 0),
+    mesh_size_tag_name=configs.mesh.mesh_size_tag_name,
+    mesh_size_tag_step=configs.mesh.step,
   )
   return mesh_data
 
 
-def get_mask(configs: Configs) -> xr.DataArray:
-  path = configs.get("mask.path", required=True)
-  logger.info(f"Loading mask from {path}")
-  mask = xr.open_dataset(path, engine="zarr")
-  mask_name = configs.get("mask.name", required=True)
+def get_dataset(configs: TrainingConfig) -> xr.Dataset:
+  logger.info(f"Loading dataset from {configs.dataset.path}")
+  dataset = xr.open_dataset(configs.dataset.path, **configs.dataset.read.model_dump(exclude_unset=True))
+  dataset = dataset.assign_coords(level=("depth", range(dataset.depth.size)))
+  dataset = dataset.sel(level=list(configs.dataset.levels), drop=True)
+  return dataset
+
+
+def get_climatology(configs: TrainingConfig) -> xr.Dataset:
+  logger.info(f"Loading climatology from {configs.climatology.path}")
+  climatology = xr.open_dataset(configs.climatology.path, **configs.climatology.read.model_dump(exclude_unset=True))
+  climatology = climatology.assign_coords(level=("depth", range(climatology.depth.size)))
+  climatology = climatology.sel(level=list(configs.climatology.levels), drop=True)
+  climatology = climatology.fillna(value=0.0)
+  return climatology
+
+
+def get_anomaly_std(configs: TrainingConfig) -> xr.Dataset:
+  logger.info(f"Loading anomaly_std from {configs.anomaly_std.path}")
+  anomaly_std = xr.open_dataset(configs.anomaly_std.path, **configs.anomaly_std.read.model_dump(exclude_unset=True))
+  anomaly_std = anomaly_std.assign_coords(level=("depth", range(anomaly_std.depth.size)))
+  anomaly_std = anomaly_std.sel(level=list(configs.anomaly_std.levels), drop=True)
+  anomaly_std = anomaly_std.fillna(value=1.0)
+  anomaly_std = anomaly_std.clip(min=1e-16)
+  return anomaly_std
+
+
+def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
+  logger.info(f"Loading tendency_std from {configs.tendency_std.path}")
+  tendency_std = xr.open_dataset(configs.tendency_std.path, **configs.tendency_std.read.model_dump(exclude_unset=True))
+  tendency_std = tendency_std.assign_coords(level=("depth", range(tendency_std.depth.size)))
+  tendency_std = tendency_std.sel(level=list(configs.tendency_std.levels), drop=True)
+  tendency_std = tendency_std.fillna(value=1.0)
+  tendency_std = tendency_std.clip(min=1e-16)
+  return tendency_std
+
+
+def get_surface_mask(configs: TrainingConfig) -> xr.DataArray:
+  logger.info(f"Loading mask from {configs.mask.path}")
+  mask = xr.open_dataset(configs.mask.path, **configs.mask.read.model_dump(exclude_unset=True))
+  mask_name = configs.mask.name
   mask = mask[mask_name]
-  mask_level = configs.get("mask.level", required=True)
-  mask = mask.sel(depth=0, drop=True, method="nearest")
+  mask = mask.assign_coords(level=("depth", range(mask.depth.size)))
+  mask = mask.sel(level=0, drop=True)
   return mask
 
 
-def get_artifacts(configs: Configs) -> MaybeDatasets:
-  climatology_path = configs.get("artifacts.climatology.path", required=True)
-  logger.info(f"Loading climatology from {climatology_path}")
-  climatology = xr.open_dataset(climatology_path, engine="zarr", chunks={})
-  climatology = climatology.assign_coords(level=("depth", range(climatology.depth.size)))
-  climatology = climatology.sel(level=configs.get("artifacts.climatology.levels", required=True), drop=True)
-  climatology = climatology.fillna(value=0.0)
-
-  anomaly_std_path = configs.get("artifacts.anomaly_std.path", required=True)
-  logger.info(f"Loading anomaly_std from {anomaly_std_path}")
-  anomaly_std = xr.open_dataset(anomaly_std_path, engine="zarr", chunks={})
-  anomaly_std = anomaly_std.assign_coords(level=("depth", range(anomaly_std.depth.size)))
-  anomaly_std = anomaly_std.sel(level=configs.get("artifacts.anomaly_std.levels", required=True), drop=True)
-  anomaly_std = anomaly_std.fillna(value=1.0)
-  anomaly_std = anomaly_std.clip(min=1e-16)
-
-  tendency_std_path = configs.get("artifacts.tendency_std.path", required=True)
-  logger.info(f"Loading tendency_std from {tendency_std_path}")
-  tendency_std = xr.open_dataset(tendency_std_path, engine="zarr", chunks={})
-  tendency_std = tendency_std.assign_coords(level=("depth", range(tendency_std.depth.size)))
-  tendency_std = tendency_std.sel(level=configs.get("artifacts.tendency_std.levels", required=True), drop=True)
-  tendency_std = tendency_std.fillna(value=1.0)
-  tendency_std = tendency_std.clip(min=1e-16)
-
-  return climatology, anomaly_std, tendency_std
+def get_model_config(configs: TrainingConfig) -> ModelConfig:
+  return ModelConfig(**configs.model.model_dump())
 
 
-def get_dataset(configs) -> xr.Dataset:
-  dataset_path = configs.get("dataset.path", required=True)
-  return xr.open_dataset(dataset_path, engine="zarr")
+def get_task_config(configs: TrainingConfig) -> TaskConfig:
+  return TaskConfig(**configs.task.model_dump())
 
 
-def get_model_config(configs: Configs) -> ModelConfig:
-  return ModelConfig(
-    latent_size=configs.get("model.latent_size", required=True),
-    gnn_msg_steps=configs.get("model.gnn_msg_steps", required=True),
-    hidden_layers=configs.get("model.hidden_layers", required=True),
-    radius_query_fraction_edge_length=configs.get(
-      "model.radius_query_fraction_edge_length", required=True
-    ),
-    per_variable_weights=configs.get("model.per_variable_weights", {}),
-    fourier_features_num_frequencies=configs.get("model.fourier_features_num_frequencies", 1),
-  )
-
-
-def get_task_config(configs: Configs) -> TaskConfig:
-  return TaskConfig(
-    input_variables=configs.get("task.input_variables", required=True),
-    target_variables=configs.get("task.target_variables", required=True),
-    forcing_variables=configs.get("task.forcing_variables", required=True),
-    levels=configs.get("task.levels", required=True),
-    input_duration=configs.get("task.input_duration", required=True),
-  )
-
-
-def get_policy(configs: Configs) -> Callable:
-  return cp.save_and_offload_only_these_names(
-    names_which_can_be_saved=configs.get("policy.save", []),
-    names_which_can_be_offloaded=configs.get("policy.offload", []),
-    offload_src=configs.get("policy.offload_src", "device"),
-    offload_dst=configs.get("policy.offload_dst", "pinned_host"),
-  )
+def get_policy(configs: TrainingConfig) -> Callable:
+  return cp.save_and_offload_only_these_names(**configs.policy.model_dump())
 
 
 def get_predictor(
-  configs: Configs,
-    dataset: xr.Dataset,
+    configs: TrainingConfig,
+    model_config: ModelConfig,
+    task_config: TaskConfig,
   mesh_data: MeshData,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,
-    climatology: xr.Dataset,
-    anomaly_std: xr.Dataset,
+    mean_by_level: xr.Dataset | None,
+    stddev_by_level: xr.Dataset | None,
   mask_da: xr.DataArray,
-    tendency_std: xr.Dataset | None = None,
+    diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
   # Deeper one-step predictor.
   predictor = GraphCast(
-    _model_config=get_model_config(configs),
-    _task_config=get_task_config(configs),
+    _model_config=model_config,
+    _task_config=task_config,
     _grid_lat=grid_lat,
     _grid_lon=grid_lon,
     _grid_mask=grid_mask,
@@ -227,45 +213,39 @@ def get_predictor(
 
   # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
   # normalization to the inputs/targets.
-  mean_by_level = align_climatology(climatology, dataset)
-  assert isinstance(mean_by_level, xr.Dataset)
-  stddev_by_level = align_climatology(anomaly_std, dataset)
-  assert isinstance(stddev_by_level, xr.Dataset)
   predictor = InputsAndResiduals(
     predictor,
     mean_by_level=mean_by_level,
     stddev_by_level=stddev_by_level,
-    diffs_stddev_by_level=tendency_std,
-    skip_names=configs.get("artifacts.skip_names", []),
+    diffs_stddev_by_level=diffs_stddev_by_level,
+    skip_names=configs.normalization.skip_names,
   )
 
   # Mask inputs/outputs. Notice, other not finite values (i.e., inf) are not filled with mask.fill_value.
-  predictor = Mask(predictor, mask=mask_da, value=configs.get("mask.fill_value", required=True))
+  predictor = Mask(predictor, mask=mask_da, value=configs.mask.fill_value)
 
   return predictor
 
 
-def get_optimizer(configs: Configs) -> tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
-  logger.info(f"Optimizing with {configs.get('optimizer')}")
-  schedule_configs = configs.get("optimizer.schedule", [])
-  if not schedule_configs:
-    raise ValueError("No learning rate schedule specified.")
-  scheduler_configs = configs.get("optimizer.schedule")
-  scheduler_name = scheduler_configs.pop("name")
-  scheduler_init = getattr(optax.schedules, scheduler_name)
-  scheduler = scheduler_init(**scheduler_configs)
+def get_optimizer(configs: TrainingConfig) -> tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
+  logger.info(f"Optimizing with {configs.optimizer}")
+  schedule_config = configs.optimizer.schedule
+  try:
+    scheduler_init = getattr(optax.schedules, schedule_config.name)
+    scheduler = scheduler_init(**schedule_config.model_dump(exclude={"name"}, exclude_unset=True))
+  except (AttributeError, TypeError, ValueError) as error:
+    raise ValueError(f"optimizer.schedule ({schedule_config.name}): {error}") from error
 
-  gradient_transformation_configs = configs.get("optimizer.gradient_transformation", [])
-  if not gradient_transformation_configs:
-    raise ValueError("No gradient transformation specified.")
   gradient_transformations = []
-  for gradient_transformation_config in gradient_transformation_configs:
-    gradient_transformation_name = gradient_transformation_config.pop("name")
-    gradient_transformation_init = getattr(optax, gradient_transformation_name)
-    gradient_transformation_init_signature = inspect.signature(gradient_transformation_init)
-    if "learning_rate" in gradient_transformation_init_signature.parameters:
-      gradient_transformation_config["learning_rate"] = scheduler
-    gradient_transformation = gradient_transformation_init(**gradient_transformation_config)
+  for index, config in enumerate(configs.optimizer.gradient_transformation):
+    try:
+      gradient_transformation_init = getattr(optax, config.name)
+      kwargs = config.model_dump(exclude={"name"}, exclude_unset=True)
+      if "learning_rate" in inspect.signature(gradient_transformation_init).parameters:
+        kwargs["learning_rate"] = scheduler
+      gradient_transformation = gradient_transformation_init(**kwargs)
+    except (AttributeError, TypeError, ValueError) as error:
+      raise ValueError(f"optimizer.gradient_transformation.{index} ({config.name}): {error}") from error
     gradient_transformations.append(gradient_transformation)
   optimizer = optax.chain(*gradient_transformations)
 
@@ -274,35 +254,37 @@ def get_optimizer(configs: Configs) -> tuple[optax.GradientTransformationExtraAr
 
 # TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
 def get_dataset_iterator(
-  configs: Configs,
+    configs: TrainingConfig,
+    timeseries: xr.Dataset,
+    climatology: xr.Dataset,
+    anomaly_std: xr.Dataset,
+    seed: int,
   train: bool = True,
 ) -> InputsTargetsForcingsIterDataset:
-  dataset_path = configs.get("dataset.path", required=True)
-  logger.info(f"Loading datasource from {dataset_path}")
-
   task_config = get_task_config(configs)
-
-  split_date = configs.get("dataset.split_date", required=True)
-  xarray_dataset = xr.open_dataset(dataset_path, engine="zarr")
+  split_date = configs.grain_dataset.split_date
+  climatology = align_with(climatology, timeseries)
+  anomaly_std = align_with(anomaly_std, timeseries)
+  timeseries = (timeseries - climatology) / anomaly_std
   # Split the dataset "causally"
   if train:
-    xarray_dataset = xarray_dataset.sel(time=slice(None, split_date))
+    timeseries = timeseries.sel(time=slice(None, split_date))
   else:
-    xarray_dataset = xarray_dataset.sel(time=slice(split_date, None))
+    timeseries = timeseries.sel(time=slice(split_date, None))
   datasource = ARCODataSource(
-    xarray_dataset,
+    timeseries,
     task=task_config,
-    target_lead_times=configs.get("dataset.target_lead_times", required=True),
+    target_lead_times=configs.grain_dataset.target_lead_times,
   )
 
   dataset = (
     grain.MapDataset.source(datasource)
     .repeat(num_epochs=None)
-    .shuffle(seed=configs.get("seed", required=True))
+    .shuffle(seed=seed)
     .slice(slice(jax.process_index(), None, jax.process_count()))
   )
 
-  local_batch_size = configs.get("local_batch_size", 1)
+  local_batch_size = configs.grain_dataset.local_batch_size
   if local_batch_size > 1:
     logger.info(f"Batching {local_batch_size} samples per device.")
 
@@ -313,7 +295,7 @@ def get_dataset_iterator(
 
     dataset = dataset.batch(batch_size=local_batch_size, drop_remainder=True, batch_fn=batch_fn)
 
-  if pick_config := configs.get("dataset.pick_performance_config", None):
+  if (pick_config := configs.grain_dataset.pick_performance_config) is not None:
     # pick_performance_config needs to measure the size of elements drawn from a DatasetIterator. However, the current
     # implementation of _get_element_size_bytes in grain/_src/python/dataset/transformations/prefetch_autotune.py
     # does not work with xarray datasets. We get around the issue by flattening the dataset beforehand.
@@ -321,25 +303,14 @@ def get_dataset_iterator(
     logger.info(f"Picking dataset iterator performance configurations ({pick_config=}).")
     performance_config = pick_performance_config(
       ds=flatten_dataset_iterator,
-      ram_budget_mb=pick_config.get("ram_budget_mb", None),
-      max_workers=pick_config.get("max_workers", None),
-      max_buffer_size=pick_config.get("max_buffer_size", None),
-      samples_to_check=pick_config.get("samples_to_check", None),
+      **pick_config.model_dump(),
     )
     read_options = performance_config.read_options
     mp_options = performance_config.multiprocessing_options
   else:
-    read_config = configs.get("dataset.read_options", required=True)
-    read_options = grain.ReadOptions(
-      num_threads=read_config.get("num_threads", required=True),
-      prefetch_buffer_size=read_config.get("prefetch_buffer_size", required=True),
-    )
-    if mp_config := configs.get("dataset.multiprocessing_options", None):
-      mp_options = grain.MultiprocessingOptions(
-        num_workers=mp_config.get("num_workers", required=True),
-        per_worker_buffer_size=mp_config.get("per_worker_buffer_size", required=True),
-        enable_profiling=mp_config.get("enable_profiling", False),
-      )
+    read_options = grain.ReadOptions(**configs.grain_dataset.read_options.model_dump())
+    if (mp_config := configs.grain_dataset.multiprocessing_options) is not None:
+      mp_options = grain.MultiprocessingOptions(**mp_config.model_dump())
     else:
       mp_options = None
 
@@ -370,10 +341,10 @@ def get_first_sample_and_reset(
 def get_params(
   init_fn: Callable[..., Params],
   iterator: DatasetIterator[InputsTargetsForcings],
-  configs: Configs,
+    configs: TrainingConfig,
   seed: int | None = None,
 ) -> Params:
-  seed = seed or configs["seed"]
+  seed = configs.seed if seed is None else seed
   rng_key = jax.random.key(seed)
   sample_on_host = get_first_sample_and_reset(iterator)
   # FIXME: avoid grain workers failing (harmless, but produce lousy logs)
@@ -384,11 +355,11 @@ def get_params(
 
 def get_checkpoint_manager(
     ckpt_path: pathlib.Path,
-  configs: Configs,
+    configs: TrainingConfig,
 ) -> ocp.CheckpointManager:
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
   ckpt_mngr_options = ocp.CheckpointManagerOptions(
-    best_fn=lambda metrics: metrics[0], best_mode="min", **configs.get("checkpoints", {})
+    best_fn=lambda metrics: metrics[0], best_mode="min", **configs.checkpoints.model_dump(exclude_unset=True)
   )
   # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
   # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
@@ -521,7 +492,9 @@ class TensorboardLogger:
 
 def save_model(
     output_path: pathlib.Path,
-  configs: Configs,
+    configs: TrainingConfig,
+    model_config: ModelConfig,
+    task_config: TaskConfig,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,
@@ -529,14 +502,14 @@ def save_model(
   params: Params,
 ) -> None:
   graphcast_ckpt = CheckPoint(
-    model_config=get_model_config(configs),
-    task_config=get_task_config(configs),
+    model_config=model_config,
+    task_config=task_config,
     mesh_data=mesh_data,
     grid_lat=grid_lat,
     grid_lon=grid_lon,
     grid_mask=grid_mask,
-    description=configs.get("description", ""),
-    license=configs.get("license", ""),
+    description=configs.description,
+    license=configs.license,
     params=params,
   )
 

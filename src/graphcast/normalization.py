@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 def normalize(
   values: xarray.Dataset,
-  scales: xarray.Dataset,
+    scales: xarray.Dataset | None,
   locations: xarray.Dataset | None,
   skip_names: Iterable[str] | None = None,
 ) -> xarray.Dataset:
@@ -46,10 +46,11 @@ def normalize(
         array = array - locations[array.name].astype(array.dtype)
       elif array.name not in skip_names:
         logging.warning("No normalization location found for %s", array.name)
-    if array.name in scales:
-      array = array / scales[array.name].astype(array.dtype)
-    elif array.name not in skip_names:
-      logging.warning("No normalization scale found for %s", array.name)
+    if scales is not None:
+      if array.name in scales:
+        array = array / scales[array.name].astype(array.dtype)
+      elif array.name not in skip_names:
+        logging.warning("No normalization scale found for %s", array.name)
     return array
 
   return xarray_tree.map_structure(normalize_array, values)
@@ -57,7 +58,7 @@ def normalize(
 
 def unnormalize(
   values: xarray.Dataset,
-  scales: xarray.Dataset,
+    scales: xarray.Dataset | None,
   locations: xarray.Dataset | None,
 ) -> xarray.Dataset:
   """Unnormalize variables using the given scales and (optionally) locations."""
@@ -65,10 +66,11 @@ def unnormalize(
   def unnormalize_array(array):
     if array.name is None:
       raise ValueError("Can't look up normalization constants because array has no name.")
-    if array.name in scales:
-      array = array * scales[array.name].astype(array.dtype)
-    else:
-      logging.warning("No normalization scale found for %s", array.name)
+    if scales is not None:
+      if array.name in scales:
+        array = array * scales[array.name].astype(array.dtype)
+      else:
+        logging.warning("No normalization scale found for %s", array.name)
     if locations is not None:
       if array.name in locations:
         array = array + locations[array.name].astype(array.dtype)
@@ -112,14 +114,18 @@ class InputsAndResiduals(predictor_base.Predictor):
   def __init__(
     self,
     predictor: predictor_base.Predictor,
-    stddev_by_level: xarray.Dataset,
-    mean_by_level: xarray.Dataset,
+      stddev_by_level: xarray.Dataset | None,
+      mean_by_level: xarray.Dataset | None,
     diffs_stddev_by_level: xarray.Dataset | None = None,
     skip_names: Iterable[str] | None = None,
   ):
     self._predictor = predictor
     self._scales = stddev_by_level
+    if self._scales is None:
+      logger.info("Scales have not been provided, not rescaling inputs.")
     self._locations = mean_by_level
+    if self._locations is None:
+      logger.info("Locations have not been provided, not subtracting mean.")
     self._residual_scales = diffs_stddev_by_level
     if self._residual_scales is None:
       logger.info("Residual scales have not been provided, predicting targets directly.")

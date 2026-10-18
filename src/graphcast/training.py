@@ -20,13 +20,14 @@ import click
 import haiku as hk
 import jax
 import optax
+import xarray as xr
 from jax.experimental.shard_map import shard_map
 from jax.sharding import AxisType, NamedSharding
 from jax.sharding import PartitionSpec as P
 
 from graphcast import cli_utils, xarray_jax
 from graphcast import training_utils as trn_utils
-from graphcast.cli_utils import Configs
+from graphcast.training_config import TrainingConfig
 from graphcast.training_utils import (
     Datasets,
     DatasetsOrDataArrays,
@@ -109,6 +110,8 @@ def train(
         force=True,
     )
 
+    configs = cli_utils.read_configs(config_path, schema=TrainingConfig)
+
     jax.distributed.initialize()
     logger.info(
         f"Using a JAX mesh with {jax.device_count()} devices "
@@ -123,37 +126,40 @@ def train(
         overwrite=overwrite,
     )
 
-    configs = Configs.read(config_path)
-
+    model_config = trn_utils.get_model_config(configs)
+    task_config = trn_utils.get_task_config(configs)
     mesh_data = trn_utils.get_mesh(configs)
-    dataset = trn_utils.get_dataset(configs)
-    mask = trn_utils.get_mask(configs)
+    mask = trn_utils.get_surface_mask(configs)
     grid_lat = mask["lat"].to_numpy()
     grid_lon = mask["lon"].to_numpy()
     grid_mask = mask.transpose("lat", "lon").to_numpy()
-    artifacts = trn_utils.get_artifacts(configs)
+    dataset = trn_utils.get_dataset(configs)
+    climatology = trn_utils.get_climatology(configs)
+    anomaly_std = trn_utils.get_anomaly_std(configs)
+    tendency_std = trn_utils.get_tendency_std(configs)
     static_data = xarray_jax.wrap_data(
-        artifacts + (mask,), to_jax=True, np_contiguous=False
+        (tendency_std, mask), to_jax=True, np_contiguous=False
     )
 
     @hk.without_apply_rng
     @hk.transform
     def loss_fn(
-        data: Datasets, static_data: DatasetsOrDataArrays
+        data: Datasets, static_data: tuple[xr.Dataset, xr.DataArray]
     ) -> JAXLossAndDiagnostics:
         inputs, targets, forcings = data
-        climatology, anomaly_std, tendency_std, mask_da = static_data
+        tendency_std, mask_da = static_data
         predictor = trn_utils.get_predictor(
             configs=configs,
-            dataset=dataset,
+            model_config=model_config,
+            task_config=task_config,
             mesh_data=mesh_data,
             grid_lat=grid_lat,
             grid_lon=grid_lon,
             grid_mask=grid_mask,
-            climatology=climatology,
-            anomaly_std=anomaly_std,
+            mean_by_level=None,
+            stddev_by_level=None,
             mask_da=mask_da,
-            tendency_std=tendency_std,
+            diffs_stddev_by_level=tendency_std,
         )
         loss, diagnostics = predictor.loss(
             inputs=inputs, targets=targets, forcings=forcings
@@ -168,9 +174,23 @@ def train(
 
     optimizer, schedule = trn_utils.get_optimizer(configs)
 
-    train_iterdataset = trn_utils.get_dataset_iterator(configs, train=True)
+    train_iterdataset = trn_utils.get_dataset_iterator(
+        configs=configs,
+        timeseries=dataset,
+        climatology=climatology,
+        anomaly_std=anomaly_std,
+        seed=configs.seed,
+        train=True,
+    )
     train_iterator = iter(train_iterdataset)
-    test_iterdataset = trn_utils.get_dataset_iterator(configs, train=False)
+    test_iterdataset = trn_utils.get_dataset_iterator(
+        configs=configs,
+        timeseries=dataset,
+        climatology=climatology,
+        anomaly_std=anomaly_std,
+        seed=configs.seed,
+        train=False,
+    )
     test_iterator = iter(test_iterdataset)
 
     latest_step = 0
@@ -214,7 +234,7 @@ def train(
         params: trn_utils.Params = restored["params"]
         opt_state: trn_utils.Params = restored["opt_state"]
 
-    training_steps = configs.get("training_steps", required=True)
+    training_steps = configs.training_steps
     logger.info(f"Training for {training_steps=} starting at {latest_step=}.")
     tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
 
@@ -246,8 +266,8 @@ def train(
         return updated_params, next_opt_state, loss_and_diagnostics, test_metrics
 
     mp_prefetch = (
-        configs.get("dataset.multiprocessing_options") is not None
-        or configs.get("dataset.pick_performance_config") is not None
+        configs.grain_dataset.multiprocessing_options is not None
+        or configs.grain_dataset.pick_performance_config is not None
     )
     for current_step in range(latest_step, training_steps):
         batch, batch_test = trn_utils.next_batches_on_device(
@@ -282,10 +302,12 @@ def train(
     )
     trn_utils.save_model(
         output_path=output_path,
-        params=restored["params"],
         configs=configs,
+        model_config=model_config,
+        task_config=task_config,
         grid_lat=grid_lat,
         grid_lon=grid_lon,
         grid_mask=grid_mask,
         mesh_data=mesh_data,
+        params=restored["params"],
     )

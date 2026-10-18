@@ -4,7 +4,7 @@ import numpy as np
 import xarray as xr
 
 
-def align_climatology(
+def align_with(
     climatology: xr.Dataset | xr.DataArray,
     timeseries: xr.Dataset | xr.DataArray,
     time_dim: str = "time",
