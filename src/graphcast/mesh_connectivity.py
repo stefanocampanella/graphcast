@@ -24,7 +24,14 @@ import trimesh
 
 from graphcast.gis_utils import cartesian_crs, equirectangular_crs, get_transform
 from graphcast.mesh_graph import Mesh, TriangleMesh, faces_to_edges
-from graphcast.typed_graph import Context, EdgeSet, EdgeSetKey, EdgesIndices, NodeSet, TypedGraph
+from graphcast.typed_graph import (
+  Context,
+  EdgeSet,
+  EdgeSetKey,
+  EdgesIndices,
+  NodeSet,
+  TypedGraph,
+)
 
 logger = logging.getLogger(__name__)
 

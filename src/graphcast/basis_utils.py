@@ -9,7 +9,12 @@ from scipy import sparse
 from scipy.interpolate import LinearNDInterpolator
 
 from graphcast.data_utils import fix_longitude
-from graphcast.gis_utils import cartesian_crs, equirectangular_crs, get_transform, stereographic_crs
+from graphcast.gis_utils import (
+  cartesian_crs,
+  equirectangular_crs,
+  get_transform,
+  stereographic_crs,
+)
 
 logger = logging.getLogger(__name__)
 

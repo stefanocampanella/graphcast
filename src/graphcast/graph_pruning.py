@@ -51,7 +51,13 @@ import numpy as np
 import xarray as xr
 
 from graphcast.mesh_connectivity import get_mesh_to_grid_edges, radius_query_indices
-from graphcast.mesh_graph import Mesh, MeshGraph, TriangleMesh, faces_to_edges, mesh_to_latlon
+from graphcast.mesh_graph import (
+  Mesh,
+  MeshGraph,
+  TriangleMesh,
+  faces_to_edges,
+  mesh_to_latlon,
+)
 
 logger = logging.getLogger(__name__)
 

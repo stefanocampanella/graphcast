@@ -79,7 +79,6 @@ class StereoMeshSizeField(abc.ABC):
   @abc.abstractmethod
   def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the mesh size field in 3D space."""
-    pass
 
   def __call__(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the mesh size field in stereographic projection coordinates,
@@ -122,7 +121,6 @@ class BoundedStereoMeshSizeField(StereoMeshSizeField):
   @abc.abstractmethod
   def criterion(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the criterion field in 3D space."""
-    pass
 
   def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     """Value of the mesh size field in 3D space."""

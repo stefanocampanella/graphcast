@@ -484,7 +484,7 @@ class SharedMemoryArrayWrapper:
     raise TypeError(f"Shared memory arrays cannot be used with xarray: {func}")
 
   def __repr__(self):
-    return f"xarray_jax.SharedMemoryArrayWrapper({repr(self.shmem_array)})"
+    return f"xarray_jax.SharedMemoryArrayWrapper({self.shmem_array!r})"
 
   __str__ = __repr__
 
@@ -552,7 +552,7 @@ class JaxArrayWrapper(np.lib.mixins.NDArrayOperatorsMixin):
     return _wrapped(func)(*args, **kwargs)
 
   def __repr__(self):
-    return f"xarray_jax.JaxArrayWrapper({repr(self.jax_array)})"
+    return f"xarray_jax.JaxArrayWrapper({self.jax_array!r})"
 
   # NDArrayOperatorsMixin already proxies most __dunder__ operator methods.
   # We need to proxy through a few more methods in a similar way:
@@ -1002,7 +1002,7 @@ class _HashableCoords(collections.abc.Mapping):
     self._variables = coord_vars
 
   def __repr__(self) -> str:
-    return f"_HashableCoords({repr(self._variables)})"
+    return f"_HashableCoords({self._variables!r})"
 
   def __getitem__(self, key: Hashable) -> xarray.Variable:
     return self._variables[key]

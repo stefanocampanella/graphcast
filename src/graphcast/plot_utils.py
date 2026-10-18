@@ -25,7 +25,7 @@ def select(
   if "batch" in data.dims:
     data = data.isel(batch=0)
   if max_steps is not None and "time" in data.sizes and max_steps < data.sizes["time"]:
-    data = data.isel(time=range(0, max_steps))
+    data = data.isel(time=range(max_steps))
   if level is not None and "level" in data.coords:
     data = data.sel(level=level)
   return data
