@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 import pathlib
+import shutil
 import typing
 from collections.abc import Callable, Mapping
 from typing import Any
@@ -13,7 +14,6 @@ import numpy as np
 import optax
 import orbax.checkpoint as ocp
 import xarray as xr
-from etils import epath
 from grain.checkpoint import CheckpointRestore as IterDatasetRestore
 from grain.checkpoint import CheckpointSave as IterDatasetSave
 from grain.experimental import pick_performance_config
@@ -30,6 +30,7 @@ from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
 from graphcast.cli_utils import Configs, OrbaxLogger
+from graphcast.climatology import align_climatology
 from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 Datasets = tuple[xr.Dataset, ...]
 MaybeDatasets = tuple[Datasets | None, ...]
 DatasetsOrDataArrays = tuple[xr.Dataset | xr.DataArray, ...]
-Paths = tuple[epath.Path, ...]
+Paths = tuple[pathlib.Path, ...]
 InputsTargetsForcingsIterator = DatasetIterator[InputsTargetsForcings]
 InputsTargetsForcingsIterDataset = IterDataset[InputsTargetsForcings]
 Params = hk.Params | hk.MutableParams | dict[str, Any]
@@ -51,24 +52,24 @@ JAXLossAndDiagnostics = tuple[jax.Array, Mapping[str, jax.Array]]
 
 
 def check_writable_paths(
-  output: epath.Path,
-  train: epath.Path,
-  tb: epath.Path,
+    output: pathlib.Path,
+    train: pathlib.Path,
+    tb: pathlib.Path | None,
   start_fresh: bool = False,
   overwrite: bool = False,
-) -> Paths:
+) -> None:
   """Check preconditions for path-arguments to write to, safely creating and deleting directories if necessary."""
 
-  def ensure_directory_exists(path: epath.Path):
+  def ensure_directory_exists(path: pathlib.Path):
     if jax.process_index() == 0 and not path.exists():
       path.mkdir(parents=True, exist_ok=True)
     sync_global_devices(f"ensure_{path}_exists")
 
-  def empty_directory(path: epath.Path):
+  def empty_directory(path: pathlib.Path):
     logger.info(f"Emptying {path}")
     if jax.process_index() == 0:
       if path.exists():
-        path.rmtree()
+        shutil.rmtree(path)
       path.mkdir(parents=True, exist_ok=True)
     sync_global_devices(f"empty_{path}")
 
@@ -103,15 +104,14 @@ def check_writable_paths(
     # tb is where the summarywriter will write the logs during training:
     # We ensure that the directory exists (with write permission if created).
     #   1. It should be writable.
-    ensure_directory_exists(tb)
-    if not os.access(tb, os.W_OK):
-      raise PermissionError(f"{tb} is not writable.")
+    if tb is not None:
+      ensure_directory_exists(tb)
+      if not os.access(tb, os.W_OK):
+        raise PermissionError(f"{tb} is not writable.")
 
-  return output, train, tb
 
-
-def get_mesh(data_path: epath.Path, configs: Configs) -> MeshData:
-  mesh_data_path = data_path / configs.get("mesh.filepath", required=True)
+def get_mesh(configs: Configs) -> MeshData:
+  mesh_data_path = configs.get("mesh.path", required=True)
   logger.info(f"Loading mesh from {mesh_data_path}")
   mesh_data = read_mesh_data(
     mesh_data_path,
@@ -121,36 +121,47 @@ def get_mesh(data_path: epath.Path, configs: Configs) -> MeshData:
   return mesh_data
 
 
-def get_mask(data_path: epath.Path, configs: Configs) -> xr.DataArray:
-  path = data_path / configs.get("mask.filepath", required=True)
+def get_mask(configs: Configs) -> xr.DataArray:
+  path = configs.get("mask.path", required=True)
   logger.info(f"Loading mask from {path}")
   mask = xr.open_dataset(path, engine="zarr")
   mask_name = configs.get("mask.name", required=True)
   mask = mask[mask_name]
   mask_level = configs.get("mask.level", required=True)
-  mask = mask.isel(level=mask_level, drop=True)
+  mask = mask.sel(depth=0, drop=True, method="nearest")
   return mask
 
 
-def get_artifacts(data_path: epath.Path, configs: Configs) -> MaybeDatasets:
-  path = data_path / configs.get("artifacts.filepath", required=True)
-  logger.info(f"Loading normalization artifacts from {path}")
-  artifacts = xr.open_datatree(path, engine="zarr")
+def get_artifacts(configs: Configs) -> MaybeDatasets:
+  climatology_path = configs.get("artifacts.climatology.path", required=True)
+  logger.info(f"Loading climatology from {climatology_path}")
+  climatology = xr.open_dataset(climatology_path, engine="zarr", chunks={})
+  climatology = climatology.assign_coords(level=("depth", range(climatology.depth.size)))
+  climatology = climatology.sel(level=configs.get("artifacts.climatology.levels", required=True), drop=True)
+  climatology = climatology.fillna(value=0.0)
 
-  def _get_ds(name):
-    logger.info(f"Getting {name} dataset from normalization artifacts.")
-    if ds_path := configs.get(f"artifacts.{name}.path"):
-      ds = artifacts[ds_path].dataset
-      logger.warning(f"Postprocessing needs implementation.")
-      # postprocess = Process(steps=configs.get(f"artifacts.{name}.postprocess", None))
-      # ds = postprocess(ds)
-      return ds
-    else:
-      return None
+  anomaly_std_path = configs.get("artifacts.anomaly_std.path", required=True)
+  logger.info(f"Loading anomaly_std from {anomaly_std_path}")
+  anomaly_std = xr.open_dataset(anomaly_std_path, engine="zarr", chunks={})
+  anomaly_std = anomaly_std.assign_coords(level=("depth", range(anomaly_std.depth.size)))
+  anomaly_std = anomaly_std.sel(level=configs.get("artifacts.anomaly_std.levels", required=True), drop=True)
+  anomaly_std = anomaly_std.fillna(value=1.0)
+  anomaly_std = anomaly_std.clip(min=1e-16)
 
-  return tuple(
-    _get_ds(name) for name in ["mean_by_level", "stddev_by_level", "diffs_stddev_by_level"]
-  )
+  tendency_std_path = configs.get("artifacts.tendency_std.path", required=True)
+  logger.info(f"Loading tendency_std from {tendency_std_path}")
+  tendency_std = xr.open_dataset(tendency_std_path, engine="zarr", chunks={})
+  tendency_std = tendency_std.assign_coords(level=("depth", range(tendency_std.depth.size)))
+  tendency_std = tendency_std.sel(level=configs.get("artifacts.tendency_std.levels", required=True), drop=True)
+  tendency_std = tendency_std.fillna(value=1.0)
+  tendency_std = tendency_std.clip(min=1e-16)
+
+  return climatology, anomaly_std, tendency_std
+
+
+def get_dataset(configs) -> xr.Dataset:
+  dataset_path = configs.get("dataset.path", required=True)
+  return xr.open_dataset(dataset_path, engine="zarr")
 
 
 def get_model_config(configs: Configs) -> ModelConfig:
@@ -187,14 +198,15 @@ def get_policy(configs: Configs) -> Callable:
 
 def get_predictor(
   configs: Configs,
+    dataset: xr.Dataset,
   mesh_data: MeshData,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,
-  mean_by_level: xr.Dataset,
-  stddev_by_level: xr.Dataset,
+    climatology: xr.Dataset,
+    anomaly_std: xr.Dataset,
   mask_da: xr.DataArray,
-  diffs_stddev_by_level: xr.Dataset | None = None,
+    tendency_std: xr.Dataset | None = None,
 ) -> Predictor:
   # Deeper one-step predictor.
   predictor = GraphCast(
@@ -215,11 +227,15 @@ def get_predictor(
 
   # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
   # normalization to the inputs/targets.
+  mean_by_level = align_climatology(climatology, dataset)
+  assert isinstance(mean_by_level, xr.Dataset)
+  stddev_by_level = align_climatology(anomaly_std, dataset)
+  assert isinstance(stddev_by_level, xr.Dataset)
   predictor = InputsAndResiduals(
     predictor,
     mean_by_level=mean_by_level,
     stddev_by_level=stddev_by_level,
-    diffs_stddev_by_level=diffs_stddev_by_level,
+    diffs_stddev_by_level=tendency_std,
     skip_names=configs.get("artifacts.skip_names", []),
   )
 
@@ -258,11 +274,10 @@ def get_optimizer(configs: Configs) -> tuple[optax.GradientTransformationExtraAr
 
 # TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
 def get_dataset_iterator(
-  data_path: epath.Path,
   configs: Configs,
   train: bool = True,
 ) -> InputsTargetsForcingsIterDataset:
-  dataset_path = data_path / configs.get("dataset.filepath", required=True)
+  dataset_path = configs.get("dataset.path", required=True)
   logger.info(f"Loading datasource from {dataset_path}")
 
   task_config = get_task_config(configs)
@@ -368,7 +383,7 @@ def get_params(
 
 
 def get_checkpoint_manager(
-  ckpt_path: epath.Path,
+    ckpt_path: pathlib.Path,
   configs: Configs,
 ) -> ocp.CheckpointManager:
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
@@ -505,7 +520,7 @@ class TensorboardLogger:
 
 
 def save_model(
-  output_path: epath.Path,
+    output_path: pathlib.Path,
   configs: Configs,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,

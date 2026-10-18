@@ -9,7 +9,6 @@ import humanize
 import jax
 import orbax.checkpoint
 import orbax.checkpoint.logging
-from etils import epath
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +53,8 @@ class Configs(dict):
     return value
 
   @staticmethod
-  def read(path: str | epath.Path | pathlib.Path):
-    path = path if isinstance(path, pathlib.Path | epath.Path) else pathlib.Path(path)
+  def read(path: str | pathlib.Path | pathlib.Path):
+    path = path if isinstance(path, pathlib.Path | pathlib.Path) else pathlib.Path(path)
     logger.info(f"Reading configs from {path}")
     with path.open("rb") as file:
       configs = Configs(tomllib.load(file))
@@ -159,7 +158,5 @@ def run_analysis_and_report(func_aot):
     logger.info("Cost: unknown")
 
 
-def get_cwd() -> epath.Path:
-  cwd = pathlib.Path.cwd()
-  # noinspection PyAbstractClass
-  return epath.Path(cwd)
+def get_cwd() -> pathlib.Path:
+  return pathlib.Path.cwd()

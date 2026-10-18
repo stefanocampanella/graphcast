@@ -77,18 +77,18 @@ per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
 fourier_features_num_frequencies = 32
 
 [mesh]
-filepath = "data/geometry/uniform_fine.msh"
+path = "/data/geometry/uniform_fine.msh"
 mesh_size_tag_name = "MeshSize"
 step = 0
 
 [mask]
-filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+path = "/data/dataset"
 name = "glorys_mask"
 level = 0
 fill_value = 0.0
 
 [dataset]
-filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_arco"
+path = "/data/dataset"
 target_lead_times = "1d"
 split_date = "2019-06-30T00:00:00"
 local_batch_size = 1
@@ -105,37 +105,19 @@ offload_src = "device"
 offload_dst = "pinned_host"
 
 [artifacts]
-filepath = "data/dataset/dataset_tres-1d_res-0p25_levels-10_normalization"
 skip_names = ["year_progress_cos", "year_progress_sin"]
 
-[artifacts.mean_by_level]
-path = '/inputs/location'
+[artifacts.climatology]
+path = '/data/climatology'
+levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
-[[artifacts.mean_by_level.postprocess]]
-name = 'fillna'
-value = 0.0
+[artifacts.anomaly_std]
+path = '/data/anomaly_std'
+levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
-[artifacts.stddev_by_level]
-path = '/inputs/scale'
-
-[[artifacts.stddev_by_level.postprocess]]
-name = 'fillna'
-value = 1.0
-
-[[artifacts.stddev_by_level.postprocess]]
-name = 'clip'
-min = 1e-16
-
-[artifacts.diffs_stddev_by_level]
-path = '/residuals/scale'
-
-[[artifacts.diffs_stddev_by_level.postprocess]]
-name = 'fillna'
-value = 1.0
-
-[[artifacts.diffs_stddev_by_level.postprocess]]
-name = 'clip'
-min = 1e-16
+[artifacts.tendency_std]
+path = '/data/tendency_std'
+levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
 [optimizer.schedule]
 name = 'warmup_cosine_decay_schedule'
