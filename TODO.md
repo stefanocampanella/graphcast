@@ -8,8 +8,13 @@
 * Implement the validation code. **HIGH PRIORITY**
 * Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
+* Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
 * Use climatology instead of the averages for input and output normalizations. **HIGH PRIORITY**
+* Containerize code with Apptainer and using NVIDIA JAX Docker images. **HIGH PRIORITY**
+* Revert code to use $\sin$ and $\cos$ encodings instead of fancier fourier features, or leave fourier features as an
+  option, but using concatenation instead of addition. **HIGH PRIORITY**
+* Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
 * Implement CLI and document train.slurm script the same way as for the other scripts (e.g., download_dataset.slurm). (Medium priority)
@@ -36,7 +41,6 @@
 * Make the model serializable and save along other data (e.g., mesh info). (Medium priority)
 * Solve protobuf gencode warnings. (Medium priority)
 * Implement a script that produces a shapefile with an equilateral triangle with some edge length at the south pole, then use the `geospatial_mesh.py` functions to produce a mesh pretending that was the coastline. Then vary the edge length and check the mesh quality metrics, one should see some peaks corresponding to geodetic polyhedra. (Low priority)
-* Streamline dataset downloading and post-processing, in particular the download-and-postprocess then merge-and-postprocess workflow should be implemented as a single operation. (Low priority)
 * Port download dataset script to zarr3. (Low priority)
 * Refactor code base to have a `models` module, move the `model.py` and all global ocean related code to a model-specific module. Update `pyproject.toml` accordingly. (Low priority)
 * Revise older code to use Python logging properly and check that expensive format strings are not interpolated. (Low priority)
@@ -54,12 +58,24 @@
 * Integrate and revise notebooks to explain details of mesh generation. (Medium priority)
 * Choose a test suite (e.g. Pytest), update original codebase tests (using abseil/unittest), and add tests for the new code. Implement CI using GitHub actions. (Low priority)
 * Add animation and plot routines to `plot_utils.py`. (Low priority)
-* Document `--add-spack-mirrors` in `leonardo/environment/setup.sh`, check that other users are able to reproduce environment creation. (Low priority)
+* Document `--add-spack-mirrors` in `clusters/leonardo/environment/setup.sh`, check that other users are able to
+  reproduce environment creation. (Low priority)
 * Merge into main branch. (Low priority)
 * Most of the documentation is missing or outdated, fix it. (Low priority)
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Long-term goals
+
+* Experiment with gated activations.
+* Implement smoothing (Gaussian blurring) within the dataloader, as an alternative to different dataset resolution, as
+  they do in Samudra.
+* Investigate the potential of computing advection terms for tracers explicitly, or other techniques that take tracer
+  gradients into account.
+* Investigate the potential of bilinear MLPs, or bilinear forms for feature augmentation.
+* Implement the CPRS-based losses and code for ensemble generation (conditional layer normalizations, as in
+  adaspeech/aifs-cprs, and sharding).
+* Investigate the impact on performance of free-running vs reanalysis datasets, spatial and temporal resolution,
+  hyperparameters, mesh-size, and input normalizations in a controlled experiment.
 * Experiment with typed graphs, especially for coastline boundary conditions (i.e., use a typed graph connecting GLOFAS only to processor graph boundary nodes). (Low priority)
 * Experiment with ideas contained in ICLR25 proposal, add routines to fit on meshes and project back to Cartesian grids, perform experiments on reconstruction errors. (Low priority)
 * Create a similar model for Mediterranean sea biogeochemistry, it should require minimal changes to download scripts and model code. However, more thinking is needed on how to deal with open boundaries. (Low priority)
@@ -69,6 +85,10 @@
 * Implement latent space rollout.
 
 ## Completed tasks
+
+* ~~Streamline dataset downloading and post-processing, in particular the download-and-postprocess then
+  merge-and-postprocess workflow should be implemented as a single operation.~~ **DONE, now in a separate package:
+  arco-make**
 * ~~Add `oceanbench` to dependencies~~ **DONE**
 * ~~Fix dataloader to use multiple workers and reduce training bubble.~~ **DONE**
 * ~~Some nodes might be faulty or have systematic issues. Add hostname to log file names.~~ **DONE**
