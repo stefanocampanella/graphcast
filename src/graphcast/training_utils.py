@@ -265,7 +265,9 @@ def get_dataset_iterator(
   split_date = configs.grain_dataset.split_date
   climatology = align_with(climatology, timeseries)
   anomaly_std = align_with(anomaly_std, timeseries)
-  timeseries = (timeseries - climatology) / anomaly_std
+  anomaly_zscore = (timeseries - climatology) / anomaly_std
+  timeseries = timeseries.drop_vars(anomaly_zscore.data_vars).merge(anomaly_zscore)
+  timeseries = timeseries.drop_vars("depth")
   # Split the dataset "causally"
   if train:
     timeseries = timeseries.sel(time=slice(None, split_date))

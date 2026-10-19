@@ -56,7 +56,7 @@ forcing_variables = [
     "10v",
     "2d",
     "2t",
-    "sp",
+    "msl",
     "ssrd",
     "strd",
     "tp",

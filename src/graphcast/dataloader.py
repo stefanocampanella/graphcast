@@ -62,6 +62,8 @@ class ARCODataSource(grain.RandomAccessDataSource):
     # even a single copy might be too large, e.g., for ARCO-OCEAN).
     dataset = dataset.fillna(value=self._fill_value)
     dataset = dataset.astype(np.float32)
+    # FIXME: Is this really necessary?
+    dataset = dataset.compute()
     inputs, targets, forcings = extract_inputs_targets_forcings(
       dataset=dataset,
       input_variables=self._task.input_variables,
