@@ -5,6 +5,7 @@ import pathlib
 import shutil
 import typing
 from collections.abc import Callable, Mapping
+from functools import partial
 from typing import Any
 
 import grain.python as grain
@@ -30,8 +31,13 @@ from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
 from graphcast.cli_utils import OrbaxLogger
-from graphcast.climatology import align_with
-from graphcast.dataloader import ARCODataSource, InputsTargetsForcings
+from graphcast.data_utils import _get_steps_per_window, extract_inputs_targets_forcings
+from graphcast.dataloader import (
+  ARCODataSource,
+  InputsTargetsForcings,
+  _FlatSource,
+  _unflatten_sample,
+)
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
 from graphcast.mesh_graph import MeshData
@@ -74,7 +80,9 @@ def check_writable_paths(
       path.mkdir(parents=True, exist_ok=True)
     sync_global_devices(f"empty_{path}")
 
-  mesh = jax.make_mesh((jax.device_count(), jax.local_device_count()), ("process", "local_device"))
+  mesh = jax.make_mesh(
+    (jax.device_count(), jax.local_device_count()), ("process", "local_device")
+  )
   with jax.sharding.set_mesh(mesh):
     # output is where the final checkpoint will be saved.
     # We ensure that output' parent directory exists (with write permission if created). Also:
@@ -122,38 +130,42 @@ def get_mesh(configs: TrainingConfig) -> MeshData:
   return mesh_data
 
 
+def _select_task_levels(dataset: xr.Dataset, levels: tuple[int, ...]) -> xr.Dataset:
+  """Label original depth positions before selecting the ordered task levels."""
+  dataset = dataset.assign_coords(level=("depth", range(dataset.depth.size)))
+  dataset = dataset.swap_dims({"depth": "level"})
+  return dataset.sel(level=list(levels))
+
+
 def get_dataset(configs: TrainingConfig) -> xr.Dataset:
   logger.info(f"Loading dataset from {configs.dataset.path}")
-  dataset = xr.open_dataset(configs.dataset.path, **configs.dataset.read.model_dump(exclude_unset=True))
-  dataset = dataset.assign_coords(level=("depth", range(dataset.depth.size)))
-  dataset = dataset.sel(level=list(configs.dataset.levels), drop=True)
+  read_configs = configs.dataset.read.model_dump(exclude_unset=True)
+  dataset = xr.open_dataset(configs.dataset.path, **read_configs)
+  dataset = _select_task_levels(dataset, configs.task.levels)
   return dataset
 
 
 def get_climatology(configs: TrainingConfig) -> xr.Dataset:
   logger.info(f"Loading climatology from {configs.climatology.path}")
-  climatology = xr.open_dataset(configs.climatology.path, **configs.climatology.read.model_dump(exclude_unset=True))
-  climatology = climatology.assign_coords(level=("depth", range(climatology.depth.size)))
-  climatology = climatology.sel(level=list(configs.climatology.levels), drop=True)
-  climatology = climatology.fillna(value=0.0)
+  read_configs = configs.climatology.read.model_dump(exclude_unset=True)
+  climatology = xr.open_dataset(configs.climatology.path, **read_configs)
+  climatology = _select_task_levels(climatology, configs.task.levels)
   return climatology
 
 
 def get_anomaly_std(configs: TrainingConfig) -> xr.Dataset:
   logger.info(f"Loading anomaly_std from {configs.anomaly_std.path}")
-  anomaly_std = xr.open_dataset(configs.anomaly_std.path, **configs.anomaly_std.read.model_dump(exclude_unset=True))
-  anomaly_std = anomaly_std.assign_coords(level=("depth", range(anomaly_std.depth.size)))
-  anomaly_std = anomaly_std.sel(level=list(configs.anomaly_std.levels), drop=True)
-  anomaly_std = anomaly_std.fillna(value=1.0)
-  anomaly_std = anomaly_std.clip(min=1e-16)
+  read_configs = configs.anomaly_std.read.model_dump(exclude_unset=True)
+  anomaly_std = xr.open_dataset(configs.anomaly_std.path, **read_configs)
+  anomaly_std = _select_task_levels(anomaly_std, configs.task.levels)
   return anomaly_std
 
 
 def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
   logger.info(f"Loading tendency_std from {configs.tendency_std.path}")
-  tendency_std = xr.open_dataset(configs.tendency_std.path, **configs.tendency_std.read.model_dump(exclude_unset=True))
-  tendency_std = tendency_std.assign_coords(level=("depth", range(tendency_std.depth.size)))
-  tendency_std = tendency_std.sel(level=list(configs.tendency_std.levels), drop=True)
+  read_configs = configs.tendency_std.read.model_dump(exclude_unset=True)
+  tendency_std = xr.open_dataset(configs.tendency_std.path, **read_configs)
+  tendency_std = _select_task_levels(tendency_std, configs.task.levels)
   tendency_std = tendency_std.fillna(value=1.0)
   tendency_std = tendency_std.clip(min=1e-16)
   return tendency_std
@@ -161,7 +173,9 @@ def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
 
 def get_surface_mask(configs: TrainingConfig) -> xr.DataArray:
   logger.info(f"Loading mask from {configs.mask.path}")
-  mask = xr.open_dataset(configs.mask.path, **configs.mask.read.model_dump(exclude_unset=True))
+  mask = xr.open_dataset(
+    configs.mask.path, **configs.mask.read.model_dump(exclude_unset=True)
+  )
   mask_name = configs.mask.name
   mask = mask[mask_name]
   mask = mask.assign_coords(level=("depth", range(mask.depth.size)))
@@ -227,12 +241,16 @@ def get_predictor(
   return predictor
 
 
-def get_optimizer(configs: TrainingConfig) -> tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
+def get_optimizer(
+    configs: TrainingConfig,
+) -> tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
   logger.info(f"Optimizing with {configs.optimizer}")
   schedule_config = configs.optimizer.schedule
   try:
     scheduler_init = getattr(optax.schedules, schedule_config.name)
-    scheduler = scheduler_init(**schedule_config.model_dump(exclude={"name"}, exclude_unset=True))
+    scheduler = scheduler_init(
+      **schedule_config.model_dump(exclude={"name"}, exclude_unset=True)
+    )
   except (AttributeError, TypeError, ValueError) as error:
     raise ValueError(f"optimizer.schedule ({schedule_config.name}): {error}") from error
 
@@ -245,42 +263,73 @@ def get_optimizer(configs: TrainingConfig) -> tuple[optax.GradientTransformation
         kwargs["learning_rate"] = scheduler
       gradient_transformation = gradient_transformation_init(**kwargs)
     except (AttributeError, TypeError, ValueError) as error:
-      raise ValueError(f"optimizer.gradient_transformation.{index} ({config.name}): {error}") from error
+      raise ValueError(
+        f"optimizer.gradient_transformation.{index} ({config.name}): {error}"
+      ) from error
     gradient_transformations.append(gradient_transformation)
   optimizer = optax.chain(*gradient_transformations)
 
   return optimizer, scheduler
 
 
+def get_dataset_iterators(
+    configs: TrainingConfig,
+    dataset: xr.Dataset,
+    climatology: xr.Dataset,
+    anomaly_std: xr.Dataset,
+    seed: int,
+) -> tuple[InputsTargetsForcingsIterDataset, InputsTargetsForcingsIterDataset]:
+  """Return independent training and test IterDatasets, in that order.
+
+  Each stream retains its own prefetch/performance configuration and checkpoint
+  state. The split date remains included in both temporal partitions.
+  """
+  return tuple(
+    get_dataset_iterator(
+      configs=configs,
+      dataset=dataset,
+      climatology=climatology,
+      anomaly_std=anomaly_std,
+      seed=seed,
+      train=train,
+    )
+    for train in (True, False)
+  )
+
+
 # TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
 def get_dataset_iterator(
     configs: TrainingConfig,
-    timeseries: xr.Dataset,
+    dataset: xr.Dataset,
     climatology: xr.Dataset,
     anomaly_std: xr.Dataset,
     seed: int,
   train: bool = True,
 ) -> InputsTargetsForcingsIterDataset:
+  """Build a stream from artifacts already selected to ordered task levels."""
   task_config = get_task_config(configs)
-  split_date = configs.grain_dataset.split_date
-  climatology = align_with(climatology, timeseries)
-  anomaly_std = align_with(anomaly_std, timeseries)
-  anomaly_zscore = (timeseries - climatology) / anomaly_std
-  timeseries = timeseries.drop_vars(anomaly_zscore.data_vars).merge(anomaly_zscore)
-  timeseries = timeseries.drop_vars("depth")
+
   # Split the dataset "causally"
+  split_date = configs.grain_dataset.split_date
   if train:
-    timeseries = timeseries.sel(time=slice(None, split_date))
+    dataset = dataset.sel(time=slice(None, split_date))
   else:
-    timeseries = timeseries.sel(time=slice(split_date, None))
+    dataset = dataset.sel(time=slice(split_date, None))
+
   datasource = ARCODataSource(
-    timeseries,
-    task=task_config,
-    target_lead_times=configs.grain_dataset.target_lead_times,
+    dataset=dataset,
+    climatology=climatology,
+    anomaly_std=anomaly_std,
+    window_size=_get_steps_per_window(
+      dataset=dataset,
+      input_duration=task_config.input_duration,
+      target_lead_times=configs.grain_dataset.target_lead_times,
+    ),
   )
 
-  dataset = (
-    grain.MapDataset.source(datasource)
+  grain_dataset = (
+    grain.MapDataset.source(_FlatSource(datasource))
+    .map(_unflatten_sample)
     .repeat(num_epochs=None)
     .shuffle(seed=seed)
     .slice(slice(jax.process_index(), None, jax.process_count()))
@@ -289,20 +338,36 @@ def get_dataset_iterator(
   local_batch_size = configs.grain_dataset.local_batch_size
   if local_batch_size > 1:
     logger.info(f"Batching {local_batch_size} samples per device.")
+    grain_dataset = grain_dataset.batch(
+      batch_size=local_batch_size,
+      drop_remainder=True,
+      batch_fn=partial(xr.concat, dim="batch"),
+    )
 
-    def batch_fn(samples):
-      return tuple(
-        map(lambda datasets: xr.concat(datasets, dim="batch"), zip(*samples, strict=False))
-      )
-
-    dataset = dataset.batch(batch_size=local_batch_size, drop_remainder=True, batch_fn=batch_fn)
+  # Extract once per batch, before prefetch/device transfer.
+  grain_dataset = grain_dataset.map(
+    partial(
+      extract_inputs_targets_forcings,
+      input_variables=task_config.input_variables,
+      target_variables=task_config.target_variables,
+      forcing_variables=task_config.forcing_variables,
+      levels=None,
+      input_duration=task_config.input_duration,
+      target_lead_times=configs.grain_dataset.target_lead_times,
+      to_jax=False,
+    )
+  )
 
   if (pick_config := configs.grain_dataset.pick_performance_config) is not None:
     # pick_performance_config needs to measure the size of elements drawn from a DatasetIterator. However, the current
     # implementation of _get_element_size_bytes in grain/_src/python/dataset/transformations/prefetch_autotune.py
     # does not work with xarray datasets. We get around the issue by flattening the dataset beforehand.
-    flatten_dataset_iterator = dataset.map(jax.tree_util.tree_flatten).to_iter_dataset()
-    logger.info(f"Picking dataset iterator performance configurations ({pick_config=}).")
+    flatten_dataset_iterator = grain_dataset.map(
+      jax.tree_util.tree_flatten
+    ).to_iter_dataset()
+    logger.info(
+      f"Picking dataset iterator performance configurations ({pick_config=})."
+    )
     performance_config = pick_performance_config(
       ds=flatten_dataset_iterator,
       **pick_config.model_dump(),
@@ -317,15 +382,19 @@ def get_dataset_iterator(
       mp_options = None
 
   logger.info(f"Using read options: {read_options}")
-  dataset_iterator = dataset.to_iter_dataset(read_options=read_options)
+  dataset_iterator = grain_dataset.to_iter_dataset(read_options=read_options)
   if mp_options is not None:
     logger.info(f"Using multiprocessing prefetch with options: {mp_options}")
-    # When using multiprocessing prefetching, we need to wrap the xarray datasets to allow using grain
-    # SharedMemoryArrays.
+    # Make arrays contiguous for shared-memory transport and flatten xarray containers so Grain can
+    # replace arrays with shared-memory metadata when checkpointing the prefetch buffer.
     dataset_iterator = (
-      dataset.map(lambda value: xarray_jax.wrap_data(value, to_jax=False, np_contiguous=True))
+      grain_dataset.map(
+        lambda value: xarray_jax.wrap_data(value, to_jax=False, np_contiguous=True)
+      )
+      .map(jax.tree_util.tree_flatten)
       .to_iter_dataset(read_options=read_options)
       .mp_prefetch(options=mp_options)
+      .map(_unflatten_sample)
     )
 
   return dataset_iterator
@@ -361,7 +430,9 @@ def get_checkpoint_manager(
 ) -> ocp.CheckpointManager:
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
   ckpt_mngr_options = ocp.CheckpointManagerOptions(
-    best_fn=lambda metrics: metrics[0], best_mode="min", **configs.checkpoints.model_dump(exclude_unset=True)
+    best_fn=lambda metrics: metrics[0],
+    best_mode="min",
+    **configs.checkpoints.model_dump(exclude_unset=True),
   )
   # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
   # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
@@ -369,9 +440,13 @@ def get_checkpoint_manager(
   # For this reason, orbax CheckpointManager (which uses such a barrier) needs to be called using `null_mesh`, or before
   # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
   #  See: https://github.com/google/orbax/issues/2545
-  mesh = jax.make_mesh((jax.process_count(), jax.local_device_count()), ("process", "local_device"))
+  mesh = jax.make_mesh(
+    (jax.process_count(), jax.local_device_count()), ("process", "local_device")
+  )
   with jax.sharding.set_mesh(mesh):
-    ckpt_mngr = ocp.CheckpointManager(ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger())
+    ckpt_mngr = ocp.CheckpointManager(
+      ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger()
+    )
   return ckpt_mngr
 
 
@@ -481,7 +556,10 @@ class TensorboardLogger:
         if jax.process_index() == 0:
           self._summary.scalar(key, value, step=current_step)
 
-      for set_name, set_metrics in [("train", train_metrics), ("test", test_metrics)]:
+      for set_name, set_metrics in [
+        ("train", train_metrics),
+        ("test", test_metrics),
+      ]:
         set_metrics = jax.tree_util.tree_map(lambda x: x.item(), set_metrics)
         loss, diagnostics = set_metrics
         _log(f"{set_name}/loss", loss)
@@ -574,7 +652,7 @@ def fsdp_map(local_fn, mesh: jax.sharding.Mesh, batch_dim_name: str = "batch"):
   return global_fn
 
 
-# As the dataloader calls extract_inputs_targets_forcings, which is missing the datetime coordinate, the following
+# As the Grain pipeline calls extract_inputs_targets_forcings, which removes the datetime coordinate, the following
 # isn't needed anymore.
 def reshard_data(dataset, sharding, datetime_coord_name="time"):
   """Utility to reshard datasets with datetime coordinates."""
@@ -583,7 +661,10 @@ def reshard_data(dataset, sharding, datetime_coord_name="time"):
   dataset = dataset.drop(datetime_coord_name)
   dataset = dataset.map(
     lambda da: jax.tree_util.tree_map(
-      lambda xs: jax.make_array_from_process_local_data(sharding=sharding, local_data=xs), da
+      lambda xs: jax.make_array_from_process_local_data(
+        sharding=sharding, local_data=xs
+      ),
+      da,
     )
   )
   dataset = xarray_jax.Dataset(
@@ -597,5 +678,7 @@ def reshard_data(dataset, sharding, datetime_coord_name="time"):
   datetime_coordinate = xarray_jax.unwrap_data(datetime_coordinate, require_jax=False)
   datetime_coordinate = np.asarray(datetime_coordinate).astype("datetime64[s]")
   dataset = dataset.drop(datetime_coord_name)
-  dataset = dataset.assign_coords({datetime_coord_name: (datetime_coord_name, datetime_coordinate)})
+  dataset = dataset.assign_coords(
+    {datetime_coord_name: (datetime_coord_name, datetime_coordinate)}
+  )
   return dataset

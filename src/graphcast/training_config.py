@@ -1,5 +1,6 @@
 """Validated training settings, independent of the training runtime."""
 
+import warnings
 from typing import Annotated, Any
 
 from pydantic import (
@@ -8,6 +9,8 @@ from pydantic import (
   Field,
   NonNegativeInt,
   PositiveInt,
+  ValidationInfo,
+  field_validator,
   model_validator,
 )
 
@@ -45,11 +48,7 @@ class ReadConfig(BaseModel):
 
 
 def source_read() -> ReadConfig:
-  return ReadConfig(engine="zarr")
-
-
-def artifact_read() -> ReadConfig:
-  return ReadConfig(engine="zarr", chunks={})
+  return ReadConfig(engine="zarr", chunks=None)
 
 
 Levels = tuple[NonNegativeInt, ...]
@@ -142,11 +141,6 @@ class NormalizationConfig(ApplicationConfig):
   skip_names: list[str] = Field(default_factory=list)
 
 
-class ArtifactConfig(SourceConfig):
-  levels: Levels
-  read: ReadConfig = Field(default_factory=artifact_read)
-
-
 class NamedOptaxConfig(BaseModel):
   model_config = ConfigDict(extra="allow")
   name: Annotated[str, Field(min_length=1)]
@@ -176,9 +170,22 @@ class TrainingConfig(ApplicationConfig):
   normalization: NormalizationConfig
   policy: PolicyConfig = Field(default_factory=PolicyConfig)
   grain_dataset: GrainDatasetConfig
-  dataset: ArtifactConfig
-  climatology: ArtifactConfig
-  anomaly_std: ArtifactConfig
-  tendency_std: ArtifactConfig
+  dataset: SourceConfig
+  climatology: SourceConfig
+  anomaly_std: SourceConfig
+  tendency_std: SourceConfig
   optimizer: OptimizerConfig
   checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
+
+  @field_validator("dataset", "climatology", "anomaly_std", "tendency_std")
+  @classmethod
+  def warn_about_chunks(cls, source: SourceConfig, info: ValidationInfo):
+    if source.read.chunks is not None:
+      warnings.warn(
+        f"{info.field_name}.read.chunks={source.read.chunks!r}: training currently requires "
+        "chunks=None. The configured value is forwarded unchanged; omit chunks "
+        "to use the required default.",
+        UserWarning,
+        stacklevel=2,
+      )
+    return source

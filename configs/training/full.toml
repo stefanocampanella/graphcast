@@ -91,13 +91,14 @@ fill_value = 0.0
 engine = "zarr"
 
 # xarray.open_dataset options, independent of Grain's reader options below.
+# All four sources select task.levels; there are no per-artifact level settings.
+# Training currently requires chunks=None. TOML has no null, so omit chunks
+# from the read tables to use this default. Other values warn but are not overridden.
 [dataset]
 path = "/data/dataset"
-levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
 [dataset.read]
 engine = "zarr"
-chunks = { }
 
 [grain_dataset]
 target_lead_times = "1d"
@@ -107,7 +108,7 @@ local_batch_size = 1
 # Multiprocessing dataloader is currently broken, we only use a multithreaded reader.
 [grain_dataset.read_options]
 num_threads = 8
-prefetch_buffer_size = 48
+prefetch_buffer_size = 16
 
 [normalization]
 skip_names = ["year_progress_cos", "year_progress_sin"]
@@ -120,27 +121,21 @@ offload_dst = "pinned_host"
 
 [climatology]
 path = '/data/climatology'
-levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
 [climatology.read]
 engine = "zarr"
-chunks = { }
 
 [anomaly_std]
 path = '/data/anomaly_std'
-levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
 [anomaly_std.read]
 engine = "zarr"
-chunks = { }
 
 [tendency_std]
 path = '/data/tendency_std'
-levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 
 [tendency_std.read]
 engine = "zarr"
-chunks = { }
 
 [optimizer.schedule]
 name = 'warmup_cosine_decay_schedule'

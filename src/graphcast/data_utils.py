@@ -13,6 +13,7 @@
 # limitations under the License.
 """Dataset utilities for extracting inputs, targets, and forcings."""
 
+import warnings
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -223,11 +224,23 @@ def add_tisr_var(
     device: JAX device to use when adding TISR feature as a (wrapped) JAX array (not implemented).
 
   Raises:
-    ValueError: If required coordinates (`datetime`, `lat`, `lon`) are missing.
+    ValueError: If required coordinates (`datetime`, `lat`, `lon`) are missing,
+      or missing TISR requires generation for a batch larger than one.
+
+  Warns:
+    RuntimeWarning: If missing TISR requires unsupported multi-sample generation.
   """
 
   if tisr_name in data.data_vars:
     return
+
+  if data.sizes.get("batch", 1) > 1:
+    warnings.warn(
+      "TISR generation for batch sizes larger than 1 is not implemented yet. "
+      "Provide precomputed TISR or use a batch size of 1.",
+      RuntimeWarning,
+      stacklevel=2,
+    )
 
   for coord in ("datetime", "lat", "lon"):
     if coord not in data.coords:
@@ -367,7 +380,7 @@ def extract_inputs_targets_forcings(
   input_variables: tuple[str, ...],
   target_variables: tuple[str, ...],
   forcing_variables: tuple[str, ...],
-  levels: tuple[int, ...],
+    levels: tuple[int, ...] | None,
   input_duration: TimedeltaLike,
   target_lead_times: TargetLeadTimes,
   tisr_name: str = _DEFAULT_TISR_NAME,
@@ -398,7 +411,7 @@ def extract_inputs_targets_forcings(
     target_variables: Variables to include in the targets dataset.
     forcing_variables: Variables to compute/collect as forcings (may include
       derived vars like `day_progress_*`, `year_progress_*`, and `tisr_name`).
-    levels: Pressure levels to select.
+    levels: Levels to select, or None if already selected in the required order.
     input_duration: Duration of the contiguous input window ending at lead time
       0.
     target_lead_times: A single lead time, a slice of lead times (inclusive), or
@@ -419,7 +432,8 @@ def extract_inputs_targets_forcings(
   Raises:
     ValueError: If `forcing_variables` overlaps with `target_variables`.
   """
-  dataset = dataset.sel(level=list(levels))
+  if levels is not None:
+    dataset = dataset.sel(level=list(levels))
 
   # "Forcings" include derived variables that do not exist in the original ERA5
   # or HRES datasets, as well as other variables (e.g. tisr) that need to be

@@ -174,23 +174,14 @@ def train(
 
     optimizer, schedule = trn_utils.get_optimizer(configs)
 
-    train_iterdataset = trn_utils.get_dataset_iterator(
+    train_iterdataset, test_iterdataset = trn_utils.get_dataset_iterators(
         configs=configs,
-        timeseries=dataset,
+        dataset=dataset,
         climatology=climatology,
         anomaly_std=anomaly_std,
         seed=configs.seed,
-        train=True,
     )
     train_iterator = iter(train_iterdataset)
-    test_iterdataset = trn_utils.get_dataset_iterator(
-        configs=configs,
-        timeseries=dataset,
-        climatology=climatology,
-        anomaly_std=anomaly_std,
-        seed=configs.seed,
-        train=False,
-    )
     test_iterator = iter(test_iterdataset)
 
     latest_step = 0
