@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import pathlib
 import typing
@@ -16,15 +14,15 @@ from orbax.checkpoint.args import PyTreeRestore, PyTreeSave
 
 from graphcast import grain_utils
 from graphcast.cli_utils import OrbaxLogger
+from graphcast.dataloader_utils import (
+  DatasetStream,
+  InputsTargetsForcingsIterator,
+)
 from graphcast.training_config import TrainingConfig
-
-if typing.TYPE_CHECKING:
-  from graphcast.training_utils import (
-    DatasetStream,
-    InputsTargetsForcingsIterator,
-    JAXLossAndDiagnostics,
-    Params,
-  )
+from graphcast.training_utils import (
+  JAXLossAndDiagnostics,
+  Params,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,21 +58,35 @@ GRAIN_NUM_WORKERS_ITEM = "grain_num_workers"
 GrainNumWorkers = Mapping[str, list[int]]
 
 
-def gather_grain_num_workers(train_stream: DatasetStream, test_stream: DatasetStream) -> GrainNumWorkers:
+def gather_grain_num_workers(
+    train_stream: DatasetStream, test_stream: DatasetStream
+) -> GrainNumWorkers:
   """Gather the Grain num_workers of both streams from all processes, which may autotune them independently."""
   local = np.array([train_stream.options.num_workers, test_stream.options.num_workers])
-  gathered = multihost_utils.process_allgather(local) if jax.process_count() > 1 else local[None]
-  return {"train_iterator": gathered[:, 0].tolist(), "test_iterator": gathered[:, 1].tolist()}
+  gathered = (
+    multihost_utils.process_allgather(local) if jax.process_count() > 1 else local[None]
+  )
+  return {
+    "train_iterator": gathered[:, 0].tolist(),
+    "test_iterator": gathered[:, 1].tolist(),
+  }
 
 
 def check_grain_num_workers(
-    ckpt_mngr: ocp.CheckpointManager, step: int, grain_num_workers: GrainNumWorkers, items: typing.Iterable[str]
+    ckpt_mngr: ocp.CheckpointManager,
+    step: int,
+    grain_num_workers: GrainNumWorkers,
+    items: typing.Iterable[str],
 ) -> None:
   """Raise if the given iterator items of a checkpoint were saved with a different Grain num_workers."""
-  if GRAIN_NUM_WORKERS_ITEM not in ckpt_mngr.item_metadata(step).keys():
-    logger.warning(f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run.")
+  if GRAIN_NUM_WORKERS_ITEM not in ckpt_mngr.item_metadata(step):
+    logger.warning(
+      f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run."
+    )
     return
-  saved = ckpt_mngr.restore(step, args=ocp.args.Composite(**{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonRestore()}))
+  saved = ckpt_mngr.restore(
+    step, args=ocp.args.Composite(**{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonRestore()})
+  )
   saved = saved[GRAIN_NUM_WORKERS_ITEM]
   for item in items:
     if saved.get(item) != grain_num_workers[item]:
@@ -123,7 +135,11 @@ def pull_checkpoint(
   """Restore the given items; iterators require grain_num_workers, which must match the saved values."""
   logger.info(f"Restoring {step=}")
   iterator_items = [
-    name for name, iterator in (("train_iterator", train_iterator), ("test_iterator", test_iterator))
+    name
+    for name, iterator in (
+      ("train_iterator", train_iterator),
+      ("test_iterator", test_iterator),
+    )
     if iterator is not None
   ]
   if iterator_items:
