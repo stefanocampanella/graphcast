@@ -13,7 +13,7 @@ PROJECTROOT=$(git rev-parse --show-toplevel)
 cd "${PROJECTROOT}" || exit 1
 
 # Activate environment
-source leonardo/environment/activate
+source clusters/leonardo/environment/activate
 
 # see:
 # https://bitbucket.org/mpi4py/mpi4py/issues/80/mpi_thread_multiple-vs-mpi_thread_single
@@ -34,4 +34,4 @@ mkdir -p DASK_MPI_LOG_DIR
 srun -n ${SLURM_NTASKS} python leonardo/bin/test_dask_mpi.py --log-level=debug
 
 # Deactivate all environments (useless when run in a SLURM job)
-source leonardo/environment/deactivate
+source clusters/leonardo/environment/deactivate

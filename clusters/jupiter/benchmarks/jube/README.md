@@ -15,7 +15,7 @@ a self-contained job template filled in by JUBE and submitted with `sbatch`.
 ## Setup
 
 ```bash
-cd benchmarks/jube
+cd clusters/jupiter/benchmarks/jube
 uv sync                       # creates .venv with JUBE
 uv run jube --version         # JUBE, version 2.7.1
 ```
@@ -104,6 +104,7 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
 
 The training configuration is `configs/training/full.toml` with `training_steps`, `seed` and
 `checkpoints.save_interval_steps` overridden, so the benchmark follows changes to the model configuration.
-Jobs run `scripts/run_python.sh -- -m graphcast train`, which binds SquashFS images and zarr directories
-alike. Both launchers accept either source type through `DATASET`, `CLIMATOLOGY`, `ANOMALY_STD`,
+Jobs run `scripts/train.sh` with `--config-dir`, `--output-dir`, `--train-dir` and `--tb-dir` in the
+workpackage directory. It binds SquashFS images and zarr directories
+alike: both launchers accept either source type through `DATASET`, `CLIMATOLOGY`, `ANOMALY_STD`,
 and `TENDENCY_STD`.

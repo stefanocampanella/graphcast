@@ -11,9 +11,9 @@ PROJECTROOT=$(git rev-parse --show-toplevel)
 cd "${PROJECTROOT}" || exit 1
 
 # Activate environment
-source leonardo/environment/activate
+source clusters/leonardo/environment/activate
 # Define code/settings and data paths
-source leonardo/.env
+source clusters/leonardo/.env
 
 export JAX_PLATFORMS=cuda
 export TF_GPU_ALLOCATOR=cuda_malloc_async
@@ -23,4 +23,4 @@ export JAX_TRACEBACK_FILTERING=off
 echo "Hostname: $(hostname -s)"
 srun jupyter lab --ip="$(hostname -i)" "${@}"
 
-source leonardo/environment/deactivate
+source clusters/leonardo/environment/deactivate

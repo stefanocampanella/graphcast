@@ -77,7 +77,7 @@
         </parameterset>
 
         <parameterset name="execute_set">
-            <parameter name="project_dir" mode="python">__import__("os").path.realpath("$jube_benchmark_home/../..")
+            <parameter name="project_dir" mode="python">__import__("os").path.realpath("$jube_benchmark_home/../../../..")
             </parameter>
             <parameter name="env_file">${project_dir}/clusters/jupiter/.env</parameter>
             <parameter name="account">e-dev-2026d09-119</parameter>
@@ -149,9 +149,7 @@
             <pattern name="first_data" type="float" unit="s">Step 0 timings: data $jube_pat_fp s</pattern>
             <pattern name="first_step_elapsed" type="float" unit="s">Step 0 timings: .*elapsed $jube_pat_fp s</pattern>
             <pattern name="data" type="float" unit="s">Step [1-9]\d+ timings: data $jube_pat_fp s</pattern>
-            <pattern name="compute" type="float" unit="s">Step [1-9]\d+ timings: data $jube_pat_nfp s, compute
-                $jube_pat_fp s
-            </pattern>
+            <pattern name="compute" type="float" unit="s">Step [1-9]\d+ timings: .*compute $jube_pat_fp s</pattern>
             <pattern name="checkpoint" type="float" unit="s">Step [1-9]\d+ timings: .*checkpoint $jube_pat_fp s
             </pattern>
             <pattern name="total" type="float" unit="s">Step [1-9]\d+ timings: .*total $jube_pat_fp s</pattern>
@@ -167,9 +165,7 @@
         </patternset>
 
         <patternset name="derived_patterns">
-            <pattern name="train_samples_per_s" type="float" mode="python" default="0">${nodes} * ${tasks_per_node} *
-                ${local_batch_size} / ${total_avg}
-            </pattern>
+            <pattern name="train_samples_per_s" type="float" mode="python" default="0">${nodes} * ${tasks_per_node} * ${local_batch_size} / ${total_avg}</pattern>
             <pattern name="data_fraction" type="float" mode="python" default="0">${data_avg} / ${total_avg}</pattern>
         </patternset>
 

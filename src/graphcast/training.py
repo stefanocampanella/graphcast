@@ -14,6 +14,7 @@
 import atexit
 import logging
 import pathlib
+import time
 from functools import partial
 
 import click
@@ -105,6 +106,7 @@ def train(
     tensorboard_logdir: pathlib.Path | None = None,
     log_level: str = "info",
 ):
+  start_time = time.perf_counter()
   logging.basicConfig(
     format="%(levelname)s - %(asctime)s: %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
@@ -270,12 +272,14 @@ def train(
     for stream in (train_stream, test_stream)
   )
   for current_step in range(latest_step, training_steps):
+    step_start = time.perf_counter()
     batch, batch_test = dataloader_utils.next_batches_on_device(
       train_iterator,
       test_iterator,
       device_mesh=device_mesh,
       mp_prefetch=mp_prefetch,
     )
+    data_end = time.perf_counter()
     with jax.sharding.set_mesh(device_mesh):
       params, opt_state, train_metrics, test_metrics = train_step(
         params=params,
@@ -284,6 +288,9 @@ def train(
         data_test=batch_test,
         static_data=static_data,
       )
+    # Wait for the step, so that checkpoint time does not include it (push_checkpoint would wait anyway).
+    jax.block_until_ready((train_metrics, test_metrics))
+    compute_end = time.perf_counter()
     orbax_utils.push_checkpoint(
       ckpt_mngr=ckpt_mngr,
       step=current_step,
@@ -294,7 +301,15 @@ def train(
       opt_state=opt_state,
       grain_num_workers=grain_num_workers,
     )
+    checkpoint_end = time.perf_counter()
     tb_logger.log(current_step, train_metrics, test_metrics, lr=schedule(current_step))
+    # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
+    step_end = time.perf_counter()
+    logger.info(
+      f"Step {current_step} timings: data {data_end - step_start:.3f} s, "
+      f"compute {compute_end - data_end:.3f} s, checkpoint {checkpoint_end - compute_end:.3f} s, "
+      f"total {step_end - step_start:.3f} s, elapsed {step_end - start_time:.1f} s"
+    )
   logger.info(f"Training finished, best checkpoint {ckpt_mngr.best_step()}.")
   restored = orbax_utils.pull_checkpoint(
     ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params

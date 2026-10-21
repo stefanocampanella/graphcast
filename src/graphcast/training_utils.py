@@ -63,7 +63,7 @@ def check_writable_paths(
     sync_global_devices(f"empty_{path}")
 
   mesh = jax.make_mesh(
-    (jax.device_count(), jax.local_device_count()), ("process", "local_device")
+    (jax.process_count(), jax.local_device_count()), ("process", "local_device")
   )
   with jax.sharding.set_mesh(mesh):
     # output is where the final checkpoint will be saved.
@@ -89,7 +89,7 @@ def check_writable_paths(
     ensure_directory_exists(train)
     if start_fresh and any(train.iterdir()):
       empty_directory(train)
-    if not os.access(train, os.R_OK & os.W_OK):
+    if not os.access(train, os.R_OK | os.W_OK):
       raise PermissionError(f"{train} is not readable and/or writable.")
 
     # tb is where the summarywriter will write the logs during training:
@@ -282,7 +282,7 @@ def save_model(
   )
 
   device_mesh = jax.make_mesh(
-    (jax.device_count(), jax.local_device_count()), ("process", "local_device")
+    (jax.process_count(), jax.local_device_count()), ("process", "local_device")
   )
   with jax.sharding.set_mesh(device_mesh):
     if jax.process_index() == 0:

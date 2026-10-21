@@ -4,7 +4,8 @@
 > This repository contains a fork of the original GraphCast model. The code has been changed 
 > to deploy it on Leonardo, the supercomputer hosted and managed by CINECA. 
 > These include
->   1. Addition of a few scripts to setup a working environment in the [leonardo directory](./leonardo) (loading the right modules, download and install packages, 
+> 1. Addition of a few scripts to setup a working environment in the [leonardo directory](./leonardo) (loading the right
+     modules, download and install packages,
 downloading local copies of the datasets and parameters from the Google Cloud bucket of the project, and ERA5 data from the WeatherBench2 dataset).
 >   2. Slight modifications to [graphcast_demo.ipynb](./graphcast_demo.ipynb) to work with local data.
 >   3. Custom dataloaders (with sharding support to use multiple GPUs) to run experiments on Leonardo using data from the WeatherBench2 dataset.
