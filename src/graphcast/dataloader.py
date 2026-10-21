@@ -11,7 +11,7 @@ import xarray as xr
 InputsTargetsForcings = tuple[xr.Dataset, xr.Dataset, xr.Dataset]
 
 
-class ARCODataSource(grain.RandomAccessDataSource):
+class ARCOTimeseriesSource(grain.RandomAccessDataSource):
   """A data source returning normalized time-series windows as single datasets."""
 
   def __init__(
@@ -117,7 +117,7 @@ class ARCODataSource(grain.RandomAccessDataSource):
     return self._dataset
 
 
-class _FlatSource(grain.RandomAccessDataSource):
+class FlatSource(grain.RandomAccessDataSource):
   """Expose xarray sample arrays to Grain's multiprocessing transport.
 
   Grain's shared-memory handling does not use the custom JAX pytree

@@ -14,10 +14,7 @@ import haiku as hk
 import jax
 import numpy as np
 import optax
-import orbax.checkpoint as ocp
 import xarray as xr
-from grain.checkpoint import CheckpointRestore as IterDatasetRestore
-from grain.checkpoint import CheckpointSave as IterDatasetSave
 from grain.experimental import pick_performance_config
 from grain.python import DatasetIterator, IterDataset
 from jax import checkpoint_policies as cp
@@ -26,19 +23,17 @@ from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
-from orbax.checkpoint.args import PyTreeRestore, PyTreeSave
 
 # Importing grain_utils also patches Grain's debug-mode specs for xarray (in workers too, which import this module).
 from graphcast import grain_utils
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
-from graphcast.cli_utils import OrbaxLogger
 from graphcast.data_utils import _get_steps_per_window, extract_inputs_targets_forcings
 from graphcast.dataloader import (
-  ARCODataSource,
+  ARCOTimeseriesSource,
   InputsTargetsForcings,
-  _FlatSource,
+  FlatSource,
   _unflatten_sample,
 )
 from graphcast.geospatial_mesh_utils import read_mesh_data
@@ -377,7 +372,7 @@ def get_map_dataset(
   else:
     dataset = dataset.sel(time=slice(split_date, None))
 
-  datasource = ARCODataSource(
+  datasource = ARCOTimeseriesSource(
     dataset=dataset,
     climatology=climatology,
     anomaly_std=anomaly_std,
@@ -389,7 +384,7 @@ def get_map_dataset(
   )
 
   map_dataset = (
-    grain.MapDataset.source(_FlatSource(datasource))
+    grain.MapDataset.source(FlatSource(datasource))
     .map(_unflatten_sample)
     .repeat(num_epochs=None)
     .shuffle(seed=seed)
