@@ -2,13 +2,14 @@
 <!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">
-        <check_tags>format|grain|zarr|cpus|scaling|lowmem</check_tags>
+        <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers</check_tags>
         <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded), at two Grain settings</tag>
         <tag name="grain">Grain workers x threads on zarr v3</tag>
         <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
         <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
         <tag name="scaling">2 and 4 nodes for the baseline case</tag>
         <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
+        <tag name="workers">2 to 8 Grain workers, to find how many fit in memory, e.g. for all_levels</tag>
         <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
         <tag name="devel">Use the develbooster reservation</tag>
         <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
@@ -34,6 +35,9 @@
             </parameter>
             <parameter name="case" tag="cpus">zarr_v3:4:2:8:32:1:1,zarr_v3:4:2:8:32:1:8</parameter>
             <parameter name="case" tag="scaling">zarr_v3:4:2:8:32:2:72,zarr_v3:4:2:8:32:4:72</parameter>
+            <parameter name="case" tag="workers">
+                zarr_v3:2:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,squashfs:4:2:8:32:1:72
+            </parameter>
             <parameter name="case" tag="lowmem">
                 squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:0:4:8:32:1:72
             </parameter>
