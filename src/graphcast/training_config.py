@@ -97,26 +97,19 @@ class SourceConfig(ApplicationConfig):
   @classmethod
   def read_defaults(cls, values):
     if isinstance(values, dict) and isinstance(values.get("read"), dict):
-      defaults = cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
+      defaults = (
+        cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
+      )
       return {**values, "read": {**defaults, **values["read"]}}
     return values
 
 
 class MaskConfig(SourceConfig):
   name: str
-  level: Annotated[float, Field(ge=0, description="Depth selected using nearest neighbour")]
+  level: Annotated[
+    float, Field(ge=0, description="Depth selected using nearest neighbour")
+  ]
   fill_value: float
-
-
-class GrainReadOptions(ApplicationConfig):
-  num_threads: NonNegativeInt
-  prefetch_buffer_size: NonNegativeInt
-
-
-class MultiprocessingOptions(ApplicationConfig):
-  num_workers: NonNegativeInt
-  per_worker_buffer_size: PositiveInt
-  enable_profiling: bool = False
 
 
 class PerformanceConfig(ApplicationConfig):
@@ -129,16 +122,10 @@ class PerformanceConfig(ApplicationConfig):
 class GrainDatasetConfig(ApplicationConfig):
   target_lead_times: str
   split_date: str
-  local_batch_size: PositiveInt = Field(default=1, description="Samples per local device")
-  read_options: GrainReadOptions | None = None
-  multiprocessing_options: MultiprocessingOptions | None = None
+  local_batch_size: PositiveInt = Field(
+    default=1, description="Samples per local device"
+  )
   pick_performance_config: PerformanceConfig | None = None
-
-  @model_validator(mode="after")
-  def require_read_options(self):
-    if self.read_options is None and self.pick_performance_config is None:
-      raise ValueError("read_options is required when pick_performance_config is absent")
-    return self
 
 
 class PolicyConfig(ApplicationConfig):

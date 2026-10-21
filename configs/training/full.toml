@@ -108,10 +108,8 @@ target_lead_times = "1d"
 split_date = "2019-06-30T00:00:00"
 local_batch_size = 1
 
-# Multiprocessing dataloader is currently broken, we only use a multithreaded reader.
-[grain_dataset.read_options]
-num_threads = 8
-prefetch_buffer_size = 16
+# Grain reader and multiprocessing options are read from GRAPHCAST_GRAIN_* environment variables, see
+# graphcast.grain_utils.GrainRuntimeConfig and clusters/jupiter/.env.
 
 [normalization]
 skip_names = ["year_progress_cos", "year_progress_sin"]

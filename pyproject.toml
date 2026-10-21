@@ -21,7 +21,7 @@ dependencies = [
     "humanize",
     "ipywidgets",
     # Should be kept it in sync with the version used in NVIDIA container
-    "jax==0.10.0",
+    "jax>=0.11",
     "jraph",
     "matplotlib",
     "networkx",
@@ -31,6 +31,7 @@ dependencies = [
     "orbax-checkpoint >= 0.11.30",
     "pandas",
     "pydantic",
+    "pydantic-settings >= 2.0",
     "pyproj",
     "rich",
     "rtree",
@@ -68,3 +69,9 @@ Homepage = "https://github.com/stefanocampanella/graphcast"
 [build-system]
 requires = ["setuptools (>= 67.0)"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+indent-width = 2
+
+[tool.ruff.format]
+indent-style = "space"

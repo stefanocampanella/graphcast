@@ -1,3 +1,4 @@
+import dataclasses
 import inspect
 import logging
 import os
@@ -27,6 +28,8 @@ from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
 from orbax.checkpoint.args import PyTreeRestore, PyTreeSave
 
+# Importing grain_utils also patches Grain's debug-mode specs for xarray (in workers too, which import this module).
+from graphcast import grain_utils
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
@@ -292,20 +295,31 @@ def get_optimizer(
   return optimizer, scheduler
 
 
+@dataclasses.dataclass(frozen=True)
+class DatasetStream:
+  """An IterDataset with the Grain options it was built with (e.g. num_workers, which checkpoints depend on)."""
+
+  dataset: InputsTargetsForcingsIterDataset
+  options: grain_utils.GrainOptions
+
+
 def get_dataset_iterators(
     configs: TrainingConfig,
     dataset: xr.Dataset,
     climatology: xr.Dataset,
     anomaly_std: xr.Dataset,
     seed: int,
-) -> tuple[InputsTargetsForcingsIterDataset, InputsTargetsForcingsIterDataset]:
-  """Return independent training and test IterDatasets, in that order.
+    grain_runtime: grain_utils.GrainRuntimeConfig | None = None,
+) -> tuple[DatasetStream, DatasetStream]:
+  """Return independent training and test streams, in that order.
 
   Each stream retains its own prefetch/performance configuration and checkpoint
   state. The split date remains included in both temporal partitions.
   """
-  return tuple(
-    get_dataset_iterator(
+  grain_runtime = grain_utils.GrainRuntimeConfig() if grain_runtime is None else grain_runtime
+  streams = []
+  for train in (True, False):
+    map_dataset = get_map_dataset(
       configs=configs,
       dataset=dataset,
       climatology=climatology,
@@ -313,11 +327,11 @@ def get_dataset_iterators(
       seed=seed,
       train=train,
     )
-    for train in (True, False)
-  )
+    options = get_grain_options(configs, map_dataset, grain_runtime)
+    streams.append(DatasetStream(to_dataset_iterator(map_dataset, options), options))
+  return tuple(streams)
 
 
-# TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
 def get_dataset_iterator(
     configs: TrainingConfig,
     dataset: xr.Dataset,
@@ -325,8 +339,35 @@ def get_dataset_iterator(
     anomaly_std: xr.Dataset,
     seed: int,
   train: bool = True,
+    grain_runtime: grain_utils.GrainRuntimeConfig | None = None,
 ) -> InputsTargetsForcingsIterDataset:
-  """Build a stream from artifacts already selected to ordered task levels."""
+  """Build a stream from artifacts already selected to ordered task levels.
+
+  Grain options come from grain_runtime (GRAPHCAST_GRAIN_* environment variables by default), unless
+  grain_dataset.pick_performance_config is set.
+  """
+  map_dataset = get_map_dataset(
+    configs=configs,
+    dataset=dataset,
+    climatology=climatology,
+    anomaly_std=anomaly_std,
+    seed=seed,
+    train=train,
+  )
+  grain_runtime = grain_utils.GrainRuntimeConfig() if grain_runtime is None else grain_runtime
+  return to_dataset_iterator(map_dataset, get_grain_options(configs, map_dataset, grain_runtime))
+
+
+# TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
+def get_map_dataset(
+    configs: TrainingConfig,
+    dataset: xr.Dataset,
+    climatology: xr.Dataset,
+    anomaly_std: xr.Dataset,
+    seed: int,
+    train: bool = True,
+) -> grain.MapDataset:
+  """Build the shuffled, batched and extracted MapDataset from artifacts selected to ordered task levels."""
   task_config = get_task_config(configs, dataset)
 
   # Split the dataset "causally"
@@ -347,7 +388,7 @@ def get_dataset_iterator(
     ),
   )
 
-  grain_dataset = (
+  map_dataset = (
     grain.MapDataset.source(_FlatSource(datasource))
     .map(_unflatten_sample)
     .repeat(num_epochs=None)
@@ -358,14 +399,14 @@ def get_dataset_iterator(
   local_batch_size = configs.grain_dataset.local_batch_size
   if local_batch_size > 1:
     logger.info(f"Batching {local_batch_size} samples per device.")
-    grain_dataset = grain_dataset.batch(
+    map_dataset = map_dataset.batch(
       batch_size=local_batch_size,
       drop_remainder=True,
       batch_fn=partial(xr.concat, dim="batch"),
     )
 
   # Extract once per batch, before prefetch/device transfer.
-  grain_dataset = grain_dataset.map(
+  map_dataset = map_dataset.map(
     partial(
       extract_inputs_targets_forcings,
       input_variables=task_config.input_variables,
@@ -377,8 +418,18 @@ def get_dataset_iterator(
       to_jax=False,
     )
   )
+  return map_dataset
 
-  if (pick_config := configs.grain_dataset.pick_performance_config) is not None:
+
+def get_grain_options(
+    configs: TrainingConfig,
+    grain_dataset: grain.MapDataset,
+    grain_runtime: grain_utils.GrainRuntimeConfig,
+) -> grain_utils.GrainOptions:
+  """Return Grain options from grain_runtime, or picked at runtime if grain_dataset.pick_performance_config is set."""
+  if (pick_config := configs.grain_dataset.pick_performance_config) is None:
+    return grain_runtime.options()
+  else:
     # pick_performance_config needs to measure the size of elements drawn from a DatasetIterator. However, the current
     # implementation of _get_element_size_bytes in grain/_src/python/dataset/transformations/prefetch_autotune.py
     # does not work with xarray datasets. We get around the issue by flattening the dataset beforehand.
@@ -386,21 +437,31 @@ def get_dataset_iterator(
       jax.tree_util.tree_flatten
     ).to_iter_dataset()
     logger.info(
-      f"Picking dataset iterator performance configurations ({pick_config=})."
+      f"Picking dataset iterator performance configurations ({pick_config=}); "
+      f"{grain_utils.GRAIN_ENV_PREFIX}* reader and multiprocessing settings are ignored."
     )
     performance_config = pick_performance_config(
       ds=flatten_dataset_iterator,
       **pick_config.model_dump(),
     )
-    read_options = performance_config.read_options
-    mp_options = performance_config.multiprocessing_options
-  else:
-    read_options = grain.ReadOptions(**configs.grain_dataset.read_options.model_dump())
-    if (mp_config := configs.grain_dataset.multiprocessing_options) is not None:
-      mp_options = grain.MultiprocessingOptions(**mp_config.model_dump())
-    else:
-      mp_options = None
+    options = grain_utils.GrainOptions(
+      performance_config.read_options, performance_config.multiprocessing_options
+    )
+    logger.warning(
+      f"pick_performance_config chose num_workers={options.num_workers} at runtime. Grain's iterator state depends "
+      "on num_workers: restoring a checkpoint saved with a different value fails. The choice may differ between "
+      f"runs or machines; for resumable training, set {grain_utils.GRAIN_ENV_PREFIX}NUM_WORKERS and disable "
+      "pick_performance_config."
+    )
+    return options
 
+
+def to_dataset_iterator(
+    grain_dataset: grain.MapDataset,
+    options: grain_utils.GrainOptions,
+) -> InputsTargetsForcingsIterDataset:
+  """Convert a MapDataset to an IterDataset with the given reader and (optional) multiprocessing options."""
+  read_options, mp_options = options.read_options, options.multiprocessing_options
   logger.info(f"Using read options: {read_options}")
   dataset_iterator = grain_dataset.to_iter_dataset(read_options=read_options)
   if mp_options is not None:
@@ -470,6 +531,37 @@ def get_checkpoint_manager(
   return ckpt_mngr
 
 
+GRAIN_NUM_WORKERS_ITEM = "grain_num_workers"
+# Grain num_workers of each iterator item, one value per JAX process.
+GrainNumWorkers = Mapping[str, list[int]]
+
+
+def gather_grain_num_workers(train_stream: DatasetStream, test_stream: DatasetStream) -> GrainNumWorkers:
+  """Gather the Grain num_workers of both streams from all processes, which may autotune them independently."""
+  local = np.array([train_stream.options.num_workers, test_stream.options.num_workers])
+  gathered = multihost_utils.process_allgather(local) if jax.process_count() > 1 else local[None]
+  return {"train_iterator": gathered[:, 0].tolist(), "test_iterator": gathered[:, 1].tolist()}
+
+
+def check_grain_num_workers(
+    ckpt_mngr: ocp.CheckpointManager, step: int, grain_num_workers: GrainNumWorkers, items: typing.Iterable[str]
+) -> None:
+  """Raise if the given iterator items of a checkpoint were saved with a different Grain num_workers."""
+  if GRAIN_NUM_WORKERS_ITEM not in ckpt_mngr.item_metadata(step).keys():
+    logger.warning(f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run.")
+    return
+  saved = ckpt_mngr.restore(step, args=ocp.args.Composite(**{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonRestore()}))
+  saved = saved[GRAIN_NUM_WORKERS_ITEM]
+  for item in items:
+    if saved.get(item) != grain_num_workers[item]:
+      raise ValueError(
+        f"Checkpoint {step=} was saved with Grain num_workers={saved.get(item)} for {item} (one value per process), "
+        f"but the current run uses {grain_num_workers[item]}. Grain's iterator state depends on num_workers: set "
+        f"{grain_utils.GRAIN_ENV_PREFIX}NUM_WORKERS to the saved value (and disable "
+        "grain_dataset.pick_performance_config) to restore this checkpoint."
+      )
+
+
 def push_checkpoint(
   ckpt_mngr: ocp.CheckpointManager,
   step: int,
@@ -478,6 +570,7 @@ def push_checkpoint(
   test_iterator: InputsTargetsForcingsIterator,
   params: Params,
   opt_state: Params,
+    grain_num_workers: GrainNumWorkers,
 ) -> None:
   metrics = jax.tree_util.tree_map(lambda x: x.item(), metrics)
   # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
@@ -488,6 +581,7 @@ def push_checkpoint(
       test_iterator=IterDatasetSave(test_iterator),
       params=PyTreeSave(params),
       opt_state=PyTreeSave(opt_state),
+      **{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonSave(dict(grain_num_workers))},
     ),
     metrics=metrics,
   )
@@ -500,8 +594,18 @@ def pull_checkpoint(
   test_iterator: InputsTargetsForcingsIterator | None = None,
   params: Params | None = None,
   opt_state: Params | None = None,
+    grain_num_workers: GrainNumWorkers | None = None,
 ) -> Mapping[str, Any]:
+  """Restore the given items; iterators require grain_num_workers, which must match the saved values."""
   logger.info(f"Restoring {step=}")
+  iterator_items = [
+    name for name, iterator in (("train_iterator", train_iterator), ("test_iterator", test_iterator))
+    if iterator is not None
+  ]
+  if iterator_items:
+    if grain_num_workers is None:
+      raise ValueError("grain_num_workers is required to restore dataset iterators.")
+    check_grain_num_workers(ckpt_mngr, step, grain_num_workers, iterator_items)
   # TODO: check restore and save args options related to sharding and layout
   # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
   composite_args = {}

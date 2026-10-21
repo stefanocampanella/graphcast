@@ -24,9 +24,11 @@ import xarray as xr
 from jax.experimental.shard_map import shard_map
 from jax.sharding import AxisType, NamedSharding
 from jax.sharding import PartitionSpec as P
+from pydantic import ValidationError
 
 from graphcast import cli_utils, xarray_jax
 from graphcast import training_utils as trn_utils
+from graphcast.grain_utils import GRAIN_ENV_PREFIX, GrainRuntimeConfig
 from graphcast.training_config import TrainingConfig
 from graphcast.training_utils import (
     Datasets,
@@ -111,6 +113,11 @@ def train(
     )
 
     configs = cli_utils.read_configs(config_path, schema=TrainingConfig)
+    try:
+        grain_runtime = GrainRuntimeConfig()
+    except ValidationError as error:
+        raise click.ClickException(f"Invalid {GRAIN_ENV_PREFIX}* environment variables:\n{error}") from error
+    logger.info(f"Using Grain runtime settings: {grain_runtime!r}")
 
     jax.distributed.initialize()
     logger.info(
@@ -174,15 +181,18 @@ def train(
 
     optimizer, schedule = trn_utils.get_optimizer(configs)
 
-    train_iterdataset, test_iterdataset = trn_utils.get_dataset_iterators(
+    train_stream, test_stream = trn_utils.get_dataset_iterators(
         configs=configs,
         dataset=dataset,
         climatology=climatology,
         anomaly_std=anomaly_std,
         seed=configs.seed,
+        grain_runtime=grain_runtime,
     )
-    train_iterator = iter(train_iterdataset)
-    test_iterator = iter(test_iterdataset)
+    # Saved with checkpoints and checked on restore, since Grain's iterator state depends on num_workers.
+    grain_num_workers = trn_utils.gather_grain_num_workers(train_stream, test_stream)
+    train_iterator = iter(train_stream.dataset)
+    test_iterator = iter(test_stream.dataset)
 
     latest_step = 0
     params = trn_utils.get_params(
@@ -214,6 +224,7 @@ def train(
             test_iterator=test_iterator,
             params=params,
             opt_state=opt_state,
+            grain_num_workers=grain_num_workers,
         )
         latest_step = ckpt_mngr.latest_step()
         train_iterator: trn_utils.InputsTargetsForcingsIterator = restored[
@@ -256,9 +267,9 @@ def train(
 
         return updated_params, next_opt_state, loss_and_diagnostics, test_metrics
 
-    mp_prefetch = (
-        configs.grain_dataset.multiprocessing_options is not None
-        or configs.grain_dataset.pick_performance_config is not None
+    mp_prefetch = any(
+        stream.options.multiprocessing_options is not None
+        for stream in (train_stream, test_stream)
     )
     for current_step in range(latest_step, training_steps):
         batch, batch_test = trn_utils.next_batches_on_device(
@@ -283,6 +294,7 @@ def train(
             test_iterator=test_iterator,
             params=params,
             opt_state=opt_state,
+            grain_num_workers=grain_num_workers,
         )
         tb_logger.log(
             current_step, train_metrics, test_metrics, lr=schedule(current_step)
