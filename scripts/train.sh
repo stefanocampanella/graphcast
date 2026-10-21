@@ -21,7 +21,7 @@ Options override environment defaults; relative host paths use PROJECT_DIR.
   --help               Show help without checking dependencies
 
 DATA_ROOT defaults to PROJECT_DIR/data.
-Required readable SquashFS files: DATASET_SQSH, CLIMATOLOGY_SQSH, ANOMALY_STD_SQSH, TENDENCY_STD_SQSH.
+Required readable SquashFS files or directories: DATASET, CLIMATOLOGY, ANOMALY_STD, TENDENCY_STD.
 Required paths: GEOMETRY_DIR.
 Bind paths cannot contain ':' or ',' (Apptainer separators).
 Site setup, --env-file and --log-dir belong to the cluster launcher.
@@ -70,13 +70,17 @@ add_directory_bind() {
     APPTAINER_ARGS+=(--bind "$source:$DATA_DIR/$3:ro")
 }
 
-add_squashfs_bind() {
+add_data_bind() {
     local source
-    [[ -n $2 ]] || fail "$1 must name a readable SquashFS file"
+    [[ -n $2 ]] || fail "$1 must name a readable SquashFS file or directory"
     source=$(absolute_path "$2")
-    readable_file "$1" "$source"
-    check_bind_path "$source"
-    APPTAINER_ARGS+=(--bind "$source:$DATA_DIR/$3:image-src=/,ro")
+    if [[ -d $source ]]; then
+        add_directory_bind "$1" "$source" "$3"
+    else
+        readable_file "$1" "$source"
+        check_bind_path "$source"
+        APPTAINER_ARGS+=(--bind "$source:$DATA_DIR/$3:image-src=/,ro")
+    fi
 }
 
 # Parse execution options. GNU getopt handles quoting, --option=value and
@@ -194,12 +198,12 @@ CONFIG_PATH="$CONFIG_DIR/$CONFIG_NAME.toml"
 readable_file 'training config' "$CONFIG_PATH"
 check_bind_path "$DATA_DIR"
 
-# Preserve the four existing SquashFS destinations; extra inputs use --bind.
+# Preserve the four existing data destinations; extra inputs use --bind.
 APPTAINER_ARGS=(run --nv --pwd "$PROJECT_DIR")
-add_squashfs_bind DATASET_SQSH "${DATASET_SQSH:-}" dataset
-add_squashfs_bind CLIMATOLOGY_SQSH "${CLIMATOLOGY_SQSH:-}" climatology
-add_squashfs_bind ANOMALY_STD_SQSH "${ANOMALY_STD_SQSH:-}" anomaly_std
-add_squashfs_bind TENDENCY_STD_SQSH "${TENDENCY_STD_SQSH:-}" tendency_std
+add_data_bind DATASET "${DATASET:-}" dataset
+add_data_bind CLIMATOLOGY "${CLIMATOLOGY:-}" climatology
+add_data_bind ANOMALY_STD "${ANOMALY_STD:-}" anomaly_std
+add_data_bind TENDENCY_STD "${TENDENCY_STD:-}" tendency_std
 add_directory_bind GEOMETRY_DIR "${GEOMETRY_DIR:-}" geometry
 
 # The conditional array expansion supports empty arrays under Bash 3's nounset.

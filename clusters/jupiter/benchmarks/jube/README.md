@@ -105,4 +105,5 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
 The training configuration is `configs/training/full.toml` with `training_steps`, `seed` and
 `checkpoints.save_interval_steps` overridden, so the benchmark follows changes to the model configuration.
 Jobs run `scripts/run_python.sh -- -m graphcast train`, which binds SquashFS images and zarr directories
-alike. `scripts/train.sh` accepts only SquashFS images.
+alike. Both launchers accept either source type through `DATASET`, `CLIMATOLOGY`, `ANOMALY_STD`,
+and `TENDENCY_STD`.
