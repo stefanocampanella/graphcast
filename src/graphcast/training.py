@@ -26,7 +26,7 @@ from jax.sharding import AxisType, NamedSharding
 from jax.sharding import PartitionSpec as P
 from pydantic import ValidationError
 
-from graphcast import cli_utils, xarray_jax
+from graphcast import cli_utils, orbax_utils, xarray_jax
 from graphcast import training_utils as trn_utils
 from graphcast.grain_utils import GRAIN_ENV_PREFIX, GrainRuntimeConfig
 from graphcast.training_config import TrainingConfig
@@ -190,7 +190,7 @@ def train(
         grain_runtime=grain_runtime,
     )
     # Saved with checkpoints and checked on restore, since Grain's iterator state depends on num_workers.
-    grain_num_workers = trn_utils.gather_grain_num_workers(train_stream, test_stream)
+    grain_num_workers = orbax_utils.gather_grain_num_workers(train_stream, test_stream)
     train_iterator = iter(train_stream.dataset)
     test_iterator = iter(test_stream.dataset)
 
@@ -211,13 +211,13 @@ def train(
         opt_state, device=NamedSharding(mesh=device_mesh, spec=P())
     )
 
-    ckpt_mngr = trn_utils.get_checkpoint_manager(train_path, configs)
+    ckpt_mngr = orbax_utils.get_checkpoint_manager(train_path, configs)
     if restart_from_previous_checkpoint:
         if not ckpt_mngr.all_steps(read=True):
             raise ValueError(
                 "Found no checkpoint to restore while restarting training."
             )
-        restored = trn_utils.pull_checkpoint(
+        restored = orbax_utils.pull_checkpoint(
             ckpt_mngr=ckpt_mngr,
             step=ckpt_mngr.latest_step(),
             train_iterator=train_iterator,
@@ -286,7 +286,7 @@ def train(
                 data_test=batch_test,
                 static_data=static_data,
             )
-        trn_utils.push_checkpoint(
+        orbax_utils.push_checkpoint(
             ckpt_mngr=ckpt_mngr,
             step=current_step,
             metrics=train_metrics,
@@ -300,7 +300,7 @@ def train(
             current_step, train_metrics, test_metrics, lr=schedule(current_step)
         )
     logger.info(f"Training finished, best checkpoint {ckpt_mngr.best_step()}.")
-    restored = trn_utils.pull_checkpoint(
+    restored = orbax_utils.pull_checkpoint(
         ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params
     )
     trn_utils.save_model(
