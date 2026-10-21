@@ -22,6 +22,7 @@ from graphcast.training_config import TrainingConfig
 from graphcast.training_utils import (
   JAXLossAndDiagnostics,
   Params,
+  make_process_mesh,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,9 +44,7 @@ def get_checkpoint_manager(
   # For this reason, orbax CheckpointManager (which uses such a barrier) needs to be called using `null_mesh`, or before
   # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
   #  See: https://github.com/google/orbax/issues/2545
-  mesh = jax.make_mesh(
-    (jax.process_count(), jax.local_device_count()), ("process", "local_device")
-  )
+  mesh = make_process_mesh()
   with jax.sharding.set_mesh(mesh):
     ckpt_mngr = ocp.CheckpointManager(
       ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger()

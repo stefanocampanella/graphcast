@@ -14,8 +14,10 @@ import optax
 import xarray as xr
 from grain.python import DatasetIterator
 from jax import checkpoint_policies as cp
+from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import sync_global_devices
 from jax.experimental.shard_map import shard_map
+from jax.sharding import AxisType, Mesh
 from jax.sharding import PartitionSpec as P
 
 from graphcast import dataloader_utils, xarray_jax
@@ -40,6 +42,36 @@ Params = hk.Params | hk.MutableParams | dict[str, Any]
 JAXLossAndDiagnostics = tuple[jax.Array, Mapping[str, jax.Array]]
 
 
+def _make_hybrid_mesh(
+    axis_names: tuple[str, ...],
+    local_shape: tuple[int, ...],
+    process_shape: tuple[int, ...],
+) -> Mesh:
+  # `jax.make_mesh` rejects meshes spanning several GPU nodes, which JAX treats as separate slices. Lay out each
+  # process's devices by local_shape and the processes by process_shape instead, so that axis i has size
+  # local_shape[i] * process_shape[i].
+  devices = mesh_utils.create_hybrid_device_mesh(
+    local_shape, process_shape, process_is_granule=True
+  )
+  return Mesh(devices, axis_names, axis_types=(AxisType.Explicit,) * len(axis_names))
+
+
+def make_batch_mesh() -> Mesh:
+  """A one-dimensional mesh over all devices, with axis "batch"."""
+  return _make_hybrid_mesh(
+    ("batch",), (jax.local_device_count(),), (jax.process_count(),)
+  )
+
+
+def make_process_mesh() -> Mesh:
+  """A mesh with axes ("process", "local_device"), for Orbax and multihost barriers (see get_checkpoint_manager)."""
+  return _make_hybrid_mesh(
+    ("process", "local_device"),
+    (1, jax.local_device_count()),
+    (jax.process_count(), 1),
+  )
+
+
 def check_writable_paths(
     output: pathlib.Path,
     train: pathlib.Path,
@@ -62,9 +94,7 @@ def check_writable_paths(
       path.mkdir(parents=True, exist_ok=True)
     sync_global_devices(f"empty_{path}")
 
-  mesh = jax.make_mesh(
-    (jax.process_count(), jax.local_device_count()), ("process", "local_device")
-  )
+  mesh = make_process_mesh()
   with jax.sharding.set_mesh(mesh):
     # output is where the final checkpoint will be saved.
     # We ensure that output' parent directory exists (with write permission if created). Also:
@@ -281,9 +311,7 @@ def save_model(
     params=params,
   )
 
-  device_mesh = jax.make_mesh(
-    (jax.process_count(), jax.local_device_count()), ("process", "local_device")
-  )
+  device_mesh = make_process_mesh()
   with jax.sharding.set_mesh(device_mesh):
     if jax.process_index() == 0:
       logger.info(f"Saving checkpoint to {output_path}")

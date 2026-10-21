@@ -34,7 +34,12 @@ Every run needs at least one sweep tag:
 
 Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
 `quick` (one repetition of 30 steps), `devel` (develbooster reservation), `dryrun` (check the
-generated job scripts with `bash -n` instead of submitting them).
+generated job scripts with `bash -n` instead of submitting them), `all_levels` (train on all 50 depth
+levels instead of the 10 of `full.toml`; samples are about 5 times larger). `small_buffers` (one
+sample per Grain worker and reader prefetch buffer instead of two) and `no_offload` (no activation
+offloading to pinned host memory) reduce host memory; the `lowmem` sweep runs only cases with at most two
+Grain workers. Use a separate `--outpath`
+for `all_levels` runs, e.g. `bench_run_all_levels`, to keep their results apart.
 
 ```bash
 # Check what would be submitted, without using any compute time

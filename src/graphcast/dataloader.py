@@ -84,7 +84,7 @@ class ARCOTimeseriesSource(grain.RandomAccessDataSource):
     dataset_wo_time_coord = dataset.drop_vars("time")
     anomaly_zscore = (dataset_wo_time_coord - climatology) / anomaly_std
     anomaly_zscore = anomaly_zscore.assign_coords(time=time_coord)
-    # Reintroduce static variables into dataset and drop depth coordinate
+    # Reintroduce static variables into dataset
     dataset = dataset.drop_vars(anomaly_zscore.data_vars)
     # Normalize static numeric variables using min-max, preserving boolean masks as 0/1.
     for name, values in dataset.data_vars.items():
@@ -94,8 +94,8 @@ class ARCOTimeseriesSource(grain.RandomAccessDataSource):
         minimum = values.min()
         span = values.max() - minimum
         dataset[name] = (values - minimum) / span.where(span != 0, 1)
+    # Keep the depth coordinate: GraphCast.loss weights levels by depth (levels_normalization_coord="depth").
     dataset = dataset.merge(anomaly_zscore, compat="no_conflicts")
-    dataset = dataset.drop_vars("depth")
 
     # Introduce batch dimension and datetime coordinate
     dataset = dataset.expand_dims(dim="batch", axis=0)

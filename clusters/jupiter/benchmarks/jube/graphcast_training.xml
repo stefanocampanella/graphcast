@@ -2,15 +2,19 @@
 <!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">
-        <check_tags>format|grain|zarr|cpus|scaling</check_tags>
+        <check_tags>format|grain|zarr|cpus|scaling|lowmem</check_tags>
         <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded), at two Grain settings</tag>
         <tag name="grain">Grain workers x threads on zarr v3</tag>
         <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
         <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
         <tag name="scaling">2 and 4 nodes for the baseline case</tag>
+        <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
         <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
         <tag name="devel">Use the develbooster reservation</tag>
         <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
+        <tag name="small_buffers">Buffer one sample per Grain worker and in the reader prefetch, instead of two</tag>
+        <tag name="no_offload">Disable activation offloading to pinned host memory</tag>
+        <tag name="all_levels">Train on all 50 depth levels (task.levels = "all") instead of the 10 of full.toml</tag>
     </tags>
 
     <benchmark name="graphcast_training_io" outpath="bench_run">
@@ -30,6 +34,9 @@
             </parameter>
             <parameter name="case" tag="cpus">zarr_v3:4:2:8:32:1:1,zarr_v3:4:2:8:32:1:8</parameter>
             <parameter name="case" tag="scaling">zarr_v3:4:2:8:32:2:72,zarr_v3:4:2:8:32:4:72</parameter>
+            <parameter name="case" tag="lowmem">
+                squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:0:4:8:32:1:72
+            </parameter>
         </parameterset>
 
         <parameterset name="param_set">
@@ -46,16 +53,21 @@
             <parameter name="zarr_concurrency" type="int" mode="python">int("$case".split(":")[4])</parameter>
             <parameter name="nodes" type="int" mode="python">int("$case".split(":")[5])</parameter>
             <parameter name="cpus_per_task" type="int" mode="python">int("$case".split(":")[6])</parameter>
-            <parameter name="prefetch_buffer_size" type="int">2</parameter>
-            <parameter name="per_worker_buffer_size" type="int">2</parameter>
+            <parameter name="prefetch_buffer_size" type="int" tag="!small_buffers">2</parameter>
+            <parameter name="prefetch_buffer_size" type="int" tag="small_buffers">1</parameter>
+            <parameter name="per_worker_buffer_size" type="int" tag="!small_buffers">2</parameter>
+            <parameter name="per_worker_buffer_size" type="int" tag="small_buffers">1</parameter>
             <parameter name="seed" type="int" mode="python">1000 * $rep + $jube_wp_id</parameter>
             <!-- Save only step 0: checkpointing every step (the default) would dominate step times. -->
             <parameter name="ckpt_interval" type="int">1000000</parameter>
 
             <!-- Rough host memory per task: train and test streams each have num_workers processes, buffering
                  ~0.7 GB samples and building ~2 GB per in-flight sample. Compare with the measured MaxRSS. -->
-            <parameter name="est_mem_gb" type="float" mode="python">round(2 * ($num_workers * $per_worker_buffer_size *
-                0.7 + max($num_workers, 1) * $num_threads * 2.0), 1)
+            <!-- Samples scale with the number of levels: about 5 times larger with all 50 levels than with 10. -->
+            <parameter name="level_factor" type="float" tag="!all_levels">1.0</parameter>
+            <parameter name="level_factor" type="float" tag="all_levels">5.0</parameter>
+            <parameter name="est_mem_gb" type="float" mode="python">round(2 * $level_factor * ($num_workers *
+                $per_worker_buffer_size * 0.7 + max($num_workers, 1) * $num_threads * 2.0), 1)
             </parameter>
 
             <!-- Datasets: all on /e/scratch, so that only the format differs. -->
@@ -80,7 +92,7 @@
             <parameter name="project_dir" mode="python">__import__("os").path.realpath("$jube_benchmark_home/../../../..")
             </parameter>
             <parameter name="env_file">${project_dir}/clusters/jupiter/.env</parameter>
-            <parameter name="account">e-dev-2026d09-119</parameter>
+            <parameter name="account">training2647</parameter>
             <parameter name="partition">booster</parameter>
             <parameter name="reservation" tag="devel">#SBATCH --reservation=develbooster</parameter>
             <parameter name="reservation" tag="!devel"># no reservation</parameter>
@@ -131,6 +143,9 @@
             <sub source="(?m)^training_steps = [\d_]+" dest="training_steps = $steps" mode="regex"/>
             <sub source="(?m)^seed = \d+" dest="seed = $seed" mode="regex"/>
             <sub source="(?m)^\[checkpoints\]" dest="[checkpoints]\nsave_interval_steps = $ckpt_interval" mode="regex"/>
+            <sub source="(?m)^levels = \[[^\]]*\]" dest='levels = "all"' mode="regex" tag="all_levels"/>
+            <sub source="(?m)^names_which_can_be_offloaded = \[[^\]]*\]" dest="names_which_can_be_offloaded = []"
+                 mode="regex" tag="no_offload"/>
         </substituteset>
 
         <step name="submit">

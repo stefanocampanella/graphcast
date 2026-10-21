@@ -431,7 +431,8 @@ def stacked_to_dataset(
 
 def fixed_position_features(coordinates: jnp.ndarray) -> jnp.ndarray:
   """Fixed sin/cos features of longitude and colatitude in turns, on the last axis."""
-  angles = 2 * jnp.pi * coordinates
+  # Convert NumPy inputs first: NumPy would promote bfloat16 coordinates when multiplying by a Python float.
+  angles = 2 * jnp.pi * jnp.asarray(coordinates)
   return jnp.concatenate([jnp.cos(angles), jnp.sin(angles)], axis=-1)
 
 

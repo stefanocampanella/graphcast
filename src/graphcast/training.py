@@ -23,7 +23,7 @@ import jax
 import optax
 import xarray as xr
 from jax.experimental.shard_map import shard_map
-from jax.sharding import AxisType, NamedSharding
+from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from pydantic import ValidationError
 
@@ -204,9 +204,7 @@ def train(
     train_iterator,
     configs,
   )
-  device_mesh = jax.make_mesh(
-    (jax.device_count(),), ("batch",), axis_types=(AxisType.Explicit,)
-  )
+  device_mesh = trn_utils.make_batch_mesh()
   params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
   opt_state = optimizer.init(params)
   opt_state = jax.device_put(
