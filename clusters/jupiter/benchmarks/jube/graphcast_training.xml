@@ -100,6 +100,8 @@
             <parameter name="tasks_per_node" type="int">4</parameter>
             <parameter name="local_batch_size" type="int">1</parameter>
             <parameter name="job_file">train_bench.sbatch</parameter>
+            <!-- Seconds between node memory and GPU usage samples. -->
+            <parameter name="usage_interval" type="int">5</parameter>
             <parameter name="ready_file">ready</parameter>
             <parameter name="submit_cmd" tag="!dryrun">sbatch</parameter>
             <!-- JUBE waits for the done file before any further command, so the dry run creates it itself. -->
@@ -108,6 +110,8 @@
 
         <fileset name="files">
             <copy>train_bench.sbatch.in</copy>
+            <copy>usage_sampler.sh</copy>
+            <copy>usage_summary.py</copy>
             <copy>${project_dir}/configs/training/full.toml</copy>
         </fileset>
 
@@ -135,6 +139,7 @@
             <sub source="#ZARR_CONCURRENCY#" dest="$zarr_concurrency"/>
             <sub source="#CASE#" dest="$case rep=$rep seed=$seed steps=$steps"/>
             <sub source="#READY_FILE#" dest="$ready_file"/>
+            <sub source="#USAGE_INTERVAL#" dest="$usage_interval"/>
         </substituteset>
 
         <!-- The training configuration is the project's full.toml with benchmark overrides. -->
@@ -177,6 +182,12 @@
             <pattern name="job_elapsed" type="int" unit="s">BENCH_ELAPSED: $jube_pat_int s</pattern>
             <pattern name="maxrss" type="float" unit="GB">BENCH_MAXRSS: $jube_pat_fp GB</pattern>
             <pattern name="slurm_job" type="int">BENCH_JOB: id=$jube_pat_int</pattern>
+            <pattern name="node_mem_peak" type="float" unit="GB">BENCH_NODE_MEM_PEAK: $jube_pat_fp GB</pattern>
+            <pattern name="node_mem_avail_min" type="float" unit="GB">BENCH_NODE_MEM_AVAIL_MIN: $jube_pat_fp GB</pattern>
+            <pattern name="node_shm_peak" type="float" unit="GB">BENCH_NODE_SHM_PEAK: $jube_pat_fp GB</pattern>
+            <pattern name="gpu_mem_peak" type="float" unit="GB">BENCH_GPU_MEM_PEAK: $jube_pat_fp GB</pattern>
+            <pattern name="gpu_util" type="float" unit="%">BENCH_GPU_UTIL: $jube_pat_fp %</pattern>
+            <pattern name="gpu_power" type="float" unit="W">BENCH_GPU_POWER: $jube_pat_fp W</pattern>
         </patternset>
 
         <patternset name="derived_patterns">
@@ -222,6 +233,12 @@
                 <column title="data_frac" format=".3f">data_fraction</column>
                 <column title="maxrss_gb" format=".1f">maxrss</column>
                 <column title="est_mem_gb" format=".1f">est_mem_gb</column>
+                <column title="node_mem_gb" format=".0f">node_mem_peak</column>
+                <column title="node_avail_gb" format=".0f">node_mem_avail_min</column>
+                <column title="shm_gb" format=".0f">node_shm_peak</column>
+                <column title="gpu_mem_gb" format=".1f">gpu_mem_peak</column>
+                <column title="gpu_util_pct" format=".0f">gpu_util</column>
+                <column title="gpu_w" format=".0f">gpu_power</column>
             </table>
             <table name="result_csv" style="csv"
                    sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,rep">
@@ -253,6 +270,12 @@
                 <column>data_fraction</column>
                 <column>maxrss</column>
                 <column>est_mem_gb</column>
+                <column>node_mem_peak</column>
+                <column>node_mem_avail_min</column>
+                <column>node_shm_peak</column>
+                <column>gpu_mem_peak</column>
+                <column>gpu_util</column>
+                <column>gpu_power</column>
                 <column>job_elapsed</column>
             </table>
         </result>

@@ -15,6 +15,8 @@
 
 set -uo pipefail
 WORK_DIR=$PWD
+# Crashed tasks would otherwise write core dumps of tens of GB each into the project directory.
+ulimit -c 0
 # Always signal JUBE that this workpackage finished, also on failure or time limit (SIGTERM).
 trap 'touch "#READY_FILE#"' EXIT
 trap 'echo "BENCH_STATUS: terminated"; exit 143' TERM
@@ -49,11 +51,24 @@ echo "BENCH_JOB: id=${SLURM_JOB_ID} nodes=${SLURM_JOB_NODELIST}"
 echo "BENCH_START: $(date --iso-8601=seconds)"
 START=$(date +%s)
 
+# Node memory and GPU usage, sampled on every node alongside training. The step shares the job's CPUs, memory and
+# GPUs (--overlap) and sees all GPUs of its node (--gpu-bind=none).
+srun --overlap --nodes="$SLURM_NNODES" --ntasks-per-node=1 --cpus-per-task=1 --gres=gpu:#TASKS_PER_NODE# \
+    --gpu-bind=none --output=/dev/null --error="$WORK_DIR/usage_sampler.err" \
+    "$WORK_DIR/usage_sampler.sh" #USAGE_INTERVAL# &
+SAMPLER_PID=$!
+
 srun --export=ALL --kill-on-bad-exit=1 --output="$WORK_DIR/task-%t.out" --error="$WORK_DIR/task-%t.err" \
     "#PROJECT_DIR#/scripts/train.sh" --project-dir "#PROJECT_DIR#" --config-dir "$WORK_DIR" \
     --output-dir "$WORK_DIR/model" --train-dir "$WORK_DIR/checkpoints" --tb-dir "$WORK_DIR/tensorboard" \
     --overwrite --log-level=info bench final train
 STATUS=$?
+kill "$SAMPLER_PID" 2>/dev/null
+wait "$SAMPLER_PID" 2>/dev/null
+# srun can return 0 when the job is cancelled: only a run that finished training counts as successful.
+if [[ $STATUS == 0 ]] && ! grep -q "Training finished" "$WORK_DIR/task-0.err"; then
+    STATUS=incomplete
+fi
 
 echo "BENCH_STATUS: $STATUS"
 echo "BENCH_ELAPSED: $(( $(date +%s) - START )) s"
@@ -62,6 +77,8 @@ sacct -j "${SLURM_JOB_ID}.0" --noheader --parsable2 --format=MaxRSS 2>/dev/null 
     function gb(v) { u = substr(v, length(v)); n = v + 0
         return u == "K" ? n / 2^20 : u == "M" ? n / 2^10 : u == "G" ? n : u == "T" ? n * 2^10 : n / 2^30 }
     $1 != "" { m = gb($1) > m ? gb($1) : m } END { printf "BENCH_MAXRSS: %.1f GB\n", m }'
+python3 "$WORK_DIR/usage_summary.py" "$WORK_DIR"
 # Checkpoints and the saved model are not needed for the analysis.
 rm -rf -- "$WORK_DIR/checkpoints" "$WORK_DIR/model"
+[[ $STATUS == incomplete ]] && exit 1
 exit "$STATUS"

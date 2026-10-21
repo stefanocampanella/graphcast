@@ -10,6 +10,8 @@ a self-contained job template filled in by JUBE and submitted with `sbatch`.
 |-----------------------------|--------------------------------------------------------------------------------|
 | `graphcast_training.xml`    | JUBE benchmark: cases, job and config substitution, analysis and result tables |
 | `train_bench.sbatch.in`     | SLURM job template, one job per workpackage                                    |
+| `usage_sampler.sh`          | Samples node memory and GPU usage every 5 s on each node of a job              |
+| `usage_summary.py`          | Summarizes these samples as `BENCH_*` lines in `job.out`                       |
 | `pyproject.toml`, `uv.lock` | uv environment with JUBE 2.7.1 (installed from GitHub, JUBE is not on PyPI)    |
 
 ## Setup
@@ -78,6 +80,12 @@ prefetch warm-up):
   `first_data_s`: the data part of step 0.
 - `maxrss_gb`: peak memory of a task, from `sacct`, next to `est_mem_gb`, a rough estimate.
   `sacct` can lag behind; a value of 0 means it was not yet available.
+- Node usage, sampled every 5 s on each node (`node_mem-<host>.csv`, `gpu-<host>.csv` in the workpackage
+  directory) and summarized over all nodes: `node_mem_gb` (peak memory used, from `free`, without page cache),
+  `node_avail_gb` (lowest available memory), `shm_gb` (peak shared memory, mostly Grain's buffers),
+  `gpu_mem_gb` (peak GPU memory of any GPU), `gpu_util_pct` and `gpu_w` (mean utilization and power over
+  steps 10 and later).
+- `status`: the exit status of the training step, or `incomplete` if it did not finish training (e.g. cancelled).
 
 ## Design notes
 
