@@ -48,7 +48,7 @@ from graphcast import (
 )
 from graphcast.gis_utils import cartesian_crs, equirectangular_crs, get_transform
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
-from graphcast.model_utils import Embedder, PositionalEncoder
+from graphcast.model_utils import Embedder
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,6 @@ class ModelConfig:
   radius_query_fraction_edge_length: float
   mesh2grid_edge_normalization_factor: float | None = None
   per_variable_weights: dict | None = None
-  fourier_features_num_frequencies: int = 32
 
 
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
@@ -274,19 +273,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       add_edge_receiver_coordinates=False,
     )
 
-    # Positional encoder, which encodes the position of the grid and mesh nodes.
-    self._positional_encoder_kwargs = dict(
-      learnable_fourier_features=True,
-      num_frequencies=self._model_config.fourier_features_num_frequencies,
-      mlp_hidden_dim=self._model_config.latent_size,
-      encoding_dim=self._model_config.latent_size,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      name="positional_encoder",
-    )
-
-    # Grid nodes and {grid2mesh,mesh,mesh2grid} edges embedder.
+    # Grid/mesh nodes and {grid2mesh,mesh,mesh2grid} edges embedder.
     self._embedder_kwargs = dict(
       mlp_hidden_dim=self._model_config.latent_size,
       mlp_num_hidden_layers=self._model_config.hidden_layers,
@@ -688,23 +675,36 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     grid2mesh_edges_key = grid2mesh_graph.edge_key_by_name("grid2mesh")
     edges = grid2mesh_graph.edges[grid2mesh_edges_key]
 
-    # Add positional encoding to grid input features
-    grid_node_embedder = Embedder(**self._embedder_kwargs, name="grid_node_embedder")
-    grid_node_features = grid_node_embedder(grid_node_input_features)
-    positional_encoder = PositionalEncoder(**self._positional_encoder_kwargs)
-    grid_node_position_encodings = positional_encoder(
+    grid_node_positions = model_utils.fixed_position_features(
       grid_nodes.features.astype(grid_node_input_features.dtype)
     )
-    grid_node_features = grid_node_features + _add_batch_second_axis(
-      grid_node_position_encodings, batch_size
+    grid_node_inputs = jnp.concatenate(
+      [grid_node_input_features, _add_batch_second_axis(grid_node_positions, batch_size)],
+      axis=-1,
     )
+    grid_node_embedder = Embedder(**self._embedder_kwargs, name="grid_node_embedder")
+    grid_node_features = grid_node_embedder(grid_node_inputs)
     new_grid_nodes = grid_nodes._replace(features=grid_node_features)
 
-    # Mesh nodes contain only positional encodings
-    mesh_node_position_encodings = positional_encoder(
+    mesh_node_positions = model_utils.fixed_position_features(
       mesh_nodes.features.astype(grid_node_input_features.dtype)
     )
-    mesh_node_features = _add_batch_second_axis(mesh_node_position_encodings, batch_size)
+    # TODO: this comment from the original GraphCast code should be checked.
+    # "To make sure capacity of the embedded is identical for the grid nodes and
+    # the mesh nodes, we also append some dummy zero input features for the
+    # mesh nodes."
+    # In doubt, we add dummy features for the mesh nodes here as done originally.
+    dummy_mesh_inputs = jnp.zeros(
+      (mesh_node_positions.shape[0], grid_node_input_features.shape[-1]),
+      dtype=grid_node_input_features.dtype,
+    )
+    mesh_node_inputs = jnp.concatenate([dummy_mesh_inputs, mesh_node_positions], axis=-1)
+    assert mesh_node_inputs.shape[-1] == grid_node_inputs.shape[-1] == (
+        grid_node_input_features.shape[-1] + 4
+    )
+    mesh_node_embedder = Embedder(**self._embedder_kwargs, name="mesh_node_embedder")
+    mesh_node_features = mesh_node_embedder(mesh_node_inputs)
+    mesh_node_features = _add_batch_second_axis(mesh_node_features, batch_size)
     new_mesh_nodes = mesh_nodes._replace(features=mesh_node_features)
 
     # Broadcast edge structural features to the required batch size.

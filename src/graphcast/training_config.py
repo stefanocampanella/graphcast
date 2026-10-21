@@ -80,7 +80,6 @@ class ModelConfig(ApplicationConfig):
   hidden_layers: NonNegativeInt
   radius_query_fraction_edge_length: Annotated[float, Field(gt=0)]
   per_variable_weights: dict[str, float] = Field(default_factory=dict)
-  fourier_features_num_frequencies: PositiveInt = 1
   mesh2grid_edge_normalization_factor: Annotated[float, Field(gt=0)] | None = None
 
 

@@ -78,7 +78,6 @@ radius_query_fraction_edge_length = 0.6
 # The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
 # (except for 2m temperature?)
 per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
-fourier_features_num_frequencies = 32
 
 [mesh]
 path = "/data/geometry/uniform_fine.msh"
@@ -119,7 +118,7 @@ skip_names = ["year_progress_cos", "year_progress_sin"]
 
 [policy]
 names_which_can_be_saved = []
-names_which_can_be_offloaded = ["positional_encoder", "embedder", "graph_embedder", "message_passing", "graph_output"]
+names_which_can_be_offloaded = ["embedder", "graph_embedder", "message_passing", "graph_output"]
 offload_src = "device"
 offload_dst = "pinned_host"
 

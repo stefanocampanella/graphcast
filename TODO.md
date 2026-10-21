@@ -12,8 +12,6 @@
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
 * Use climatology instead of the averages for input and output normalizations. **HIGH PRIORITY**
 * Containerize code with Apptainer and using NVIDIA JAX Docker images. **HIGH PRIORITY**
-* Revert code to use $\sin$ and $\cos$ encodings instead of fancier fourier features, or leave fourier features as an
-  option, but using concatenation instead of addition. **HIGH PRIORITY**
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
@@ -86,6 +84,7 @@
 
 ## Completed tasks
 
+* ~~Replace learnable Fourier features with fixed $\sin$ and $\cos$ encodings using concatenation.~~ **DONE**
 * ~~Streamline dataset downloading and post-processing, in particular the download-and-postprocess then
   merge-and-postprocess workflow should be implemented as a single operation.~~ **DONE, now in a separate package:
   arco-make**
