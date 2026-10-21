@@ -1,0 +1,10 @@
+[project]
+name = "graphcast-jube-bench"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "jube",
+]
+
+[tool.uv.sources]
+jube = { git = "https://github.com/FZJ-JSC/JUBE.git", rev = "REL-2.7.1" }

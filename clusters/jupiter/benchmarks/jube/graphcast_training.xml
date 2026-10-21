@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
+<jube>
+    <tags forced="true">
+        <check_tags>format|grain|zarr|cpus|scaling</check_tags>
+        <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded), at two Grain settings</tag>
+        <tag name="grain">Grain workers x threads on zarr v3</tag>
+        <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
+        <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
+        <tag name="scaling">2 and 4 nodes for the baseline case</tag>
+        <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
+        <tag name="devel">Use the develbooster reservation</tag>
+        <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
+    </tags>
+
+    <benchmark name="graphcast_training_io" outpath="bench_run">
+        <comment>GraphCast training with different dataset formats, Grain loader and zarr I/O settings</comment>
+
+        <!-- One value per case: format:grain_workers:grain_threads:zarr_max_workers:zarr_concurrency:nodes:cpus_per_task.
+             Tagged values are concatenated; each sweep varies one factor around the baseline zarr_v3:4:2:8:32:1:72. -->
+        <parameterset name="case_set" duplicate="concat">
+            <parameter name="case" tag="format">
+                squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:8:2:8:32:1:72
+            </parameter>
+            <parameter name="case" tag="grain">
+                zarr_v3:0:4:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:1:8:32:1:72,zarr_v3:4:4:8:32:1:72
+            </parameter>
+            <parameter name="case" tag="zarr">
+                zarr_v3:4:2:4:10:1:72,zarr_v3:4:2:4:32:1:72,zarr_v3:4:2:8:10:1:72,zarr_v3:4:2:32:10:1:72,zarr_v3:4:2:32:32:1:72
+            </parameter>
+            <parameter name="case" tag="cpus">zarr_v3:4:2:8:32:1:1,zarr_v3:4:2:8:32:1:8</parameter>
+            <parameter name="case" tag="scaling">zarr_v3:4:2:8:32:2:72,zarr_v3:4:2:8:32:4:72</parameter>
+        </parameterset>
+
+        <parameterset name="param_set">
+            <!-- Repetitions use different seeds (sample order), so that no run reads samples cached by another. -->
+            <parameter name="rep" type="int" tag="!quick">1,2</parameter>
+            <parameter name="rep" type="int" tag="quick">1</parameter>
+            <parameter name="steps" type="int" tag="!quick">60</parameter>
+            <parameter name="steps" type="int" tag="quick">30</parameter>
+
+            <parameter name="format" mode="python">"$case".split(":")[0]</parameter>
+            <parameter name="num_workers" type="int" mode="python">int("$case".split(":")[1])</parameter>
+            <parameter name="num_threads" type="int" mode="python">int("$case".split(":")[2])</parameter>
+            <parameter name="zarr_max_workers" type="int" mode="python">int("$case".split(":")[3])</parameter>
+            <parameter name="zarr_concurrency" type="int" mode="python">int("$case".split(":")[4])</parameter>
+            <parameter name="nodes" type="int" mode="python">int("$case".split(":")[5])</parameter>
+            <parameter name="cpus_per_task" type="int" mode="python">int("$case".split(":")[6])</parameter>
+            <parameter name="prefetch_buffer_size" type="int">2</parameter>
+            <parameter name="per_worker_buffer_size" type="int">2</parameter>
+            <parameter name="seed" type="int" mode="python">1000 * $rep + $jube_wp_id</parameter>
+            <!-- Save only step 0: checkpointing every step (the default) would dominate step times. -->
+            <parameter name="ckpt_interval" type="int">1000000</parameter>
+
+            <!-- Rough host memory per task: train and test streams each have num_workers processes, buffering
+                 ~0.7 GB samples and building ~2 GB per in-flight sample. Compare with the measured MaxRSS. -->
+            <parameter name="est_mem_gb" type="float" mode="python">round(2 * ($num_workers * $per_worker_buffer_size *
+                0.7 + max($num_workers, 1) * $num_threads * 2.0), 1)
+            </parameter>
+
+            <!-- Datasets: all on /e/scratch, so that only the format differs. -->
+            <parameter name="sqsh_dir">/e/scratch/training2647/ogs_team</parameter>
+            <parameter name="zarr_v2_dir">/e/scratch/training2647/graphcast_data/zarr_v2</parameter>
+            <parameter name="zarr_v3_dir">/e/scratch/training2647/graphcast_data/zarr_v3</parameter>
+            <parameter name="dataset_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-data.sqsh", "zarr_v2":
+                "$zarr_v2_dir/data", "zarr_v3": "$zarr_v3_dir/dataset"}["$format"]
+            </parameter>
+            <parameter name="climatology_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-climatology.sqsh",
+                "zarr_v2": "$zarr_v2_dir/climatology", "zarr_v3": "$zarr_v3_dir/climatology"}["$format"]
+            </parameter>
+            <parameter name="anomaly_std_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-anomaly_std.sqsh",
+                "zarr_v2": "$zarr_v2_dir/anomaly_std", "zarr_v3": "$zarr_v3_dir/anomaly_std"}["$format"]
+            </parameter>
+            <parameter name="tendency_std_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-tendency_std.sqsh",
+                "zarr_v2": "$zarr_v2_dir/tendency_std", "zarr_v3": "$zarr_v3_dir/tendency_std"}["$format"]
+            </parameter>
+        </parameterset>
+
+        <parameterset name="execute_set">
+            <parameter name="project_dir" mode="python">__import__("os").path.realpath("$jube_benchmark_home/../..")
+            </parameter>
+            <parameter name="env_file">${project_dir}/clusters/jupiter/.env</parameter>
+            <parameter name="account">e-dev-2026d09-119</parameter>
+            <parameter name="partition">booster</parameter>
+            <parameter name="reservation" tag="devel">#SBATCH --reservation=develbooster</parameter>
+            <parameter name="reservation" tag="!devel"># no reservation</parameter>
+            <parameter name="timelimit">00:30:00</parameter>
+            <parameter name="tasks_per_node" type="int">4</parameter>
+            <parameter name="local_batch_size" type="int">1</parameter>
+            <parameter name="job_file">train_bench.sbatch</parameter>
+            <parameter name="ready_file">ready</parameter>
+            <parameter name="submit_cmd" tag="!dryrun">sbatch</parameter>
+            <!-- JUBE waits for the done file before any further command, so the dry run creates it itself. -->
+            <parameter name="submit_cmd" tag="dryrun">touch $ready_file &amp;&amp; bash -n</parameter>
+        </parameterset>
+
+        <fileset name="files">
+            <copy>train_bench.sbatch.in</copy>
+            <copy>${project_dir}/configs/training/full.toml</copy>
+        </fileset>
+
+        <substituteset name="job_sub">
+            <iofile in="train_bench.sbatch.in" out="$job_file"/>
+            <sub source="#WPID#" dest="$jube_wp_id"/>
+            <sub source="#ACCOUNT#" dest="$account"/>
+            <sub source="#PARTITION#" dest="$partition"/>
+            <sub source="#RESERVATION#" dest="$reservation"/>
+            <sub source="#TIMELIMIT#" dest="$timelimit"/>
+            <sub source="#NODES#" dest="$nodes"/>
+            <sub source="#TASKS_PER_NODE#" dest="$tasks_per_node"/>
+            <sub source="#CPUS_PER_TASK#" dest="$cpus_per_task"/>
+            <sub source="#ENV_FILE#" dest="$env_file"/>
+            <sub source="#PROJECT_DIR#" dest="$project_dir"/>
+            <sub source="#DATASET#" dest="$dataset_path"/>
+            <sub source="#CLIMATOLOGY#" dest="$climatology_path"/>
+            <sub source="#ANOMALY_STD#" dest="$anomaly_std_path"/>
+            <sub source="#TENDENCY_STD#" dest="$tendency_std_path"/>
+            <sub source="#NUM_WORKERS#" dest="$num_workers"/>
+            <sub source="#NUM_THREADS#" dest="$num_threads"/>
+            <sub source="#PREFETCH_BUFFER_SIZE#" dest="$prefetch_buffer_size"/>
+            <sub source="#PER_WORKER_BUFFER_SIZE#" dest="$per_worker_buffer_size"/>
+            <sub source="#ZARR_MAX_WORKERS#" dest="$zarr_max_workers"/>
+            <sub source="#ZARR_CONCURRENCY#" dest="$zarr_concurrency"/>
+            <sub source="#CASE#" dest="$case rep=$rep seed=$seed steps=$steps"/>
+            <sub source="#READY_FILE#" dest="$ready_file"/>
+        </substituteset>
+
+        <!-- The training configuration is the project's full.toml with benchmark overrides. -->
+        <substituteset name="config_sub">
+            <iofile in="full.toml" out="bench.toml"/>
+            <sub source="(?m)^training_steps = [\d_]+" dest="training_steps = $steps" mode="regex"/>
+            <sub source="(?m)^seed = \d+" dest="seed = $seed" mode="regex"/>
+            <sub source="(?m)^\[checkpoints\]" dest="[checkpoints]\nsave_interval_steps = $ckpt_interval" mode="regex"/>
+        </substituteset>
+
+        <step name="submit">
+            <use>case_set</use>
+            <use>param_set</use>
+            <use>execute_set</use>
+            <use>files</use>
+            <use>job_sub</use>
+            <use>config_sub</use>
+            <do done_file="$ready_file">$submit_cmd $job_file</do>
+        </step>
+
+        <!-- Step lines from training.py: "Step N timings: data D s, compute C s, checkpoint K s, total T s, elapsed E s".
+             Steady-state statistics skip steps 0-9 (compilation and filling of prefetch buffers). -->
+        <patternset name="step_patterns">
+            <pattern name="first_data" type="float" unit="s">Step 0 timings: data $jube_pat_fp s</pattern>
+            <pattern name="first_step_elapsed" type="float" unit="s">Step 0 timings: .*elapsed $jube_pat_fp s</pattern>
+            <pattern name="data" type="float" unit="s">Step [1-9]\d+ timings: data $jube_pat_fp s</pattern>
+            <pattern name="compute" type="float" unit="s">Step [1-9]\d+ timings: data $jube_pat_nfp s, compute
+                $jube_pat_fp s
+            </pattern>
+            <pattern name="checkpoint" type="float" unit="s">Step [1-9]\d+ timings: .*checkpoint $jube_pat_fp s
+            </pattern>
+            <pattern name="total" type="float" unit="s">Step [1-9]\d+ timings: .*total $jube_pat_fp s</pattern>
+            <pattern name="step" type="int">Step $jube_pat_int timings</pattern>
+            <pattern name="elapsed" type="float" unit="s">Step \d+ timings: .*elapsed $jube_pat_fp s</pattern>
+        </patternset>
+
+        <patternset name="job_patterns">
+            <pattern name="status">BENCH_STATUS: $jube_pat_wrd</pattern>
+            <pattern name="job_elapsed" type="int" unit="s">BENCH_ELAPSED: $jube_pat_int s</pattern>
+            <pattern name="maxrss" type="float" unit="GB">BENCH_MAXRSS: $jube_pat_fp GB</pattern>
+            <pattern name="slurm_job" type="int">BENCH_JOB: id=$jube_pat_int</pattern>
+        </patternset>
+
+        <patternset name="derived_patterns">
+            <pattern name="train_samples_per_s" type="float" mode="python" default="0">${nodes} * ${tasks_per_node} *
+                ${local_batch_size} / ${total_avg}
+            </pattern>
+            <pattern name="data_fraction" type="float" mode="python" default="0">${data_avg} / ${total_avg}</pattern>
+        </patternset>
+
+        <analyser name="analyse">
+            <use>step_patterns</use>
+            <use>job_patterns</use>
+            <use>derived_patterns</use>
+            <analyse step="submit">
+                <file use="step_patterns">task-0.err</file>
+                <file use="job_patterns">job.out</file>
+            </analyse>
+        </analyser>
+
+        <result>
+            <use>analyse</use>
+            <table name="result" style="pretty"
+                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,rep">
+                <column>jube_wp_id</column>
+                <column>slurm_job</column>
+                <column>status</column>
+                <column>format</column>
+                <column title="workers">num_workers</column>
+                <column title="threads">num_threads</column>
+                <column title="zarr_pool">zarr_max_workers</column>
+                <column title="zarr_conc">zarr_concurrency</column>
+                <column>nodes</column>
+                <column title="cpus">cpus_per_task</column>
+                <column>rep</column>
+                <column title="steps">step_last</column>
+                <column title="first_step_s" format=".1f">first_step_elapsed</column>
+                <column title="first_data_s" format=".1f">first_data</column>
+                <column title="data_avg_s" format=".3f">data_avg</column>
+                <column title="data_max_s" format=".3f">data_max</column>
+                <column title="compute_avg_s" format=".2f">compute_avg</column>
+                <column title="ckpt_avg_s" format=".3f">checkpoint_avg</column>
+                <column title="step_avg_s" format=".2f">total_avg</column>
+                <column title="step_std_s" format=".2f">total_std</column>
+                <column title="samples_per_s" format=".3f">train_samples_per_s</column>
+                <column title="data_frac" format=".3f">data_fraction</column>
+                <column title="maxrss_gb" format=".1f">maxrss</column>
+                <column title="est_mem_gb" format=".1f">est_mem_gb</column>
+            </table>
+            <table name="result_csv" style="csv"
+                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,rep">
+                <column>jube_wp_id</column>
+                <column>slurm_job</column>
+                <column>status</column>
+                <column>case</column>
+                <column>format</column>
+                <column>num_workers</column>
+                <column>num_threads</column>
+                <column>zarr_max_workers</column>
+                <column>zarr_concurrency</column>
+                <column>nodes</column>
+                <column>cpus_per_task</column>
+                <column>rep</column>
+                <column>seed</column>
+                <column>step_last</column>
+                <column>first_step_elapsed</column>
+                <column>first_data</column>
+                <column>data_avg</column>
+                <column>data_std</column>
+                <column>data_max</column>
+                <column>compute_avg</column>
+                <column>compute_std</column>
+                <column>checkpoint_avg</column>
+                <column>total_avg</column>
+                <column>total_std</column>
+                <column>train_samples_per_s</column>
+                <column>data_fraction</column>
+                <column>maxrss</column>
+                <column>est_mem_gb</column>
+                <column>job_elapsed</column>
+            </table>
+        </result>
+    </benchmark>
+</jube>
