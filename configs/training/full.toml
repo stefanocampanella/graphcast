@@ -64,6 +64,10 @@ forcing_variables = [
     "year_progress_cos",
 ]
 levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
+# Alternatives use original zero-based depth positions, independently per source:
+# levels = "all"
+# levels = { start = 0, stop = 8, step = 2 }  # Inclusive stop: 0, 2, 4, 6, 8.
+# Bounds may be omitted; step defaults to 1. Negative/reverse slices are unsupported.
 input_duration = "1d"
 
 [model]

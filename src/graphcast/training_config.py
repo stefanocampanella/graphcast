@@ -1,7 +1,7 @@
 """Validated training settings, independent of the training runtime."""
 
 import warnings
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import (
   BaseModel,
@@ -51,7 +51,19 @@ def source_read() -> ReadConfig:
   return ReadConfig(engine="zarr", chunks=None)
 
 
-Levels = tuple[NonNegativeInt, ...]
+class LevelSliceConfig(ApplicationConfig):
+  start: Annotated[int, Field(strict=True, ge=0)] | None = None
+  stop: Annotated[int, Field(strict=True, ge=0)] | None = None
+  step: Annotated[int, Field(strict=True, gt=0)] = 1
+
+  @model_validator(mode="after")
+  def check_bounds(self):
+    if self.start is not None and self.stop is not None and self.start > self.stop:
+      raise ValueError("level slice start must not exceed stop")
+    return self
+
+
+Levels = tuple[NonNegativeInt, ...] | Literal["all"] | LevelSliceConfig
 
 
 class TaskConfig(ApplicationConfig):

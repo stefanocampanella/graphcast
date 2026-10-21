@@ -44,7 +44,7 @@ from graphcast.mesh_graph import MeshData
 from graphcast.model import CheckPoint, GraphCast, ModelConfig, TaskConfig
 from graphcast.normalization import InputsAndResiduals
 from graphcast.predictor_base import Predictor
-from graphcast.training_config import TrainingConfig
+from graphcast.training_config import Levels, LevelSliceConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -130,11 +130,22 @@ def get_mesh(configs: TrainingConfig) -> MeshData:
   return mesh_data
 
 
-def _select_task_levels(dataset: xr.Dataset, levels: tuple[int, ...]) -> xr.Dataset:
+def _get_level_selection(levels: Levels) -> list[int] | slice:
+  if isinstance(levels, LevelSliceConfig):
+    return slice(levels.start, levels.stop, levels.step)
+  if levels == "all":
+    return slice(None)
+  return list(levels)
+
+
+def _select_task_levels(dataset: xr.Dataset, levels: Levels) -> xr.Dataset:
   """Label original depth positions before selecting the ordered task levels."""
   dataset = dataset.assign_coords(level=("depth", range(dataset.depth.size)))
   dataset = dataset.swap_dims({"depth": "level"})
-  return dataset.sel(level=list(levels))
+  dataset = dataset.sel(level=_get_level_selection(levels))
+  if dataset.sizes["level"] == 0:
+    raise ValueError(f"Level selection {levels!r} resolved to zero levels")
+  return dataset
 
 
 def get_dataset(configs: TrainingConfig) -> xr.Dataset:
@@ -187,8 +198,17 @@ def get_model_config(configs: TrainingConfig) -> ModelConfig:
   return ModelConfig(**configs.model.model_dump())
 
 
-def get_task_config(configs: TrainingConfig) -> TaskConfig:
-  return TaskConfig(**configs.task.model_dump())
+def get_task_config(
+    configs: TrainingConfig,
+    dataset: xr.Dataset | None = None,
+) -> TaskConfig:
+  if dataset is not None:
+    levels = tuple(int(level) for level in dataset.level.values)
+  elif isinstance(configs.task.levels, tuple):
+    levels = configs.task.levels
+  else:
+    raise ValueError("A selected dataset is required to resolve task.levels")
+  return TaskConfig(**{**configs.task.model_dump(), "levels": levels})
 
 
 def get_policy(configs: TrainingConfig) -> Callable:
@@ -307,7 +327,7 @@ def get_dataset_iterator(
   train: bool = True,
 ) -> InputsTargetsForcingsIterDataset:
   """Build a stream from artifacts already selected to ordered task levels."""
-  task_config = get_task_config(configs)
+  task_config = get_task_config(configs, dataset)
 
   # Split the dataset "causally"
   split_date = configs.grain_dataset.split_date
