@@ -185,7 +185,8 @@ def train(
 
   optimizer, schedule = trn_utils.get_optimizer(configs)
 
-  train_stream, test_stream = dataloader_utils.get_dataset_iterators(
+  # There is no test stream: computing a test loss would cost host memory (its own Grain workers) and time.
+  train_stream = dataloader_utils.get_dataset_stream(
     configs=configs,
     dataset=dataset,
     climatology=climatology,
@@ -194,9 +195,8 @@ def train(
     grain_runtime=grain_runtime,
   )
   # Saved with checkpoints and checked on restore, since Grain's iterator state depends on num_workers.
-  grain_num_workers = orbax_utils.gather_grain_num_workers(train_stream, test_stream)
+  grain_num_workers = orbax_utils.gather_grain_num_workers(train_stream)
   train_iterator = iter(train_stream.dataset)
-  test_iterator = iter(test_stream.dataset)
 
   latest_step = 0
   params = trn_utils.get_params(
@@ -219,7 +219,6 @@ def train(
       ckpt_mngr=ckpt_mngr,
       step=ckpt_mngr.latest_step(),
       train_iterator=train_iterator,
-      test_iterator=test_iterator,
       params=params,
       opt_state=opt_state,
       grain_num_workers=grain_num_workers,
@@ -227,9 +226,6 @@ def train(
     latest_step = ckpt_mngr.latest_step()
     train_iterator: dataloader_utils.InputsTargetsForcingsIterator = restored[
       "train_iterator"
-    ]
-    test_iterator: dataloader_utils.InputsTargetsForcingsIterator = restored[
-      "test_iterator"
     ]
     params: trn_utils.Params = restored["params"]
     opt_state: trn_utils.Params = restored["opt_state"]
@@ -241,7 +237,7 @@ def train(
   # TODO: are those device_put needed also when pulling checkpoints saved from JAX arrays (instead of numpy arrays)
 
   @partial(jax.jit, donate_argnums=(0, 1))
-  def train_step(params, opt_state, data, data_test, static_data):
+  def train_step(params, opt_state, data, static_data):
     def fsdp_loss_fn(
         params, data: Datasets, static_data: DatasetsOrDataArrays
     ) -> JAXLossAndDiagnostics:
@@ -256,51 +252,44 @@ def train(
       return jax.tree_util.tree_map(jax.numpy.mean, (loss, diagnostics))
 
     fsdp_grad_fn = jax.value_and_grad(fsdp_loss_fn, has_aux=True)
-    test_metrics = fsdp_loss_fn(params, data=data_test, static_data=static_data)
     loss_and_diagnostics, grads = fsdp_grad_fn(
       params, data=data, static_data=static_data
     )
     updates, next_opt_state = optimizer.update(grads, opt_state, params)
     updated_params = optax.apply_updates(params, updates)
 
-    return updated_params, next_opt_state, loss_and_diagnostics, test_metrics
+    return updated_params, next_opt_state, loss_and_diagnostics
 
-  mp_prefetch = any(
-    stream.options.multiprocessing_options is not None
-    for stream in (train_stream, test_stream)
-  )
+  mp_prefetch = train_stream.options.multiprocessing_options is not None
   for current_step in range(latest_step, training_steps):
     step_start = time.perf_counter()
-    batch, batch_test = dataloader_utils.next_batches_on_device(
+    batch = dataloader_utils.next_batch_on_device(
       train_iterator,
-      test_iterator,
       device_mesh=device_mesh,
       mp_prefetch=mp_prefetch,
     )
     data_end = time.perf_counter()
     with jax.sharding.set_mesh(device_mesh):
-      params, opt_state, train_metrics, test_metrics = train_step(
+      params, opt_state, train_metrics = train_step(
         params=params,
         opt_state=opt_state,
         data=batch,
-        data_test=batch_test,
         static_data=static_data,
       )
     # Wait for the step, so that checkpoint time does not include it (push_checkpoint would wait anyway).
-    jax.block_until_ready((train_metrics, test_metrics))
+    jax.block_until_ready(train_metrics)
     compute_end = time.perf_counter()
     orbax_utils.push_checkpoint(
       ckpt_mngr=ckpt_mngr,
       step=current_step,
       metrics=train_metrics,
       train_iterator=train_iterator,
-      test_iterator=test_iterator,
       params=params,
       opt_state=opt_state,
       grain_num_workers=grain_num_workers,
     )
     checkpoint_end = time.perf_counter()
-    tb_logger.log(current_step, train_metrics, test_metrics, lr=schedule(current_step))
+    tb_logger.log(current_step, train_metrics, lr=schedule(current_step))
     # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
     step_end = time.perf_counter()
     logger.info(

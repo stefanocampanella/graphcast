@@ -115,65 +115,31 @@ class DatasetStream:
   options: grain_utils.GrainOptions
 
 
-def get_dataset_iterators(
+def get_dataset_stream(
     configs: TrainingConfig,
     dataset: xr.Dataset,
     climatology: xr.Dataset,
     anomaly_std: xr.Dataset,
     seed: int,
     grain_runtime: grain_utils.GrainRuntimeConfig | None = None,
-) -> tuple[DatasetStream, DatasetStream]:
-  """Return independent training and test streams, in that order.
-
-  Each stream retains its own prefetch/performance configuration and checkpoint
-  state. The split date remains included in both temporal partitions.
-  """
-  grain_runtime = (
-    grain_utils.GrainRuntimeConfig() if grain_runtime is None else grain_runtime
-  )
-  streams = []
-  for train in (True, False):
-    map_dataset = get_map_dataset(
-      configs=configs,
-      dataset=dataset,
-      climatology=climatology,
-      anomaly_std=anomaly_std,
-      seed=seed,
-      train=train,
-    )
-    options = get_grain_options(configs, map_dataset, grain_runtime)
-    streams.append(DatasetStream(to_dataset_iterator(map_dataset, options), options))
-  return tuple(streams)
-
-
-def get_dataset_iterator(
-    configs: TrainingConfig,
-    dataset: xr.Dataset,
-    climatology: xr.Dataset,
-    anomaly_std: xr.Dataset,
-    seed: int,
-    train: bool = True,
-    grain_runtime: grain_utils.GrainRuntimeConfig | None = None,
-) -> InputsTargetsForcingsIterDataset:
-  """Build a stream from artifacts already selected to ordered task levels.
+) -> DatasetStream:
+  """Return the training stream, built from artifacts already selected to ordered task levels.
 
   Grain options come from grain_runtime (GRAPHCAST_GRAIN_* environment variables by default), unless
   grain_dataset.pick_performance_config is set.
   """
+  grain_runtime = (
+    grain_utils.GrainRuntimeConfig() if grain_runtime is None else grain_runtime
+  )
   map_dataset = get_map_dataset(
     configs=configs,
     dataset=dataset,
     climatology=climatology,
     anomaly_std=anomaly_std,
     seed=seed,
-    train=train,
   )
-  grain_runtime = (
-    grain_utils.GrainRuntimeConfig() if grain_runtime is None else grain_runtime
-  )
-  return to_dataset_iterator(
-    map_dataset, get_grain_options(configs, map_dataset, grain_runtime)
-  )
+  options = get_grain_options(configs, map_dataset, grain_runtime)
+  return DatasetStream(to_dataset_iterator(map_dataset, options), options)
 
 
 # TODO: current implementation cannot handle target_lead_times which are slices, as needed for autoregressive rollouts.
@@ -183,17 +149,12 @@ def get_map_dataset(
     climatology: xr.Dataset,
     anomaly_std: xr.Dataset,
     seed: int,
-    train: bool = True,
 ) -> grain.MapDataset:
   """Build the shuffled, batched and extracted MapDataset from artifacts selected to ordered task levels."""
   task_config = get_task_config(configs, dataset)
 
-  # Split the dataset "causally"
-  split_date = configs.grain_dataset.split_date
-  if train:
-    dataset = dataset.sel(time=slice(None, split_date))
-  else:
-    dataset = dataset.sel(time=slice(split_date, None))
+  # Split the dataset "causally": train on dates up to split_date, later ones are held out for evaluation.
+  dataset = dataset.sel(time=slice(None, configs.grain_dataset.split_date))
 
   datasource = ARCOTimeseriesSource(
     dataset=dataset,
@@ -308,30 +269,29 @@ def get_first_sample_and_reset(
   return sample
 
 
-def next_batches_on_device(
-    train_iterator: InputsTargetsForcingsIterator,
-    test_iterator: InputsTargetsForcingsIterator,
+def next_batch_on_device(
+    iterator: InputsTargetsForcingsIterator,
     device_mesh: Mesh,
     mp_prefetch: bool = False,
-) -> tuple[InputsTargetsForcings, InputsTargetsForcings]:
+) -> InputsTargetsForcings:
   if mp_prefetch:
     try:
-      batches_on_host = next(train_iterator), next(test_iterator)
-      batches = xarray_jax.make_array_from_process_local_data(
-        batches_on_host, mesh=device_mesh, spec=P("batch")
+      batch_on_host = next(iterator)
+      batch = xarray_jax.make_array_from_process_local_data(
+        batch_on_host, mesh=device_mesh, spec=P("batch")
       )
-      batch, batch_test = jax.block_until_ready(batches)
+      batch = jax.block_until_ready(batch)
     finally:
       # Explicitly delete batch_on_host to trigger shared memory release in Grain.
       # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
-      del batches_on_host
+      del batch_on_host
   else:
-    batches_on_host = next(train_iterator), next(test_iterator)
-    batch, batch_test = xarray_jax.make_array_from_process_local_data(
-      batches_on_host, mesh=device_mesh, spec=P("batch")
+    batch_on_host = next(iterator)
+    batch = xarray_jax.make_array_from_process_local_data(
+      batch_on_host, mesh=device_mesh, spec=P("batch")
     )
 
-  return batch, batch_test
+  return batch
 
 
 # As the Grain pipeline calls extract_inputs_targets_forcings, which removes the datetime coordinate, the following

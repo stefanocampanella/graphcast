@@ -70,7 +70,7 @@ Checkpoints and the saved model are removed at the end of each job.
 The analysis reads rank 0 (`task-0.err`) and reports, over steps 10 and later (after compilation and
 prefetch warm-up):
 
-- `data_avg_s`, `data_max_s`: time waiting for the train and test batches, including host-to-device transfer.
+- `data_avg_s`, `data_max_s`: time waiting for the training batch, including host-to-device transfer.
   This is the stall the data pipeline causes.
 - `compute_avg_s`: the training step itself. It should not depend on the I/O settings and serves as a control.
 - `step_avg_s`, `step_std_s`, `samples_per_s` (training samples per second over all GPUs), `data_frac`.
@@ -87,14 +87,14 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
   normalization) accounts for more than 99 % of the wait time. Loader throughput therefore scales with
   the number of samples read concurrently, `num_workers x num_threads`. The zarr thread pool hardly matters
   above about 4 threads per reader, and too small a pool hurts.
-- **Demand is low**: each GPU task consumes one train and one test sample per step. At the roughly 15 s per
+- **Demand is low**: each GPU task consumes one training sample per step (training computes no test loss). At the roughly 15 s per
   step seen in earlier runs, that is about 0.13 samples/s per task, below what even small loader
   configurations deliver on the login node. The benchmark therefore includes small configurations (threads only, 1
   worker) to find where data starts to stall the GPUs. It also reports startup time and
   memory, where the formats and settings can differ even when steady-state steps do not.
-- **Train and test streams each start `num_workers` processes**, so a task runs twice as many workers as
-  configured, and the memory estimate counts both streams. Booster nodes have about 878 GB RAM (about 210 GB
-  per task), shared with the activation offloading to pinned host memory.
+- **One stream per task**: training computes no test loss, so a task runs `num_workers` loader processes
+  (runs before this change had a test stream too, with as many workers again). Booster nodes have about 878 GB
+  RAM (about 210 GB per task), shared with the activation offloading to pinned host memory.
 - **CPUs per task**: with JUPITER's `CR_CORE` and `task/cgroup` settings, a task gets one core unless
   `--cpus-per-task` is set, and `srun` needs `SRUN_CPUS_PER_TASK` to inherit it. The current
   `clusters/jupiter/slurm/train.slurm` sets neither, so all of a task's loader processes would share one core.

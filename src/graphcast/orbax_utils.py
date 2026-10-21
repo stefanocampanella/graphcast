@@ -57,18 +57,13 @@ GRAIN_NUM_WORKERS_ITEM = "grain_num_workers"
 GrainNumWorkers = Mapping[str, list[int]]
 
 
-def gather_grain_num_workers(
-    train_stream: DatasetStream, test_stream: DatasetStream
-) -> GrainNumWorkers:
-  """Gather the Grain num_workers of both streams from all processes, which may autotune them independently."""
-  local = np.array([train_stream.options.num_workers, test_stream.options.num_workers])
+def gather_grain_num_workers(train_stream: DatasetStream) -> GrainNumWorkers:
+  """Gather the Grain num_workers of the training stream from all processes, which may autotune it independently."""
+  local = np.array([train_stream.options.num_workers])
   gathered = (
     multihost_utils.process_allgather(local) if jax.process_count() > 1 else local[None]
   )
-  return {
-    "train_iterator": gathered[:, 0].tolist(),
-    "test_iterator": gathered[:, 1].tolist(),
-  }
+  return {"train_iterator": gathered[:, 0].tolist()}
 
 
 def check_grain_num_workers(
@@ -78,7 +73,9 @@ def check_grain_num_workers(
     items: typing.Iterable[str],
 ) -> None:
   """Raise if the given iterator items of a checkpoint were saved with a different Grain num_workers."""
-  if GRAIN_NUM_WORKERS_ITEM not in ckpt_mngr.item_metadata(step):
+  # CheckpointManager.item_metadata fails on our checkpoints, whose metrics are a (loss, diagnostics) list rather than
+  # a dict, so look for the item directory instead.
+  if not (ckpt_mngr.directory / str(step) / GRAIN_NUM_WORKERS_ITEM).exists():
     logger.warning(
       f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run."
     )
@@ -102,7 +99,6 @@ def push_checkpoint(
     step: int,
     metrics: JAXLossAndDiagnostics,
     train_iterator: InputsTargetsForcingsIterator,
-    test_iterator: InputsTargetsForcingsIterator,
     params: Params,
     opt_state: Params,
     grain_num_workers: GrainNumWorkers,
@@ -113,7 +109,6 @@ def push_checkpoint(
     step,
     args=ocp.args.Composite(
       train_iterator=IterDatasetSave(train_iterator),
-      test_iterator=IterDatasetSave(test_iterator),
       params=PyTreeSave(params),
       opt_state=PyTreeSave(opt_state),
       **{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonSave(dict(grain_num_workers))},
@@ -126,32 +121,24 @@ def pull_checkpoint(
     ckpt_mngr: ocp.CheckpointManager,
     step: int,
     train_iterator: InputsTargetsForcingsIterator | None = None,
-    test_iterator: InputsTargetsForcingsIterator | None = None,
     params: Params | None = None,
     opt_state: Params | None = None,
     grain_num_workers: GrainNumWorkers | None = None,
 ) -> Mapping[str, Any]:
-  """Restore the given items; iterators require grain_num_workers, which must match the saved values."""
+  """Restore the given items; the iterator requires grain_num_workers, which must match the saved value.
+
+  Checkpoints saved with a test_iterator item (before the test loss was dropped) restore too: it is not read.
+  """
   logger.info(f"Restoring {step=}")
-  iterator_items = [
-    name
-    for name, iterator in (
-      ("train_iterator", train_iterator),
-      ("test_iterator", test_iterator),
-    )
-    if iterator is not None
-  ]
-  if iterator_items:
+  if train_iterator is not None:
     if grain_num_workers is None:
-      raise ValueError("grain_num_workers is required to restore dataset iterators.")
-    check_grain_num_workers(ckpt_mngr, step, grain_num_workers, iterator_items)
+      raise ValueError("grain_num_workers is required to restore the dataset iterator.")
+    check_grain_num_workers(ckpt_mngr, step, grain_num_workers, ["train_iterator"])
   # TODO: check restore and save args options related to sharding and layout
   # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
   composite_args = {}
   if train_iterator is not None:
     composite_args["train_iterator"] = IterDatasetRestore(train_iterator)
-  if test_iterator is not None:
-    composite_args["test_iterator"] = IterDatasetRestore(test_iterator)
   if params is not None:
     composite_args["params"] = PyTreeRestore(params)
   if opt_state is not None:

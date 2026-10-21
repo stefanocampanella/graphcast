@@ -61,12 +61,12 @@
             <!-- Save only step 0: checkpointing every step (the default) would dominate step times. -->
             <parameter name="ckpt_interval" type="int">1000000</parameter>
 
-            <!-- Rough host memory per task: train and test streams each have num_workers processes, buffering
+            <!-- Rough host memory per task: the training stream has num_workers processes, buffering
                  ~0.7 GB samples and building ~2 GB per in-flight sample. Compare with the measured MaxRSS. -->
             <!-- Samples scale with the number of levels: about 5 times larger with all 50 levels than with 10. -->
             <parameter name="level_factor" type="float" tag="!all_levels">1.0</parameter>
             <parameter name="level_factor" type="float" tag="all_levels">5.0</parameter>
-            <parameter name="est_mem_gb" type="float" mode="python">round(2 * $level_factor * ($num_workers *
+            <parameter name="est_mem_gb" type="float" mode="python">round($level_factor * ($num_workers *
                 $per_worker_buffer_size * 0.7 + max($num_workers, 1) * $num_threads * 2.0), 1)
             </parameter>
 

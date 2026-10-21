@@ -265,7 +265,6 @@ class TensorboardLogger:
     self,
     current_step: int,
     train_metrics: JAXLossAndDiagnostics,
-    test_metrics: JAXLossAndDiagnostics,
     lr: float | None = None,
   ) -> None:
     with self._summary_writer.as_default():
@@ -274,15 +273,10 @@ class TensorboardLogger:
         if jax.process_index() == 0:
           self._summary.scalar(key, value, step=current_step)
 
-      for set_name, set_metrics in [
-        ("train", train_metrics),
-        ("test", test_metrics),
-      ]:
-        set_metrics = jax.tree_util.tree_map(lambda x: x.item(), set_metrics)
-        loss, diagnostics = set_metrics
-        _log(f"{set_name}/loss", loss)
-        for key, value in diagnostics.items():
-          _log(f"{set_name}/{key}", value)
+      loss, diagnostics = jax.tree_util.tree_map(lambda x: x.item(), train_metrics)
+      _log("train/loss", loss)
+      for key, value in diagnostics.items():
+        _log(f"train/{key}", value)
 
       if lr is not None:
         _log("learning_rate", lr)
