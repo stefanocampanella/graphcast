@@ -94,7 +94,7 @@ class ARCODataSource(grain.RandomAccessDataSource):
         minimum = values.min()
         span = values.max() - minimum
         dataset[name] = (values - minimum) / span.where(span != 0, 1)
-    dataset = dataset.merge(anomaly_zscore)
+    dataset = dataset.merge(anomaly_zscore, compat="no_conflicts")
     dataset = dataset.drop_vars("depth")
 
     # Introduce batch dimension and datetime coordinate
