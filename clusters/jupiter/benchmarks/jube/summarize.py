@@ -1,8 +1,9 @@
 """Summarize a results directory of run_final.sh into summary_jobs.csv and summary_cases.csv.
 
 A job is "ok" if rank 0 finished training after 1024 steps (also when its training step was cancelled after hanging
-at exit), "oom" if a Grain worker was killed (exit code -9, lack of host memory), and "failed" otherwise.
-Case metrics in summary_cases.csv are means over the ok repetitions. Runs with the system Python (3.9).
+at exit), "oom" if a Grain worker was killed (exit code -9, lack of host memory), "stopped" if it was cancelled after
+at least 100 steps (its statistics cover the steps done), and "failed" otherwise.
+Case metrics in summary_cases.csv are means over the ok and stopped repetitions. Runs with the system Python (3.9).
 Usage: python3 summarize.py results/<date>-<name>   (after jube result for every experiment)
 """
 
@@ -74,7 +75,7 @@ def job_rows(root):
         msg_steps = re.search(r"(?m)^gnn_msg_steps = (\d+)", bench)
         out = {
           "experiment": experiment, "wp": row["jube_wp_id"], "slurm_job": row["slurm_job"],
-          "outcome": "ok" if finished and steps >= 1023 else ("oom" if oom else "failed"),
+          "outcome": "ok" if finished and steps >= 1023 else "oom" if oom else "stopped" if steps >= 100 else "failed",
           "status": row["status"], "format": row["format"], "workers": row["num_workers"],
           "threads": row["num_threads"], "zarr_pool": row["zarr_max_workers"], "zarr_conc": row["zarr_concurrency"],
           "nodes": row["nodes"], "cpus": row["cpus_per_task"],
@@ -98,7 +99,7 @@ def main(root):
     groups.setdefault(tuple(job[key] for key in CASE_KEYS), []).append(job)
   cases = []
   for key, group in groups.items():
-    ok = [job for job in group if job["outcome"] == "ok"]
+    ok = [job for job in group if job["outcome"] in ("ok", "stopped")]
     case = dict(zip(CASE_KEYS, key))
     case.update(runs=len(group), ok=len(ok), outcomes="/".join(job["outcome"] for job in sorted(group, key=lambda j: j["rep"])))
     for metric in METRICS + ["data_stall_avg[s]", "compute_median[s]"]:
@@ -114,7 +115,7 @@ def main(root):
     outcomes[job["outcome"]] = outcomes.get(job["outcome"], 0) + 1
   print(f"{len(jobs)} jobs {outcomes}, {len(cases)} cases")
   for job in jobs:
-    if job["outcome"] != "ok" and not (job["outcome"] == "oom" and job["levels"] == "all"):
+    if job["outcome"] not in ("ok", "stopped") and not (job["outcome"] == "oom" and job["levels"] == "all"):
       print(f"  check: {job['experiment']} wp {job['wp']} {job['format']} {job['workers']}x{job['threads']} "
             f"{job['opt']}: {job['outcome']} status {job['status']} steps {job['steps']}")
 
