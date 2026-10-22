@@ -12,6 +12,8 @@ a self-contained job template filled in by JUBE and submitted with `sbatch`.
 | `train_bench.sbatch.in`     | SLURM job template, one job per workpackage                                    |
 | `usage_sampler.sh`          | Samples node memory and GPU usage every 5 s on each node of a job              |
 | `usage_summary.py`          | Summarizes these samples as `BENCH_*` lines in `job.out`                       |
+| `run_final.sh`              | Submits the final experiments into `results/<date>-<name>/`                    |
+| `summarize.py`              | Writes `summary_jobs.csv` and `summary_cases.csv` for a results directory      |
 | `pyproject.toml`, `uv.lock` | uv environment with JUBE 2.7.1 (installed from GitHub, JUBE is not on PyPI)    |
 
 ## Setup
