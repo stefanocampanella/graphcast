@@ -16,6 +16,7 @@
         <tag name="msg12">12 message passing steps (gnn_msg_steps) instead of the 8 of full.toml</tag>
         <tag name="msg16">16 message passing steps, as the original GraphCast</tag>
         <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
+        <tag name="long">1024 steps instead of 60 (more statistics), with a 3 hour time limit</tag>
         <tag name="devel">Use the develbooster reservation</tag>
         <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
         <tag name="small_buffers">Buffer one sample per Grain worker and in the reader prefetch, instead of two</tag>
@@ -63,6 +64,7 @@
             <parameter name="rep" type="int" tag="quick">1</parameter>
             <parameter name="steps" type="int" tag="!quick">60</parameter>
             <parameter name="steps" type="int" tag="quick">30</parameter>
+            <parameter name="steps" type="int" tag="long">1024</parameter>
 
             <parameter name="format" mode="python">"$case".split(":")[0]</parameter>
             <parameter name="num_workers" type="int" mode="python">int("$case".split(":")[1])</parameter>
@@ -150,7 +152,8 @@
             <parameter name="partition">booster</parameter>
             <parameter name="reservation" tag="devel">#SBATCH --reservation=develbooster</parameter>
             <parameter name="reservation" tag="!devel"># no reservation</parameter>
-            <parameter name="timelimit">00:30:00</parameter>
+            <parameter name="timelimit" tag="!long">00:30:00</parameter>
+            <parameter name="timelimit" tag="long">03:00:00</parameter>
             <parameter name="tasks_per_node" type="int">4</parameter>
             <parameter name="local_batch_size" type="int">1</parameter>
             <parameter name="job_file">train_bench.sbatch</parameter>

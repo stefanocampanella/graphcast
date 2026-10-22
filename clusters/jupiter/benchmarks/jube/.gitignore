@@ -3,3 +3,4 @@ bench_run/
 bench_run_all_levels/
 bench_run_*/
 jax_cache/
+results/
