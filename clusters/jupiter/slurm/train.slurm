@@ -2,7 +2,6 @@
 #SBATCH --job-name=test_training
 #SBATCH --account=e-dev-2026d09-119
 #SBATCH --partition=booster
-#SBATCH --reservation=develbooster
 #SBATCH --time=30
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=4
@@ -25,6 +24,7 @@ Jupiter launcher options:
 Execution options are forwarded to scripts/train.sh; see scripts/train.sh --help.
 Relative environment/log paths use PROJECT_DIR. SBATCH directives are literal;
 use sbatch options before the script path to override resource allocations.
+No reservation by default; for short tests on up to 2 nodes, add --reservation=develbooster.
 EOF
 }
 
