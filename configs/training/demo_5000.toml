@@ -1,0 +1,164 @@
+# Short training run demonstrating that the model trains: configs/training/full.toml with 5000 steps and the
+# learning rate schedule scaled to them (500 warmup steps, cosine decay to step 5000).
+description = """
+  GraphCast model for the ocean at 0.25deg resolution, \
+  10 depth levels, and a full set of atmospheric and hydrological forcing variables. \
+  This model is trained on ARCO-OCEAN data from 01-01-1993 to 30-06-2019, \
+  and can be causally evaluated on later years. \
+  It uses a global ocean mesh with uniform target mesh size of 120 km. \
+  GraphCast is described in the paper \
+  `GraphCast: Learning skillful medium-range global weather forecasting`(https://arxiv.org/abs/2212.12794). \
+  For a description of the ocean model, see README at \
+  https://github.com/stefanocampanella/graphcast.
+  """
+license = """
+  The model weights are licensed under the Creative Commons \
+  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
+  may obtain a copy of the License at: \
+  https://creativecommons.org/licenses/by-nc-sa/4.0/. \
+  The weights were trained on ARCO-OCEAN data, see README at \
+  https://github.com/inogs/arco-ocean \
+  for attribution statement. \
+  """
+training_steps = 5_000
+seed = 42
+
+[task]
+input_variables = [
+    "zos",
+    "thetao",
+    "siconc",
+    "sithick",
+    "so",
+    "uo",
+    "usi",
+    "vo",
+    "vsi",
+    "year_progress_sin",
+    "year_progress_cos",
+]
+# Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts and include them in forcings
+target_variables = [
+    "zos",
+    "thetao",
+    "so",
+    "uo",
+    "vo",
+]
+forcing_variables = [
+    "siconc",
+    "sithick",
+    "usi",
+    "vsi",
+    "glorys_deptho",
+    "z",
+    "glorys_mask",
+    "lsm",
+    "10u",
+    "10v",
+    "2d",
+    "2t",
+    "msl",
+    "ssrd",
+    "strd",
+    "tp",
+    "year_progress_sin",
+    "year_progress_cos",
+]
+levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
+# Alternatives use original zero-based depth positions, independently per source:
+# levels = "all"
+# levels = { start = 0, stop = 8, step = 2 }  # Inclusive stop: 0, 2, 4, 6, 8.
+# Bounds may be omitted; step defaults to 1. Negative/reverse slices are unsupported.
+input_duration = "1d"
+
+[model]
+latent_size = 512
+gnn_msg_steps = 8
+hidden_layers = 1
+radius_query_fraction_edge_length = 0.6
+# The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
+# (except for 2m temperature?)
+per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
+
+[mesh]
+path = "/data/geometry/uniform_coarse.msh"
+mesh_size_tag_name = "MeshSize"
+step = 0
+
+[mask]
+path = "/data/dataset"
+name = "glorys_mask"
+level = 0
+fill_value = 0.0
+
+[mask.read]
+engine = "zarr"
+
+# xarray.open_dataset options, independent of Grain's reader options below.
+# All four sources select task.levels; there are no per-artifact level settings.
+# Training currently requires chunks=None. TOML has no null, so omit chunks
+# from the read tables to use this default. Other values warn but are not overridden.
+[dataset]
+path = "/data/dataset"
+
+[dataset.read]
+engine = "zarr"
+
+[grain_dataset]
+target_lead_times = "1d"
+split_date = "2019-06-30T00:00:00"
+local_batch_size = 1
+
+# Grain reader and multiprocessing options are read from GRAPHCAST_GRAIN_* environment variables, see
+# graphcast.grain_utils.GrainRuntimeConfig and clusters/jupiter/.env.
+
+[normalization]
+skip_names = ["year_progress_cos", "year_progress_sin"]
+
+[policy]
+names_which_can_be_saved = []
+names_which_can_be_offloaded = ["embedder", "graph_embedder", "message_passing", "graph_output"]
+offload_src = "device"
+offload_dst = "pinned_host"
+
+[climatology]
+path = '/data/climatology'
+
+[climatology.read]
+engine = "zarr"
+
+[anomaly_std]
+path = '/data/anomaly_std'
+
+[anomaly_std.read]
+engine = "zarr"
+
+[tendency_std]
+path = '/data/tendency_std'
+
+[tendency_std.read]
+engine = "zarr"
+
+[optimizer.schedule]
+name = 'warmup_cosine_decay_schedule'
+init_value = 0.0
+peak_value = 1.0e-3
+warmup_steps = 500
+decay_steps = 5_000
+end_value = 3.0e-7
+
+[[optimizer.gradient_transformation]]
+name = 'clip_by_global_norm'
+max_norm = 32.0
+
+[[optimizer.gradient_transformation]]
+name = 'adamw'
+b1 = 0.9
+b2 = 0.95
+weight_decay = 0.1
+
+[checkpoints]
+max_to_keep=3
+# Saving every step (the default) costs time; save every 500 steps.
+save_interval_steps = 500

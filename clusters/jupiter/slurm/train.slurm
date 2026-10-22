@@ -6,6 +6,7 @@
 #SBATCH --time=30
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=4
+#SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:4
 #SBATCH --gpu-bind=single:1
 
@@ -150,6 +151,10 @@ for MODULE in ${MODULES[@]+"${MODULES[@]}"}; do
     module load "$MODULE"
     LOADED_MODULES+=("$MODULE")
 done
+
+# srun does not inherit --cpus-per-task from sbatch (Slurm >= 22.05): without it each task, with its Grain workers,
+# gets one core (7.3 instead of 1.5 s per step in the JUBE benchmark).
+export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-72}
 
 # One shared runner/container per task; only this launcher creates a job step.
 STEP_STARTED=true

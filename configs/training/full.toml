@@ -158,3 +158,5 @@ weight_decay = 0.1
 
 [checkpoints]
 max_to_keep=3
+# Saving every step (the default) costs time; save every 500 steps.
+save_interval_steps = 500
