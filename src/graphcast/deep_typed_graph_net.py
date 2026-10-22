@@ -410,7 +410,6 @@ class DeepTypedGraphNet(hk.Module):
         for _unused_repetition_i in range(self._num_processor_repetitions):
           for processor_network in self._processor_networks:
             latent_graph = self._process_step(processor_network, latent_graph)
-        latent_graph = latent_graph_0
 
     return latent_graph
 
