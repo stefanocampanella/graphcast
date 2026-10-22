@@ -91,7 +91,7 @@ def job_rows(root):
 def main(root):
   jobs = list(job_rows(root))
   with open(os.path.join(root, "summary_jobs.csv"), "w", newline="") as file:
-    writer = csv.DictWriter(file, list(jobs[0]))
+    writer = csv.DictWriter(file, list(jobs[0]), lineterminator="\n")
     writer.writeheader()
     writer.writerows(jobs)
   groups = {}
@@ -107,7 +107,7 @@ def main(root):
       case[metric] = f"{statistics.mean(values):.4g}" if values else ""
     cases.append(case)
   with open(os.path.join(root, "summary_cases.csv"), "w", newline="") as file:
-    writer = csv.DictWriter(file, list(cases[0]))
+    writer = csv.DictWriter(file, list(cases[0]), lineterminator="\n")
     writer.writeheader()
     writer.writerows(cases)
   outcomes = {}
