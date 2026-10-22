@@ -3,7 +3,7 @@
 <jube>
     <tags forced="true">
         <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt|model</check_tags>
-        <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded), at two Grain settings</tag>
+        <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded; zarr_v3_lexi with lexicographic sub-chunk order), at two Grain settings</tag>
         <tag name="grain">Grain workers x threads on zarr v3</tag>
         <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
         <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
@@ -31,7 +31,8 @@
              Tagged values are concatenated; each sweep varies one factor around the baseline zarr_v3:4:2:8:32:1:72. -->
         <parameterset name="case_set" duplicate="concat">
             <parameter name="case" tag="format">
-                squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:8:2:8:32:1:72
+                squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,
+                zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72
             </parameter>
             <parameter name="case" tag="grain">
                 zarr_v3:0:4:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:1:8:32:1:72,zarr_v3:4:4:8:32:1:72
@@ -51,10 +52,12 @@
             </parameter>
             <parameter name="case" tag="model">zarr_v2:8:2:8:32:1:72</parameter>
             <parameter name="case" tag="workers">
-                zarr_v3:2:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,squashfs:4:2:8:32:1:72
+                zarr_v3:2:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,squashfs:4:2:8:32:1:72,
+                zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:4:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72
             </parameter>
             <parameter name="case" tag="lowmem">
-                squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:0:4:8:32:1:72
+                squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:0:4:8:32:1:72,
+                zarr_v3_lexi:2:2:8:32:1:72
             </parameter>
         </parameterset>
 
@@ -132,17 +135,23 @@
             <parameter name="sqsh_dir">/e/scratch/training2647/ogs_team</parameter>
             <parameter name="zarr_v2_dir">/e/scratch/training2647/graphcast_data/zarr_v2</parameter>
             <parameter name="zarr_v3_dir">/e/scratch/training2647/graphcast_data/zarr_v3</parameter>
+            <!-- Same data, shards and chunks as zarr_v3, with the sub-chunks of each shard in lexicographic order. -->
+            <parameter name="zarr_v3_lexi_dir">/e/scratch/training2647/graphcast_data/zarr_v3_lexi</parameter>
             <parameter name="dataset_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-data.sqsh", "zarr_v2":
-                "$zarr_v2_dir/data", "zarr_v3": "$zarr_v3_dir/dataset"}["$format"]
+                "$zarr_v2_dir/data", "zarr_v3": "$zarr_v3_dir/dataset",
+                "zarr_v3_lexi": "$zarr_v3_lexi_dir/dataset"}["$format"]
             </parameter>
             <parameter name="climatology_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-climatology.sqsh",
-                "zarr_v2": "$zarr_v2_dir/climatology", "zarr_v3": "$zarr_v3_dir/climatology"}["$format"]
+                "zarr_v2": "$zarr_v2_dir/climatology", "zarr_v3": "$zarr_v3_dir/climatology",
+                "zarr_v3_lexi": "$zarr_v3_lexi_dir/climatology"}["$format"]
             </parameter>
             <parameter name="anomaly_std_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-anomaly_std.sqsh",
-                "zarr_v2": "$zarr_v2_dir/anomaly_std", "zarr_v3": "$zarr_v3_dir/anomaly_std"}["$format"]
+                "zarr_v2": "$zarr_v2_dir/anomaly_std", "zarr_v3": "$zarr_v3_dir/anomaly_std",
+                "zarr_v3_lexi": "$zarr_v3_lexi_dir/anomaly_std"}["$format"]
             </parameter>
             <parameter name="tendency_std_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-tendency_std.sqsh",
-                "zarr_v2": "$zarr_v2_dir/tendency_std", "zarr_v3": "$zarr_v3_dir/tendency_std"}["$format"]
+                "zarr_v2": "$zarr_v2_dir/tendency_std", "zarr_v3": "$zarr_v3_dir/tendency_std",
+                "zarr_v3_lexi": "$zarr_v3_lexi_dir/tendency_std"}["$format"]
             </parameter>
         </parameterset>
 

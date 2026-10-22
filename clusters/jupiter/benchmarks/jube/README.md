@@ -28,7 +28,7 @@ Every run needs at least one sweep tag:
 
 | Tag       | Cases (format:workers:threads:zarr_pool:zarr_concurrency:nodes:cpus)  | Jobs |
 |-----------|-----------------------------------------------------------------------|------|
-| `format`  | squashfs, zarr_v2, zarr_v3 at 2x2 and 8x2 Grain workers x threads     | 6    |
+| `format`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi at 2x2 and 8x2 workers x threads | 8    |
 | `grain`   | zarr_v3 at 0x4 (threads only), 1x2, 4x2 (baseline), 8x1, 4x4          | 5    |
 | `zarr`    | zarr_v3 4x2 with zarr pool/concurrency 4/10, 4/32, 8/10, 32/10, 32/32 | 5    |
 | `cpus`    | zarr_v3 4x2 with 1 and 8 CPUs per task                                | 2    |
@@ -134,7 +134,8 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
   runs. All datasets are on `/e/scratch`, so that only the storage format differs: the SquashFS images in
   `/e/scratch/training2647/ogs_team`, the zarr v2 extraction of these images and the zarr v3 conversion (same chunks,
-  lz4 Blosc, sharded 8 time x 50 depth) in `/e/scratch/training2647/graphcast_data`.
+  lz4 Blosc, sharded 8 time x 50 depth) in `/e/scratch/training2647/graphcast_data`. `zarr_v3_lexi` is the same conversion with the
+  sub-chunks of each shard stored in lexicographic order.
 - Profiling in the Grain workers is turned off, since its servers would perturb the measurement.
 
 The training configuration is `configs/training/full.toml` with `training_steps`, `seed` and
