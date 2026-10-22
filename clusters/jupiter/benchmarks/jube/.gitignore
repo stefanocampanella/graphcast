@@ -1,4 +1,5 @@
 .venv/
 bench_run/
 bench_run_all_levels/
-bench_run_notest*/
+bench_run_*/
+jax_cache/

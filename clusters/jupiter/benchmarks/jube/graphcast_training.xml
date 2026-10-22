@@ -2,7 +2,7 @@
 <!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">
-        <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers</check_tags>
+        <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt</check_tags>
         <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded), at two Grain settings</tag>
         <tag name="grain">Grain workers x threads on zarr v3</tag>
         <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
@@ -10,6 +10,7 @@
         <tag name="scaling">2 and 4 nodes for the baseline case</tag>
         <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
         <tag name="workers">2 to 8 Grain workers, to find how many fit in memory, e.g. for all_levels</tag>
+        <tag name="opt">XLA and JAX optimization settings (see opt_env) with the fastest loader, on 1 and 2 nodes</tag>
         <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
         <tag name="devel">Use the develbooster reservation</tag>
         <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
@@ -35,6 +36,14 @@
             </parameter>
             <parameter name="case" tag="cpus">zarr_v3:4:2:8:32:1:1,zarr_v3:4:2:8:32:1:8</parameter>
             <parameter name="case" tag="scaling">zarr_v3:4:2:8:32:2:72,zarr_v3:4:2:8:32:4:72</parameter>
+            <!-- An optional eighth field names a set of XLA/JAX settings, see opt_env. -->
+            <parameter name="case" tag="opt">
+                zarr_v2:8:2:8:32:1:72:image,zarr_v2:8:2:8:32:1:72:no_lhs,zarr_v2:8:2:8:32:1:72:env_valid,
+                zarr_v2:8:2:8:32:1:72:pgle,zarr_v2:8:2:8:32:1:72:opt_o3,zarr_v2:8:2:8:32:1:72:fit_o3,
+                zarr_v2:8:2:8:32:1:72:async_alloc,zarr_v2:8:2:8:32:1:72:cache,zarr_v2:8:2:8:32:1:72:all,
+                zarr_v2:8:2:8:32:2:72:image,zarr_v2:8:2:8:32:2:72:env_valid,zarr_v2:8:2:8:32:2:72:all,
+                zarr_v2:8:2:8:32:2:72:share_bin,zarr_v2:8:2:8:32:2:72:no_ib
+            </parameter>
             <parameter name="case" tag="workers">
                 zarr_v3:2:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,squashfs:4:2:8:32:1:72
             </parameter>
@@ -57,6 +66,30 @@
             <parameter name="zarr_concurrency" type="int" mode="python">int("$case".split(":")[4])</parameter>
             <parameter name="nodes" type="int" mode="python">int("$case".split(":")[5])</parameter>
             <parameter name="cpus_per_task" type="int" mode="python">int("$case".split(":")[6])</parameter>
+            <parameter name="opt" mode="python">(lambda f: f[7] if len(f) > 7 else "default")("$case".split(":"))</parameter>
+            <!-- XLA/JAX settings exported after the site .env. The container image sets XLA_FLAGS itself, which takes
+                 precedence over the host's, so XLA flags must be passed as APPTAINERENV_XLA_FLAGS.
+                 "image" keeps the image's XLA_FLAGS (latency hiding scheduler only), as all runs before this sweep. -->
+            <parameter name="jax_cache_dir">${project_dir}/clusters/jupiter/benchmarks/jube/jax_cache</parameter>
+            <parameter name="opt_env" mode="python">(lambda xla, extra: {
+                "default": "", "image": "",
+                "no_lhs": xla("--xla_gpu_enable_latency_hiding_scheduler=false"),
+                "env_valid": xla(),
+                "pgle": xla() + extra("JAX_ENABLE_PGLE=true JAX_PGLE_PROFILING_RUNS=3 JAX_PGLE_AGGREGATION_PERCENTILE=85"),
+                "opt_o3": xla() + extra("JAX_OPTIMIZATION_LEVEL=O3"),
+                "fit_o3": xla() + extra("JAX_MEMORY_FITTING_LEVEL=O3"),
+                "async_alloc": xla() + extra("TF_GPU_ALLOCATOR=cuda_malloc_async"),
+                "cache": xla() + extra("JAX_COMPILATION_CACHE_DIR=$jax_cache_dir"),
+                "all": xla() + extra("JAX_ENABLE_PGLE=true JAX_PGLE_PROFILING_RUNS=3 JAX_PGLE_AGGREGATION_PERCENTILE=85 "
+                                     "JAX_OPTIMIZATION_LEVEL=O3 JAX_MEMORY_FITTING_LEVEL=O3 TF_GPU_ALLOCATOR=cuda_malloc_async"),
+                "share_bin": xla() + extra("JAX_SHARE_BINARY_BETWEEN_HOSTS=true"),
+                "no_ib": xla() + extra("NCCL_IB_DISABLE=1"),
+            }["$opt"])(
+                lambda flags="--xla_gpu_enable_latency_hiding_scheduler=true --xla_gpu_triton_gemm_any=true "
+                             "--xla_gpu_enable_highest_priority_async_stream=true":
+                    "export APPTAINERENV_XLA_FLAGS='" + flags + "'; ",
+                lambda assignments: "".join("export " + a + "; " for a in assignments.split()))
+            </parameter>
             <parameter name="prefetch_buffer_size" type="int" tag="!small_buffers">2</parameter>
             <parameter name="prefetch_buffer_size" type="int" tag="small_buffers">1</parameter>
             <parameter name="per_worker_buffer_size" type="int" tag="!small_buffers">2</parameter>
@@ -141,6 +174,7 @@
             <sub source="#PER_WORKER_BUFFER_SIZE#" dest="$per_worker_buffer_size"/>
             <sub source="#ZARR_MAX_WORKERS#" dest="$zarr_max_workers"/>
             <sub source="#ZARR_CONCURRENCY#" dest="$zarr_concurrency"/>
+            <sub source="#OPT_ENV#" dest="$opt_env"/>
             <sub source="#CASE#" dest="$case rep=$rep seed=$seed steps=$steps"/>
             <sub source="#READY_FILE#" dest="$ready_file"/>
             <sub source="#USAGE_INTERVAL#" dest="$usage_interval"/>
@@ -212,7 +246,7 @@
         <result>
             <use>analyse</use>
             <table name="result" style="pretty"
-                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,rep">
+                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,opt,rep">
                 <column>jube_wp_id</column>
                 <column>slurm_job</column>
                 <column>status</column>
@@ -223,6 +257,7 @@
                 <column title="zarr_conc">zarr_concurrency</column>
                 <column>nodes</column>
                 <column title="cpus">cpus_per_task</column>
+                <column>opt</column>
                 <column>rep</column>
                 <column title="steps">step_last</column>
                 <column title="first_step_s" format=".1f">first_step_elapsed</column>
@@ -230,6 +265,8 @@
                 <column title="data_avg_s" format=".3f">data_avg</column>
                 <column title="data_max_s" format=".3f">data_max</column>
                 <column title="compute_avg_s" format=".2f">compute_avg</column>
+                <column title="compute_min_s" format=".3f">compute_min</column>
+                <column title="step_min_s" format=".3f">total_min</column>
                 <column title="ckpt_avg_s" format=".3f">checkpoint_avg</column>
                 <column title="step_avg_s" format=".2f">total_avg</column>
                 <column title="step_std_s" format=".2f">total_std</column>
@@ -245,7 +282,7 @@
                 <column title="gpu_w" format=".0f">gpu_power</column>
             </table>
             <table name="result_csv" style="csv"
-                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,rep">
+                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,opt,rep">
                 <column>jube_wp_id</column>
                 <column>slurm_job</column>
                 <column>status</column>
@@ -257,6 +294,7 @@
                 <column>zarr_concurrency</column>
                 <column>nodes</column>
                 <column>cpus_per_task</column>
+                <column>opt</column>
                 <column>rep</column>
                 <column>seed</column>
                 <column>step_last</column>
@@ -267,6 +305,8 @@
                 <column>data_max</column>
                 <column>compute_avg</column>
                 <column>compute_std</column>
+                <column>compute_min</column>
+                <column>total_min</column>
                 <column>checkpoint_avg</column>
                 <column>total_avg</column>
                 <column>total_std</column>

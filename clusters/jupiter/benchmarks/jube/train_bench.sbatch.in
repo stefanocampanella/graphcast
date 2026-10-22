@@ -40,6 +40,8 @@ ZARR_THREADING__MAX_WORKERS=#ZARR_MAX_WORKERS#
 ZARR_ASYNC__CONCURRENCY=#ZARR_CONCURRENCY#
 # srun does not inherit --cpus-per-task from sbatch (Slurm >= 22.05).
 SRUN_CPUS_PER_TASK=#CPUS_PER_TASK#
+# XLA/JAX settings of this case (opt_env in graphcast_training.xml), if any.
+#OPT_ENV#
 set +a
 
 for MODULE in ${MODULES[@]+"${MODULES[@]}"}; do

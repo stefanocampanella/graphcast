@@ -33,6 +33,7 @@ Every run needs at least one sweep tag:
 | `zarr`    | zarr_v3 4x2 with zarr pool/concurrency 4/10, 4/32, 8/10, 32/10, 32/32 | 5    |
 | `cpus`    | zarr_v3 4x2 with 1 and 8 CPUs per task                                | 2    |
 | `scaling` | zarr_v3 4x2 on 2 and 4 nodes                                          | 2    |
+| `opt`     | zarr_v2 8x2 with 9 XLA/JAX setting sets on 1 node and 5 on 2 nodes    | 14   |
 
 Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
 `quick` (one repetition of 30 steps), `devel` (develbooster reservation), `dryrun` (check the
@@ -64,6 +65,17 @@ with the steps completed so far.
 Each workpackage directory (`bench_run/<id>/<wp>_submit/work`) contains the job script, the
 generated `bench.toml`, the SLURM output `job.out`/`job.err` and the per-task logs `task-<rank>.out/err`.
 Checkpoints and the saved model are removed at the end of each job.
+
+## XLA and JAX settings (`opt`)
+
+The `opt` cases add an eighth field naming a set of settings (`opt_env` in `graphcast_training.xml`), exported
+after `clusters/jupiter/.env`: `image` (the container's `XLA_FLAGS`, i.e. the latency hiding scheduler only, as
+in all runs before this sweep), `no_lhs`, `env_valid` (the flags of `.env` that this XLA still knows), `pgle`,
+`opt_o3`, `fit_o3`, `async_alloc`, `cache`, `all`, and on 2 nodes `share_bin` and `no_ib`. The container image
+sets `XLA_FLAGS` itself, which takes precedence over the host's: XLA flags only reach the container as
+`APPTAINERENV_XLA_FLAGS`. Training logs the `XLA_FLAGS` it sees (`Using XLA_FLAGS=...`). The loader is the fastest
+one, so that compute is a larger part of a step; `compute_min_s` and `step_min_s` show the fastest step, less
+affected by waits for data than the means.
 
 ## What is measured
 

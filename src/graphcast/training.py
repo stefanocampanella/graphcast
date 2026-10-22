@@ -13,6 +13,7 @@
 # limitations under the License.
 import atexit
 import logging
+import os
 import pathlib
 import time
 from functools import partial
@@ -122,6 +123,8 @@ def train(
       f"Invalid {GRAIN_ENV_PREFIX}* environment variables:\n{error}"
     ) from error
   logger.info(f"Using Grain runtime settings: {grain_runtime!r}")
+  # The container image sets its own XLA_FLAGS, which take precedence over the host's: log what XLA actually gets.
+  logger.info(f"Using XLA_FLAGS={os.environ.get('XLA_FLAGS', '')!r}")
 
   jax.distributed.initialize()
   logger.info(
