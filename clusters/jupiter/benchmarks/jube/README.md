@@ -71,11 +71,20 @@ Checkpoints and the saved model are removed at the end of each job.
 The `opt` cases add an eighth field naming a set of settings (`opt_env` in `graphcast_training.xml`), exported
 after `clusters/jupiter/.env`: `image` (the container's `XLA_FLAGS`, i.e. the latency hiding scheduler only, as
 in all runs before this sweep), `no_lhs`, `env_valid` (the flags of `.env` that this XLA still knows), `pgle`,
-`opt_o3`, `fit_o3`, `async_alloc`, `cache`, `all`, and on 2 nodes `share_bin` and `no_ib`. The container image
+`opt_o3`, `fit_o3`, `async_alloc`, `cache`, `all`, and on 2 nodes `no_ib` (`share_bin`, i.e.
+`JAX_SHARE_BINARY_BETWEEN_HOSTS`, hung at the first compilation and is no longer swept). `default` uses the flags
+of `.env`, which passes them as `APPTAINERENV_XLA_FLAGS` (same as `env_valid`). The container image
 sets `XLA_FLAGS` itself, which takes precedence over the host's: XLA flags only reach the container as
 `APPTAINERENV_XLA_FLAGS`. Training logs the `XLA_FLAGS` it sees (`Using XLA_FLAGS=...`). The loader is the fastest
 one, so that compute is a larger part of a step; `compute_min_s` and `step_min_s` show the fastest step, less
 affected by waits for data than the means.
+
+## Model size (`model`, `fine`, `msg12`, `msg16`)
+
+`model` runs the fastest loader with the coarse and fine meshes (`uniform_coarse.msh`, `uniform_fine.msh`) and
+8, 10, 12, 14 and 16 message passing steps (`gnn_msg_steps`; 16 as the original GraphCast), substituted into
+`bench.toml`. The modifiers `fine`, `msg12` and `msg16` select one model size for the other sweeps, e.g.
+`--tag opt fine msg16`.
 
 ## What is measured
 

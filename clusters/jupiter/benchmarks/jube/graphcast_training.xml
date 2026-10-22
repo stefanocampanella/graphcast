@@ -2,7 +2,7 @@
 <!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">
-        <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt</check_tags>
+        <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt|model</check_tags>
         <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded), at two Grain settings</tag>
         <tag name="grain">Grain workers x threads on zarr v3</tag>
         <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
@@ -11,6 +11,10 @@
         <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
         <tag name="workers">2 to 8 Grain workers, to find how many fit in memory, e.g. for all_levels</tag>
         <tag name="opt">XLA and JAX optimization settings (see opt_env) with the fastest loader, on 1 and 2 nodes</tag>
+        <tag name="model">Coarse and fine mesh with 8 to 16 message passing steps, fastest loader, default settings</tag>
+        <tag name="fine">Use the fine mesh (uniform_fine.msh) instead of the coarse one of full.toml</tag>
+        <tag name="msg12">12 message passing steps (gnn_msg_steps) instead of the 8 of full.toml</tag>
+        <tag name="msg16">16 message passing steps, as the original GraphCast</tag>
         <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
         <tag name="devel">Use the develbooster reservation</tag>
         <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
@@ -42,8 +46,9 @@
                 zarr_v2:8:2:8:32:1:72:pgle,zarr_v2:8:2:8:32:1:72:opt_o3,zarr_v2:8:2:8:32:1:72:fit_o3,
                 zarr_v2:8:2:8:32:1:72:async_alloc,zarr_v2:8:2:8:32:1:72:cache,zarr_v2:8:2:8:32:1:72:all,
                 zarr_v2:8:2:8:32:2:72:image,zarr_v2:8:2:8:32:2:72:env_valid,zarr_v2:8:2:8:32:2:72:all,
-                zarr_v2:8:2:8:32:2:72:share_bin,zarr_v2:8:2:8:32:2:72:no_ib
+                zarr_v2:8:2:8:32:2:72:no_ib
             </parameter>
+            <parameter name="case" tag="model">zarr_v2:8:2:8:32:1:72</parameter>
             <parameter name="case" tag="workers">
                 zarr_v3:2:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,squashfs:4:2:8:32:1:72
             </parameter>
@@ -69,10 +74,12 @@
             <parameter name="opt" mode="python">(lambda f: f[7] if len(f) > 7 else "default")("$case".split(":"))</parameter>
             <!-- XLA/JAX settings exported after the site .env. The container image sets XLA_FLAGS itself, which takes
                  precedence over the host's, so XLA flags must be passed as APPTAINERENV_XLA_FLAGS.
-                 "image" keeps the image's XLA_FLAGS (latency hiding scheduler only), as all runs before this sweep. -->
+                 "image" keeps the image's XLA_FLAGS (latency hiding scheduler only), as all runs before the .env fix;
+                 "default" uses the .env flags (env_valid). share_bin (JAX_SHARE_BINARY_BETWEEN_HOSTS) is not swept:
+                 it hung at the first compilation on 2 nodes. -->
             <parameter name="jax_cache_dir">${project_dir}/clusters/jupiter/benchmarks/jube/jax_cache</parameter>
             <parameter name="opt_env" mode="python">(lambda xla, extra: {
-                "default": "", "image": "",
+                "default": "", "image": "unset APPTAINERENV_XLA_FLAGS; ",
                 "no_lhs": xla("--xla_gpu_enable_latency_hiding_scheduler=false"),
                 "env_valid": xla(),
                 "pgle": xla() + extra("JAX_ENABLE_PGLE=true JAX_PGLE_PROFILING_RUNS=3 JAX_PGLE_AGGREGATION_PERCENTILE=85"),
@@ -97,6 +104,16 @@
             <parameter name="seed" type="int" mode="python">1000 * $rep + $jube_wp_id</parameter>
             <!-- Save only step 0: checkpointing every step (the default) would dominate step times. -->
             <parameter name="ckpt_interval" type="int">1000000</parameter>
+
+            <!-- Model size: mesh and message passing steps; later definitions replace earlier ones. -->
+            <parameter name="mesh_file" tag="!fine">uniform_coarse.msh</parameter>
+            <parameter name="mesh_file" tag="fine">uniform_fine.msh</parameter>
+            <parameter name="mesh_file" tag="model">uniform_coarse.msh,uniform_fine.msh</parameter>
+            <parameter name="msg_steps" type="int">8</parameter>
+            <parameter name="msg_steps" type="int" tag="msg12">12</parameter>
+            <parameter name="msg_steps" type="int" tag="msg16">16</parameter>
+            <parameter name="msg_steps" type="int" tag="model">8,10,12,14,16</parameter>
+            <parameter name="mesh" mode="python">"$mesh_file".split("_")[1].split(".")[0]</parameter>
 
             <!-- Rough host memory per task: the training stream has num_workers processes, buffering
                  ~0.7 GB samples and building ~2 GB per in-flight sample. Compare with the measured MaxRSS. -->
@@ -138,7 +155,7 @@
             <parameter name="local_batch_size" type="int">1</parameter>
             <parameter name="job_file">train_bench.sbatch</parameter>
             <!-- Seconds between node memory and GPU usage samples. -->
-            <parameter name="usage_interval" type="int">5</parameter>
+            <parameter name="usage_interval" type="int">2</parameter>
             <parameter name="ready_file">ready</parameter>
             <parameter name="submit_cmd" tag="!dryrun">sbatch</parameter>
             <!-- JUBE waits for the done file before any further command, so the dry run creates it itself. -->
@@ -185,6 +202,8 @@
             <iofile in="full.toml" out="bench.toml"/>
             <sub source="(?m)^training_steps = [\d_]+" dest="training_steps = $steps" mode="regex"/>
             <sub source="(?m)^seed = \d+" dest="seed = $seed" mode="regex"/>
+            <sub source='(?m)^path = "/data/geometry/[^"]*"' dest='path = "/data/geometry/$mesh_file"' mode="regex"/>
+            <sub source="(?m)^gnn_msg_steps = \d+" dest="gnn_msg_steps = $msg_steps" mode="regex"/>
             <sub source="(?m)^\[checkpoints\]" dest="[checkpoints]\nsave_interval_steps = $ckpt_interval" mode="regex"/>
             <sub source="(?m)^levels = \[[^\]]*\]" dest='levels = "all"' mode="regex" tag="all_levels"/>
             <sub source="(?m)^names_which_can_be_offloaded = \[[^\]]*\]" dest="names_which_can_be_offloaded = []"
@@ -246,7 +265,7 @@
         <result>
             <use>analyse</use>
             <table name="result" style="pretty"
-                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,opt,rep">
+                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,mesh,msg_steps,opt,rep">
                 <column>jube_wp_id</column>
                 <column>slurm_job</column>
                 <column>status</column>
@@ -257,6 +276,8 @@
                 <column title="zarr_conc">zarr_concurrency</column>
                 <column>nodes</column>
                 <column title="cpus">cpus_per_task</column>
+                <column>mesh</column>
+                <column title="msg">msg_steps</column>
                 <column>opt</column>
                 <column>rep</column>
                 <column title="steps">step_last</column>
@@ -282,7 +303,7 @@
                 <column title="gpu_w" format=".0f">gpu_power</column>
             </table>
             <table name="result_csv" style="csv"
-                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,opt,rep">
+                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,mesh,msg_steps,opt,rep">
                 <column>jube_wp_id</column>
                 <column>slurm_job</column>
                 <column>status</column>
@@ -294,6 +315,8 @@
                 <column>zarr_concurrency</column>
                 <column>nodes</column>
                 <column>cpus_per_task</column>
+                <column>mesh</column>
+                <column>msg_steps</column>
                 <column>opt</column>
                 <column>rep</column>
                 <column>seed</column>
