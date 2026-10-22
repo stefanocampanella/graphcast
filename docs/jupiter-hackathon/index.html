@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GraphCast on JUPITER</title>
+  <meta name="description" content="Scalable Deep Learning for Global Ocean Circulation: results of the ESiWACE3 Jupiter Hackathon (OGS).">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Mono:wght@400;500&family=Fira+Sans:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+  <style>
+    :root {
+      --ogs-blue: #1f3d7a;
+      --ogs-cyan: #00a6dc;
+      --ogs-green: #2fb36b;
+      --text: #1d2433;
+      --muted: #5b6577;
+      --rule: #c9d3e6;
+      --row: #f2f5fb;
+      --best: #e3f4ea;
+    }
+    html, body { background: #ffffff; }
+    .reveal { font-family: "Fira Sans", system-ui, sans-serif; font-size: 34px; color: var(--text); }
+    .reveal .slides { text-align: left; }
+    .reveal .slides section { height: 100%; padding: 70px 90px 140px; box-sizing: border-box; }
+    .reveal h1, .reveal h2, .reveal h3 { font-family: "Fira Sans", sans-serif; font-weight: 700; color: var(--ogs-blue);
+      text-transform: none; letter-spacing: 0; line-height: 1.1; margin: 0 0 0.6em; }
+    .reveal h2 { font-size: 64px; }
+    .reveal h3 { font-size: 36px; margin-bottom: 0.4em; }
+    .reveal p, .reveal li { line-height: 1.35; }
+    .reveal ul, .reveal ol { margin-left: 1.1em; }
+    .reveal li { margin-bottom: 0.35em; }
+    .reveal strong { font-weight: 700; }
+    .reveal a { color: var(--ogs-cyan); }
+    .reveal .muted { color: var(--muted); }
+    .reveal .small { font-size: 0.78em; }
+    .reveal .tiny { font-size: 0.62em; }
+    .reveal .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: start; }
+    .reveal .cols-3-2 { display: grid; grid-template-columns: 3fr 2fr; gap: 60px; align-items: start; }
+    .reveal .cols-2-3 { display: grid; grid-template-columns: 2fr 3fr; gap: 60px; align-items: start; }
+
+    /* Tables: best value per column in bold, highlighted. */
+    .reveal table { border-collapse: collapse; font-size: 0.8em; margin: 0; width: 100%; }
+    .reveal table th, .reveal table td { padding: 8px 16px; border: none; border-bottom: 1px solid var(--rule); text-align: right; }
+    .reveal table th:first-child, .reveal table td:first-child { text-align: left; }
+    .reveal table thead th { color: #fff; background: var(--ogs-blue); font-weight: 600; border-bottom: none; }
+    .reveal table tbody tr:nth-child(even) { background: var(--row); }
+    .reveal table td.best, .reveal table td strong { font-weight: 700; }
+    .reveal table td.best { background: var(--best); }
+    .reveal table tr.oom td { color: #a33; }
+    .reveal table caption { caption-side: bottom; text-align: left; color: var(--muted); font-size: 0.8em; padding-top: 10px; }
+
+    /* Code and logs. */
+    .reveal pre { width: 100%; box-shadow: none; font-size: 0.6em; margin: 0.3em 0 0.6em; border-radius: 6px; }
+    .reveal pre code { display: block; overflow: auto; font-family: "Fira Mono", monospace; max-height: 640px; padding: 18px 22px;
+      line-height: 1.4; border-radius: 6px; white-space: pre; }
+    .reveal pre.log code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .reveal code { font-family: "Fira Mono", monospace; }
+    .reveal :not(pre) > code { background: #eef2f8; color: var(--ogs-blue); padding: 0 6px; border-radius: 4px; font-size: 0.9em; }
+    .reveal pre.log code { background: #10192b; color: #d6deeb; }
+    .reveal .hl { color: #ffcb6b; font-weight: 500; }
+    .reveal .bad { color: #ff7a7a; font-weight: 500; }
+
+    /* Key numbers. */
+    .reveal .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 30px; margin: 30px 0 40px; }
+    .reveal .kpi { border-top: 6px solid var(--ogs-cyan); padding-top: 14px; }
+    .reveal .kpi .v { font-size: 2.1em; font-weight: 700; color: var(--ogs-blue); line-height: 1; }
+    .reveal .kpi .l { font-size: 0.72em; color: var(--muted); margin-top: 8px; line-height: 1.3; }
+
+    .reveal .note { border-left: 6px solid var(--ogs-cyan); padding: 10px 22px; background: #f3f9fd; margin-top: 24px; font-size: 0.82em; }
+    .reveal .warn { border-left-color: #e0a000; background: #fff8e8; }
+    .reveal .done { color: var(--ogs-green); font-weight: 700; }
+    .reveal .part { color: #e0a000; font-weight: 700; }
+
+    /* Title slides. */
+    .reveal section.title { color: #fff; padding: 0 90px; }
+    .reveal section.title h1 { color: #fff; font-size: 70px; margin-top: 315px; max-width: 1020px; }
+    .reveal section.title p { color: #fff; font-size: 36px; margin: 0.35em 0; max-width: 1020px; }
+    .reveal section.title .authors { font-size: 28px; font-weight: 700; margin-top: 1.8em; }
+    /* Same place as in the hackathon slides: x 626 to 2295 px, from y 24 px, of a 1920 x 1080 page. */
+    .reveal section.title img.globe { position: absolute; left: 626px; top: 24px; width: 1669px; max-width: none;
+      max-height: none; margin: 0; z-index: -1; }
+
+    /* Footer text next to the OGS logo of the slide background. */
+    .footer { position: fixed; left: 19.2vw; bottom: 3.3vw; font-family: "Fira Sans", sans-serif; font-size: 1.15vw;
+      color: var(--ogs-blue); z-index: 10; pointer-events: none; }
+    .reveal-viewport.title-state .footer { display: none; }
+  </style>
+</head>
+<body>
+<div class="reveal">
+  <div class="slides">
+
+    <!-- Title -->
+    <section class="title" data-state="title-state" data-background-image="assets/title-bg.jpg" data-background-size="cover">
+      <img class="globe" src="assets/globe.png" alt="Global ocean mesh used by GraphCast">
+      <h1>Scalable Deep Learning for Global Ocean Circulation</h1>
+      <p>GraphCast on JUPITER: results of the ESiWACE3 Hackathon</p>
+      <p>Jülich Supercomputing Centre, 20.–22.10.2026</p>
+      <p class="authors">Stefano Campanella, Stefano Piani</p>
+    </section>
+
+    <!-- Goals -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Goals for the hackathon, and where we are</h2>
+      <div class="cols-3-2">
+        <ol>
+          <li>Build an Apptainer image based on NVIDIA-JAX for Jupiter <span class="done">✓</span></li>
+          <li>Download and produce SquashFS images of the datasets <span class="done">✓</span></li>
+          <li>Port training launcher scripts <span class="done">✓</span></li>
+          <li>Reproduce mesh generation <span class="done">✓</span></li>
+          <li><strong>Fix breaking changes due to JAX version bump</strong> <span class="done">✓</span>
+            <div class="small muted">multi-node meshes, bfloat16 promotion, checkpoint restore, … and a bug that disabled message passing</div></li>
+          <li><strong>Fix and tune Grain for climatology-aware normalizations</strong> <span class="done">✓</span>
+            <div class="small muted">JUBE benchmark: 162 jobs × 1024 steps, 112 node-hours</div></li>
+          <li><strong>PoC training with new dataset (50 depth levels)</strong> <span class="part">◐</span>
+            <div class="small muted">runs, but host memory limits the loader: 3.2 s/step</div></li>
+        </ol>
+        <div>
+          <div class="note">At the start of the week, training jobs on JUPITER failed one after the other (multi-node meshes,
+            loss dtype, missing coordinates), and once they ran, the model skipped its message passing.</div>
+          <div class="note">Today a 1-node training step takes <strong>0.47 s</strong> with the GPUs
+            <strong>94 % busy</strong>, and throughput scales nearly linearly to 4 nodes.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Key results -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Results at a glance</h2>
+      <div class="kpis">
+        <div class="kpi"><div class="v">0.47 s</div><div class="l">per training step on 1 node (4 GH200),<br>10 levels, compute bound</div></div>
+        <div class="kpi"><div class="v">94 %</div><div class="l">GPU utilization (415 W),<br>0.02 s per step waiting for data</div></div>
+        <div class="kpi"><div class="v">3.85×</div><div class="l">throughput on 4 nodes<br>(96 % efficiency)</div></div>
+        <div class="kpi"><div class="v">3×</div><div class="l">faster loading with zarr v2<br>than zarr v3, per Grain worker</div></div>
+      </div>
+      <ul>
+        <li><strong>Only zarr v2 with 8 Grain workers × 2 threads keeps the GPUs fed</strong>; every other format or loader
+          setting leaves them waiting for data.</li>
+        <li>XLA/JAX tuning flags make <strong>no difference</strong>; disabling InfiniBand costs 5–10 % on 2 nodes.</li>
+        <li><strong>16 message passing steps</strong> (original GraphCast) cost only <strong>~15 %</strong> more than 8 on the coarse mesh;
+          the fine mesh does not fit in GPU memory.</li>
+        <li><strong>50 levels</strong>: at most 2 Grain workers fit in host memory, so training is loader bound.</li>
+      </ul>
+      <p class="tiny muted">For reference: original GraphCast ≈ 7.70 s/step (32 TPU v4); our Leonardo PoC ≈ 2.0 s/step on 8 nodes (different configuration).</p>
+    </section>
+
+    <!-- Fixes -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Making it train: what was broken</h2>
+      <table>
+        <thead><tr><th>Problem</th><th style="text-align:left">Symptom</th><th style="text-align:left">Fix</th></tr></thead>
+        <tbody>
+          <tr><td>Message passing discarded</td><td style="text-align:left">model hardly computed (25 ms/step), mesh size irrelevant</td><td style="text-align:left">one line in <code>DeepTypedGraphNet</code></td></tr>
+          <tr><td><code>jax.make_mesh</code> on &gt; 1 node</td><td style="text-align:left"><code>does not support multi-slice topologies</code></td><td style="text-align:left">hybrid device mesh</td></tr>
+          <tr><td>NumPy promotes bfloat16</td><td style="text-align:left"><code>Expected bfloat16 loss, got float32</code></td><td style="text-align:left"><code>jnp.asarray</code> first</td></tr>
+          <tr><td>Depth coordinate dropped</td><td style="text-align:left"><code>KeyError: 'depth'</code> in the loss</td><td style="text-align:left">keep coordinate</td></tr>
+          <tr><td>Orbax metadata on restart</td><td style="text-align:left"><code>--continue</code> failed for every checkpoint</td><td style="text-align:left">check item directory</td></tr>
+          <tr><td><code>XLA_FLAGS</code> of <code>.env</code></td><td style="text-align:left">never reached XLA (2 of 5 flags unknown)</td><td style="text-align:left"><code>APPTAINERENV_XLA_FLAGS</code></td></tr>
+          <tr><td>1 CPU per task in <code>train.slurm</code></td><td style="text-align:left">7.3 instead of 1.8 s/step</td><td style="text-align:left">72 CPUs, <code>SRUN_CPUS_PER_TASK</code></td></tr>
+          <tr><td>Test loss</td><td style="text-align:left">second set of Grain workers per task</td><td style="text-align:left">dropped</td></tr>
+        </tbody>
+      </table>
+      <p class="small muted">Plus: JUBE benchmark paths, multi-node fixes in launchers, 756 GB of core dumps from crashed tasks.</p>
+    </section>
+
+    <!-- Message passing bug -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>The bug that hid the model</h2>
+      <div class="cols">
+        <div>
+<pre><code class="language-diff" data-trim>
+# src/graphcast/deep_typed_graph_net.py
+     for _unused_repetition_i in range(self._num_processor_repetitions):
+       for processor_network in self._processor_networks:
+         latent_graph = self._process_step(processor_network, latent_graph)
+-    latent_graph = latent_graph_0
+
+   return latent_graph
+</code></pre>
+          <ul class="small">
+            <li>Encoder, processor and decoder returned their <strong>embedded inputs</strong>.</li>
+            <li>Only the grid node embedder and the decoder output got gradients; XLA removed the rest as dead code.</li>
+            <li>Loss still decreased, so training "worked".</li>
+          </ul>
+        </div>
+        <div>
+          <h3>How it showed up</h3>
+          <table>
+            <thead><tr><th>Model</th><th>before fix</th><th>after fix</th></tr></thead>
+            <tbody>
+              <tr><td>coarse, 8 steps</td><td>0.025 s</td><td>0.44 s</td></tr>
+              <tr><td>fine, 16 steps</td><td>0.025 s</td><td>does not fit</td></tr>
+              <tr><td>gradients</td><td>2 of 77 modules</td><td>74 of 77</td></tr>
+            </tbody>
+            <caption>Compute per step (median). 20× more mesh edges made no difference: a strong hint.</caption>
+          </table>
+          <div class="note warn">All measurements before the fix were invalid: they suggested idle, starved GPUs.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Multi-node + dtype fixes -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Multi-node meshes and mixed precision</h2>
+      <div class="cols">
+        <div>
+          <h3>One mesh helper for all nodes</h3>
+<pre><code class="language-python" data-trim>
+# jax.make_mesh rejects meshes spanning several GPU
+# nodes, which JAX treats as separate slices.
+def _make_hybrid_mesh(axis_names, local_shape, process_shape):
+  devices = mesh_utils.create_hybrid_device_mesh(
+    local_shape, process_shape, process_is_granule=True)
+  return Mesh(devices, axis_names,
+              axis_types=(AxisType.Explicit,) * len(axis_names))
+
+def make_batch_mesh() -> Mesh:
+  return _make_hybrid_mesh(("batch",),
+    (jax.local_device_count(),), (jax.process_count(),))
+</code></pre>
+        </div>
+        <div>
+          <h3>bfloat16 without surprises</h3>
+<pre><code class="language-python" data-trim>
+def fixed_position_features(coordinates):
+  # NumPy would promote bfloat16 coordinates when
+  # multiplying by a Python float.
+  angles = 2 * jnp.pi * jnp.asarray(coordinates)
+  return jnp.concatenate(
+    [jnp.cos(angles), jnp.sin(angles)], axis=-1)
+</code></pre>
+<pre class="log"><code class="nohighlight" data-trim>
+ValueError: `jax.make_mesh` does not support multi-slice topologies.
+ValueError: Expected bfloat16 loss, got float32
+jax.dtypes.TypePromotionError: Input dtypes ('float32', 'bfloat16') ...
+</code></pre>
+          <p class="small muted">Found with <code>jax_numpy_dtype_promotion="strict"</code> on a tiny CPU model.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- XLA flags -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>XLA flags never reached XLA</h2>
+      <div class="cols">
+        <div>
+<pre class="log"><code class="nohighlight" data-trim>
+$ apptainer inspect --environment graphcast.sif | grep XLA
+export XLA_FLAGS="${XLA_FLAGS:-" --xla_gpu_enable_latency_hiding_scheduler=true"}"
+
+$ XLA_FLAGS=--hostcheck apptainer exec graphcast.sif sh -c 'echo $XLA_FLAGS'
+ --xla_gpu_enable_latency_hiding_scheduler=true
+</code></pre>
+          <p class="small">The image sets <code>XLA_FLAGS</code>, which takes precedence over the host's. And two of the five flags
+            in <code>.env</code> would have aborted XLA:</p>
+<pre class="log"><code class="nohighlight" data-trim>
+F1022 parse_flags_from_env.cc:234] Unknown flag in XLA_FLAGS:
+  --xla_gpu_enable_triton_softmax_fusion=true
+</code></pre>
+        </div>
+        <div>
+<pre><code class="language-bash" data-trim>
+# clusters/jupiter/.env
+APPTAINERENV_XLA_FLAGS="--xla_gpu_enable_latency_hiding_scheduler=true \
+                        --xla_gpu_triton_gemm_any=true \
+                        --xla_gpu_enable_highest_priority_async_stream=true"
+XLA_PYTHON_CLIENT_MEM_FRACTION=.95
+</code></pre>
+          <p class="small">Training now logs what XLA actually gets:</p>
+<pre class="log"><code class="nohighlight" data-trim>
+INFO: Using XLA_FLAGS='--xla_gpu_enable_latency_hiding_scheduler=true
+  --xla_gpu_triton_gemm_any=true --xla_gpu_enable_highest_priority_async_stream=true'
+</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Benchmark setup -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>The benchmark: JUBE on JUPITER</h2>
+      <div class="cols">
+        <div>
+<pre><code class="language-bash" data-trim>
+cd clusters/jupiter/benchmarks/jube
+uv sync                                    # JUBE 2.7.1
+uv run jube run graphcast_training.xml \
+    --tag format grain zarr cpus scaling long
+./run_final.sh 2026-10-22 final-v2        # all experiments
+python3 summarize.py results/2026-10-22-final-v2
+</code></pre>
+          <ul class="small">
+            <li><strong>8 experiments, 81 cases</strong>: format, Grain workers × threads, zarr pool, CPUs, nodes, 10 and 50 levels,
+              activation offloading, XLA/JAX settings, message passing steps.</li>
+            <li>1024 steps per job, 2 repetitions, statistics over steps 10–1023.</li>
+            <li>Node memory and GPU usage sampled every 2 s on every node.</li>
+          </ul>
+        </div>
+        <div>
+          <p class="small">Every step logs its timings:</p>
+<pre class="log"><code class="nohighlight" data-trim>
+Step 0 timings: data 0.018 s, compute 28.592 s, checkpoint 0.436 s, total 29.609 s, elapsed 81.9 s
+Step 500 timings: data 0.015 s, compute 0.456 s, checkpoint 0.003 s, total 0.483 s, elapsed 371.0 s
+Step 1023 timings: data 0.024 s, compute 0.449 s, checkpoint 0.002 s, total 0.481 s, elapsed 618.6 s
+</code></pre>
+          <p class="small">and every job reports its usage:</p>
+<pre class="log"><code class="nohighlight" data-trim>
+BENCH_CASE: zarr_v2:8:2:8:32:1:72 rep=1 seed=1006 steps=1024
+BENCH_STATUS: 0
+BENCH_NODE_MEM_PEAK: 804.4 GB
+BENCH_NODE_SHM_PEAK: 83.8 GB
+BENCH_GPU_UTIL: 94.3 %
+BENCH_GPU_POWER: 418 W
+</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Formats at 10 levels -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Data loading at 10 levels</h2>
+      <table>
+        <thead><tr><th>Format, workers × threads</th><th>step [s]</th><th>waiting for data [s]</th><th>samples/s</th><th>node memory [GB]</th><th>GPU busy</th></tr></thead>
+        <tbody>
+          <tr><td><strong>zarr v2, 8 × 2</strong></td><td class="best">0.47</td><td class="best">0.02</td><td class="best">8.49</td><td>804</td><td class="best">94 %</td></tr>
+          <tr><td>zarr v3, 8 × 2</td><td>0.83</td><td>0.36</td><td>4.81</td><td>858</td><td>81 %</td></tr>
+          <tr><td>zarr v3 lexi, 8 × 2</td><td>0.92</td><td>0.45</td><td>4.34</td><td>858</td><td>78 %</td></tr>
+          <tr><td>SquashFS, 8 × 2</td><td>1.03</td><td>0.57</td><td>3.88</td><td>840</td><td>77 %</td></tr>
+          <tr><td>zarr v2, 2 × 2</td><td>1.03</td><td>0.59</td><td>3.88</td><td class="best">577</td><td>75 %</td></tr>
+          <tr><td>SquashFS, 2 × 2</td><td>2.81</td><td>2.37</td><td>1.42</td><td>644</td><td>73 %</td></tr>
+          <tr><td>zarr v3, 2 × 2</td><td>3.44</td><td>2.99</td><td>1.16</td><td>612</td><td>63 %</td></tr>
+          <tr><td>zarr v3 lexi, 2 × 2</td><td>3.91</td><td>3.47</td><td>1.02</td><td>619</td><td>55 %</td></tr>
+        </tbody>
+        <caption>1 node (4 GH200), coarse mesh, 8 message passing steps, 1024 steps × 2 repetitions. "Waiting for data": longest wait of any rank, mean over steps. Node memory of 857 GB usable.</caption>
+      </table>
+      <div class="note">A step needs <strong>~0.45 s</strong> of compute, so each GPU needs <strong>~2.2 samples/s</strong>. Per worker, zarr v2 reads
+        <strong>3×</strong> faster than zarr v3: zarr v2 with 2 workers matches SquashFS with 8.</div>
+    </section>
+
+    <!-- Loader tuning -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Tuning the loader (zarr v3, 10 levels)</h2>
+      <div class="cols">
+        <div>
+          <h3>Grain workers × threads</h3>
+          <table>
+            <thead><tr><th>workers × threads</th><th>step [s]</th><th>waiting [s]</th></tr></thead>
+            <tbody>
+              <tr><td>0 × 4 (threads only)</td><td>5.91</td><td>5.48</td></tr>
+              <tr><td>1 × 2</td><td>6.24</td><td>5.80</td></tr>
+              <tr><td>2 × 2</td><td>3.44</td><td>2.99</td></tr>
+              <tr><td>4 × 2</td><td>1.78</td><td>1.34</td></tr>
+              <tr><td>4 × 4</td><td>1.49</td><td>1.04</td></tr>
+              <tr><td>8 × 1</td><td>0.94</td><td>0.48</td></tr>
+              <tr><td><strong>8 × 2</strong></td><td class="best">0.83</td><td class="best">0.36</td></tr>
+            </tbody>
+            <caption>Workers matter far more than threads.</caption>
+          </table>
+        </div>
+        <div>
+          <h3>zarr pool / concurrency and CPUs (4 × 2)</h3>
+          <table>
+            <thead><tr><th>setting</th><th>step [s]</th></tr></thead>
+            <tbody>
+              <tr><td><strong>pool 32, concurrency 32</strong></td><td class="best">1.67</td></tr>
+              <tr><td>pool 32, concurrency 10</td><td>1.74</td></tr>
+              <tr><td>pool 8, concurrency 32 (default)</td><td>1.78</td></tr>
+              <tr><td>pool 4, concurrency 32</td><td>2.00</td></tr>
+              <tr><td><strong>72 CPUs per task</strong></td><td class="best">1.78</td></tr>
+              <tr><td>8 CPUs per task</td><td>1.91</td></tr>
+              <tr><td>1 CPU per task (old <code>train.slurm</code>)</td><td>7.05</td></tr>
+            </tbody>
+            <caption>A larger zarr pool helps a little (6 %); one CPU per task is 4× slower.</caption>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 50 levels -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>All 50 depth levels: host memory is the limit</h2>
+      <div class="cols-3-2">
+        <div>
+          <table>
+            <thead><tr><th>Format, 2 × 2 workers</th><th>small buffers</th><th>no offloading</th><th>buffers of 2</th></tr></thead>
+            <tbody>
+              <tr><td><strong>zarr v3 lexi</strong></td><td class="best">3.17 s</td><td class="best">3.17 s</td><td class="best">3.19 s</td></tr>
+              <tr><td>zarr v2</td><td>3.25 s</td><td>3.27 s</td><td>–</td></tr>
+              <tr><td>zarr v3</td><td>3.56 s</td><td>3.56 s</td><td>3.54 s</td></tr>
+              <tr><td>SquashFS</td><td>4.71 s</td><td>4.71 s</td><td>–</td></tr>
+              <tr class="oom"><td>any format, 4 or 8 workers</td><td colspan="3" style="text-align:center">out of host memory (24 of 24 jobs)</td></tr>
+            </tbody>
+            <caption>Samples are 5× larger (0.82 GiB per time step). Small buffers: 1 sample per worker and prefetch. Node peak 750–810 GB of 857 GB.</caption>
+          </table>
+        </div>
+        <div>
+<pre class="log"><code class="nohighlight" data-trim>
+RuntimeError: Worker process was terminated
+unexpectedly with exit code -9. Search the logs
+above for the source of the crash.
+</code></pre>
+          <ul class="small">
+            <li>Most host memory belongs to the training processes: <strong>~480 GB per node</strong> with no loader at all.</li>
+            <li>Activation offloading to pinned host memory makes <strong>no difference</strong>.</li>
+            <li>Dropping the test loss halved the loader processes and made 2 workers fit.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- lexi -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Sub-chunk order: zarr v3 versus zarr v3 lexi</h2>
+      <div class="cols-3-2">
+        <div>
+          <table>
+            <thead><tr><th>Case</th><th>zarr v3</th><th>zarr v3 lexi</th><th>lexi versus v3</th></tr></thead>
+            <tbody>
+              <tr><td>10 levels, 2 × 2</td><td class="best">3.44 s</td><td>3.91 s</td><td>14 % slower</td></tr>
+              <tr><td>10 levels, 8 × 2</td><td class="best">0.83 s</td><td>0.92 s</td><td>11 % slower</td></tr>
+              <tr><td>50 levels, 2 × 2 (4 experiments)</td><td>3.54–3.71 s</td><td class="best">3.17–3.19 s</td><td><strong>11 % faster</strong></td></tr>
+            </tbody>
+            <caption>Same data, shards (8 time × 50 depth) and chunks; only the order of the sub-chunks inside a shard differs.</caption>
+          </table>
+        </div>
+        <div>
+<pre><code class="language-json" data-trim>
+{"time_shard": 256, "depth_time_shard": 8,
+ "subchunk_order": "lexicographic"}
+</code></pre>
+          <p class="small">With 10 of 50 levels, a sample reads scattered sub-chunks of each shard; with all levels it reads all of
+            them, which the lexicographic order lays out better. Consistent in all four 50-level experiments.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- XLA settings -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>XLA and JAX settings</h2>
+      <div class="cols">
+        <div>
+          <table>
+            <thead><tr><th>Setting</th><th>step [s]</th><th>compute [s]</th><th>startup [s]</th></tr></thead>
+            <tbody>
+              <tr><td>image flags only</td><td>0.48</td><td>0.450</td><td>85</td></tr>
+              <tr><td>no latency hiding</td><td>0.47</td><td>0.449</td><td>82</td></tr>
+              <tr><td><code>.env</code> flags (default)</td><td>0.48</td><td>0.452</td><td>83</td></tr>
+              <tr><td><code>JAX_OPTIMIZATION_LEVEL=O3</code></td><td>0.48</td><td>0.454</td><td>84</td></tr>
+              <tr><td><code>JAX_MEMORY_FITTING_LEVEL=O3</code></td><td>0.48</td><td>0.448</td><td>84</td></tr>
+              <tr><td><code>cuda_malloc_async</code></td><td class="best">0.47</td><td>0.451</td><td>84</td></tr>
+              <tr><td>compilation cache</td><td class="best">0.47*</td><td class="best">0.443*</td><td class="best">66*</td></tr>
+              <tr><td>PGLE</td><td>0.48</td><td>0.454</td><td>114</td></tr>
+            </tbody>
+            <caption>1 node, 8 message passing steps, jobs started together. *one repetition (the other ran under file system load).</caption>
+          </table>
+        </div>
+        <div>
+          <ul class="small">
+            <li>All within <strong>2 %</strong>: nothing worth changing. Same with 16 message passing steps (0.500–0.526 s).</li>
+            <li><strong>PGLE</strong> adds 30 s of startup and finds nothing to profile:
+<pre class="log"><code class="nohighlight" data-trim>
+profile_guided_latency_estimator.cc:192]
+  Found 0 instructions from the profile.
+</code></pre></li>
+            <li><strong>No InfiniBand</strong> (<code>NCCL_IB_DISABLE=1</code>, 2 nodes): compute 0.45 → 0.475 s (8 steps),
+              0.52 → 0.57 s (16 steps).</li>
+            <li><code>JAX_SHARE_BINARY_BETWEEN_HOSTS</code> <strong>hangs</strong> at the first compilation on 2 nodes.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Model size -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Model size: message passing steps</h2>
+      <table>
+        <thead><tr><th>Message passing steps</th><th>8</th><th>10</th><th>12</th><th>14</th><th>16 (GraphCast)</th></tr></thead>
+        <tbody>
+          <tr><td>compute per step, median [s]</td><td class="best">0.438</td><td>0.468</td><td>0.488</td><td>0.507</td><td>0.503</td></tr>
+          <tr><td>relative to 8 steps</td><td class="best">1.00</td><td>1.07</td><td>1.11</td><td>1.16</td><td>1.15</td></tr>
+        </tbody>
+        <caption>Coarse mesh (34 007 mesh nodes, 194 040 edges), 1 node, zarr v2 8 × 2. Median compute: these jobs ran under file system load.</caption>
+      </table>
+      <div class="cols" style="margin-top:40px">
+        <ul class="small">
+          <li>The processor on the coarse mesh is a <strong>small part</strong> of a step: the encoder and decoder work on
+            <strong>1 038 240</strong> grid nodes.</li>
+          <li>16 message passing steps need <code>XLA_PYTHON_CLIENT_MEM_FRACTION=.95</code>.</li>
+        </ul>
+        <ul class="small">
+          <li>The <strong>fine mesh</strong> (703 663 nodes, 4.2 M edges) does <strong>not fit</strong>: XLA asks for
+            279–504 GiB per GPU for 8–16 steps.</li>
+          <li>Next: model or pipeline parallelism, or rematerialization of the processor.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Scaling -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Scaling across nodes</h2>
+      <div class="cols">
+        <div>
+          <table>
+            <thead><tr><th>Nodes (GPUs)</th><th>step [s]</th><th>samples/s</th><th>speed-up</th><th>efficiency</th></tr></thead>
+            <tbody>
+              <tr><td>1 (4)</td><td class="best">1.78</td><td>2.25</td><td>1.00</td><td class="best">100 %</td></tr>
+              <tr><td>2 (8)</td><td>1.79</td><td>4.46</td><td>1.98</td><td>99 %</td></tr>
+              <tr><td><strong>4 (16)</strong></td><td>1.84</td><td class="best">8.67</td><td class="best">3.85</td><td>96 %</td></tr>
+            </tbody>
+            <caption>zarr v3 4 × 2, 10 levels: data parallel, every node reads its own samples.</caption>
+          </table>
+        </div>
+        <div>
+          <ul class="small">
+            <li>Fully sharded data parallelism with one process per GPU; gradients are averaged with an all-reduce.</li>
+            <li>With the compute-bound loader (zarr v2 8 × 2) and no file system load, a 2-node job stepped in 0.473 s:
+              <strong>16.9 samples/s</strong>.</li>
+            <li>Keep InfiniBand on: without it the all-reduce costs 5–10 % more.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Concurrency caveat -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Caveat: benchmark jobs slow each other down</h2>
+      <div class="cols-2-3">
+        <div>
+          <ul class="small">
+            <li>16 jobs that started at 09:51: <strong>0.47 s</strong> per step.</li>
+            <li>46 jobs that started at 10:13, while ~70 I/O jobs read <code>/e/scratch</code>: <strong>0.88 s</strong>,
+              with the same median compute.</li>
+            <li>One rank waits for data; the others wait for it in the all-reduce, which rank 0 logs as compute.</li>
+            <li>So: compare jobs that ran together, and look at the longest wait of <strong>any</strong> rank.</li>
+          </ul>
+        </div>
+        <div>
+<pre class="log"><code class="nohighlight" data-trim data-noescape>
+rank 0: Step 63 timings: data 0.013 s, compute <span class="bad">9.839 s</span>
+rank 1: Step 63 timings: data 0.012 s, compute <span class="bad">9.843 s</span>
+rank 2: Step 63 timings: data <span class="bad">9.450 s</span>, compute 0.405 s
+rank 3: Step 63 timings: data 0.013 s, compute <span class="bad">9.842 s</span>
+</code></pre>
+<pre><code class="language-python" data-trim>
+# summarize.py: the time the GPUs wait for data
+data[step] = max(data.get(step, 0.0), float(data_s))
+</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Recommended configuration -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Recommended configuration (now the defaults)</h2>
+      <div class="cols">
+        <div>
+<pre><code class="language-bash" data-trim>
+# clusters/jupiter/.env
+DATASET=/e/scratch/training2647/graphcast_data/zarr_v2/data
+CLIMATOLOGY=/e/scratch/training2647/graphcast_data/zarr_v2/climatology
+GRAPHCAST_GRAIN_NUM_WORKERS=8
+GRAPHCAST_GRAIN_NUM_THREADS=2
+GRAPHCAST_GRAIN_ENABLE_PROFILING=false
+XLA_PYTHON_CLIENT_MEM_FRACTION=.95
+</code></pre>
+<pre><code class="language-bash" data-trim>
+# clusters/jupiter/slurm/train.slurm
+#SBATCH --cpus-per-task=72
+export SRUN_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-72}
+</code></pre>
+        </div>
+        <div>
+<pre><code class="language-toml" data-trim>
+# configs/training/full.toml
+[model]
+gnn_msg_steps = 8          # 16: GraphCast, +15 % compute
+[mesh]
+path = "/data/geometry/uniform_coarse.msh"
+[checkpoints]
+save_interval_steps = 500  # not every step
+</code></pre>
+<pre><code class="language-bash" data-trim>
+sbatch --account=training2647 --time=01:30:00 \
+  clusters/jupiter/slurm/train.slurm demo_5000 demo_5000 demo_5000
+</code></pre>
+          <p class="small muted">50 levels: at most 2 workers with small buffers, zarr v3 lexi.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Demo training (to be completed) -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover" id="demo-training">
+      <h2>Demo: 5000 training steps on 2 nodes</h2>
+      <div class="cols">
+        <div>
+          <ul class="small">
+            <li><code>configs/training/demo_5000.toml</code>: <code>full.toml</code> with 5000 steps, 500 warm-up steps,
+              cosine decay to step 5000.</li>
+            <li>2 nodes, 8 GH200, zarr v2 8 × 2, 10 levels, coarse mesh, 8 message passing steps.</li>
+            <li>0.47 s per step, as the benchmark predicted.</li>
+          </ul>
+<pre class="log"><code class="nohighlight" data-trim>
+Step 1003 timings: total 0.463 s, elapsed 642.7 s
+Step 2022 timings: total 0.473 s, elapsed 1128.6 s
+</code></pre>
+        </div>
+        <div class="note">Training loss and loss per variable: plot to be added when the run has finished.</div>
+      </div>
+    </section>
+
+    <!-- Next steps -->
+    <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+      <h2>Lessons and next steps</h2>
+      <div class="cols">
+        <div>
+          <h3>Lessons</h3>
+          <ul class="small">
+            <li><strong>Check the model computes</strong>: step time that ignores model size is a red flag.</li>
+            <li><strong>Verify what reaches the container</strong>: environment variables, flags, CPUs.</li>
+            <li><strong>Measure all ranks</strong>: one rank's stall looks like everyone's compute.</li>
+            <li><strong>Benchmarks interfere</strong> on a shared file system.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Next steps</h3>
+          <ul class="small">
+            <li>Reduce host memory of the training process (480 GB per node) to fit more loader workers at 50 levels.</li>
+            <li>Fit the fine mesh: rematerialization, model or pipeline parallelism.</li>
+            <li>Full training run (40 000 steps) and rollouts.</li>
+            <li>Data on node-local or faster storage to isolate jobs from each other.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+<div class="footer">Scalable Deep Learning for Global Ocean Circulation, Campanella S., Piani S.</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/notes/notes.js"></script>
+<script>
+  Reveal.initialize({
+    width: 1920,
+    height: 1080,
+    margin: 0,
+    center: false,
+    hash: true,
+    slideNumber: "c/t",
+    transition: "fade",
+    plugins: [RevealHighlight, RevealNotes],
+  });
+</script>
+</body>
+</html>
