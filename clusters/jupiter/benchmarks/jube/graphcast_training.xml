@@ -11,7 +11,7 @@
         <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
         <tag name="workers">2 to 8 Grain workers, to find how many fit in memory, e.g. for all_levels</tag>
         <tag name="opt">XLA and JAX optimization settings (see opt_env) with the fastest loader, on 1 and 2 nodes</tag>
-        <tag name="model">Coarse and fine mesh with 8 to 16 message passing steps, fastest loader, default settings</tag>
+        <tag name="model">Coarse mesh with 8 to 16 message passing steps, fastest loader, default settings</tag>
         <tag name="fine">Use the fine mesh (uniform_fine.msh) instead of the coarse one of full.toml</tag>
         <tag name="msg12">12 message passing steps (gnn_msg_steps) instead of the 8 of full.toml</tag>
         <tag name="msg16">16 message passing steps, as the original GraphCast</tag>
@@ -110,7 +110,9 @@
             <!-- Model size: mesh and message passing steps; later definitions replace earlier ones. -->
             <parameter name="mesh_file" tag="!fine">uniform_coarse.msh</parameter>
             <parameter name="mesh_file" tag="fine">uniform_fine.msh</parameter>
-            <parameter name="mesh_file" tag="model">uniform_coarse.msh,uniform_fine.msh</parameter>
+            <!-- The fine mesh does not fit in GPU memory: single allocations of 279 to 504 GiB per GPU for 8 to 16
+                 message passing steps (local batch size 1, activation offloading). -->
+            <parameter name="mesh_file" tag="model">uniform_coarse.msh</parameter>
             <parameter name="msg_steps" type="int">8</parameter>
             <parameter name="msg_steps" type="int" tag="msg12">12</parameter>
             <parameter name="msg_steps" type="int" tag="msg16">16</parameter>

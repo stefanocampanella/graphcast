@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Submit the final benchmark experiments (1024 steps per job, two repetitions) into results/<date>-final/.
+# Submit the final benchmark experiments (1024 steps per job, two repetitions) into results/<date>-<name>/.
 # Each experiment is one JUBE run directory, named <study>-<data>-<variant>:
 #   io-*     data loading: format, Grain and zarr settings, CPUs, nodes (10 levels), memory at all levels
-#   xla-*    XLA/JAX optimization settings (opt_env) with the fastest loader, coarse and fine model
-#   model-*  model size: coarse and fine mesh, 8 to 16 message passing steps
-# Usage: ./run_final.sh [DATE]   (run from this directory; DATE defaults to today, e.g. 2026-10-22)
+#   xla-*    XLA/JAX optimization settings (opt_env) with the fastest loader, 8 and 16 message passing steps
+#   model-*  model size: coarse mesh, 8 to 16 message passing steps (the fine mesh does not fit in GPU memory)
+# Usage: ./run_final.sh [DATE [NAME]]   (run from this directory; DATE defaults to today, NAME to "final")
 set -euo pipefail
 DATE=${1:-$(date +%F)}
-ROOT="results/$DATE-final"
+ROOT="results/$DATE-${2:-final}"
 mkdir -p "$ROOT"
 
 EXPERIMENTS=(
@@ -17,8 +17,8 @@ EXPERIMENTS=(
     "io-alllevels-workers            workers all_levels"
     "io-alllevels-workers-nooffload  workers all_levels no_offload"
     "xla-coarse-msg8                 opt"
-    "xla-fine-msg16                  opt fine msg16"
-    "model-coarse-fine-msg8to16      model"
+    "xla-coarse-msg16                opt msg16"
+    "model-coarse-msg8to16           model"
 )
 
 {

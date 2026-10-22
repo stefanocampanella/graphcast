@@ -81,9 +81,10 @@ affected by waits for data than the means.
 
 ## Model size (`model`, `fine`, `msg12`, `msg16`)
 
-`model` runs the fastest loader with the coarse and fine meshes (`uniform_coarse.msh`, `uniform_fine.msh`) and
-8, 10, 12, 14 and 16 message passing steps (`gnn_msg_steps`; 16 as the original GraphCast), substituted into
-`bench.toml`. The modifiers `fine`, `msg12` and `msg16` select one model size for the other sweeps, e.g.
+`model` runs the fastest loader with the coarse mesh (`uniform_coarse.msh`) and 8, 10, 12, 14 and 16 message
+passing steps (`gnn_msg_steps`; 16 as the original GraphCast), substituted into `bench.toml`. The fine mesh
+(`uniform_fine.msh`, tag `fine`) does not fit in GPU memory: XLA asks for single allocations of 279 to 504 GiB
+per GPU. 16 message passing steps need `XLA_PYTHON_CLIENT_MEM_FRACTION=.95` (set in `.env`). The modifiers `fine`, `msg12` and `msg16` select one model size for the other sweeps, e.g.
 `--tag opt fine msg16`.
 
 ## What is measured
