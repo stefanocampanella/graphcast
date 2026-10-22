@@ -582,8 +582,10 @@ path = "/data/geometry/uniform_coarse.msh"
 save_interval_steps = 500  # not every step
 </code></pre>
 <pre><code class="language-bash" data-trim>
-sbatch --account=training2647 --time=01:30:00 \
-  clusters/jupiter/slurm/train.slurm demo_5000 demo_5000 demo_5000
+sbatch --account=training2647 --nodes=8 --time=01:30:00 \
+  clusters/jupiter/slurm/train.slurm \
+  --tb-dir $DATA_ROOT/tensorboard/demo_5000_32gpu \
+  demo_5000 demo_5000_32gpu demo_5000_32gpu
 </code></pre>
           <p class="small muted">50 levels: at most 2 workers with small buffers, zarr v3 lexi.</p>
         </div>
@@ -592,19 +594,15 @@ sbatch --account=training2647 --time=01:30:00 \
 
     <!-- Demo training (to be completed) -->
     <section data-background-image="assets/slide-bg.jpg" data-background-size="cover" id="demo-training">
-      <h2>Demo: 5000 training steps on 2 nodes</h2>
+      <h2>Demo: 5000 training steps on 32 GPUs</h2>
       <div class="cols">
         <div>
           <ul class="small">
             <li><code>configs/training/demo_5000.toml</code>: <code>full.toml</code> with 5000 steps, 500 warm-up steps,
               cosine decay to step 5000.</li>
-            <li>2 nodes, 8 GH200, zarr v2 8 × 2, 10 levels, coarse mesh, 8 message passing steps.</li>
-            <li>0.47 s per step, as the benchmark predicted.</li>
+            <li>8 nodes, 32 GH200, zarr v2 8 × 2, 10 levels, coarse mesh, 8 message passing steps; global batch of 32 samples.</li>
+            <li>A first run on 2 nodes stepped in 0.47 s, as the benchmark predicted.</li>
           </ul>
-<pre class="log"><code class="nohighlight" data-trim>
-Step 1003 timings: total 0.463 s, elapsed 642.7 s
-Step 2022 timings: total 0.473 s, elapsed 1128.6 s
-</code></pre>
         </div>
         <div class="note">Training loss and loss per variable: plot to be added when the run has finished.</div>
       </div>
