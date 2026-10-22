@@ -1,8 +1,9 @@
-# GraphCast training I/O benchmark (JUBE)
+# GraphCast training benchmark (JUBE)
 
 Benchmarks GraphCast training on JUPITER while varying how the data is stored and read:
 dataset format (SquashFS images, zarr v2, sharded zarr v3), Grain workers and threads, the
-zarr thread pool and request concurrency, CPUs per task and node count. It follows the structure of the
+zarr thread pool and request concurrency, CPUs per task and node count, as well as XLA/JAX settings and the
+number of message passing steps. It follows the structure of the
 [AI4HPC JUBE benchmark](https://gitlab.jsc.fz-juelich.de/SLFSE/codes/ai4hpc/-/tree/master/Bench):
 a self-contained job template filled in by JUBE and submitted with `sbatch`.
 
@@ -10,7 +11,7 @@ a self-contained job template filled in by JUBE and submitted with `sbatch`.
 |-----------------------------|--------------------------------------------------------------------------------|
 | `graphcast_training.xml`    | JUBE benchmark: cases, job and config substitution, analysis and result tables |
 | `train_bench.sbatch.in`     | SLURM job template, one job per workpackage                                    |
-| `usage_sampler.sh`          | Samples node memory and GPU usage every 5 s on each node of a job              |
+| `usage_sampler.sh`          | Samples node memory and GPU usage every 2 s on each node of a job              |
 | `usage_summary.py`          | Summarizes these samples as `BENCH_*` lines in `job.out`                       |
 | `run_final.sh`              | Submits the final experiments into `results/<date>-<name>/`                    |
 | `summarize.py`              | Writes `summary_jobs.csv` and `summary_cases.csv` for a results directory      |
@@ -35,9 +36,12 @@ Every run needs at least one sweep tag:
 | `zarr`    | zarr_v3 4x2 with zarr pool/concurrency 4/10, 4/32, 8/10, 32/10, 32/32 | 5    |
 | `cpus`    | zarr_v3 4x2 with 1 and 8 CPUs per task                                | 2    |
 | `scaling` | zarr_v3 4x2 on 2 and 4 nodes                                          | 2    |
-| `opt`     | zarr_v2 8x2 with 9 XLA/JAX setting sets on 1 node and 5 on 2 nodes    | 14   |
+| `opt`     | zarr_v2 8x2 with 9 XLA/JAX setting sets on 1 node and 4 on 2 nodes    | 13   |
+| `model`   | zarr_v2 8x2, coarse mesh, 8, 10, 12, 14, 16 message passing steps     | 5    |
+| `lowmem`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi 2x2; zarr_v3 1x2 and 0x4     | 6    |
+| `workers` | zarr_v3, zarr_v3_lexi 2x2, 4x2, 8x2; zarr_v2, squashfs 4x2            | 8    |
 
-Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
+`lowmem` and `workers` are meant for `all_levels`. Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
 `quick` (one repetition of 30 steps), `long` (1024 steps, 3 hour time limit), `devel` (develbooster reservation), `dryrun` (check the
 generated job scripts with `bash -n` instead of submitting them), `all_levels` (train on all 50 depth
 levels instead of the 10 of `full.toml`; samples are about 5 times larger). `small_buffers` (one
@@ -51,18 +55,20 @@ for `all_levels` runs, e.g. `bench_run_all_levels`, to keep their results apart.
 uv run jube run graphcast_training.xml --tag format grain dryrun --outpath /tmp/jube_dry
 
 # Submit
-uv run jube run graphcast_training.xml --tag format          # 12 jobs
-uv run jube run graphcast_training.xml --tag format grain zarr cpus scaling   # 40 jobs
+uv run jube run graphcast_training.xml --tag format          # 16 jobs
+uv run jube run graphcast_training.xml --tag format grain zarr cpus scaling   # 44 jobs
 
 uv run jube status bench_run --id last    # wait for jobs
 uv run jube continue bench_run --id last  # pick up finished jobs
 uv run jube result -a bench_run --id last # tables, also bench_run/<id>/result/result_csv.dat
 ```
 
-Rough cost: one job is about 5 minutes of startup and compilation plus 60 steps at about 15 s, so about
-20 minutes per node. All sweeps are 48 node-jobs, about 16 node-hours (about 5 with `quick`).
-The `cpus` case with 1 CPU per task may hit the 30-minute limit. It then reports `status=terminated`
-with the steps completed so far.
+Rough cost: a job spends 1.5 to 3 minutes in startup and compilation. Then a step takes about 0.45 s when
+the loader keeps up (compute bound, 8 message passing steps; only zarr_v2 8x2 does at 10 levels) and up to about
+6 s when it does not (e.g. zarr_v3 0x4; about 7 s with 1 CPU per task). With `long` (1024 steps) jobs take 10
+minutes to 2 hours; all experiments of `run_final.sh` take about 90 node-hours. With all levels, cases with more
+than 2 Grain workers run out of host memory within the first 25 steps and are best cancelled at once (a killed
+worker otherwise leaves the job waiting until its time limit).
 
 Each workpackage directory (`bench_run/<id>/<wp>_submit/work`) contains the job script, the
 generated `bench.toml`, the SLURM output `job.out`/`job.err` and the per-task logs `task-<rank>.out/err`.
@@ -96,20 +102,30 @@ per GPU. 16 message passing steps need `XLA_PYTHON_CLIENT_MEM_FRACTION=.95` (set
 The analysis reads rank 0 (`task-0.err`) and reports, over steps 10 and later (after compilation and
 prefetch warm-up):
 
-- `data_avg_s`, `data_max_s`: time waiting for the training batch, including host-to-device transfer.
-  This is the stall the data pipeline causes.
-- `compute_avg_s`: the training step itself. It should not depend on the I/O settings and serves as a control.
+- `data_avg_s`, `data_max_s`: time rank 0 waits for its training batch, including host-to-device transfer.
+- `compute_avg_s`: the training step of rank 0. Steps synchronize all ranks (gradient all-reduce), so a data stall
+  of another rank appears here as compute time. `summarize.py` therefore adds `data_stall_avg` (mean over steps of
+  the longest data wait of any rank, from all `task-<rank>.err`) and `compute_median` (robust to such stalls);
+  `compute_min_s` is the fastest step. With message passing working, the fastest steps on the coarse mesh compute
+  in about 0.41 s (8 message passing steps) to 0.48 s (16); the median is about 0.44 s with 8.
 - `step_avg_s`, `step_std_s`, `samples_per_s` (training samples per second over all GPUs), `data_frac`.
 - `first_step_s`: time from start to the end of step 0 (startup, data opening, compilation, first batches);
   `first_data_s`: the data part of step 0.
 - `maxrss_gb`: peak memory of a task, from `sacct`, next to `est_mem_gb`, a rough estimate.
   `sacct` can lag behind; a value of 0 means it was not yet available.
-- Node usage, sampled every 5 s on each node (`node_mem-<host>.csv`, `gpu-<host>.csv` in the workpackage
+- Node usage, sampled every 2 s on each node (`node_mem-<host>.csv`, `gpu-<host>.csv` in the workpackage
   directory) and summarized over all nodes: `node_mem_gb` (peak memory used, from `free`, without page cache),
   `node_avail_gb` (lowest available memory), `shm_gb` (peak shared memory, mostly Grain's buffers),
-  `gpu_mem_gb` (peak GPU memory of any GPU), `gpu_util_pct` and `gpu_w` (mean utilization and power over
+  `gpu_mem_gb` (peak GPU memory of any GPU; JAX preallocates `XLA_PYTHON_CLIENT_MEM_FRACTION` of it, so this
+  shows the preallocation rather than use), `gpu_util_pct` and `gpu_w` (mean utilization and power over
   steps 10 and later).
 - `status`: the exit status of the training step, or `incomplete` if it did not finish training (e.g. cancelled).
+  A job can also finish training and then hang at exit; cancelling its training step (`scancel <job>.0`) lets the
+  job script still report. `summarize.py` counts a job as ok if training finished after 1024 steps.
+
+Results measured before f43631e (2026-10-22) are not valid: `DeepTypedGraphNet` discarded all message passing
+steps, so the model hardly computed (about 25 ms per step regardless of mesh and message passing steps), training
+looked loader bound with idle GPUs, and the XLA and model sweeps showed no differences.
 
 ## Design notes
 
@@ -119,25 +135,32 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
   normalization) accounts for more than 99 % of the wait time. Loader throughput therefore scales with
   the number of samples read concurrently, `num_workers x num_threads`. The zarr thread pool hardly matters
   above about 4 threads per reader, and too small a pool hurts.
-- **Demand is low**: each GPU task consumes one training sample per step (training computes no test loss). At the roughly 15 s per
-  step seen in earlier runs, that is about 0.13 samples/s per task, below what even small loader
-  configurations deliver on the login node. The benchmark therefore includes small configurations (threads only, 1
-  worker) to find where data starts to stall the GPUs. It also reports startup time and
-  memory, where the formats and settings can differ even when steady-state steps do not.
+- **Demand is high**: each GPU task consumes one training sample per step (training computes no test loss). At
+  about 0.45 s of compute per step, that is about 2.2 samples/s per task. At 10 levels only zarr_v2 with 8 Grain
+  workers x 2 threads delivers it (0.47 s per step, 0.02 s waiting for data); zarr_v3 8x2 (0.82 s), SquashFS 8x2
+  (1.0 s) and all smaller configurations leave the GPUs waiting for data. The small configurations (threads only, 1
+  worker) show how strongly the step time depends on the loader. The benchmark also reports startup time and
+  memory.
 - **One stream per task**: training computes no test loss, so a task runs `num_workers` loader processes
-  (runs before this change had a test stream too, with as many workers again). Booster nodes have about 878 GB
-  RAM (about 210 GB per task), shared with the activation offloading to pinned host memory.
+  (runs before this change had a test stream too, with as many workers again). Booster nodes have about 857 GB
+  of usable RAM (about 210 GB per task), shared with the activation offloading to pinned host memory. Most of it
+  is used by the training processes themselves (about 480 GB per node without loader workers at 10 levels).
 - **CPUs per task**: with JUPITER's `CR_CORE` and `task/cgroup` settings, a task gets one core unless
-  `--cpus-per-task` is set, and `srun` needs `SRUN_CPUS_PER_TASK` to inherit it. The current
-  `clusters/jupiter/slurm/train.slurm` sets neither, so all of a task's loader processes would share one core.
-  The jobs here use 72 cores per task; the `cpus` sweep measures 1 and 8.
-- **Checkpointing every step** (the default `save_interval_steps = 1`) would dominate step times, so the
-  benchmark config saves only step 0. The checkpoint time is still reported separately.
+  `--cpus-per-task` is set, and `srun` needs `SRUN_CPUS_PER_TASK` to inherit it. The jobs here and
+  `clusters/jupiter/slurm/train.slurm` use 72 cores per task; the `cpus` sweep measures 1 and 8.
+- **Checkpointing every step** (the Orbax default `save_interval_steps = 1`) would dominate step times, so the
+  benchmark config saves only step 0 (`full.toml` saves every 500 steps). The checkpoint time is still reported
+  separately.
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
   runs. All datasets are on `/e/scratch`, so that only the storage format differs: the SquashFS images in
   `/e/scratch/training2647/ogs_team`, the zarr v2 extraction of these images and the zarr v3 conversion (same chunks,
   lz4 Blosc, sharded 8 time x 50 depth) in `/e/scratch/training2647/graphcast_data`. `zarr_v3_lexi` is the same conversion with the
   sub-chunks of each shard stored in lexicographic order.
+- **Concurrent jobs share the file system**: jobs that run while many others read from `/e/scratch` see data
+  stalls of seconds on single ranks (in `results/2026-10-22-final-v2`, jobs started after the I/O experiments
+  were in full swing took 0.88 instead of 0.47 s per step, with the same median compute). Compare cases that ran
+  at the same time, or run sensitive experiments separately. Repetitions with the same seed that start together
+  (e.g. the same case in two experiments) read the same samples in lockstep.
 - Profiling in the Grain workers is turned off, since its servers would perturb the measurement.
 
 The training configuration is `configs/training/full.toml` with `training_steps`, `seed` and
