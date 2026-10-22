@@ -36,6 +36,29 @@ def read(path):
     return file.read()
 
 
+STEP_LINE = re.compile(r"Step (\d+) timings: data ([\d.]+) s, compute ([\d.]+) s")
+
+
+def rank_statistics(work):
+  """Mean over steps 10+ of the longest data wait of any rank, and the median compute time of rank 0.
+
+  The JUBE patterns read rank 0 only. Steps synchronize all ranks (gradient all-reduce), so a data stall of another
+  rank shows up as compute time of rank 0: data_stall separates it, compute_median is robust to it.
+  """
+  data = {}
+  compute0 = []
+  for path in glob.glob(os.path.join(work, "task-*.err")):
+    rank0 = path.endswith("task-0.err")
+    for step, data_s, compute_s in STEP_LINE.findall(read(path)):
+      if int(step) >= 10:
+        data[int(step)] = max(data.get(int(step), 0.0), float(data_s))
+        if rank0:
+          compute0.append(float(compute_s))
+  stall = f"{statistics.mean(data.values()):.4g}" if data else ""
+  median = f"{statistics.median(compute0):.4g}" if compute0 else ""
+  return stall, median
+
+
 def job_rows(root):
   for result in sorted(glob.glob(os.path.join(root, "*", "000000", "result", "result_csv.dat"))):
     experiment = result.split(os.sep)[-4]
@@ -60,6 +83,7 @@ def job_rows(root):
           "opt": fields[7] if len(fields) > 7 else "default", "rep": row["rep"], "steps": row["step_last"],
         }
         out.update({metric: row.get(metric, "") for metric in METRICS})
+        out["data_stall_avg[s]"], out["compute_median[s]"] = rank_statistics(work)
         yield out
 
 
@@ -77,7 +101,7 @@ def main(root):
     ok = [job for job in group if job["outcome"] == "ok"]
     case = dict(zip(CASE_KEYS, key))
     case.update(runs=len(group), ok=len(ok), outcomes="/".join(job["outcome"] for job in sorted(group, key=lambda j: j["rep"])))
-    for metric in METRICS:
+    for metric in METRICS + ["data_stall_avg[s]", "compute_median[s]"]:
       values = [to_float(job[metric]) for job in ok if to_float(job[metric]) is not None]
       case[metric] = f"{statistics.mean(values):.4g}" if values else ""
     cases.append(case)
