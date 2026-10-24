@@ -113,7 +113,10 @@ of XLA's pinned host pool (64 GB per GPU, `XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB`; `
 The tag `prevent_cse` (`policy.prevent_cse = true`) cuts the memory per message passing step from about 25 to about
 7 GiB on the fine mesh (174 instead of 236 GiB at 8 steps) but leaves the step-independent part (about 120 GiB on the
 fine mesh), so the limit does not move: cases near 85 GiB fit or fail either way. The tag `scan` does not compile
-with offloading (XLA INTERNAL error on the host-placed residuals of the scan).
+with offloading (XLA INTERNAL error on the host-placed residuals of the scan). **Without offloading
+(`--tag memfit all_levels quick scan no_remat_loss`) every mesh up to 40 km (280245 nodes, 8x coarse) fits with 16
+message passing steps**, at no cost in speed (compute 0.46 to 1.89 s, steps loader bound at 2.6 to 3.0 s) and with
+the same losses as unrolled; only the fine mesh does not fit (115 to 162 GiB, about 5.8 GiB per step).
 
 ## What is measured
 
