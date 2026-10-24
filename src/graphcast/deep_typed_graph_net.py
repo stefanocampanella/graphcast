@@ -283,35 +283,43 @@ class DeepTypedGraphNet(hk.Module):
           output = output / self._aggregate_normalization
         return output
 
-    # One message passing step: a graph network that updates the node and edge latent features. It is wrapped in a
-    # layer stack (see `_process`), which gives each of the `num_message_passing_steps` steps its own parameters,
-    # stacked along a leading axis. Note that we can use `modules.InteractionNetwork` because it also outputs the
-    # messages as updated edge latent features.
-    def _processor_network(graph):
-      graph = typed_graph_net.InteractionNetwork(
-        update_edge_fn=_build_update_fns_for_edge_types(
-          build_mlp_with_maybe_layer_norm,
-          graph_template,
-          "processor_edges_",
-          output_sizes=self._edge_latent_size,
-        ),
-        update_node_fn=_build_update_fns_for_node_types(
-          build_mlp_with_maybe_layer_norm,
-          graph_template,
-          "processor_nodes_",
-          output_sizes=self._node_latent_size,
-        ),
-        aggregate_edges_for_nodes_fn=aggregate_fn,
-        include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
-      )(graph)
-      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
-      return graph
+    # A message passing step: a graph network that updates the node and edge latent features. Note that we can use
+    # `modules.InteractionNetwork` because it also outputs the messages as updated edge latent features.
+    def build_processor_network(step_name):
+      def _processor_network(graph):
+        graph = typed_graph_net.InteractionNetwork(
+          update_edge_fn=_build_update_fns_for_edge_types(
+            build_mlp_with_maybe_layer_norm,
+            graph_template,
+            f"processor_edges_{step_name}",
+            output_sizes=self._edge_latent_size,
+          ),
+          update_node_fn=_build_update_fns_for_node_types(
+            build_mlp_with_maybe_layer_norm,
+            graph_template,
+            f"processor_nodes_{step_name}",
+            output_sizes=self._node_latent_size,
+          ),
+          aggregate_edges_for_nodes_fn=aggregate_fn,
+          include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
+        )(graph)
+        graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
+        return graph
 
-    if self._remat:
-      _processor_network = hk.remat(
-        _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
-    self._processor_network = _processor_network
+      if self._remat:
+        _processor_network = hk.remat(
+          _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
+        )
+      return _processor_network
+
+    if self._scan:
+      # One network in a layer stack (see `_process`): each step gets its own parameters, stacked along a leading axis.
+      self._processor_network = build_processor_network("")
+    else:
+      # `num_message_passing_steps` networks with unshared parameters, unrolled.
+      self._processor_networks = [
+        build_processor_network(f"{step_i}_") for step_i in range(self._num_message_passing_steps)
+      ]
 
     # The output MLPs converts edge/node latent features into the output sizes.
     output_kwargs = dict(
@@ -370,10 +378,19 @@ class DeepTypedGraphNet(hk.Module):
   def _process(self, latent_graph_0: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
     """Processes the latent graph with several steps of message passing."""
 
-    # Do `num_message_passing_steps` steps with unshared weights, stacked along a leading axis, and repeat them
-    # `self._num_processor_repetitions` times. With scan, the steps run in a loop over the stacked parameters (no
-    # switch over per-step parameters: XLA fails to compile host offloading inside a switch in a scan); otherwise the
-    # same stack is fully unrolled. Only the latent features are carried, the graph structure is closed over.
+    # Do `num_message_passing_steps` steps with unshared weights, and repeat them `self._num_processor_repetitions`
+    # times. Unrolled, each step is its own network: XLA optimizes across steps, which is faster (about 30 % for the
+    # processor of the coarse mesh) but keeps more activations.
+    if not self._scan:
+      latent_graph = latent_graph_0
+      for _unused_repetition_i in range(self._num_processor_repetitions):
+        for processor_network in self._processor_networks:
+          latent_graph = self._process_step(processor_network, latent_graph)
+      return latent_graph
+
+    # With scan, the steps run in a loop over parameters stacked along a leading axis (no switch over per-step
+    # parameters: XLA fails to compile host offloading inside a switch in a scan). Only the latent features are
+    # carried, the graph structure is closed over.
     def step(features):
       node_features, edge_features = features
       graph = latent_graph_0._replace(
@@ -388,9 +405,7 @@ class DeepTypedGraphNet(hk.Module):
 
     num_steps = self._num_message_passing_steps
     # A single module instance, so that the repetitions share its parameters.
-    processor_stack = hk.to_module(
-      hk.layer_stack(num_steps, unroll=1 if self._scan else num_steps, name="steps")(step)
-    )(name="processor")
+    processor_stack = hk.to_module(hk.layer_stack(num_steps, name="steps")(step))(name="processor")
     features = (
       {k: s.features for k, s in latent_graph_0.nodes.items()},
       {k: s.features for k, s in latent_graph_0.edges.items()},
