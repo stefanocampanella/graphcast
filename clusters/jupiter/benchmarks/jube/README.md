@@ -104,6 +104,13 @@ at the first step). At all 50 levels (results/2026-10-24-memfit) the largest cas
 limit is about 85 GiB per GPU (95 % of a GH200's 96 GB); `summarize.py` reports the allocation XLA asked for
 (`gpu_alloc_GiB`, 85 to 508 GiB for the cases that did not fit).
 
+Those runs offloaded nothing: the policy names mark the outputs of rematerialized blocks, which only an enclosing
+checkpoint can offload. With `policy.remat_loss = true` (the default since 2026-10-24; tag `no_remat_loss` turns it
+off) 28 instead of 11 cases fit: 100 km and 85 km with 16 message passing steps, 70 km (95303 nodes) with 10. Steps
+take about 20 % longer (compute 0.55 to 0.85 s, a step 3.2 to 3.6 s) and node memory peaks at up to 858 GB (2 GB
+left): with 2 Grain workers at all levels there is no host memory margin. The fine mesh with 14 and 16 steps ran out
+of XLA's pinned host pool (64 GB per GPU, `XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB`; `host_oom` in `summarize.py`).
+
 ## What is measured
 
 `graphcast train` logs one line per step:
