@@ -110,6 +110,10 @@ off) 28 instead of 11 cases fit: 100 km and 85 km with 16 message passing steps,
 take about 20 % longer (compute 0.55 to 0.85 s, a step 3.2 to 3.6 s) and node memory peaks at up to 858 GB (2 GB
 left): with 2 Grain workers at all levels there is no host memory margin. The fine mesh with 14 and 16 steps ran out
 of XLA's pinned host pool (64 GB per GPU, `XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB`; `host_oom` in `summarize.py`).
+The tag `prevent_cse` (`policy.prevent_cse = true`) cuts the memory per message passing step from about 25 to about
+7 GiB on the fine mesh (174 instead of 236 GiB at 8 steps) but leaves the step-independent part (about 120 GiB on the
+fine mesh), so the limit does not move: cases near 85 GiB fit or fail either way. The tag `scan` does not compile
+with offloading (XLA INTERNAL error on the host-placed residuals of the scan).
 
 ## What is measured
 
