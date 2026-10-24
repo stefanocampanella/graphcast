@@ -118,6 +118,15 @@ with offloading (XLA INTERNAL error on the host-placed residuals of the scan). *
 message passing steps**, at no cost in speed (compute 0.46 to 1.89 s, steps loader bound at 2.6 to 3.0 s) and with
 the same losses as unrolled; only the fine mesh does not fit (115 to 162 GiB, about 5.8 GiB per step).
 
+That scan used `hk.switch` over per-step networks, and XLA cannot compile host offloading inside a switch in a scan
+(every JAX image from 26.06 to the 2026-10-24 nightly). `DeepTypedGraphNet` now runs the processor as an
+`hk.layer_stack` over stacked per-step parameters (old checkpoints do not load). `run_memfit.sh` submits memfit for
+unrolled, unrolled with `prevent_cse` and scan, each with and without offloading (300 jobs; meshes now also 35 and 30
+km, 363900 and 491676 nodes). Results in results/2026-10-24-memfit-v2: scan with offloading fits the most (up to
+35 km, 10.5x coarse, with 8 steps) but fills host memory with 2 Grain workers (0 GB left; 6 jobs stalled until their
+time limit, `timeout` in `summarize.py`); **scan without offloading fits 50 km with 16 steps and 40 km with 8, with at
+least 52 GB of host memory left, at the same speed**; unrolled at most 70 km with 10 steps.
+
 ## What is measured
 
 `graphcast train` logs one line per step:

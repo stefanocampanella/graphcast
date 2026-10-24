@@ -4,7 +4,8 @@ A job is "ok" if rank 0 finished training after all its steps (training_steps of
 step was cancelled after hanging at exit), "gpu_oom" if XLA could not allocate GPU memory (gpu_alloc_GiB is the
 allocation it asked for), "host_oom" if XLA could not allocate pinned host memory for offloaded activations
 (host_alloc_GiB, at most XLA_PJRT_GPU_HOST_MEMORY_LIMIT_GB per GPU, 64 GB by default), "oom" if a Grain worker was killed (exit code -9, lack of host memory), "stopped" if it was
-cancelled after at least 100 steps (its statistics cover the steps done), and "failed" otherwise.
+cancelled after at least 100 steps (its statistics cover the steps done), "timeout" if it ended at its time limit
+otherwise (e.g. stalled with the node out of host memory), and "failed" otherwise.
 Case metrics in summary_cases.csv are means over the ok and stopped repetitions. Runs with the system Python (3.9).
 Usage: python3 summarize.py results/<date>-<name>   (after jube result for every experiment)
 """
@@ -85,7 +86,7 @@ def job_rows(root):
           "experiment": experiment, "wp": row["jube_wp_id"], "slurm_job": row["slurm_job"],
           "outcome": "ok" if finished and steps >= target - 1 else "gpu_oom" if gpu_alloc else "host_oom" if host_alloc
           else "oom" if oom
-          else "stopped" if steps >= 100 else "failed",
+          else "stopped" if steps >= 100 else "timeout" if row["status"] == "143" else "failed",
           "status": row["status"], "format": row["format"], "workers": row["num_workers"],
           "threads": row["num_threads"], "zarr_pool": row["zarr_max_workers"], "zarr_conc": row["zarr_concurrency"],
           "nodes": row["nodes"], "cpus": row["cpus_per_task"],
@@ -127,7 +128,7 @@ def main(root):
     outcomes[job["outcome"]] = outcomes.get(job["outcome"], 0) + 1
   print(f"{len(jobs)} jobs {outcomes}, {len(cases)} cases")
   for job in jobs:
-    if job["outcome"] not in ("ok", "stopped", "gpu_oom", "host_oom") and not (job["outcome"] == "oom" and job["levels"] == "all"):
+    if job["outcome"] not in ("ok", "stopped", "gpu_oom", "host_oom", "timeout") and not (job["outcome"] == "oom" and job["levels"] == "all"):
       print(f"  check: {job['experiment']} wp {job['wp']} {job['format']} {job['workers']}x{job['threads']} "
             f"{job['opt']}: {job['outcome']} status {job['status']} steps {job['steps']}")
 
