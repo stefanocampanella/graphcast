@@ -227,7 +227,7 @@
             <sub source="(?m)^seed = \d+" dest="seed = $seed" mode="regex"/>
             <sub source='(?m)^path = "/data/geometry/[^"]*"' dest='path = "/data/geometry/$mesh_file"' mode="regex"/>
             <sub source="(?m)^gnn_msg_steps = \d+" dest="gnn_msg_steps = $msg_steps" mode="regex"/>
-            <sub source="(?m)^\[checkpoints\]" dest="[checkpoints]\nsave_interval_steps = $ckpt_interval" mode="regex"/>
+            <sub source="(?m)^save_interval_steps = [\d_]+" dest="save_interval_steps = $ckpt_interval" mode="regex"/>
             <sub source="(?m)^levels = \[[^\]]*\]" dest='levels = "all"' mode="regex" tag="all_levels"/>
             <sub source="(?m)^names_which_can_be_offloaded = \[[^\]]*\]" dest="names_which_can_be_offloaded = []"
                  mode="regex" tag="no_offload"/>
