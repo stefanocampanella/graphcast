@@ -147,7 +147,7 @@ def get_model_config(configs: TrainingConfig) -> ModelConfig:
 
 
 def get_policy(configs: TrainingConfig) -> Callable:
-  return cp.save_and_offload_only_these_names(**configs.policy.model_dump(exclude={"remat_loss"}))
+  return cp.save_and_offload_only_these_names(**configs.policy.model_dump(exclude={"remat_loss", "prevent_cse", "scan"}))
 
 
 def get_predictor(
@@ -171,10 +171,10 @@ def get_predictor(
     _grid_lon=grid_lon,
     _grid_mask=grid_mask,
     _mesh_data=mesh_data,
-    _scan=False,
+    _scan=configs.policy.scan,
     _remat=True,
     _policy=get_policy(configs),
-    _prevent_cse=False,
+    _prevent_cse=configs.policy.prevent_cse,
   )
 
   # Modify inputs/outputs to `graphcast.GraphCast` to handle conversion to from/to float32 to/from BFloat16.

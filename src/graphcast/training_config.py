@@ -139,6 +139,15 @@ class PolicyConfig(ApplicationConfig):
     "rematerialized blocks, which only an enclosing checkpoint can save or offload: without it they stay on the "
     "device.",
   )
+  prevent_cse: bool = Field(
+    default=False,
+    description="Prevent XLA from merging the recomputation of rematerialized blocks with their forward pass. JAX "
+    "recommends it outside of scan: without it, XLA may keep the activations that remat should discard.",
+  )
+  scan: bool = Field(
+    default=False,
+    description="Run the message passing steps of the processor in a scan instead of unrolling them.",
+  )
 
 
 class NormalizationConfig(ApplicationConfig):
