@@ -4,6 +4,7 @@
 #   unrolled             processor steps unrolled
 #   unrolled-preventcse  unrolled with prevent_cse
 #   scan                 processor steps in a scan over stacked parameters
+# scan-offload-* repeat scan-offload with less host memory for the loader (small buffers, 1 or 0 Grain workers).
 # Each with "-offload" (policy around the whole loss, default) and "-nooffload" (tag no_remat_loss).
 # Usage: ./run_memfit.sh [DATE [NAME]]   (run from this directory; DATE defaults to today, NAME to "memfit")
 set -euo pipefail
@@ -18,6 +19,10 @@ EXPERIMENTS=(
     "unrolled-preventcse-nooffload    prevent_cse no_remat_loss"
     "scan-offload                     scan"
     "scan-nooffload                   scan no_remat_loss"
+    # Offloading with less host memory taken by the loader: small buffers, 1 Grain worker, threads only.
+    "scan-offload-smallbuffers        scan small_buffers"
+    "scan-offload-1worker             scan small_buffers one_worker"
+    "scan-offload-0workers            scan small_buffers no_workers"
 )
 
 {
