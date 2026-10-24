@@ -35,7 +35,6 @@ Generalization to TypedGraphs of the deep Graph Neural Network from:
 """
 
 from collections.abc import Mapping
-from functools import partial
 
 import haiku as hk
 import jax
@@ -284,38 +283,35 @@ class DeepTypedGraphNet(hk.Module):
           output = output / self._aggregate_normalization
         return output
 
-    # Create `num_message_passing_steps` graph networks with unshared parameters
-    # that update the node and edge latent features.
-    # Note that we can use `modules.InteractionNetwork` because
-    # it also outputs the messages as updated edge latent features.
-    self._processor_networks = []
-    for step_i in range(self._num_message_passing_steps):
+    # One message passing step: a graph network that updates the node and edge latent features. It is wrapped in a
+    # layer stack (see `_process`), which gives each of the `num_message_passing_steps` steps its own parameters,
+    # stacked along a leading axis. Note that we can use `modules.InteractionNetwork` because it also outputs the
+    # messages as updated edge latent features.
+    def _processor_network(graph):
+      graph = typed_graph_net.InteractionNetwork(
+        update_edge_fn=_build_update_fns_for_edge_types(
+          build_mlp_with_maybe_layer_norm,
+          graph_template,
+          "processor_edges_",
+          output_sizes=self._edge_latent_size,
+        ),
+        update_node_fn=_build_update_fns_for_node_types(
+          build_mlp_with_maybe_layer_norm,
+          graph_template,
+          "processor_nodes_",
+          output_sizes=self._node_latent_size,
+        ),
+        aggregate_edges_for_nodes_fn=aggregate_fn,
+        include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
+      )(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
+      return graph
 
-      def _processor_network(graph, step_i=step_i):
-        graph = typed_graph_net.InteractionNetwork(
-          update_edge_fn=_build_update_fns_for_edge_types(
-            build_mlp_with_maybe_layer_norm,
-            graph_template,
-            f"processor_edges_{step_i}_",
-            output_sizes=self._edge_latent_size,
-          ),
-          update_node_fn=_build_update_fns_for_node_types(
-            build_mlp_with_maybe_layer_norm,
-            graph_template,
-            f"processor_nodes_{step_i}_",
-            output_sizes=self._node_latent_size,
-          ),
-          aggregate_edges_for_nodes_fn=aggregate_fn,
-          include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
-        )(graph)
-        graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
-        return graph
-
-      if self._remat:
-        _processor_network = hk.remat(
-          _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
-        )
-      self._processor_networks.append(_processor_network)
+    if self._remat:
+      _processor_network = hk.remat(
+        _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
+      )
+    self._processor_network = _processor_network
 
     # The output MLPs converts edge/node latent features into the output sizes.
     output_kwargs = dict(
@@ -374,44 +370,38 @@ class DeepTypedGraphNet(hk.Module):
   def _process(self, latent_graph_0: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
     """Processes the latent graph with several steps of message passing."""
 
-    # Do `num_message_passing_steps` with each of the `self._processor_networks`
-    # with unshared weights, and repeat that `self._num_processor_repetitions`
-    # times.
-    if hk.running_init():
-      # When running init there's no need to remat and checkpoint.
-      latent_graph = latent_graph_0
-      for _unused_repetition_i in range(self._num_processor_repetitions):
-        for processor_network in self._processor_networks:
-          latent_graph = self._process_step(processor_network, latent_graph)
-    else:
-      # When running apply, we might leverage scan to try reducing compilation times.
-      if self._scan:
-        process_steps = [
-          partial(self._process_step, processor_network)
-          for processor_network in self._processor_networks
-        ]
-        # The one-liner using scan is conceptually equivalent to, but terser than the following:
-        # latent_graph = hk.fori_loop(0, self._num_processor_repetitions,
-        #                             lambda _, init_graph:
-        #                               hk.fori_loop(0, self._num_message_passing_steps,
-        #                                            lambda n, graph: hk.switch(n, process_steps, graph),
-        #                                            init_graph),
-        #                             latent_graph_0)
-        latent_graph, _ = hk.scan(
-          lambda graph, n: (hk.switch(n, process_steps, graph), None),
-          latent_graph_0,
-          xs=jnp.tile(
-            jnp.arange(self._num_message_passing_steps, dtype=int),
-            self._num_processor_repetitions,
-          ),
-        )
-      else:
-        latent_graph = latent_graph_0
-        for _unused_repetition_i in range(self._num_processor_repetitions):
-          for processor_network in self._processor_networks:
-            latent_graph = self._process_step(processor_network, latent_graph)
+    # Do `num_message_passing_steps` steps with unshared weights, stacked along a leading axis, and repeat them
+    # `self._num_processor_repetitions` times. With scan, the steps run in a loop over the stacked parameters (no
+    # switch over per-step parameters: XLA fails to compile host offloading inside a switch in a scan); otherwise the
+    # same stack is fully unrolled. Only the latent features are carried, the graph structure is closed over.
+    def step(features):
+      node_features, edge_features = features
+      graph = latent_graph_0._replace(
+        nodes={k: s._replace(features=node_features[k]) for k, s in latent_graph_0.nodes.items()},
+        edges={k: s._replace(features=edge_features[k]) for k, s in latent_graph_0.edges.items()},
+      )
+      graph = self._process_step(self._processor_network, graph)
+      return (
+        {k: s.features for k, s in graph.nodes.items()},
+        {k: s.features for k, s in graph.edges.items()},
+      )
 
-    return latent_graph
+    num_steps = self._num_message_passing_steps
+    # A single module instance, so that the repetitions share its parameters.
+    processor_stack = hk.to_module(
+      hk.layer_stack(num_steps, unroll=1 if self._scan else num_steps, name="steps")(step)
+    )(name="processor")
+    features = (
+      {k: s.features for k, s in latent_graph_0.nodes.items()},
+      {k: s.features for k, s in latent_graph_0.edges.items()},
+    )
+    for _unused_repetition_i in range(self._num_processor_repetitions):
+      features = processor_stack(features)
+    node_features, edge_features = features
+    return latent_graph_0._replace(
+      nodes={k: s._replace(features=node_features[k]) for k, s in latent_graph_0.nodes.items()},
+      edges={k: s._replace(features=edge_features[k]) for k, s in latent_graph_0.edges.items()},
+    )
 
   def _process_step(
     self, processor_network_k, latent_graph_prev_k: typed_graph.TypedGraph
