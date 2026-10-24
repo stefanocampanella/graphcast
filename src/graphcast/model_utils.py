@@ -462,8 +462,11 @@ class Embedder(hk.Module):
       axis=-1, create_scale=True, create_offset=True, name=self.name + "_layer_norm"
     )
     network = hk.Sequential([network, layer_norm])
+
+    # Name the output inside the remat, as DeepTypedGraphNet does, so that the remat policy can save or offload it.
+    def _embedder_network(features):
+      return checkpoint_name(network(features), "embedder")
+
     if self.remat:
-      network = hk.remat(network, policy=self.policy, prevent_cse=self.prevent_cse)
-    output_features = network(input_features)
-    output_features = checkpoint_name(output_features, "embedder")
-    return output_features
+      _embedder_network = hk.remat(_embedder_network, policy=self.policy, prevent_cse=self.prevent_cse)
+    return _embedder_network(input_features)
