@@ -120,10 +120,10 @@ names_which_can_be_offloaded = ["embedder", "graph_embedder", "message_passing",
 offload_src = "device"
 offload_dst = "pinned_host"
 # Apply the policy to the whole loss too: the names mark block outputs, which only it can offload.
-remat_loss = true
+remat_loss = false
 # Remat options of the blocks: prevent_cse (recommended by JAX outside of scan) and scan over message passing.
 prevent_cse = false
-scan = false
+scan = true
 
 [climatology]
 path = '/data/climatology'

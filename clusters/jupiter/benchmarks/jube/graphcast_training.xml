@@ -25,8 +25,10 @@
         <tag name="small_buffers">Buffer one sample per Grain worker and in the reader prefetch, instead of two</tag>
         <tag name="no_offload">Disable activation offloading to pinned host memory</tag>
         <tag name="prevent_cse">Rematerialized blocks with prevent_cse (policy.prevent_cse = true)</tag>
-        <tag name="scan">Message passing steps of the processor in a scan (policy.scan = true)</tag>
-        <tag name="no_remat_loss">No checkpoint with the policy around the whole loss (policy.remat_loss = false), as before 2026-10-24: the named block outputs stay on the device</tag>
+        <tag name="scan">Message passing steps of the processor in a scan (policy.scan = true, the default of full.toml)</tag>
+        <tag name="unrolled">Message passing steps of the processor unrolled (policy.scan = false)</tag>
+        <tag name="offload">Offload the named activations: checkpoint with the policy around the whole loss (policy.remat_loss = true)</tag>
+        <tag name="no_remat_loss">No checkpoint with the policy around the whole loss (policy.remat_loss = false, the default of full.toml): nothing is offloaded</tag>
         <tag name="all_levels">Train on all 50 depth levels (task.levels = "all") instead of the 10 of full.toml</tag>
     </tags>
 
@@ -240,9 +242,11 @@
             <sub source="(?m)^levels = \[[^\]]*\]" dest='levels = "all"' mode="regex" tag="all_levels"/>
             <sub source="(?m)^names_which_can_be_offloaded = \[[^\]]*\]" dest="names_which_can_be_offloaded = []"
                  mode="regex" tag="no_offload"/>
-            <sub source="(?m)^remat_loss = true" dest="remat_loss = false" mode="regex" tag="no_remat_loss"/>
-            <sub source="(?m)^prevent_cse = false" dest="prevent_cse = true" mode="regex" tag="prevent_cse"/>
-            <sub source="(?m)^scan = false" dest="scan = true" mode="regex" tag="scan"/>
+            <sub source="(?m)^remat_loss = \w+" dest="remat_loss = false" mode="regex" tag="no_remat_loss"/>
+            <sub source="(?m)^remat_loss = \w+" dest="remat_loss = true" mode="regex" tag="offload"/>
+            <sub source="(?m)^prevent_cse = \w+" dest="prevent_cse = true" mode="regex" tag="prevent_cse"/>
+            <sub source="(?m)^scan = \w+" dest="scan = true" mode="regex" tag="scan"/>
+            <sub source="(?m)^scan = \w+" dest="scan = false" mode="regex" tag="unrolled"/>
         </substituteset>
 
         <step name="submit">
