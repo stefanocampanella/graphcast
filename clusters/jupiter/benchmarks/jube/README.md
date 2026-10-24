@@ -40,8 +40,9 @@ Every run needs at least one sweep tag:
 | `model`   | zarr_v2 8x2, coarse mesh, 8, 10, 12, 14, 16 message passing steps     | 5    |
 | `lowmem`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi 2x2; zarr_v3 1x2 and 0x4     | 6    |
 | `workers` | zarr_v3, zarr_v3_lexi 2x2, 4x2, 8x2; zarr_v2, squashfs 4x2            | 8    |
+| `memfit`  | zarr_v3_lexi 2x2, 8 uniform meshes (120 to 35 km) x 8 to 16 message passing steps | 40   |
 
-`lowmem` and `workers` are meant for `all_levels`. Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
+`lowmem`, `workers` and `memfit` are meant for `all_levels`. Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
 `quick` (one repetition of 30 steps), `long` (1024 steps, 3 hour time limit), `devel` (develbooster reservation), `dryrun` (check the
 generated job scripts with `bash -n` instead of submitting them), `all_levels` (train on all 50 depth
 levels instead of the 10 of `full.toml`; samples are about 5 times larger). `small_buffers` (one
@@ -94,6 +95,14 @@ passing steps (`gnn_msg_steps`; 16 as the original GraphCast), substituted into 
 (`uniform_fine.msh`, tag `fine`) does not fit in GPU memory: XLA asks for single allocations of 279 to 504 GiB
 per GPU. 16 message passing steps need `XLA_PYTHON_CLIENT_MEM_FRACTION=.95` (set in `.env`). The modifiers `fine`, `msg12` and `msg16` select one model size for the other sweeps, e.g.
 `--tag opt fine msg16`.
+
+`memfit` finds the largest model that fits in GPU memory: uniform meshes with target sizes 120 (coarse), 100, 85,
+70, 60, 50, 40 and 35 km (fine), i.e. 34750 to 704078 nodes (`configs/mesh/uniform_*.toml`), each with 8, 10, 12, 14
+and 16 message passing steps. Run it as `--tag memfit all_levels quick` (40 jobs of about 5 minutes; GPU OOMs fail
+at the first step). At all 50 levels (results/2026-10-24-memfit) the largest cases that fit are the coarse mesh with
+16 message passing steps, 100 km with 14 and 85 km with 10; from 70 km (95303 nodes) on not even 8 steps fit. The
+limit is about 85 GiB per GPU (95 % of a GH200's 96 GB); `summarize.py` reports the allocation XLA asked for
+(`gpu_alloc_GiB`, 85 to 508 GiB for the cases that did not fit).
 
 ## What is measured
 
