@@ -1,8 +1,9 @@
 """Summarize a results directory of run_final.sh into summary_jobs.csv and summary_cases.csv.
 
-A job is "ok" if rank 0 finished training after 1024 steps (also when its training step was cancelled after hanging
-at exit), "oom" if a Grain worker was killed (exit code -9, lack of host memory), "stopped" if it was cancelled after
-at least 100 steps (its statistics cover the steps done), and "failed" otherwise.
+A job is "ok" if rank 0 finished training after all its steps (training_steps of bench.toml; also when its training
+step was cancelled after hanging at exit), "gpu_oom" if XLA could not allocate GPU memory (gpu_alloc_GiB is the
+allocation it asked for), "oom" if a Grain worker was killed (exit code -9, lack of host memory), "stopped" if it was
+cancelled after at least 100 steps (its statistics cover the steps done), and "failed" otherwise.
 Case metrics in summary_cases.csv are means over the ok and stopped repetitions. Runs with the system Python (3.9).
 Usage: python3 summarize.py results/<date>-<name>   (after jube result for every experiment)
 """
@@ -37,6 +38,7 @@ def read(path):
     return file.read()
 
 
+GPU_OOM = re.compile(r"RESOURCE_EXHAUSTED: Out of memory while trying to allocate ([\d.]+)GiB")
 STEP_LINE = re.compile(r"Step (\d+) timings: data ([\d.]+) s, compute ([\d.]+) s")
 
 
@@ -68,20 +70,25 @@ def job_rows(root):
         work = os.path.join(root, experiment, "000000", f"{int(row['jube_wp_id']):06d}_submit", "work")
         bench = read(os.path.join(work, "bench.toml"))
         finished = "Training finished" in read(os.path.join(work, "task-0.err"))
-        oom = any("exit code -9" in read(path) for path in glob.glob(os.path.join(work, "task-*.err")))
+        task_errs = [read(path) for path in glob.glob(os.path.join(work, "task-*.err"))]
+        oom = any("exit code -9" in err for err in task_errs)
+        gpu_alloc = max((float(size) for err in task_errs for size in GPU_OOM.findall(err)), default=None)
         steps = to_float(row["step_last"]) or 0
+        target = int(re.search(r"(?m)^training_steps = (\d+)", bench).group(1))
         fields = row["case"].split(":")
         mesh = re.search(r'(?m)^path = "/data/geometry/uniform_(\w+)\.msh"', bench)
         msg_steps = re.search(r"(?m)^gnn_msg_steps = (\d+)", bench)
         out = {
           "experiment": experiment, "wp": row["jube_wp_id"], "slurm_job": row["slurm_job"],
-          "outcome": "ok" if finished and steps >= 1023 else "oom" if oom else "stopped" if steps >= 100 else "failed",
+          "outcome": "ok" if finished and steps >= target - 1 else "gpu_oom" if gpu_alloc else "oom" if oom
+          else "stopped" if steps >= 100 else "failed",
           "status": row["status"], "format": row["format"], "workers": row["num_workers"],
           "threads": row["num_threads"], "zarr_pool": row["zarr_max_workers"], "zarr_conc": row["zarr_concurrency"],
           "nodes": row["nodes"], "cpus": row["cpus_per_task"],
           "levels": "all" if re.search(r'(?m)^levels = "all"', bench) else "10",
           "mesh": mesh.group(1) if mesh else "", "msg_steps": msg_steps.group(1) if msg_steps else "",
           "opt": fields[7] if len(fields) > 7 else "default", "rep": row["rep"], "steps": row["step_last"],
+          "gpu_alloc_GiB": f"{gpu_alloc:g}" if gpu_alloc else "",
         }
         out.update({metric: row.get(metric, "") for metric in METRICS})
         out["data_stall_avg[s]"], out["compute_median[s]"] = rank_statistics(work)
@@ -115,7 +122,7 @@ def main(root):
     outcomes[job["outcome"]] = outcomes.get(job["outcome"], 0) + 1
   print(f"{len(jobs)} jobs {outcomes}, {len(cases)} cases")
   for job in jobs:
-    if job["outcome"] not in ("ok", "stopped") and not (job["outcome"] == "oom" and job["levels"] == "all"):
+    if job["outcome"] not in ("ok", "stopped", "gpu_oom") and not (job["outcome"] == "oom" and job["levels"] == "all"):
       print(f"  check: {job['experiment']} wp {job['wp']} {job['format']} {job['workers']}x{job['threads']} "
             f"{job['opt']}: {job['outcome']} status {job['status']} steps {job['steps']}")
 
