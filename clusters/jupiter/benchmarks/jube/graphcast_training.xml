@@ -12,7 +12,7 @@
         <tag name="workers">2 to 8 Grain workers, to find how many fit in memory, e.g. for all_levels</tag>
         <tag name="opt">XLA and JAX optimization settings (see opt_env) with the fastest loader, on 1 and 2 nodes</tag>
         <tag name="model">Coarse mesh with 8 to 16 message passing steps, fastest loader, default settings</tag>
-        <tag name="memfit">GPU memory fit: uniform meshes from coarse (120 km) to fine (35 km) with 8 to 16 message passing steps, zarr_v3_lexi 2x2 (fits in host memory at all levels)</tag>
+        <tag name="memfit">GPU memory fit: uniform meshes from coarse (120 km) to fine (704078 nodes) with 8 to 16 message passing steps, zarr_v3_lexi 2x2 (fits in host memory at all levels)</tag>
         <tag name="fine">Use the fine mesh (uniform_fine.msh) instead of the coarse one of full.toml</tag>
         <tag name="msg12">12 message passing steps (gnn_msg_steps) instead of the 8 of full.toml</tag>
         <tag name="msg16">16 message passing steps, as the original GraphCast</tag>
@@ -121,11 +121,12 @@
             <!-- The fine mesh does not fit in GPU memory: single allocations of 279 to 504 GiB per GPU for 8 to 16
                  message passing steps (local batch size 1, activation offloading). -->
             <parameter name="mesh_file" tag="model">uniform_coarse.msh</parameter>
-            <!-- Target mesh sizes 120 (coarse), 100, 85, 70, 60, 50, 40 and 35 km (fine): 34750, 48662, 65943, 95303,
-                 127948, 181980, 280245 and 704078 nodes (configs/mesh/uniform_*.toml). -->
+            <!-- Target mesh sizes 120 (coarse), 100, 85, 70, 60, 50, 40, 35 and 30 km: 34750, 48662, 65943, 95303, 127948,
+                 181980, 280245, 363900 and 491676 nodes (configs/mesh/uniform_*.toml), and the fine mesh: 704078 nodes,
+                 made in January 2026 for 35 km (about 25 km with the current mesh code). -->
             <parameter name="mesh_file" tag="memfit">
                 uniform_coarse.msh,uniform_100km.msh,uniform_85km.msh,uniform_70km.msh,uniform_60km.msh,uniform_50km.msh,
-                uniform_40km.msh,uniform_fine.msh
+                uniform_40km.msh,uniform_35km.msh,uniform_30km.msh,uniform_fine.msh
             </parameter>
             <parameter name="msg_steps" type="int">8</parameter>
             <parameter name="msg_steps" type="int" tag="msg12">12</parameter>
