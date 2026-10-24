@@ -239,13 +239,18 @@ def train(
 
   # TODO: are those device_put needed also when pulling checkpoints saved from JAX arrays (instead of numpy arrays)
 
+  # The policy names the outputs of rematerialized blocks: only a checkpoint around them can offload those.
+  local_loss_fn = loss_fn.apply
+  if configs.policy.remat_loss:
+    local_loss_fn = jax.checkpoint(local_loss_fn, policy=trn_utils.get_policy(configs))
+
   @partial(jax.jit, donate_argnums=(0, 1))
   def train_step(params, opt_state, data, static_data):
     def fsdp_loss_fn(
         params, data: Datasets, static_data: DatasetsOrDataArrays
     ) -> JAXLossAndDiagnostics:
       _fsdp_loss_fn = shard_map(
-        loss_fn.apply,
+        local_loss_fn,
         mesh=device_mesh,
         in_specs=(P(), P("batch"), None),
         out_specs=P("batch"),

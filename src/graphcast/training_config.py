@@ -133,6 +133,12 @@ class PolicyConfig(ApplicationConfig):
   names_which_can_be_offloaded: list[str] = Field(default_factory=list)
   offload_src: str = "device"
   offload_dst: str = "pinned_host"
+  remat_loss: bool = Field(
+    default=True,
+    description="Also apply the policy to a checkpoint around the whole loss. The names mark the outputs of "
+    "rematerialized blocks, which only an enclosing checkpoint can save or offload: without it they stay on the "
+    "device.",
+  )
 
 
 class NormalizationConfig(ApplicationConfig):

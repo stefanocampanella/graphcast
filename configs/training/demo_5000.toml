@@ -121,6 +121,8 @@ names_which_can_be_saved = []
 names_which_can_be_offloaded = ["embedder", "graph_embedder", "message_passing", "graph_output"]
 offload_src = "device"
 offload_dst = "pinned_host"
+# Apply the policy to the whole loss too: the names mark block outputs, which only it can offload.
+remat_loss = true
 
 [climatology]
 path = '/data/climatology'

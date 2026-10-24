@@ -147,7 +147,7 @@ def get_model_config(configs: TrainingConfig) -> ModelConfig:
 
 
 def get_policy(configs: TrainingConfig) -> Callable:
-  return cp.save_and_offload_only_these_names(**configs.policy.model_dump())
+  return cp.save_and_offload_only_these_names(**configs.policy.model_dump(exclude={"remat_loss"}))
 
 
 def get_predictor(
