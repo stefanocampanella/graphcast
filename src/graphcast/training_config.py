@@ -157,6 +157,11 @@ class PolicyConfig(ApplicationConfig):
     description="Also rematerialize each MLP of the graph networks separately: the backward pass of a block keeps "
     "only the inputs and outputs of its MLPs.",
   )
+  edge_chunk_size: NonNegativeInt = Field(
+    default=0,
+    description="If positive, update edge sets with more edges in chunks of this many edges, one after the other, "
+    "so that only one chunk of gathered features and MLP intermediates is alive at a time. 0: off.",
+  )
 
 
 class NormalizationConfig(ApplicationConfig):

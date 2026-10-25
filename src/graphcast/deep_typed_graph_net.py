@@ -100,6 +100,7 @@ class DeepTypedGraphNet(hk.Module):
     prevent_cse: bool = True,
     scan: bool = False,
     remat_mlps: bool = False,
+    edge_chunk_size: int = 0,
     name: str = "DeepTypedGraphNet",
   ):
     """Inits the model.
@@ -140,6 +141,8 @@ class DeepTypedGraphNet(hk.Module):
       scan: Whether to use scan to reduce compilation times.
       remat_mlps: Whether to also rematerialize each MLP separately, so that the backward pass of a block keeps only
         the inputs and outputs of its MLPs.
+      edge_chunk_size: If positive, update edge sets with more edges in chunks of this many edges (see
+        `typed_graph_net.GraphNetwork`).
       name: Name of the model.
     """
 
@@ -170,6 +173,7 @@ class DeepTypedGraphNet(hk.Module):
     self._prevent_cse = prevent_cse
     self._scan = scan
     self._remat_mlps = remat_mlps
+    self._edge_chunk_size = edge_chunk_size
 
     if aggregate_normalization:
       # using aggregate_normalization only makes sense with segment_sum.
@@ -311,6 +315,7 @@ class DeepTypedGraphNet(hk.Module):
         ),
         aggregate_edges_for_nodes_fn=aggregate_fn,
         include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
+        edge_chunk_size=self._edge_chunk_size,
       )(graph)
       graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
       return graph

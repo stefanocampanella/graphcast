@@ -15,6 +15,8 @@
 
 from collections.abc import Callable, Mapping
 
+import haiku as hk
+import jax
 import jax.numpy as jnp
 import jax.tree_util as tree
 import jraph
@@ -44,6 +46,7 @@ def GraphNetwork(  # pylint: disable=invalid-name
   aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph.segment_sum,
   aggregate_nodes_for_globals_fn: jraph.AggregateNodesToGlobalsFn = jraph.segment_sum,
   aggregate_edges_for_globals_fn: jraph.AggregateEdgesToGlobalsFn = jraph.segment_sum,
+  edge_chunk_size: int = 0,
 ):
   """Returns a method that applies a configured GraphNetwork.
 
@@ -73,6 +76,9 @@ def GraphNetwork(  # pylint: disable=invalid-name
       globals.
     aggregate_edges_for_globals_fn: function used to aggregate the edges for the
       globals.
+    edge_chunk_size: if positive, edge sets with more edges are updated in chunks of this many edges, one after the
+      other and each rematerialized, so that only one chunk of gathered features and edge function intermediates is
+      alive at a time.
 
   Returns:
     A method that applies the configured GraphNetwork.
@@ -99,7 +105,7 @@ def GraphNetwork(  # pylint: disable=invalid-name
     updated_edges = dict(updated_graph.edges)
     for edge_set_name, edge_fn in update_edge_fn.items():
       edge_set_key = graph.edge_key_by_name(edge_set_name)
-      updated_edges[edge_set_key] = _edge_update(updated_graph, edge_fn, edge_set_key)
+      updated_edges[edge_set_key] = _edge_update(updated_graph, edge_fn, edge_set_key, edge_chunk_size)
     updated_graph = updated_graph._replace(edges=updated_edges)
 
     # Node update.
@@ -125,7 +131,7 @@ def GraphNetwork(  # pylint: disable=invalid-name
   return _apply_graph_net
 
 
-def _edge_update(graph, edge_fn, edge_set_key):
+def _edge_update(graph, edge_fn, edge_set_key, chunk_size=0):
   """Updates an edge set of a given key."""
 
   sender_nodes = graph.nodes[edge_set_key.node_sets[0]]
@@ -134,16 +140,38 @@ def _edge_update(graph, edge_fn, edge_set_key):
   senders = edge_set.indices.senders  # pytype: disable=attribute-error
   receivers = edge_set.indices.receivers  # pytype: disable=attribute-error
 
-  sent_attributes = tree.tree_map(lambda n: n[senders], sender_nodes.features)
-  received_attributes = tree.tree_map(lambda n: n[receivers], receiver_nodes.features)
-
   n_edge = edge_set.n_edge
   sum_n_edge = senders.shape[0]
   global_features = tree.tree_map(
     lambda g: jnp.repeat(g, n_edge, axis=0, total_repeat_length=sum_n_edge),
     graph.context.features,
   )
-  new_features = edge_fn(edge_set.features, sent_attributes, received_attributes, global_features)
+
+  def update(edge_features, chunk_senders, chunk_receivers, chunk_global_features):
+    sent_attributes = tree.tree_map(lambda n: n[chunk_senders], sender_nodes.features)
+    received_attributes = tree.tree_map(lambda n: n[chunk_receivers], receiver_nodes.features)
+    return edge_fn(edge_features, sent_attributes, received_attributes, chunk_global_features)
+
+  if chunk_size <= 0 or sum_n_edge <= chunk_size:
+    new_features = update(edge_set.features, senders, receivers, global_features)
+    return edge_set._replace(features=new_features)
+
+  # Chunks of `chunk_size` edges, the last one padded (with edges from node 0 to node 0, dropped afterwards).
+  num_chunks = -(-sum_n_edge // chunk_size)
+  padding = num_chunks * chunk_size - sum_n_edge
+  def pad(x):
+    return jnp.pad(jnp.asarray(x), [(0, padding)] + [(0, 0)] * (jnp.ndim(x) - 1))
+
+  per_edge = tree.tree_map(pad, (edge_set.features, senders, receivers, global_features))
+
+  def chunk_update(carry, chunk_i):
+    chunk = tree.tree_map(lambda x: jax.lax.dynamic_slice_in_dim(x, chunk_i * chunk_size, chunk_size), per_edge)
+    return carry, update(*chunk)
+
+  _, chunked_features = hk.scan(hk.remat(chunk_update), None, jnp.arange(num_chunks))
+  new_features = tree.tree_map(
+    lambda x: x.reshape((num_chunks * chunk_size,) + x.shape[2:])[:sum_n_edge], chunked_features
+  )
   return edge_set._replace(features=new_features)
 
 
@@ -227,6 +255,7 @@ def InteractionNetwork(  # pylint: disable=invalid-name
   update_node_fn: Mapping[str, InteractionUpdateNodeFn | InteractionUpdateNodeFnNoSentEdges],
   aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph.segment_sum,
   include_sent_messages_in_node_update: bool = False,
+  edge_chunk_size: int = 0,
 ):
   """Returns a method that applies a configured InteractionNetwork.
 
@@ -248,6 +277,7 @@ def InteractionNetwork(  # pylint: disable=invalid-name
       node.
     include_sent_messages_in_node_update: pass edge features for which a node is
       a sender to the node update function.
+    edge_chunk_size: see `GraphNetwork`.
   """
   # An InteractionNetwork is a GraphNetwork without globals features,
   # so we implement the InteractionNetwork as a configured GraphNetwork.
@@ -268,6 +298,7 @@ def InteractionNetwork(  # pylint: disable=invalid-name
     update_edge_fn=wrapped_update_edge_fn,
     update_node_fn=wrapped_update_node_fn,
     aggregate_edges_for_nodes_fn=aggregate_edges_for_nodes_fn,
+    edge_chunk_size=edge_chunk_size,
   )
 
 

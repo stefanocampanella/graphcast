@@ -128,6 +128,8 @@ prevent_cse = false
 scan = true
 # Rematerialize each MLP of the graph networks separately (less memory, more recomputation).
 remat_mlps = false
+# Update edge sets with more edges in chunks of this many edges (0: off).
+edge_chunk_size = 0
 
 [climatology]
 path = '/data/climatology'
