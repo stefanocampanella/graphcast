@@ -138,6 +138,10 @@ and memory fit as with c988ad3 (results/2026-10-25-lift: scan without offloading
 Training logs the memory XLA plans for a step (`Memory usage: {... 'host_temp_size' ..., 'temp_size' ...}` in
 task-0.err, 7a97afc): with offloading the GPU needs 1 to 15 GiB less (mostly 5 to 9 GiB, about 10 %) for 8 to 87 GiB of
 pinned host memory, with the same losses (results/2026-10-25-offload-check); cases above about 83.5 GiB fail.
+Of further options (results/2026-10-25-memopt), `model.connected_grid_nodes` (grid nodes only for grid points that
+an edge connects; identical losses) saves 4.7 GiB (median) and is on by default (tag `all_grid_nodes` turns it off);
+`policy.edge_chunk_size` (edges in rematerialized chunks; tags `edge_chunks`, `edge_chunks_512k`, `edge_chunks_1m`)
+saves 2 to 11 GiB (median; up to 20) for 7 to 35 % more compute; rematerializing each MLP saved nothing.
 
 ## What is measured
 
