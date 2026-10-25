@@ -283,43 +283,34 @@ class DeepTypedGraphNet(hk.Module):
           output = output / self._aggregate_normalization
         return output
 
-    # A message passing step: a graph network that updates the node and edge latent features. Note that we can use
-    # `modules.InteractionNetwork` because it also outputs the messages as updated edge latent features.
-    def build_processor_network(step_name):
-      def _processor_network(graph):
-        graph = typed_graph_net.InteractionNetwork(
-          update_edge_fn=_build_update_fns_for_edge_types(
-            build_mlp_with_maybe_layer_norm,
-            graph_template,
-            f"processor_edges_{step_name}",
-            output_sizes=self._edge_latent_size,
-          ),
-          update_node_fn=_build_update_fns_for_node_types(
-            build_mlp_with_maybe_layer_norm,
-            graph_template,
-            f"processor_nodes_{step_name}",
-            output_sizes=self._node_latent_size,
-          ),
-          aggregate_edges_for_nodes_fn=aggregate_fn,
-          include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
-        )(graph)
-        graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
-        return graph
+    # A message passing step: a graph network that updates the node and edge latent features. Each step has its own
+    # parameters (see `_process`). Note that we can use `modules.InteractionNetwork` because it also outputs the
+    # messages as updated edge latent features.
+    def _processor_network(graph):
+      graph = typed_graph_net.InteractionNetwork(
+        update_edge_fn=_build_update_fns_for_edge_types(
+          build_mlp_with_maybe_layer_norm,
+          graph_template,
+          "processor_edges_",
+          output_sizes=self._edge_latent_size,
+        ),
+        update_node_fn=_build_update_fns_for_node_types(
+          build_mlp_with_maybe_layer_norm,
+          graph_template,
+          "processor_nodes_",
+          output_sizes=self._node_latent_size,
+        ),
+        aggregate_edges_for_nodes_fn=aggregate_fn,
+        include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
+      )(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
+      return graph
 
-      if self._remat:
-        _processor_network = hk.remat(
-          _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
-        )
-      return _processor_network
-
-    if self._scan:
-      # One network in a layer stack (see `_process`): each step gets its own parameters, stacked along a leading axis.
-      self._processor_network = build_processor_network("")
-    else:
-      # `num_message_passing_steps` networks with unshared parameters, unrolled.
-      self._processor_networks = [
-        build_processor_network(f"{step_i}_") for step_i in range(self._num_message_passing_steps)
-      ]
+    if self._remat:
+      _processor_network = hk.remat(
+        _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
+      )
+    self._processor_network = _processor_network
 
     # The output MLPs converts edge/node latent features into the output sizes.
     output_kwargs = dict(
@@ -379,19 +370,10 @@ class DeepTypedGraphNet(hk.Module):
     """Processes the latent graph with several steps of message passing."""
 
     # Do `num_message_passing_steps` steps with unshared weights, and repeat them `self._num_processor_repetitions`
-    # times. Unrolled, each step is its own network: XLA optimizes across steps, which is faster (about 30 % for the
-    # processor of the coarse mesh) but keeps more activations.
-    if not self._scan:
-      latent_graph = latent_graph_0
-      for _unused_repetition_i in range(self._num_processor_repetitions):
-        for processor_network in self._processor_networks:
-          latent_graph = self._process_step(processor_network, latent_graph)
-      return latent_graph
-
-    # With scan, the steps run in a loop over parameters stacked along a leading axis (no switch over per-step
-    # parameters: XLA fails to compile host offloading inside a switch in a scan). Only the latent features are
-    # carried, the graph structure is closed over.
-    def step(features):
+    # times. A step is a pure function of its own parameters and the latent features (the graph structure is closed
+    # over), so the parameters are the same with and without scan: created step after step by `hk.lift`, they also get
+    # the same initial values.
+    def step_fn(features):
       node_features, edge_features = features
       graph = latent_graph_0._replace(
         nodes={k: s._replace(features=node_features[k]) for k, s in latent_graph_0.nodes.items()},
@@ -403,15 +385,25 @@ class DeepTypedGraphNet(hk.Module):
         {k: s.features for k, s in graph.edges.items()},
       )
 
-    num_steps = self._num_message_passing_steps
-    # A single module instance, so that the repetitions share its parameters.
-    processor_stack = hk.to_module(hk.layer_stack(num_steps, name="steps")(step))(name="processor")
+    step = hk.transform(step_fn)
     features = (
       {k: s.features for k, s in latent_graph_0.nodes.items()},
       {k: s.features for k, s in latent_graph_0.edges.items()},
     )
+    step_params = [
+      hk.lift(step.init, name=f"processor_step_{step_i}")(hk.maybe_next_rng_key(), features)
+      for step_i in range(self._num_message_passing_steps)
+    ]
+    # With scan, the steps run in a loop over their parameters stacked along a leading axis (no switch over per-step
+    # parameters: XLA fails to compile host offloading inside a switch in a scan). Unrolled, XLA optimizes across steps,
+    # which is faster (about 30 % for the processor of the coarse mesh) but keeps more activations.
+    stacked_params = jax.tree_util.tree_map(lambda *ps: jnp.stack(ps), *step_params) if self._scan else None
     for _unused_repetition_i in range(self._num_processor_repetitions):
-      features = processor_stack(features)
+      if self._scan:
+        features, _ = jax.lax.scan(lambda f, p: (step.apply(p, None, f), None), features, stacked_params)
+      else:
+        for params in step_params:
+          features = step.apply(params, None, features)
     node_features, edge_features = features
     return latent_graph_0._replace(
       nodes={k: s._replace(features=node_features[k]) for k, s in latent_graph_0.nodes.items()},
