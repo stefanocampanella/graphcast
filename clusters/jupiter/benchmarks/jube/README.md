@@ -125,7 +125,14 @@ unrolled, unrolled with `prevent_cse` and scan, each with and without offloading
 km, 363900 and 491676 nodes). Results in results/2026-10-24-memfit-v2: scan with offloading fits the most (up to
 35 km, 10.5x coarse, with 8 steps) but fills host memory with 2 Grain workers (0 GB left; 6 jobs stalled until their
 time limit, `timeout` in `summarize.py`); **scan without offloading fits 50 km with 16 steps and 40 km with 8, with at
-least 52 GB of host memory left, at the same speed**; unrolled at most 70 km with 10 steps.
+least 52 GB of host memory left**; unrolled at most 70 km with 10 steps. With less host memory for the loader
+(small buffers, 1 or 0 Grain workers), offloading fits 40 km with 14 steps and 35 km with 10, at 3 to 10 s per step.
+
+"At the same speed" held only while the loader limited the steps: the first layer stack (621aa19) also wrapped the
+unrolled networks and the 1-step encoder and decoder and made compute-bound steps about 35 % slower (median compute
+0.61 instead of 0.45 s; results/2026-10-24-final). c988ad3 restored them; the scan itself costs 3 % (8 steps) to 9 %
+(16 steps). The final run with c988ad3 is results/2026-10-24-final-v2 (`run_final.sh`, now with `-offload` variants
+and `model-coarse-msg8to16-unrolled`; see its REPORT.md).
 
 ## What is measured
 
