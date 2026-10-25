@@ -664,6 +664,8 @@
   names on block outputs         host buffers S(5): 0
   ... with an outer checkpoint   host buffers S(5): 5
   </code></pre>
+            <p class="small">Full model, now: the GPU needs <strong>5–9 GiB less</strong> (about 10 %) for <strong>8–87 GiB</strong>
+              of host memory; same losses. The GPU peak is recomputing a block, not the saved activations.</p>
             <p class="small muted">Offloading costs ~20 % more compute per step and fills host memory: off by default.</p>
           </div>
         </div>

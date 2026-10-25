@@ -135,6 +135,9 @@ unrolled networks and the 1-step encoder and decoder and made compute-bound step
 and `model-coarse-msg8to16-unrolled`; see its REPORT.md). Since eb044b9 the processor is a pure step function with
 per-step parameters created by `hk.lift`, the same with and without scan (checkpoints load with either setting); speed
 and memory fit as with c988ad3 (results/2026-10-25-lift: scan without offloading fits 35 of 50 memfit cases).
+Training logs the memory XLA plans for a step (`Memory usage: {... 'host_temp_size' ..., 'temp_size' ...}` in
+task-0.err, 7a97afc): with offloading the GPU needs 1 to 15 GiB less (mostly 5 to 9 GiB, about 10 %) for 8 to 87 GiB of
+pinned host memory, with the same losses (results/2026-10-25-offload-check); cases above about 83.5 GiB fail.
 
 ## What is measured
 
