@@ -26,9 +26,11 @@
         <tag name="no_offload">Disable activation offloading to pinned host memory</tag>
         <tag name="prevent_cse">Rematerialized blocks with prevent_cse (policy.prevent_cse = true)</tag>
         <tag name="scan">Message passing steps of the processor in a scan (policy.scan = true, the default of full.toml)</tag>
-        <tag name="connected_grid_nodes">Grid nodes only for grid points connected by an edge (model.connected_grid_nodes = true)</tag>
+        <tag name="connected_grid_nodes">Grid nodes only for grid points connected by an edge (model.connected_grid_nodes = true, the default)</tag>
+        <tag name="all_grid_nodes">Grid nodes for all grid points (model.connected_grid_nodes = false)</tag>
         <tag name="edge_chunks">Update edges in chunks of 262144 (policy.edge_chunk_size)</tag>
-        <tag name="remat_mlps">Rematerialize each MLP of the graph networks separately (policy.remat_mlps = true)</tag>
+        <tag name="edge_chunks_512k">Update edges in chunks of 524288</tag>
+        <tag name="edge_chunks_1m">Update edges in chunks of 1048576</tag>
         <tag name="unrolled">Message passing steps of the processor unrolled (policy.scan = false)</tag>
         <tag name="offload">Offload the named activations: checkpoint with the policy around the whole loss (policy.remat_loss = true)</tag>
         <tag name="no_remat_loss">No checkpoint with the policy around the whole loss (policy.remat_loss = false, the default of full.toml): nothing is offloaded</tag>
@@ -250,9 +252,11 @@
             <sub source="(?m)^prevent_cse = \w+" dest="prevent_cse = true" mode="regex" tag="prevent_cse"/>
             <sub source="(?m)^scan = \w+" dest="scan = true" mode="regex" tag="scan"/>
             <sub source="(?m)^scan = \w+" dest="scan = false" mode="regex" tag="unrolled"/>
-            <sub source="(?m)^remat_mlps = \w+" dest="remat_mlps = true" mode="regex" tag="remat_mlps"/>
             <sub source="(?m)^edge_chunk_size = \d+" dest="edge_chunk_size = 262144" mode="regex" tag="edge_chunks"/>
+            <sub source="(?m)^edge_chunk_size = \d+" dest="edge_chunk_size = 524288" mode="regex" tag="edge_chunks_512k"/>
+            <sub source="(?m)^edge_chunk_size = \d+" dest="edge_chunk_size = 1048576" mode="regex" tag="edge_chunks_1m"/>
             <sub source="(?m)^connected_grid_nodes = \w+" dest="connected_grid_nodes = true" mode="regex" tag="connected_grid_nodes"/>
+            <sub source="(?m)^connected_grid_nodes = \w+" dest="connected_grid_nodes = false" mode="regex" tag="all_grid_nodes"/>
         </substituteset>
 
         <step name="submit">

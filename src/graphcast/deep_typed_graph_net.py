@@ -99,7 +99,6 @@ class DeepTypedGraphNet(hk.Module):
     policy=None,
     prevent_cse: bool = True,
     scan: bool = False,
-    remat_mlps: bool = False,
     edge_chunk_size: int = 0,
     name: str = "DeepTypedGraphNet",
   ):
@@ -139,8 +138,6 @@ class DeepTypedGraphNet(hk.Module):
       policy: remat policy.
       prevent_cse: Whether to prevent common subexpression elimination.
       scan: Whether to use scan to reduce compilation times.
-      remat_mlps: Whether to also rematerialize each MLP separately, so that the backward pass of a block keeps only
-        the inputs and outputs of its MLPs.
       edge_chunk_size: If positive, update edge sets with more edges in chunks of this many edges (see
         `typed_graph_net.GraphNetwork`).
       name: Name of the model.
@@ -172,7 +169,6 @@ class DeepTypedGraphNet(hk.Module):
     self._policy = policy
     self._prevent_cse = prevent_cse
     self._scan = scan
-    self._remat_mlps = remat_mlps
     self._edge_chunk_size = edge_chunk_size
 
     if aggregate_normalization:
@@ -228,11 +224,6 @@ class DeepTypedGraphNet(hk.Module):
         )
         return jraph.concatenated_args(mlp)
 
-    def maybe_remat_mlp(network):
-      if self._remat_mlps:
-        network = hk.remat(network, prevent_cse=self._prevent_cse)
-      return network
-
     def build_mlp_with_maybe_layer_norm(name, output_size):
       network = build_mlp(name, output_size)
       if self._use_layer_norm:
@@ -240,7 +231,7 @@ class DeepTypedGraphNet(hk.Module):
           axis=-1, create_scale=True, create_offset=True, name=name + "_layer_norm"
         )
         network = hk.Sequential([network, layer_norm])
-      return maybe_remat_mlp(network)
+      return network
 
     # The embedder graph network independently embeds edge and node features.
     if self._embed_edges:
@@ -329,14 +320,12 @@ class DeepTypedGraphNet(hk.Module):
     # The output MLPs converts edge/node latent features into the output sizes.
     output_kwargs = dict(
       embed_edge_fn=_build_update_fns_for_edge_types(
-        lambda name, size: maybe_remat_mlp(build_mlp(name, size)), graph_template, "decoder_edges_",
-        self._edge_output_size,
+        build_mlp, graph_template, "decoder_edges_", self._edge_output_size
       )
       if self._edge_output_size
       else None,
       embed_node_fn=_build_update_fns_for_node_types(
-        lambda name, size: maybe_remat_mlp(build_mlp(name, size)), graph_template, "decoder_nodes_",
-        self._node_output_size,
+        build_mlp, graph_template, "decoder_nodes_", self._node_output_size
       )
       if self._node_output_size
       else None,

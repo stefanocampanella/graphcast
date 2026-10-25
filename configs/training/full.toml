@@ -76,7 +76,7 @@ gnn_msg_steps = 8
 hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 # Grid nodes only for grid points connected by an edge (encoder senders, decoder receivers): the others only cost memory.
-connected_grid_nodes = false
+connected_grid_nodes = true
 # The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
 # (except for 2m temperature?)
 per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
@@ -126,8 +126,6 @@ remat_loss = false
 # Remat options of the blocks: prevent_cse (recommended by JAX outside of scan) and scan over message passing.
 prevent_cse = false
 scan = true
-# Rematerialize each MLP of the graph networks separately (less memory, more recomputation).
-remat_mlps = false
 # Update edge sets with more edges in chunks of this many edges (0: off).
 edge_chunk_size = 0
 

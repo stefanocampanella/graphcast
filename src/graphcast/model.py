@@ -256,7 +256,6 @@ class GraphCast(hk.Module, predictor_base.Predictor):
   _policy: Callable[..., bool] | None = None
   _prevent_cse: bool = False
   _scan: bool = False
-  _remat_mlps: bool = False
   _edge_chunk_size: int = 0
   _name: str | None = None
 
@@ -324,7 +323,6 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       policy=self._policy,
       prevent_cse=self._prevent_cse,
       scan=False,
-      remat_mlps=self._remat_mlps,
       edge_chunk_size=self._edge_chunk_size,
       name="grid2mesh_gnn",
     )
@@ -349,7 +347,6 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       policy=self._policy,
       prevent_cse=self._prevent_cse,
       scan=self._scan,
-      remat_mlps=self._remat_mlps,
       edge_chunk_size=self._edge_chunk_size,
       name="mesh_gnn",
     )
@@ -387,7 +384,6 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       policy=self._policy,
       prevent_cse=self._prevent_cse,
       scan=False,
-      remat_mlps=self._remat_mlps,
       edge_chunk_size=self._edge_chunk_size,
       name="mesh2grid_gnn",
     )
