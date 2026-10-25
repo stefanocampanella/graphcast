@@ -186,8 +186,9 @@ class ModelConfig:
         normalization for mesh2grid edges. If None, defaults to max edge length.
         This supports using pre-trained model weights with a different graph
         structure to what it was trained on.
-    ocean_grid_nodes: Whether the grid nodes are the unmasked (ocean) grid points only. The grid2mesh and mesh2grid
-        edges connect only those, so the masked (land) grid nodes only cost memory; their predictions are zero.
+    connected_grid_nodes: Whether the grid nodes are only the grid points connected by an edge: the senders of
+        grid2mesh edges and the receivers of mesh2grid edges (unmasked points only). Unconnected grid nodes only cost
+        memory. Predictions are made for unmasked points only, zero elsewhere.
   """
 
   latent_size: int
@@ -196,7 +197,7 @@ class ModelConfig:
   radius_query_fraction_edge_length: float
   mesh2grid_edge_normalization_factor: float | None = None
   per_variable_weights: dict | None = None
-  ocean_grid_nodes: bool = False
+  connected_grid_nodes: bool = False
 
 
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
@@ -438,10 +439,11 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     self._grid_lat = self._grid_lat.astype(np.float32)
     self._grid_lon = self._grid_lon.astype(np.float32)
 
-    # Grid nodes: all grid points, or the unmasked ones (indices into the flattened grid).
+    # Grid nodes: all grid points, or those connected by an edge (indices into the flattened grid): senders of the
+    # encoder (grid2mesh), receivers of the decoder (mesh2grid, unmasked points only).
     num_grid_points = self._grid_lat.shape[0] * self._grid_lon.shape[0]
-    if self._model_config.ocean_grid_nodes:
-      self._grid_node_indices = np.flatnonzero(self._grid_mask.reshape([-1]))
+    if self._model_config.connected_grid_nodes:
+      self._grid_node_indices = np.union1d(self._grid2mesh_edges()[0], self._mesh2grid_edges()[1])
     else:
       self._grid_node_indices = None
     # Grid point index -> grid node index (-1 for masked points without a node).
@@ -461,38 +463,51 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     if self._grid_node_indices is not None:
       self._grid_nodes_lon = self._grid_nodes_lon[self._grid_node_indices]
       self._grid_nodes_lat = self._grid_nodes_lat[self._grid_node_indices]
+      # Only nodes of unmasked grid points make predictions.
+      self._grid_node_is_unmasked = self._grid_mask.reshape([-1])[self._grid_node_indices]
 
   def _grid_points_to_nodes(self, grid_point_indices: np.ndarray) -> np.ndarray:
     """Grid point indices (into the flattened grid) of edges -> grid node indices."""
     grid_node_indices = self._grid_point_to_node[grid_point_indices]
-    assert (grid_node_indices >= 0).all(), "edges must connect unmasked grid points only"
+    assert (grid_node_indices >= 0).all(), "edges must connect grid points that have a grid node"
     return grid_node_indices
 
+  def _grid2mesh_edges(self) -> tuple[np.ndarray, np.ndarray]:
+    """grid2mesh edges, with grid point indices into the flattened grid (computed once)."""
+    if getattr(self, "_grid2mesh_edges_cache", None) is None:
+      # Create some edges according to distance between mesh and grid nodes, from unmasked grid points only.
+      assert self._grid_lat is not None and self._grid_lon is not None
+      self._grid2mesh_edges_cache = mesh_connectivity.radius_query_indices(
+        grid_latitude=self._grid_lat,
+        grid_longitude=self._grid_lon,
+        mesh=self._mesh_graph,
+        radius=self._query_radius,
+        mask=self._grid_mask,
+        workers=self._kdtree_workers,
+      )
+    return self._grid2mesh_edges_cache
+
+  def _mesh2grid_edges(self) -> tuple[np.ndarray, np.ndarray]:
+    """mesh2grid edges, with grid point indices into the flattened grid (computed once)."""
+    if getattr(self, "_mesh2grid_edges_cache", None) is None:
+      # Create some edges according to how the grid nodes are contained by mesh triangles.
+      self._mesh2grid_edges_cache = mesh_connectivity.get_mesh_to_grid_edges(
+        grid_latitude=self._grid_lat,
+        grid_longitude=self._grid_lon,
+        mesh=self._mesh_graph,
+        mask=self._grid_mask,
+      )
+    return self._mesh2grid_edges_cache
+
   def _get_grid2mesh_edges(self) -> tuple[np.ndarray, np.ndarray]:
-    # Create some edges according to distance between mesh and grid nodes.
-    # NOTICE: grid2mesh connectivity is not influenced by the grid mask.
-    assert self._grid_lat is not None and self._grid_lon is not None
-    grid_senders, mesh_receivers = mesh_connectivity.radius_query_indices(
-      grid_latitude=self._grid_lat,
-      grid_longitude=self._grid_lon,
-      mesh=self._mesh_graph,
-      radius=self._query_radius,
-      mask=self._grid_mask,
-      workers=self._kdtree_workers,
-    )
+    grid_senders, mesh_receivers = self._grid2mesh_edges()
     return self._grid_points_to_nodes(grid_senders), mesh_receivers
 
   def _get_mesh_edges(self) -> tuple[np.ndarray, np.ndarray]:
     return self._mesh_graph.edges
 
   def _get_mesh2grid_edges(self) -> tuple[np.ndarray, np.ndarray]:
-    # Create some edges according to how the grid nodes are contained by mesh triangles.
-    mesh_senders, grid_receivers = mesh_connectivity.get_mesh_to_grid_edges(
-      grid_latitude=self._grid_lat,
-      grid_longitude=self._grid_lon,
-      mesh=self._mesh_graph,
-      mask=self._grid_mask,
-    )
+    mesh_senders, grid_receivers = self._mesh2grid_edges()
     return mesh_senders, self._grid_points_to_nodes(grid_receivers)
 
   def _init_grid2mesh_graph(self) -> typed_graph.TypedGraph:
@@ -880,12 +895,13 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     grid_shape = (self._grid_lat.shape[0], self._grid_lon.shape[0])
     grid_node_outputs = grid_node_outputs[: self._num_grid_nodes, ...]
     if self._grid_node_indices is not None:
-      # Back to all grid points; masked points (no grid node) predict zero.
+      # Back to all grid points: the nodes of unmasked points only, other points predict zero.
       num_grid_points = grid_shape[0] * grid_shape[1]
+      unmasked = self._grid_node_is_unmasked
       grid_node_outputs = (
         jnp.zeros((num_grid_points,) + grid_node_outputs.shape[1:], grid_node_outputs.dtype)
-        .at[self._grid_node_indices]
-        .set(grid_node_outputs)
+        .at[self._grid_node_indices[unmasked]]
+        .set(grid_node_outputs[unmasked])
       )
     grid_outputs_lat_lon_leading = jax.lax.reshape(
       grid_node_outputs, grid_shape + grid_node_outputs.shape[1:]

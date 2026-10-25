@@ -75,8 +75,8 @@ latent_size = 512
 gnn_msg_steps = 8
 hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
-# Grid nodes for ocean grid points only (land points connect to nothing and only cost memory).
-ocean_grid_nodes = false
+# Grid nodes only for grid points connected by an edge (encoder senders, decoder receivers): the others only cost memory.
+connected_grid_nodes = false
 # The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
 # (except for 2m temperature?)
 per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}

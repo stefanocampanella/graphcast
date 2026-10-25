@@ -81,9 +81,10 @@ class ModelConfig(ApplicationConfig):
   radius_query_fraction_edge_length: Annotated[float, Field(gt=0)]
   per_variable_weights: dict[str, float] = Field(default_factory=dict)
   mesh2grid_edge_normalization_factor: Annotated[float, Field(gt=0)] | None = None
-  ocean_grid_nodes: bool = Field(
+  connected_grid_nodes: bool = Field(
     default=False,
-    description="Grid nodes for the unmasked (ocean) grid points only: the masked ones are connected to nothing.",
+    description="Grid nodes only for the grid points connected by an edge (encoder senders, decoder receivers): "
+    "the others only cost memory.",
   )
 
 
