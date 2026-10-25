@@ -132,7 +132,9 @@ least 52 GB of host memory left**; unrolled at most 70 km with 10 steps. With le
 unrolled networks and the 1-step encoder and decoder and made compute-bound steps about 35 % slower (median compute
 0.61 instead of 0.45 s; results/2026-10-24-final). c988ad3 restored them; the scan itself costs 3 % (8 steps) to 9 %
 (16 steps). The final run with c988ad3 is results/2026-10-24-final-v2 (`run_final.sh`, now with `-offload` variants
-and `model-coarse-msg8to16-unrolled`; see its REPORT.md).
+and `model-coarse-msg8to16-unrolled`; see its REPORT.md). Since eb044b9 the processor is a pure step function with
+per-step parameters created by `hk.lift`, the same with and without scan (checkpoints load with either setting); speed
+and memory fit as with c988ad3 (results/2026-10-25-lift: scan without offloading fits 35 of 50 memfit cases).
 
 ## What is measured
 

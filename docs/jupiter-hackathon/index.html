@@ -688,15 +688,19 @@
           </div>
           <div>
   <pre><code class="language-python" data-trim>
-  # DeepTypedGraphNet with scan: one step network,
-  # parameters stacked along a leading axis
-  processor_stack = hk.to_module(
-    hk.layer_stack(num_steps, name="steps")(step)
-  )(name="processor")
+  # DeepTypedGraphNet: one pure step, per-step parameters
+  # (the same with and without scan), scanned stacked
+  step = hk.transform(step_fn)
+  params = [hk.lift(step.init, name=f"processor_step_{i}")(
+              hk.maybe_next_rng_key(), features)
+            for i in range(num_steps)]
+  stacked = tree_map(lambda *p: jnp.stack(p), *params)
+  features, _ = jax.lax.scan(
+    lambda f, p: (step.apply(p, None, f), None), features, stacked)
   </code></pre>
-            <div class="note warn">The first version also stacked the unrolled networks and the 1-step encoder and decoder:
-              <strong>35 % slower steps</strong> (0.63 instead of 0.46 s), visible only once a run was compute bound.
-              Fixed; the final run and the demo were repeated.</div>
+            <div class="note warn">A first version (a layer stack) also stacked the unrolled networks and the 1-step encoder
+              and decoder: <strong>35 % slower steps</strong> (0.63 instead of 0.46 s), visible only once a run was compute
+              bound. Fixed; the final run and the demo were repeated. Now scan and unrolled share one parameter tree.</div>
           </div>
         </div>
       </section>
