@@ -148,6 +148,11 @@ class PolicyConfig(ApplicationConfig):
     default=False,
     description="Run the message passing steps of the processor in a scan instead of unrolling them.",
   )
+  remat_mlps: bool = Field(
+    default=False,
+    description="Also rematerialize each MLP of the graph networks separately: the backward pass of a block keeps "
+    "only the inputs and outputs of its MLPs.",
+  )
 
 
 class NormalizationConfig(ApplicationConfig):
