@@ -157,6 +157,8 @@ def memory_usage_summary(compiled_stats):
   summary["argument_size"] = compiled_stats.argument_size_in_bytes
   summary["output_size"] = compiled_stats.output_size_in_bytes
   summary["temp_size"] = compiled_stats.temp_size_in_bytes
+  # Pinned host memory for offloaded activations.
+  summary["host_temp_size"] = getattr(compiled_stats, "host_temp_size_in_bytes", 0)
   summary["total_size"] = (
     compiled_stats.temp_size_in_bytes
     + compiled_stats.argument_size_in_bytes
@@ -178,7 +180,9 @@ def run_analysis_and_report(func_aot):
   else:
     logger.info("Memory usage: unknown")
 
-  if cost_analysis is not None:
+  if isinstance(cost_analysis, list):
+    cost_analysis = cost_analysis[0] if cost_analysis else None
+  if cost_analysis is not None and "flops" in cost_analysis:
     logger.info(f"Cost: {cost_analysis['flops'] * 1e-12} TFLOPs")
   else:
     logger.info("Cost: unknown")

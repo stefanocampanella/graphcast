@@ -269,6 +269,7 @@ def train(
     return updated_params, next_opt_state, loss_and_diagnostics
 
   mp_prefetch = train_stream.options.multiprocessing_options is not None
+  compiled_train_step = None
   for current_step in range(latest_step, training_steps):
     step_start = time.perf_counter()
     batch = dataloader_utils.next_batch_on_device(
@@ -278,12 +279,11 @@ def train(
     )
     data_end = time.perf_counter()
     with jax.sharding.set_mesh(device_mesh):
-      params, opt_state, train_metrics = train_step(
-        params=params,
-        opt_state=opt_state,
-        data=batch,
-        static_data=static_data,
-      )
+      if compiled_train_step is None:
+        # Compile once explicitly to log the memory XLA plans for a step (device and host), then reuse it.
+        compiled_train_step = train_step.lower(params, opt_state, batch, static_data).compile()
+        cli_utils.run_analysis_and_report(compiled_train_step)
+      params, opt_state, train_metrics = compiled_train_step(params, opt_state, batch, static_data)
     # Wait for the step, so that checkpoint time does not include it (push_checkpoint would wait anyway).
     jax.block_until_ready(train_metrics)
     compute_end = time.perf_counter()
