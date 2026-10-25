@@ -26,6 +26,7 @@
         <tag name="no_offload">Disable activation offloading to pinned host memory</tag>
         <tag name="prevent_cse">Rematerialized blocks with prevent_cse (policy.prevent_cse = true)</tag>
         <tag name="scan">Message passing steps of the processor in a scan (policy.scan = true, the default of full.toml)</tag>
+        <tag name="ocean_grid_nodes">Grid nodes for ocean grid points only (model.ocean_grid_nodes = true)</tag>
         <tag name="remat_mlps">Rematerialize each MLP of the graph networks separately (policy.remat_mlps = true)</tag>
         <tag name="unrolled">Message passing steps of the processor unrolled (policy.scan = false)</tag>
         <tag name="offload">Offload the named activations: checkpoint with the policy around the whole loss (policy.remat_loss = true)</tag>
@@ -249,6 +250,7 @@
             <sub source="(?m)^scan = \w+" dest="scan = true" mode="regex" tag="scan"/>
             <sub source="(?m)^scan = \w+" dest="scan = false" mode="regex" tag="unrolled"/>
             <sub source="(?m)^remat_mlps = \w+" dest="remat_mlps = true" mode="regex" tag="remat_mlps"/>
+            <sub source="(?m)^ocean_grid_nodes = \w+" dest="ocean_grid_nodes = true" mode="regex" tag="ocean_grid_nodes"/>
         </substituteset>
 
         <step name="submit">

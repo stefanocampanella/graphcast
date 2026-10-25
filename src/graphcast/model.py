@@ -186,6 +186,8 @@ class ModelConfig:
         normalization for mesh2grid edges. If None, defaults to max edge length.
         This supports using pre-trained model weights with a different graph
         structure to what it was trained on.
+    ocean_grid_nodes: Whether the grid nodes are the unmasked (ocean) grid points only. The grid2mesh and mesh2grid
+        edges connect only those, so the masked (land) grid nodes only cost memory; their predictions are zero.
   """
 
   latent_size: int
@@ -194,6 +196,7 @@ class ModelConfig:
   radius_query_fraction_edge_length: float
   mesh2grid_edge_normalization_factor: float | None = None
   per_variable_weights: dict | None = None
+  ocean_grid_nodes: bool = False
 
 
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
@@ -431,13 +434,35 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     self._grid_lat = self._grid_lat.astype(np.float32)
     self._grid_lon = self._grid_lon.astype(np.float32)
 
+    # Grid nodes: all grid points, or the unmasked ones (indices into the flattened grid).
+    num_grid_points = self._grid_lat.shape[0] * self._grid_lon.shape[0]
+    if self._model_config.ocean_grid_nodes:
+      self._grid_node_indices = np.flatnonzero(self._grid_mask.reshape([-1]))
+    else:
+      self._grid_node_indices = None
+    # Grid point index -> grid node index (-1 for masked points without a node).
+    self._grid_point_to_node = np.full(num_grid_points, -1, dtype=np.int64)
+    if self._grid_node_indices is None:
+      self._grid_point_to_node[:] = np.arange(num_grid_points)
+    else:
+      self._grid_point_to_node[self._grid_node_indices] = np.arange(self._grid_node_indices.shape[0])
+
     # Initialized the counters.
-    self._num_grid_nodes = self._grid_lat.shape[0] * self._grid_lon.shape[0]
+    self._num_grid_nodes = num_grid_points if self._grid_node_indices is None else self._grid_node_indices.shape[0]
 
     # Initialize lat and lon for the grid.
     grid_nodes_lon, grid_nodes_lat = np.meshgrid(self._grid_lon, self._grid_lat)
     self._grid_nodes_lon = grid_nodes_lon.reshape([-1]).astype(np.float32)
     self._grid_nodes_lat = grid_nodes_lat.reshape([-1]).astype(np.float32)
+    if self._grid_node_indices is not None:
+      self._grid_nodes_lon = self._grid_nodes_lon[self._grid_node_indices]
+      self._grid_nodes_lat = self._grid_nodes_lat[self._grid_node_indices]
+
+  def _grid_points_to_nodes(self, grid_point_indices: np.ndarray) -> np.ndarray:
+    """Grid point indices (into the flattened grid) of edges -> grid node indices."""
+    grid_node_indices = self._grid_point_to_node[grid_point_indices]
+    assert (grid_node_indices >= 0).all(), "edges must connect unmasked grid points only"
+    return grid_node_indices
 
   def _get_grid2mesh_edges(self) -> tuple[np.ndarray, np.ndarray]:
     # Create some edges according to distance between mesh and grid nodes.
@@ -451,7 +476,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       mask=self._grid_mask,
       workers=self._kdtree_workers,
     )
-    return grid_senders, mesh_receivers
+    return self._grid_points_to_nodes(grid_senders), mesh_receivers
 
   def _get_mesh_edges(self) -> tuple[np.ndarray, np.ndarray]:
     return self._mesh_graph.edges
@@ -464,7 +489,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       mesh=self._mesh_graph,
       mask=self._grid_mask,
     )
-    return mesh_senders, grid_receivers
+    return mesh_senders, self._grid_points_to_nodes(grid_receivers)
 
   def _init_grid2mesh_graph(self) -> typed_graph.TypedGraph:
     """Build Grid2Mesh graph."""
@@ -834,6 +859,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     grid_node_features = xarray_jax.unwrap(grid_xarray_lat_lon_leading.data).reshape(
       (-1,) + grid_xarray_lat_lon_leading.data.shape[2:]
     )
+    if self._grid_node_indices is not None:
+      grid_node_features = grid_node_features[self._grid_node_indices]
     return grid_node_features
 
   def _grid_node_outputs_to_prediction(
@@ -848,6 +875,14 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     assert self._grid_lat is not None and self._grid_lon is not None
     grid_shape = (self._grid_lat.shape[0], self._grid_lon.shape[0])
     grid_node_outputs = grid_node_outputs[: self._num_grid_nodes, ...]
+    if self._grid_node_indices is not None:
+      # Back to all grid points; masked points (no grid node) predict zero.
+      num_grid_points = grid_shape[0] * grid_shape[1]
+      grid_node_outputs = (
+        jnp.zeros((num_grid_points,) + grid_node_outputs.shape[1:], grid_node_outputs.dtype)
+        .at[self._grid_node_indices]
+        .set(grid_node_outputs)
+      )
     grid_outputs_lat_lon_leading = jax.lax.reshape(
       grid_node_outputs, grid_shape + grid_node_outputs.shape[1:]
     )
