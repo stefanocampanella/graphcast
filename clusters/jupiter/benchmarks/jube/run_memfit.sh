@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Submit the GPU memory fit experiments (memfit sweep at all 50 levels, 30 steps, one repetition) into
-# results/<date>-<name>/: every remat setting with and without activation offloading (policy.remat_loss).
-#   unrolled             processor steps unrolled
-#   unrolled-preventcse  unrolled with prevent_cse
-#   scan                 processor steps in a scan over stacked parameters
-# scan-offload-* repeat scan-offload with less host memory for the loader (small buffers, 1 or 0 Grain workers).
-# Each with "-offload" (tag offload: policy around the whole loss) and "-nooffload" (tag no_remat_loss).
+# results/<date>-<name>/, for the settings that matter for GPU memory. The defaults of full.toml: processor in a
+# scan, grid nodes only for connected grid points, nothing offloaded, no edge chunks.
+#   unrolled                          processor steps unrolled
+#   scan                              the defaults
+#   scan-allgrid                      grid nodes for all grid points (tag all_grid_nodes)
+#   scan-chunks256k, scan-chunks1m    edge updates in chunks of 262144 or 1048576 edges
+#   scan-offload-0workers             offloading, with Grain threads only (less host memory for the loader)
+#   scan-offload-chunks256k-0workers  offloading and edge chunks: the largest models
+# Every case logs the memory XLA plans for a step ("Memory usage" in task-0.err), also when it does not fit.
 # Usage: ./run_memfit.sh [DATE [NAME]]   (run from this directory; DATE defaults to today, NAME to "memfit")
 set -euo pipefail
 DATE=${1:-$(date +%F)}
@@ -13,16 +16,13 @@ ROOT="results/$DATE-${2:-memfit}"
 mkdir -p "$ROOT"
 
 EXPERIMENTS=(
-    "unrolled-offload                 unrolled offload"
-    "unrolled-nooffload               unrolled no_remat_loss"
-    "unrolled-preventcse-offload      unrolled prevent_cse offload"
-    "unrolled-preventcse-nooffload    unrolled prevent_cse no_remat_loss"
-    "scan-offload                     scan offload"
-    "scan-nooffload                   scan no_remat_loss"
-    # Offloading with less host memory taken by the loader: small buffers, 1 Grain worker, threads only.
-    "scan-offload-smallbuffers        scan offload small_buffers"
-    "scan-offload-1worker             scan offload small_buffers one_worker"
-    "scan-offload-0workers            scan offload small_buffers no_workers"
+    "unrolled                          unrolled no_remat_loss"
+    "scan                              scan no_remat_loss"
+    "scan-allgrid                      scan no_remat_loss all_grid_nodes"
+    "scan-chunks256k                   scan no_remat_loss edge_chunks"
+    "scan-chunks1m                     scan no_remat_loss edge_chunks_1m"
+    "scan-offload-0workers             scan offload small_buffers no_workers"
+    "scan-offload-chunks256k-0workers  scan offload small_buffers no_workers edge_chunks"
 )
 
 {
