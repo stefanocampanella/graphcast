@@ -2,7 +2,7 @@
 
 The 5000-step demo training (`configs/training/demo_5000.toml`: 500 warm-up steps, cosine decay; 8 nodes, 32 samples
 per step, 10 depth levels, zarr_v2 8x2, 8 message passing steps, processor in a scan, connected grid nodes) once per
-uniform mesh, code 53ddb9a (`clusters/jupiter/slurm/mesh_study.sh`). Only the mesh changes; 35 km and 30 km (*)
+uniform mesh, code 451fa9e (`clusters/jupiter/slurm/mesh_study.sh`). Only the mesh changes; 35 km and 30 km (*)
 update edges in chunks of 262144 (needed to fit in GPU memory; same results, slower). The parameters do not depend on
 the mesh: every run starts from the same weights (seed 42) and reads the same samples in the same order. Training
 loss only (no validation), one run per mesh, no tuning: a first clue, not a conclusion.

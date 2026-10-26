@@ -1,6 +1,6 @@
 # GraphCast training benchmark on JUPITER: final results (2026-10-22, final-v2)
 
-Code 0bfe880 (message passing fixed in f43631e, `XLA_PYTHON_CLIENT_MEM_FRACTION=.95`). Coarse mesh, 8 message
+Code 3b06cdc (message passing fixed in 78997d4, `XLA_PYTHON_CLIENT_MEM_FRACTION=.95`). Coarse mesh, 8 message
 passing steps, 10 depth levels and zarr_v2 8x2 unless stated; 1024 steps per job, two repetitions per case, step
 statistics over steps 10 to 1023. 162 jobs: 130 ok, 8 stopped (cancelled at 912 to 960 steps, statistics over the
 steps done), 24 out of host memory (all expected, see below). 111.6 node-hours.
@@ -14,7 +14,7 @@ node GB = peak node memory used (of 857 GB); GPU % = mean utilization.
 
 - **Training is compute bound only with zarr_v2 and 8 Grain workers x 2 threads**: 0.47 s per step, 0.02 s data
   stall, GPUs 94 % busy at 415 W, 8.5 samples/s per node. Every other loader setting makes the GPUs wait for data.
-  These settings are now the defaults (`.env`, 1abee0e).
+  These settings are now the defaults (`.env`, 76ab3de).
 - **The model computes a step in about 0.44 s** (median) with 8 message passing steps; 16 steps cost only about
   15 % more (0.50 s). The fine mesh does not fit in GPU memory.
 - **XLA/JAX settings make no difference** to steady-state steps; PGLE adds 30 s of startup; disabling InfiniBand
@@ -128,7 +128,7 @@ more than 8. All these jobs ran in the slow regime (step 0.88 s, see below), so 
   files use all ranks. For the most starved cases (0x4, 1x2) even the median compute includes waits.
 - **GPU memory** in the tables is JAX's preallocation (95 %), not use.
 
-## Recommended settings (applied, 1abee0e)
+## Recommended settings (applied, 76ab3de)
 
 zarr_v2 on `/e/scratch/training2647/graphcast_data/zarr_v2`, 8 Grain workers x 2 threads, buffers of 2,
 72 CPUs per task, coarse mesh, 8 message passing steps (16 for the original GraphCast at +15 % compute),

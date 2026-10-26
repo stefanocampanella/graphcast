@@ -128,15 +128,15 @@ time limit, `timeout` in `summarize.py`); **scan without offloading fits 50 km w
 least 52 GB of host memory left**; unrolled at most 70 km with 10 steps. With less host memory for the loader
 (small buffers, 1 or 0 Grain workers), offloading fits 40 km with 14 steps and 35 km with 10, at 3 to 10 s per step.
 
-"At the same speed" held only while the loader limited the steps: the first layer stack (621aa19) also wrapped the
+"At the same speed" held only while the loader limited the steps: the first layer stack (c04cae0) also wrapped the
 unrolled networks and the 1-step encoder and decoder and made compute-bound steps about 35 % slower (median compute
-0.61 instead of 0.45 s; results/2026-10-24-final). c988ad3 restored them; the scan itself costs 3 % (8 steps) to 9 %
-(16 steps). The final run with c988ad3 is results/2026-10-24-final-v2 (`run_final.sh`, now with `-offload` variants
-and `model-coarse-msg8to16-unrolled`; see its REPORT.md). Since eb044b9 the processor is a pure step function with
+0.61 instead of 0.45 s; results/2026-10-24-final). 2189def restored them; the scan itself costs 3 % (8 steps) to 9 %
+(16 steps). The final run with 2189def is results/2026-10-24-final-v2 (`run_final.sh`, now with `-offload` variants
+and `model-coarse-msg8to16-unrolled`; see its REPORT.md). Since 988d7d0 the processor is a pure step function with
 per-step parameters created by `hk.lift`, the same with and without scan (checkpoints load with either setting); speed
-and memory fit as with c988ad3 (results/2026-10-25-lift: scan without offloading fits 35 of 50 memfit cases).
+and memory fit as with 2189def (results/2026-10-25-lift: scan without offloading fits 35 of 50 memfit cases).
 Training logs the memory XLA plans for a step (`Memory usage: {... 'host_temp_size' ..., 'temp_size' ...}` in
-task-0.err, 7a97afc): with offloading the GPU needs 1 to 15 GiB less (mostly 5 to 9 GiB, about 10 %) for 8 to 87 GiB of
+task-0.err, e018542): with offloading the GPU needs 1 to 15 GiB less (mostly 5 to 9 GiB, about 10 %) for 8 to 87 GiB of
 pinned host memory, with the same losses (results/2026-10-25-offload-check); cases above about 83.5 GiB fail.
 Of further options (results/2026-10-25-memopt), `model.connected_grid_nodes` (grid nodes only for grid points that
 an edge connects; identical losses) saves 4.7 GiB (median) and is on by default (tag `all_grid_nodes` turns it off);
@@ -177,7 +177,7 @@ prefetch warm-up):
   A job can also finish training and then hang at exit; cancelling its training step (`scancel <job>.0`) lets the
   job script still report. `summarize.py` counts a job as ok if training finished after 1024 steps.
 
-Results measured before f43631e (2026-10-22) are not valid: `DeepTypedGraphNet` discarded all message passing
+Results measured before 78997d4 (2026-10-22) are not valid: `DeepTypedGraphNet` discarded all message passing
 steps, so the model hardly computed (about 25 ms per step regardless of mesh and message passing steps), training
 looked loader bound with idle GPUs, and the XLA and model sweeps showed no differences.
 

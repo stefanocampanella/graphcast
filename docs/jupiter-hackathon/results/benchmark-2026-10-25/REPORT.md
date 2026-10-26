@@ -1,13 +1,13 @@
 # GraphCast training benchmark on JUPITER: final results (2026-10-25, final-v3)
 
-Code 53ddb9a, the defaults of `full.toml`: processor in a scan over per-step parameters (`policy.scan = true`),
+Code 451fa9e, the defaults of `full.toml`: processor in a scan over per-step parameters (`policy.scan = true`),
 grid nodes only for connected grid points (`model.connected_grid_nodes = true`), nothing offloaded
 (`policy.remat_loss = false`), `XLA_PYTHON_CLIENT_MEM_FRACTION=.95`. Coarse mesh, 8 message passing steps, 10 depth
 levels and zarr_v2 8x2 unless stated; 1024 steps per job, two repetitions per case, step statistics over steps 10 to
 1023. 172 jobs: 148 ok, 20 out of host memory, 4 failed (all 4- and 8-worker cases at all levels, see below).
 Per-case numbers: `summary_cases.csv`; per job: `summary_jobs.csv` (both from `summarize.py`).
-Previous final runs: results/2026-10-24-final-v2 (code c988ad3, all jobs under file system load) and
-results/2026-10-22-final-v2 (code 0bfe880, processor unrolled).
+Previous final runs: results/2026-10-24-final-v2 (code 2189def, all jobs under file system load) and
+results/2026-10-22-final-v2 (code 3b06cdc, processor unrolled).
 
 Columns: step = mean step time; stall = mean over steps of the longest data wait of any rank; compute = median
 compute time of a step (rank 0); samples/s = training samples per second over all GPUs; node GB = peak node memory
@@ -98,7 +98,7 @@ changing; the compilation cache gave the shortest startup (72 and 79 s).
 |---|---|---|---|---|---|
 | scan (default), median compute [s] | 0.436 | 0.470 | 0.488 | 0.502 | 0.537 |
 | unrolled, median compute [s] | 0.426 | 0.419 | 0.474 | 0.478 | 0.505 |
-| scan, 24 Oct (c988ad3) [s] | 0.455 | 0.484 | 0.493 | 0.527 | 0.560 |
+| scan, 24 Oct (2189def) [s] | 0.455 | 0.484 | 0.493 | 0.527 | 0.560 |
 
 The scan costs 2 to 6 % (the unrolled 10-step value is low against 8 steps; one case, two repetitions); 16 message
 passing steps cost 23 % more than 8 with the scan, 19 % unrolled.

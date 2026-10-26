@@ -1,6 +1,6 @@
 # GPU memory fit at all 50 levels, current code (memfit-v3, 2026-10-25)
 
-Code 53ddb9a. memfit: 10 meshes x 8 to 16 message passing steps, all 50 levels, 30 steps, one repetition. Defaults:
+Code 451fa9e. memfit: 10 meshes x 8 to 16 message passing steps, all 50 levels, 30 steps, one repetition. Defaults:
 processor in a scan, grid nodes only for connected grid points, nothing offloaded, no edge chunks; zarr_v3_lexi 2x2
 (the offloading experiments: Grain threads only with small buffers). Every case logs the GPU memory XLA plans for a
 step, also when it does not fit.
