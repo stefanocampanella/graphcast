@@ -1,4 +1,3 @@
-import calendar
 import operator
 from collections.abc import Sequence
 from typing import SupportsIndex
@@ -9,6 +8,19 @@ import numpy as np
 import xarray as xr
 
 InputsTargetsForcings = tuple[xr.Dataset, xr.Dataset, xr.Dataset]
+
+# Day of year of February 29 (1-based).
+_FEB_29 = 60
+
+
+def climatology_index(time: xr.DataArray) -> np.ndarray:
+  """Return the index of each date in a 365-day climatology with time coordinates 0, ..., 364.
+
+  In leap years, February 29 takes the values of February 28 and later days are shifted back by one.
+  """
+  dayofyear = time.dt.dayofyear.values
+  after_feb_28 = time.dt.is_leap_year.values & (dayofyear >= _FEB_29)
+  return dayofyear - 1 - after_feb_28
 
 
 class ARCOTimeseriesSource(grain.RandomAccessDataSource):
@@ -53,29 +65,16 @@ class ARCOTimeseriesSource(grain.RandomAccessDataSource):
       idx = self._dataset.get_index("time").get_loc(date)
     dataset = self._dataset.isel(time=slice(idx, idx + self._window_size))
 
-    def get_climatology_index(dt) -> list[int]:
-
-      def _handle_leap_years(dayofyear: int, year: int):
-        if calendar.isleap(year):
-          if dayofyear < 58:
-            return dayofyear - 1
-          else:
-            return dayofyear - 2
-        else:
-          return dayofyear - 1
-
-      return list(map(_handle_leap_years, dt.dayofyear, dt.year))
-
     # It is crucial to slice datasets before filling missing values, or to fill missing values after
     # extract_inputs_targets_forcings. Otherwise, each reader would need to load the entire of it into memory (and
     # even a single copy might be too large, e.g., for ARCO-OCEAN).
 
     # Slice climatology and fill missing values
-    climatology = self._climatology.isel(time=get_climatology_index(dataset["time"].dt))
+    climatology = self._climatology.isel(time=climatology_index(dataset["time"]))
     climatology = climatology.fillna(value=0.0)
 
     # Slice anomaly_std, fill missing values and clip to avoid division by zero
-    anomaly_std = self._anomaly_std.isel(time=get_climatology_index(dataset["time"].dt))
+    anomaly_std = self._anomaly_std.isel(time=climatology_index(dataset["time"]))
     anomaly_std = anomaly_std.fillna(value=1.0)
     anomaly_std = anomaly_std.clip(min=1e-16)
 

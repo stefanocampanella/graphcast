@@ -4,6 +4,7 @@ import click
 from absl import flags
 
 from graphcast.basis import compute
+from graphcast.downloader import download
 from graphcast.geospatial_mesh import make_ocean_mesh
 from graphcast.training import train
 
@@ -42,6 +43,7 @@ def cli(
 cli.add_command(train)
 cli.add_command(make_ocean_mesh)
 cli.add_command(compute)
+cli.add_command(download)
 
 if __name__ == "__main__":
   cli()

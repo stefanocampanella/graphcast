@@ -1,0 +1,11 @@
+# Standardized anomalies in Zarr v3: shards of 8 (with depth) or 256 timesteps (as zarr_v3 in JUBE).
+zarr_format = 3
+time_shard = 256
+depth_time_shard = 8
+subchunk_write_order = "morton"
+# Dask threads: about 8 GB of memory each.
+num_workers = 8
+
+# fsspec options of the inputs; uncomment for anonymous S3 access.
+[storage_options]
+#anon = true

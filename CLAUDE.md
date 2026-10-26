@@ -22,6 +22,11 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds the dataset, climatology,
   anomaly_std, tendency_std (SquashFS or directories) and `GEOMETRY_DIR` under `/data` in the container.
   Use `--reservation=develbooster` for short tests on up to 4 nodes.
+- Standardized anomaly dataset (login node, no Slurm): `scripts/download.sh DATASET CLIMATOLOGY ANOMALY_STD OUTPUT
+  [--config configs/download/{zarr_v2,zarr_v3,zarr_v3_lexi}.toml]` runs `graphcast download` (`downloader.py`).
+  Inputs are local paths or fsspec URLs (`s3://ogs-arco-ocean/{datasets,climatology,anomaly_std}/res=0p25`; local
+  copies in `/e/fscratch/e-dev-2026d09-119/ogs-arco-ocean-50*`); it applies the preprocessing of
+  `ARCOTimeseriesSource` once. About 4 h and 65 GB of memory (8 threads) for the full 10.5 TB from local inputs.
 - Mesh-size study: `clusters/jupiter/slurm/mesh_study.sh STUDY MESH[:EDGE_CHUNK_SIZE[:HH:MM:SS[:lowmem]]] ...`.
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run graphcast_training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).

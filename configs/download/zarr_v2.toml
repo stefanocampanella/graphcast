@@ -1,0 +1,8 @@
+# Standardized anomalies in Zarr v2: one chunk per timestep and depth level (as zarr_v2 in JUBE).
+zarr_format = 2
+# Dask threads: about 8 GB of memory each.
+num_workers = 8
+
+# fsspec options of the inputs; uncomment for anonymous S3 access.
+[storage_options]
+#anon = true

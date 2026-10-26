@@ -15,6 +15,7 @@
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
+* Read the single standardized anomaly dataset written by `graphcast download` in the dataloader, instead of dataset, climatology and anomaly_std. **HIGH PRIORITY**
 * Implement CLI and document train.slurm script the same way as for the other scripts (e.g., download_dataset.slurm). (Medium priority)
 * Debug PGLE, currently broken. (Medium priority) 
 * Simplify SLURM scripts by forwarding arguments to Python CLI, without building flags using getopt. (Medium priority)

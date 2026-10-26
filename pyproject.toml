@@ -2,6 +2,8 @@
 name = "graphcast"
 version = "0.1"
 dependencies = [
+    # crt: credentials from `aws login` sessions, read by s3fs
+    "botocore[crt]",
     "cartopy >= 0.25.0",
     "cftime",
     "chex",
@@ -9,6 +11,7 @@ dependencies = [
     "dask",
     "dm-haiku",
     "dm-tree",
+    "fsspec",
     # Should be kept in sync with version used in spack containerize
     "gdal-utils == 3.13.1 ; sys_platform == 'linux'",
     "gdal[numpy] == 3.13.1 ; sys_platform == 'linux'",
@@ -35,6 +38,7 @@ dependencies = [
     "pyproj",
     "rich",
     "rtree",
+    "s3fs",
     "scipy",
     "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
     "tensorboard",
