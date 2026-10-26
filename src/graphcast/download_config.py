@@ -27,10 +27,14 @@ class DownloadConfig(ApplicationConfig):
   depth_time_shard: PositiveInt = Field(default=8, description="Zarr v3: timesteps per shard of variables with depth")
   subchunk_write_order: Literal["morton", "lexicographic", "colexicographic", "unordered"] = Field(
     default="morton",
-    description="Zarr v3: order of the chunks within a shard. It is used when writing and not stored in metadata.",
+    description="Zarr v3: order of the chunks within a shard. It is used when writing and not stored in metadata. "
+    "TensorStore writes lexicographic order only: other orders are written (more slowly) by zarr-python.",
   )
   compressor: CompressorConfig = Field(default_factory=CompressorConfig)
   num_workers: PositiveInt = Field(default=8, description="Dask threads, each holding a few GB (one shard per array)")
+  io_threads: PositiveInt = Field(
+    default=16, description="TensorStore threads for reading, decoding, encoding and writing local stores"
+  )
 
   @model_validator(mode="after")
   def check_v3_settings(self):

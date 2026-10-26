@@ -12,11 +12,14 @@ import time
 
 import click
 import dask
+import dask.array
 import fsspec
 import humanize
 import numcodecs
 import numpy as np
+import tensorstore
 import xarray as xr
+import xarray_tensorstore
 from dask.diagnostics import ProgressBar
 from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec
 
@@ -31,14 +34,32 @@ _COORDS_CLEVEL = 5
 _TIME_COORD_CHUNK = 128
 
 
-def open_input(path: str, storage_options: dict) -> xr.Dataset:
-  """Open a Zarr store with consolidated metadata, given as a local path or an fsspec URL (e.g. s3://...)."""
+def get_tensorstore_context(configs: DownloadConfig) -> tensorstore.Context:
+  return tensorstore.Context({
+    "data_copy_concurrency": {"limit": configs.io_threads},
+    "file_io_concurrency": {"limit": configs.io_threads},
+  })
+
+
+def open_input(path: str, storage_options: dict, context: tensorstore.Context | None = None) -> xr.Dataset:
+  """Open a Zarr store with consolidated metadata, given as a local path or an fsspec URL (e.g. s3://...).
+
+  With a TensorStore context, the time-dependent variables of local stores are read with TensorStore, which is
+  several times faster than zarr-python. Static variables are small and need CF decoding (e.g. boolean masks), which
+  xarray_tensorstore does not apply: they are read with zarr-python, as remote stores.
+  """
   logger.info(f"Opening {path}")
   is_local = fsspec.utils.get_protocol(path) in ("file", "local")
   # chunks=None keeps lazily indexed arrays: Dask chunks are chosen later, one task per output chunk.
-  return xr.open_zarr(
+  dataset = xr.open_zarr(
     path, consolidated=True, chunks=None, storage_options=None if is_local else storage_options
   )
+  if is_local and context is not None:
+    tensorstores = xarray_tensorstore.open_zarr(path, context=context, mask_and_scale=False, consolidated=True)
+    dataset = dataset.assign(
+      {name: tensorstores[name] for name, values in dataset.data_vars.items() if "time" in values.dims}
+    )
+  return dataset
 
 
 def _write_chunks(variable: xr.Variable, configs: DownloadConfig) -> dict[str, int]:
@@ -133,6 +154,46 @@ def get_encoding(dataset: xr.Dataset, configs: DownloadConfig) -> dict[str, dict
   return encoding
 
 
+def write(
+    standardized: xr.Dataset,
+    output_path: pathlib.Path,
+    configs: DownloadConfig,
+    context: tensorstore.Context,
+    overwrite: bool = False,
+):
+  """Write to a local Zarr store: metadata and coordinates with zarr-python, data variables with TensorStore.
+
+  TensorStore writes several times faster than zarr-python, but only with the chunks of each shard in lexicographic
+  order: Zarr v3 stores with another order are written entirely with zarr-python.
+  """
+  to_zarr_kwargs = {
+    "mode": "w" if overwrite else "w-",
+    "encoding": get_encoding(standardized, configs),
+    "zarr_format": configs.zarr_format,
+    "consolidated": True,
+  }
+  if configs.zarr_format == 3 and configs.subchunk_write_order != "lexicographic":
+    logger.info(f"Writing with zarr-python (TensorStore cannot write {configs.subchunk_write_order} order)")
+    standardized.to_zarr(output_path, **to_zarr_kwargs)
+    return
+  # Without computing, to_zarr writes metadata and in-memory (coordinate) arrays only.
+  standardized.to_zarr(output_path, compute=False, **to_zarr_kwargs)
+  driver = "zarr3" if configs.zarr_format == 3 else "zarr"
+  names = list(standardized.data_vars)
+  targets = [
+    tensorstore.open(
+      {"driver": driver, "kvstore": {"driver": "file", "path": str(output_path / name)}},
+      context=context,
+      open=True,
+      write=True,
+    )
+    for name in names
+  ]
+  dask.array.store(
+    [standardized[name].data for name in names], [target.result() for target in targets], lock=False
+  )
+
+
 @click.command()
 @click.argument("dataset_path", metavar="DATASET", type=str)
 @click.argument("climatology_path", metavar="CLIMATOLOGY", type=str)
@@ -179,20 +240,14 @@ def download(
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {configs!r}")
 
-  dataset = open_input(dataset_path, configs.storage_options)
-  climatology = open_input(climatology_path, configs.storage_options)
-  anomaly_std = open_input(anomaly_std_path, configs.storage_options)
+  context = get_tensorstore_context(configs)
+  dataset = open_input(dataset_path, configs.storage_options, context)
+  climatology = open_input(climatology_path, configs.storage_options, context)
+  anomaly_std = open_input(anomaly_std_path, configs.storage_options, context)
 
   standardized = standardize(dataset, climatology, anomaly_std, configs)
-  encoding = get_encoding(standardized, configs)
   logger.info(f"Writing {humanize.naturalsize(standardized.nbytes)} (uncompressed) to {output_path}")
   start_time = time.perf_counter()
   with dask.config.set(scheduler="threads", num_workers=configs.num_workers), ProgressBar(dt=5):
-    standardized.to_zarr(
-      output_path,
-      mode="w" if overwrite else "w-",
-      encoding=encoding,
-      zarr_format=configs.zarr_format,
-      consolidated=True,
-    )
+    write(standardized, output_path, configs, context, overwrite=overwrite)
   logger.info(f"Done in {humanize.precisedelta(time.perf_counter() - start_time)}")

@@ -48,6 +48,7 @@ dependencies = [
     "trimesh",
     "treescope",
     "xarray",
+    "xarray-tensorstore",
     "xprof",
     "zarr",
 ]
