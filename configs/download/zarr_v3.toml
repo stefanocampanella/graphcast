@@ -6,6 +6,7 @@ subchunk_write_order = "morton"
 # Dask threads: about 8 GB of memory each.
 num_workers = 8
 
-# fsspec options of the inputs; uncomment for anonymous S3 access.
+# fsspec options of the inputs: an AWS profile, or anonymous S3 access.
 [storage_options]
+#profile = "xarray-s3-writer"
 #anon = true

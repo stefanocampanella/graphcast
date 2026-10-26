@@ -45,5 +45,7 @@ source "$ENV_FILE"
 set +a
 APPTAINER_IMAGE=${APPTAINER_IMAGE:-$PROJECT_DIR/graphcast.sif}
 [[ -f $APPTAINER_IMAGE && -r $APPTAINER_IMAGE ]] || fail "image is not readable: $APPTAINER_IMAGE"
+# AWS profiles may run a credential_process helper installed in ~/.local/bin (e.g. aws_signing_helper).
+export APPTAINERENV_PREPEND_PATH=${APPTAINERENV_PREPEND_PATH:-$HOME/.local/bin}
 
 exec apptainer exec "$APPTAINER_IMAGE" graphcast download "$@"
