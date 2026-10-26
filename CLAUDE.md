@@ -30,8 +30,9 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `/e/fscratch/e-dev-2026d09-119/ogs-arco-ocean-50*`): `sbatch clusters/jupiter/slurm/download.slurm` with the same
   arguments. Local stores are read and written with TensorStore (zarr-python caps at ~0.85 GB/s, ~5 cores, whatever
   the threads); TensorStore writes shards in lexicographic order only, so `zarr_v3` (morton) is written by
-  zarr-python. Full 10.5 TB (about 5 TB on disk) on a booster node: v3 lexicographic ~0.6 h, v2 ~1 h, v3 morton
-  ~1.9 h; on a login node (20-core, 143 GiB user quota) use 8 Dask and 16 I/O threads: v3 lexicographic ~1 h.
+  zarr-python. Full 10.5 TB (5.1 TB on disk), three booster jobs at once: v3 lexicographic 34 min, v2 and v3 morton
+  2 h each; on a login node (20-core, 143 GiB user quota) use 8 Dask and 16 I/O threads: v3 lexicographic ~1 h.
+  Outputs (26 Oct 2026): `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3,zarr_v3_lexi}`.
 - Mesh-size study: `clusters/jupiter/slurm/mesh_study.sh STUDY MESH[:EDGE_CHUNK_SIZE[:HH:MM:SS[:lowmem]]] ...`.
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run graphcast_training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
