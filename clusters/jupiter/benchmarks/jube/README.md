@@ -143,6 +143,12 @@ an edge connects; identical losses) saves 4.7 GiB (median) and is on by default 
 `policy.edge_chunk_size` (edges in rematerialized chunks; tags `edge_chunks`, `edge_chunks_512k`, `edge_chunks_1m`)
 saves 2 to 11 GiB (median; up to 20) for 7 to 35 % more compute; rematerializing each MLP saved nothing.
 
+Results with the current defaults (2026-10-25): results/2026-10-25-final-v3 (`run_final.sh`; zarr_v2 8x2 at 0.48 s
+per step, compute bound; the scan costs 2 to 6 %) and results/2026-10-25-memfit-v3 (`run_memfit.sh`, 7 memory
+settings; with edge chunks of 262144, 40 km fits 16 message passing steps and 35 km 12 at all levels; the fine mesh
+fits with none). The demo training on 9 meshes (`clusters/jupiter/slurm/mesh_study.sh`, runs/mesh_study/REPORT.md)
+shows finer meshes lowering the loss of temperature, salinity and currents and raising that of sea surface height.
+
 ## What is measured
 
 `graphcast train` logs one line per step:
