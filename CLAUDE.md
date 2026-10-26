@@ -22,13 +22,16 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds the dataset, climatology,
   anomaly_std, tendency_std (SquashFS or directories) and `GEOMETRY_DIR` under `/data` in the container.
   Use `--reservation=develbooster` for short tests on up to 4 nodes.
-- Standardized anomaly dataset (login node, no Slurm): `scripts/download.sh DATASET CLIMATOLOGY ANOMALY_STD OUTPUT
-  [--config configs/download/{zarr_v2,zarr_v3,zarr_v3_lexi}.toml]` runs `graphcast download` (`downloader.py`).
-  Inputs are local paths or fsspec URLs (`s3://ogs-arco-ocean/{datasets,climatology,anomaly_std}/res=0p25`; local
-  copies in `/e/fscratch/e-dev-2026d09-119/ogs-arco-ocean-50*`); it applies the preprocessing of
-  `ARCOTimeseriesSource` once. From local inputs about 0.87 GB/s whatever the thread count
-  (4.8 cores busy): about 3.4 h for the full 10.5 TB (about 5 TB on disk), 65 GB of memory with 8 threads (33 GB with 4,
-  8% slower). S3 credentials: `storage_options.profile` (e.g. `xarray-s3-writer`) or `anon = true`.
+- Standardized anomaly dataset: `scripts/download.sh DATASET CLIMATOLOGY ANOMALY_STD OUTPUT
+  [--config configs/download/{zarr_v2,zarr_v3,zarr_v3_lexi}.toml]` runs `graphcast download` (`downloader.py`),
+  which applies the preprocessing of `ARCOTimeseriesSource` once. Inputs are local paths or fsspec URLs
+  (`s3://ogs-arco-ocean/{datasets,climatology,anomaly_std}/res=0p25`; S3 credentials: `storage_options.profile`,
+  e.g. `xarray-s3-writer`, or `anon = true`). On a compute node (no internet: local copies in
+  `/e/fscratch/e-dev-2026d09-119/ogs-arco-ocean-50*`): `sbatch clusters/jupiter/slurm/download.slurm` with the same
+  arguments. Local stores are read and written with TensorStore (zarr-python caps at ~0.85 GB/s, ~5 cores, whatever
+  the threads); TensorStore writes shards in lexicographic order only, so `zarr_v3` (morton) is written by
+  zarr-python. Full 10.5 TB (about 5 TB on disk) on a booster node: v3 lexicographic ~0.6 h, v2 ~1 h, v3 morton
+  ~1.9 h; on a login node (20-core, 143 GiB user quota) use 8 Dask and 16 I/O threads: v3 lexicographic ~1 h.
 - Mesh-size study: `clusters/jupiter/slurm/mesh_study.sh STUDY MESH[:EDGE_CHUNK_SIZE[:HH:MM:SS[:lowmem]]] ...`.
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run graphcast_training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).

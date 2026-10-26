@@ -2,7 +2,7 @@
 #SBATCH --job-name=download
 #SBATCH --account=e-dev-2026d09-119
 #SBATCH --partition=booster
-#SBATCH --time=02:00:00
+#SBATCH --time=03:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=288

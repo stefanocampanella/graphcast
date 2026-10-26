@@ -3,8 +3,10 @@ zarr_format = 3
 time_shard = 256
 depth_time_shard = 8
 subchunk_write_order = "morton"
-# Dask threads: about 8 GB of memory each.
-num_workers = 8
+# Threads tuned for a booster node (288 cores, benchmark on 64 days); on login nodes (20-core quota)
+# use num_workers = 8 and io_threads = 16. Dask threads hold about 8 GB of memory each.
+num_workers = 32
+io_threads = 64
 
 # fsspec options of the inputs: an AWS profile, or anonymous S3 access.
 [storage_options]
