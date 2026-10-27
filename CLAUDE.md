@@ -182,8 +182,20 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 
 - Do not commit `graphcast.sif`, `graphcast.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
-- Development branch: `develop@esiwace3_hackathon`; Slurm account for training jobs: `training2647` (the downloader
-  uses `e-dev-2026d09-119`).
+- Development branch: `develop@esiwace3_hackathon`.
+- Slurm accounts (JUPITER booster): `training2647` for small runs (tests, short benchmarks) until it ends on
+  31 Dec 2026 or its budget is exhausted; `e-dev-2026d09-119` for large runs (and the downloader), until 28 Feb 2027.
+  Both have 1,008,000 core-h on `JUPITER_BOOSTER`; a booster node costs 288 core-h per hour whatever is used (whole
+  nodes are charged), i.e. 3500 node-h per project. Check the remaining budget before launching large experiments:
+  `jutil project cpuquota -p PROJECT -Z` (`coreh-avail`, `acct-period-end`; updated about daily, so add recent
+  `sacct -A PROJECT -X -o JobID,ElapsedRaw,NNodes` usage). On 27 Oct 2026: `training2647` 621k core-h left (~2160
+  node-h), `e-dev-2026d09-119` 1.00M (~3490 node-h).
+- Budget policy (JSC "Allocation Procedures"): both projects use `acct-mode=fixed`, a one-time quota for the whole
+  period with no monthly split, so it can be spent at any time before the period ends; leftovers are lost then. JSC's
+  monthly mode (regular projects, not these) spreads the quota evenly over months: available = current month's
+  quota + the previous month's leftover; one month may be borrowed from the next (not in the last month) at normal
+  priority, beyond that jobs get the lowest priority for the rest of the month. When a quota is exhausted (or
+  overdrawn by more than a month), jobs only run when the machine has free capacity, limited to 6 h.
 - Workflow: one feature branch and PR per task into `develop@esiwace3_hackathon`; the maintainer reviews on GitHub
   or asks for changes directly. Reply to each review comment once addressed. Keep PR descriptions short (purpose,
   usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by Claude
@@ -195,7 +207,7 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   from environment variables, not configs; no backward-compatibility code for formats nobody uses; one library per job
   (e.g. TensorStore for all arrays); prefer simple implementations (no resume or blocking machinery unless failures
   show up); avoid `climatology.align_with` (slow).
-- Storage quotas: `df` shows only the whole filesystem; project quotas (data and inodes, soft and hard limits) are
+- Storage quotas (`jutil` also reports compute budgets, see above): `df` shows only the whole filesystem; project quotas (data and inodes, soft and hard limits) are
   shown by `jutil project dataquota -p e-dev-2026d09-119 [-U TB]` (`jutil user dataquota` shows per-user rows without
   limits). Usage is updated a few times a day. Check before writing large data: on 27 Oct 2026 fscratch had 40 TB
   soft / 44 TB hard (8 M inodes), project1 20 / 22 TB (4 M inodes); each standardized store is 5.1 TB.
