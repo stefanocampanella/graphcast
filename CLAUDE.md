@@ -33,18 +33,15 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `transpose` codec (time and depth swapped) before the sharding codec: TensorStore fills shards in lexicographic order
   of the (transposed) chunk grid and still reads single chunks; zarr-python reads whole shards of such arrays (warning
   "Combining a `sharding_indexed` codec disables partial reads"). Morton order (zarr-python only) was dropped: slow.
-  S3 credentials come from the environment: metadata via fsspec/s3fs (`AWS_PROFILE=xarray-s3-writer`, with
-  `aws_signing_helper` in `~/.local/bin`, or `FSSPEC_S3_ANON=true`), data via TensorStore, which cannot run a
-  `credential_process`: with such a profile it logs "Failed to open file ... .aws/credentials" per request and then
-  reads anonymously (the bucket is public); for signed reads export the role's keys
-  (`eval "$(aws configure export-credentials --profile xarray-s3-writer --format env)"`).
+  S3 credentials come from the environment: `AWS_PROFILE=xarray-s3-writer` (with `aws_signing_helper` in
+  `~/.local/bin`) or `FSSPEC_S3_ANON=true`. Metadata is read via fsspec/s3fs (botocore). TensorStore cannot run a
+  `credential_process` (without keys it logs "Failed to open file ... .aws/credentials" per request and reads
+  anonymously), so `downloader.get_aws_credentials` resolves the keys with botocore, exports them to `os.environ` and
+  sets `aws_credentials: {type: environment}` (or `anonymous`) in the context, for S3 inputs only. Keys are not
+  refreshed (12 h for this role). Signed reads are as fast as anonymous ones (~4–4.7 GB/s).
   TensorStore auth: `aws_credentials` is a context resource (`ts.Context({"aws_credentials": {"type": ...}})`, works
   with `xarray_tensorstore.open_zarr(..., context=...)`); types `default` (environment → `~/.aws/credentials` profile →
   web identity → IMDS, then anonymous), `anonymous`, `environment`, `profile`, `imds`, `ecs`; no key fields in specs.
-  Tested workaround (not implemented): resolve the profile with botocore
-  (`botocore.session.Session().get_credentials().get_frozen_credentials()` runs `credential_process`), put the keys in
-  `os.environ` (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) before TensorStore opens S3: signed
-  reads at 4.63 GB/s, as anonymous; bogus keys fail with InvalidAccessKeyId; keys are not refreshed (12 h here).
   Full 10.5 TB (5.1 TB on disk), three booster jobs at once: v3 lexicographic 34 min, v2 and v3 morton (zarr-python
   writer) 2 h each; v3 colexicographic alone 32 min; login node (20-core, 143 GiB user quota): 8 Dask and 16 I/O threads, v3 lexicographic ~1 h.
   Outputs: `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3,zarr_v3_lexi}` (26 Oct 2026;

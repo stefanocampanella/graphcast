@@ -7,9 +7,11 @@ relative to the first timestep, which stay in the dataloader.
 """
 
 import logging
+import os
 import pathlib
 import time
 
+import botocore.session
 import click
 import dask
 import dask.array
@@ -32,12 +34,38 @@ logger = logging.getLogger(__name__)
 _CHUNKED_DIMS = ("time", "depth")
 
 
-def get_tensorstore_context(configs: DownloadConfig) -> tensorstore.Context:
-  return tensorstore.Context({
+def get_aws_credentials() -> dict:
+  """Return the TensorStore AWS credentials matching those of fsspec (botocore), resolved from the environment.
+
+  TensorStore cannot run a profile's credential_process (e.g. AWS_PROFILE with a signing helper): the keys resolved by
+  botocore are exported to the environment of this process, without refreshing them. FSSPEC_S3_ANON=true, or no
+  credentials, selects anonymous access.
+  """
+  credentials = None
+  if os.environ.get("FSSPEC_S3_ANON", "").lower() not in ("1", "true"):
+    credentials = botocore.session.Session().get_credentials()
+  if credentials is None:
+    logger.info("Reading S3 anonymously")
+    return {"type": "anonymous"}
+  credentials = credentials.get_frozen_credentials()
+  os.environ["AWS_ACCESS_KEY_ID"] = credentials.access_key
+  os.environ["AWS_SECRET_ACCESS_KEY"] = credentials.secret_key
+  if credentials.token:
+    os.environ["AWS_SESSION_TOKEN"] = credentials.token
+  else:
+    os.environ.pop("AWS_SESSION_TOKEN", None)
+  return {"type": "environment"}
+
+
+def get_tensorstore_context(configs: DownloadConfig, aws_credentials: dict | None = None) -> tensorstore.Context:
+  resources = {
     "data_copy_concurrency": {"limit": configs.io_threads},
     "file_io_concurrency": {"limit": configs.io_threads},
     "s3_request_concurrency": {"limit": configs.io_threads},
-  })
+  }
+  if aws_credentials is not None:
+    resources["aws_credentials"] = aws_credentials
+  return tensorstore.Context(resources)
 
 
 def open_input(path: str, context: tensorstore.Context) -> xr.Dataset:
@@ -45,8 +73,7 @@ def open_input(path: str, context: tensorstore.Context) -> xr.Dataset:
 
   Data variables are read with TensorStore, undecoded (e.g. masks are integers); coordinates are decoded by xarray.
   Metadata of remote stores is read with fsspec, data with TensorStore: S3 credentials come from the environment
-  (e.g. AWS_PROFILE, or FSSPEC_S3_ANON=true for anonymous access; TensorStore reads anonymously without
-  AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY).
+  (e.g. AWS_PROFILE, or FSSPEC_S3_ANON=true for anonymous access) and from the context (get_aws_credentials).
   """
   logger.info(f"Opening {path}")
   return xarray_tensorstore.open_zarr(path, context=context, mask_and_scale=False, consolidated=True)
@@ -229,7 +256,8 @@ def download(
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {configs!r}")
 
-  context = get_tensorstore_context(configs)
+  is_s3 = any(path.startswith("s3://") for path in (dataset_path, climatology_path, anomaly_std_path))
+  context = get_tensorstore_context(configs, get_aws_credentials() if is_s3 else None)
   dataset = open_input(dataset_path, context)
   climatology = open_input(climatology_path, context)
   anomaly_std = open_input(anomaly_std_path, context)
