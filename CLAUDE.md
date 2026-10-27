@@ -38,8 +38,15 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `credential_process`: with such a profile it logs "Failed to open file ... .aws/credentials" per request and then
   reads anonymously (the bucket is public); for signed reads export the role's keys
   (`eval "$(aws configure export-credentials --profile xarray-s3-writer --format env)"`).
+  TensorStore auth: `aws_credentials` is a context resource (`ts.Context({"aws_credentials": {"type": ...}})`, works
+  with `xarray_tensorstore.open_zarr(..., context=...)`); types `default` (environment → `~/.aws/credentials` profile →
+  web identity → IMDS, then anonymous), `anonymous`, `environment`, `profile`, `imds`, `ecs`; no key fields in specs.
+  Tested workaround (not implemented): resolve the profile with botocore
+  (`botocore.session.Session().get_credentials().get_frozen_credentials()` runs `credential_process`), put the keys in
+  `os.environ` (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`) before TensorStore opens S3: signed
+  reads at 4.63 GB/s, as anonymous; bogus keys fail with InvalidAccessKeyId; keys are not refreshed (12 h here).
   Full 10.5 TB (5.1 TB on disk), three booster jobs at once: v3 lexicographic 34 min, v2 and v3 morton (zarr-python
-  writer) 2 h each; login node (20-core, 143 GiB user quota): 8 Dask and 16 I/O threads, v3 lexicographic ~1 h.
+  writer) 2 h each; v3 colexicographic alone 32 min; login node (20-core, 143 GiB user quota): 8 Dask and 16 I/O threads, v3 lexicographic ~1 h.
   Outputs: `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3,zarr_v3_lexi}` (26 Oct 2026;
   `zarr_v3` is morton, written by the previous version) and `zarr_v3_colexi` (27 Oct 2026).
 - Preliminary I/O measurements (27 Oct 2026, login node, 20-core quota, short runs; scripts were throwaway):
@@ -60,6 +67,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
     the sample plus 0.4–1.2 GB with 4–16 threads, and plus 1.6–2.8 GB with 64 threads; the peak is at most 0.4 GB
     higher. zarr-python takes about the sample plus 0.2 GB (peak plus 0.4 GB). xarray-tensorstore is 5–8× faster
     than zarr-python, and v2 is slightly faster than v3.
+  - v3 lexicographic vs colexicographic (same sample, xarray-tensorstore, 16 samples × 2 runs): 50 levels 0.26 vs
+    0.19 s (16 threads) and 0.21 vs 0.16 s (64 threads); 10 levels 0.06–0.07 vs 0.06 s. Colexicographic is not slower
+    (faster at 50 levels, unexpectedly, as a 3-day sample is one contiguous range per shard in lexicographic order);
+    the colexicographic store was written a few hours later, check again in the dataloader benchmarks.
   - Blosc on anomaly chunks (single core): lz4 clevel 1 with byte shuffle compresses 1.89× and decodes at
     1.46 GB/s; bitshuffle compresses less (1.71×) and decodes at 0.74 GB/s, so it is not worth benchmarking further.
     zstd clevel 1 with byte shuffle: 2.01×, decode 1.01 GB/s, encode 0.49 GB/s.
