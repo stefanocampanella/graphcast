@@ -77,10 +77,16 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `run_final.sh` / `run_memfit.sh` submit the standard experiments; `summarize.py RESULTS_DIR` writes the CSVs.
   The README there documents tags and findings; reports live in `results/<date>-<name>/REPORT.md` (gitignored)
   and are copied to `docs/jupiter-hackathon/results/` for the reveal.js presentation (`docs/jupiter-hackathon/index.html`).
-- Tests are abseil `absltest` modules next to the code (`src/graphcast/*_test.py`); run one with
-  `apptainer exec --nv graphcast.sif python src/graphcast/xarray_jax_test.py` (pytest is not a dependency;
-  there is no CI).
-- Lint/format: `ruff` with **2-space indentation** (`pyproject.toml`).
+- Tests: new code is tested with **pytest** in `tests/` (`test_<module>.py`, shared fixtures in `tests/conftest.py`;
+  pytest is in the `dev` dependency group and is configured in `pyproject.toml` to import `src/`). The image does not
+  include pytest: on a login node, layer it on the image venv with uv:
+  `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
+  "pytest >= 9" pytest` (`tests/` runs in under a minute on a login node, without GPUs). The abseil `absltest` modules
+  inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are probably broken; they will be ported
+  to pytest later. There is no CI.
+- Lint/format: `ruff` with **2-space indentation** and 120-column lines (`pyproject.toml`); so far only the downloader
+  modules and `tests/` are formatted. Type checks: `ty` run with `uvx` in the image (`--python /opt/software/venv
+  --extra-search-path src`).
 
 ## Architecture
 

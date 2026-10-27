@@ -58,9 +58,7 @@ def get_aws_credentials() -> dict:
   return {"type": "environment"}
 
 
-def get_tensorstore_context(
-  configs: DownloadConfig, aws_credentials: dict | None = None
-) -> tensorstore.Context:
+def get_tensorstore_context(configs: DownloadConfig, aws_credentials: dict | None = None) -> tensorstore.Context:
   resources = {
     "data_copy_concurrency": {"limit": configs.io_threads},
     "file_io_concurrency": {"limit": configs.io_threads},
@@ -79,18 +77,14 @@ def open_input(path: str, context: tensorstore.Context) -> xr.Dataset:
   (e.g. AWS_PROFILE, or FSSPEC_S3_ANON=true for anonymous access) and from the context (get_aws_credentials).
   """
   logger.info(f"Opening {path}")
-  return xarray_tensorstore.open_zarr(
-    path, context=context, mask_and_scale=False, consolidated=True
-  )
+  return xarray_tensorstore.open_zarr(path, context=context, mask_and_scale=False, consolidated=True)
 
 
 def _write_chunks(variable: xr.Variable, configs: DownloadConfig) -> dict[str, int]:
   """Timesteps per Dask chunk: a v3 shard, also used for v2 to keep the graph small. Other dimensions are whole."""
   if "time" not in variable.dims:
     return {}
-  return {
-    "time": configs.depth_time_shard if "depth" in variable.dims else configs.time_shard
-  }
+  return {"time": configs.depth_time_shard if "depth" in variable.dims else configs.time_shard}
 
 
 def standardize(
@@ -106,9 +100,7 @@ def standardize(
     if "time" in values.dims and (name not in climatology or name not in anomaly_std)
   ]
   if missing:
-    raise ValueError(
-      f"Time-dependent variables without climatology or anomaly_std: {missing}"
-    )
+    raise ValueError(f"Time-dependent variables without climatology or anomaly_std: {missing}")
 
   # Align climatology and anomaly_std with the timeseries; the lazy indexing reads only the selected days.
   index = climatology_index(dataset["time"])
@@ -139,9 +131,7 @@ def standardize(
   return result
 
 
-def _subchunk_transpose(
-  variable: xr.Variable, configs: DownloadConfig
-) -> tuple[int, ...] | None:
+def _subchunk_transpose(variable: xr.Variable, configs: DownloadConfig) -> tuple[int, ...] | None:
   """Order of a transpose codec applied before sharding, or None.
 
   Writers fill shards in lexicographic order of their chunk grid: reversing the chunked dimensions yields the
@@ -165,21 +155,15 @@ def get_encoding(dataset: xr.Dataset, configs: DownloadConfig) -> dict[Hashable,
       "shuffle": numcodecs.Blosc.SHUFFLE,
       "bitshuffle": numcodecs.Blosc.BITSHUFFLE,
     }[blosc.shuffle]
-    compressor = numcodecs.Blosc(
-      cname=blosc.cname, clevel=blosc.clevel, shuffle=shuffle
-    )
+    compressor = numcodecs.Blosc(cname=blosc.cname, clevel=blosc.clevel, shuffle=shuffle)
   else:
-    compressor = BloscCodec(
-      cname=blosc.cname, clevel=blosc.clevel, shuffle=blosc.shuffle
-    )
+    compressor = BloscCodec(cname=blosc.cname, clevel=blosc.clevel, shuffle=blosc.shuffle)
   encoding = {}
   for name, variable in dataset.variables.items():
     if name in dataset.coords or "time" not in variable.dims:
       encoding[name] = {"chunks": variable.shape, "compressors": compressor}
       continue
-    chunks = tuple(
-      1 if dim in _CHUNKED_DIMS else size for dim, size in variable.sizes.items()
-    )
+    chunks = tuple(1 if dim in _CHUNKED_DIMS else size for dim, size in variable.sizes.items())
     if configs.zarr_format == 2:
       encoding[name] = {"chunks": chunks, "compressors": compressor}
       continue
@@ -248,20 +232,14 @@ def write(
 @click.option(
   "--config",
   "config_path",
-  type=click.Path(
-    path_type=pathlib.Path, exists=True, dir_okay=False, resolve_path=True
-  ),
+  type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False, resolve_path=True),
   help="TOML settings (graphcast.download_config.DownloadConfig); defaults to Zarr v2.",
 )
-@click.option(
-  "--overwrite", is_flag=True, default=False, help="Overwrite OUTPUT if it exists."
-)
+@click.option("--overwrite", is_flag=True, default=False, help="Overwrite OUTPUT if it exists.")
 @click.option(
   "--log-level",
   default="info",
-  type=click.Choice(
-    ["debug", "info", "warning", "error", "critical"], case_sensitive=False
-  ),
+  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
 )
 def download(
   dataset_path: str,
@@ -283,28 +261,19 @@ def download(
     level=log_level.upper(),
     force=True,
   )
-  configs = (
-    DownloadConfig()
-    if config_path is None
-    else cli_utils.read_configs(config_path, schema=DownloadConfig)
-  )
+  configs = DownloadConfig() if config_path is None else cli_utils.read_configs(config_path, schema=DownloadConfig)
   if output_path.exists() and not overwrite:
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {configs!r}")
 
-  is_s3 = any(
-    path.startswith("s3://")
-    for path in (dataset_path, climatology_path, anomaly_std_path)
-  )
+  is_s3 = any(path.startswith("s3://") for path in (dataset_path, climatology_path, anomaly_std_path))
   context = get_tensorstore_context(configs, get_aws_credentials() if is_s3 else None)
   dataset = open_input(dataset_path, context)
   climatology = open_input(climatology_path, context)
   anomaly_std = open_input(anomaly_std_path, context)
 
   standardized = standardize(dataset, climatology, anomaly_std, configs)
-  logger.info(
-    f"Writing {humanize.naturalsize(standardized.nbytes)} (uncompressed) to {output_path}"
-  )
+  logger.info(f"Writing {humanize.naturalsize(standardized.nbytes)} (uncompressed) to {output_path}")
   start_time = time.perf_counter()
   with (
     dask.config.set(scheduler="threads", num_workers=configs.num_workers),
