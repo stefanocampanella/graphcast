@@ -93,7 +93,9 @@ Stage: final
   # Install Python requirements
   python3 -m venv --system-site-packages {{ paths.store }}/venv
   . {{ paths.store }}/venv/bin/activate
-  pip install /app
+  # Dependency groups (pytest in dev) need pip >= 25.1
+  pip install --upgrade "pip >= 25.1"
+  pip install /app --group /app/pyproject.toml:dev
   echo "Check that raster (numpy) gdal support is working"
   python -c "from osgeo import gdal_array" || exit 1
   deactivate

@@ -34,10 +34,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   and are copied to `docs/jupiter-hackathon/results/` for the reveal.js presentation (`docs/jupiter-hackathon/index.html`).
 - Tests: new code is tested with **pytest** in `tests/` (`test_<module>.py`, shared fixtures in `tests/conftest.py`;
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
-  the package copy installed in the image). The image does not include pytest (`pip install /app` skips dependency
-  groups, and its pip 24 cannot install them): on a login node, layer it on the image venv with uv:
+  the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
+  upgrades pip, as the base image's pip 24 cannot install dependency groups): run
+  `apptainer exec graphcast.sif python -m pytest` from the repository root (`tests/` takes ~40 s, CPU only, also on
+  compute nodes). With an older image, layer pytest on its venv with uv (login nodes only, needs internet):
   `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
-  "pytest >= 9" pytest` (`tests/` takes ~40 s, CPU only). Tests use synthetic data (small Zarr stores in `tmp_path`)
+  "pytest >= 9" pytest`. Tests use synthetic data (small Zarr stores in `tmp_path`)
   or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be assumed.
   The abseil `absltest` modules inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are
   probably broken; they will be ported to pytest later. There is no CI.
@@ -49,8 +51,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 - Image rebuild (needed after dependency changes; `src/` comes from `APPTAINERENV_PYTHONPATH`):
   `spack env create --dir spack-env spack.yaml`, `spack -e spack-env containerize > graphcast.def`, then
   `env APPTAINER_CACHEDIR=$FSCRATCH/.apptainer apptainer build graphcast.sif graphcast.def`. Build to a separate file
-  first and ask before replacing the shared `graphcast.sif`: running jobs use it. Past commands are in
-  `~/.bash_eternal_history`.
+  first and ask before replacing the shared `graphcast.sif`: running jobs use it. Run `containerize` from the checkout
+  whose `pyproject.toml` and `src/` the image should contain (a worktree works with
+  `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`); the build takes ~6 min on a login node. Previous
+  images are kept as `graphcast-YYYY-MM-DD.sif`. Past commands are in `~/.bash_eternal_history`.
 
 ## Standardized anomaly stores
 
