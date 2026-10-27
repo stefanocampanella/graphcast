@@ -55,7 +55,7 @@
 * Run all notebooks on Leonardo using papermill, validate results. (Low priority)
 * Download a reduced-resolution version of the ARCO-OCEAN and update to AWS. (Medium priority)
 * Integrate and revise notebooks to explain details of mesh generation. (Medium priority)
-* Choose a test suite (e.g. Pytest), update original codebase tests (using abseil/unittest), and add tests for the new code. Implement CI using GitHub actions. (Low priority)
+* Port the original codebase tests (abseil/unittest, probably broken) to pytest, adopted for new code in `tests/`. Add pytest to the image. Implement CI using GitHub actions. (Low priority)
 * Add animation and plot routines to `plot_utils.py`. (Low priority)
 * Document `--add-spack-mirrors` in `clusters/leonardo/environment/setup.sh`, check that other users are able to
   reproduce environment creation. (Low priority)
