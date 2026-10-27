@@ -13,7 +13,6 @@ import time
 import click
 import dask
 import dask.array
-import fsspec
 import humanize
 import numcodecs
 import numpy as np
@@ -21,7 +20,7 @@ import tensorstore
 import xarray as xr
 import xarray_tensorstore
 from dask.diagnostics import ProgressBar
-from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec
+from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec, TransposeCodec
 
 from graphcast import cli_utils
 from graphcast.dataloader import climatology_index
@@ -29,37 +28,28 @@ from graphcast.download_config import DownloadConfig
 
 logger = logging.getLogger(__name__)
 
-# Coordinates are small: compress them more, as in the original datasets.
-_COORDS_CLEVEL = 5
-_TIME_COORD_CHUNK = 128
+# Dimensions with one chunk per index; arrays are whole along the others.
+_CHUNKED_DIMS = ("time", "depth")
 
 
 def get_tensorstore_context(configs: DownloadConfig) -> tensorstore.Context:
   return tensorstore.Context({
     "data_copy_concurrency": {"limit": configs.io_threads},
     "file_io_concurrency": {"limit": configs.io_threads},
+    "s3_request_concurrency": {"limit": configs.io_threads},
   })
 
 
-def open_input(path: str, storage_options: dict, context: tensorstore.Context | None = None) -> xr.Dataset:
-  """Open a Zarr store with consolidated metadata, given as a local path or an fsspec URL (e.g. s3://...).
+def open_input(path: str, context: tensorstore.Context) -> xr.Dataset:
+  """Open a Zarr store with consolidated metadata, given as a local path or a URL (e.g. s3://bucket/path).
 
-  With a TensorStore context, the time-dependent variables of local stores are read with TensorStore, which is
-  several times faster than zarr-python. Static variables are small and need CF decoding (e.g. boolean masks), which
-  xarray_tensorstore does not apply: they are read with zarr-python, as remote stores.
+  Data variables are read with TensorStore, undecoded (e.g. masks are integers); coordinates are decoded by xarray.
+  Metadata of remote stores is read with fsspec, data with TensorStore: S3 credentials come from the environment
+  (e.g. AWS_PROFILE, or FSSPEC_S3_ANON=true for anonymous access; TensorStore reads anonymously without
+  AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY).
   """
   logger.info(f"Opening {path}")
-  is_local = fsspec.utils.get_protocol(path) in ("file", "local")
-  # chunks=None keeps lazily indexed arrays: Dask chunks are chosen later, one task per output chunk.
-  dataset = xr.open_zarr(
-    path, consolidated=True, chunks=None, storage_options=None if is_local else storage_options
-  )
-  if is_local and context is not None:
-    tensorstores = xarray_tensorstore.open_zarr(path, context=context, mask_and_scale=False, consolidated=True)
-    dataset = dataset.assign(
-      {name: tensorstores[name] for name, values in dataset.data_vars.items() if "time" in values.dims}
-    )
-  return dataset
+  return xarray_tensorstore.open_zarr(path, context=context, mask_and_scale=False, consolidated=True)
 
 
 def _write_chunks(variable: xr.Variable, configs: DownloadConfig) -> dict[str, int]:
@@ -96,18 +86,14 @@ def standardize(
       mean = climatology[name].chunk(chunks).fillna(value=0.0)
       std = anomaly_std[name].chunk(chunks).fillna(value=1.0).clip(min=1e-16)
       values = (values - mean) / std
-    elif np.issubdtype(values.dtype, np.bool_):
-      values = values.astype(np.float32)
-    else:
-      # Min-max normalization of static numeric variables
+    elif np.issubdtype(values.dtype, np.floating):
+      # Min-max normalization of static fields; masks (integers) are only cast to float32.
       minimum = values.min()
       span = values.max() - minimum
       values = (values - minimum) / span.where(span != 0, 1)
     standardized[name] = values.fillna(value=0.0).astype(np.float32)
 
-  # Encodings come from get_encoding, except time's (units and calendar), which the source chunks would contradict.
   result = xr.Dataset(standardized, attrs=dataset.attrs).drop_encoding()
-  result["time"].encoding = dataset["time"].encoding
   result.attrs["history"] = (
     f"{dataset.attrs.get('history', '')}\n"
     "Standardized anomalies (climatology and anomaly_std: missing values filled with 0 and 1, std clipped below at "
@@ -116,41 +102,51 @@ def standardize(
   return result
 
 
+def _subchunk_transpose(variable: xr.Variable, configs: DownloadConfig) -> tuple[int, ...] | None:
+  """Order of a transpose codec applied before sharding, or None.
+
+  Writers fill shards in lexicographic order of their chunk grid: reversing the chunked dimensions yields the
+  colexicographic order. Chunks are single indices along those dimensions, so their contents are unchanged.
+  """
+  chunked = [axis for axis, dim in enumerate(variable.dims) if dim in _CHUNKED_DIMS]
+  if configs.subchunk_order == "lexicographic" or len(chunked) < 2:
+    return None
+  order = list(range(variable.ndim))
+  for axis, transposed in zip(chunked, reversed(chunked), strict=True):
+    order[axis] = transposed
+  return tuple(order)
+
+
 def get_encoding(dataset: xr.Dataset, configs: DownloadConfig) -> dict[str, dict]:
-  """Chunks and compressors of the datasets used in experiments: one chunk per timestep and depth level."""
+  """One chunk per timestep and depth level, sharded along time in Zarr v3; static and coordinate arrays whole."""
   blosc = configs.compressor
+  if configs.zarr_format == 2:
+    shuffle = {"noshuffle": numcodecs.Blosc.NOSHUFFLE, "shuffle": numcodecs.Blosc.SHUFFLE,
+               "bitshuffle": numcodecs.Blosc.BITSHUFFLE}[blosc.shuffle]
+    compressor = numcodecs.Blosc(cname=blosc.cname, clevel=blosc.clevel, shuffle=shuffle)
+  else:
+    compressor = BloscCodec(cname=blosc.cname, clevel=blosc.clevel, shuffle=blosc.shuffle)
   encoding = {}
   for name, variable in dataset.variables.items():
-    inner_chunks = tuple(1 if dim in ("time", "depth") else size for dim, size in variable.sizes.items())
-    clevel = blosc.clevel if name in dataset.data_vars else _COORDS_CLEVEL
-    if name == "time" and configs.zarr_format == 2:
-      inner_chunks = (min(_TIME_COORD_CHUNK, variable.size),)
-    elif name in dataset.coords:
-      inner_chunks = variable.shape
+    if name in dataset.coords or "time" not in variable.dims:
+      encoding[name] = {"chunks": variable.shape, "compressors": compressor}
+      continue
+    chunks = tuple(1 if dim in _CHUNKED_DIMS else size for dim, size in variable.sizes.items())
     if configs.zarr_format == 2:
-      shuffle = {"noshuffle": numcodecs.Blosc.NOSHUFFLE, "shuffle": numcodecs.Blosc.SHUFFLE,
-                 "bitshuffle": numcodecs.Blosc.BITSHUFFLE}[blosc.shuffle]
-      compressor = numcodecs.Blosc(cname=blosc.cname, clevel=clevel, shuffle=shuffle)
-    else:
-      compressor = BloscCodec(cname=blosc.cname, clevel=clevel, shuffle=blosc.shuffle)
-    if configs.zarr_format == 3 and name in dataset.data_vars and {"time", "depth"} & set(variable.dims):
-      # Shards are whole along all dimensions but time. The sharding codec is passed explicitly since the order of
-      # chunks within shards is a codec option (not stored in metadata, used for writing only).
-      shard_shape = tuple(_write_chunks(variable, configs).get(dim, size) for dim, size in variable.sizes.items())
-      encoding[name] = {
-        "chunks": tuple(min(shard, size) for shard, size in zip(shard_shape, variable.shape, strict=True)),
-        "serializer": ShardingCodec(
-          chunk_shape=inner_chunks,
-          codecs=[BytesCodec(), compressor],
-          subchunk_write_order=configs.subchunk_write_order,
-        ),
-        "compressors": None,
-      }
-    else:
-      encoding[name] = {"chunks": inner_chunks, "compressors": compressor}
-  # Keep the time units and calendar of the source dataset.
-  time_encoding = dataset["time"].encoding
-  encoding["time"].update({key: time_encoding[key] for key in ("units", "calendar", "dtype") if key in time_encoding})
+      encoding[name] = {"chunks": chunks, "compressors": compressor}
+      continue
+    # Shards are the Dask chunks (_write_chunks). The sharding codec is explicit to put the transpose codec, if any,
+    # before it.
+    order = _subchunk_transpose(variable, configs)
+    encoding[name] = {
+      "chunks": variable.data.chunksize,
+      "filters": [] if order is None else [TransposeCodec(order=order)],
+      "serializer": ShardingCodec(
+        chunk_shape=chunks if order is None else tuple(chunks[axis] for axis in order),
+        codecs=[BytesCodec(), compressor],
+      ),
+      "compressors": None,
+    }
   return encoding
 
 
@@ -161,23 +157,16 @@ def write(
     context: tensorstore.Context,
     overwrite: bool = False,
 ):
-  """Write to a local Zarr store: metadata and coordinates with zarr-python, data variables with TensorStore.
-
-  TensorStore writes several times faster than zarr-python, but only with the chunks of each shard in lexicographic
-  order: Zarr v3 stores with another order are written entirely with zarr-python.
-  """
-  to_zarr_kwargs = {
-    "mode": "w" if overwrite else "w-",
-    "encoding": get_encoding(standardized, configs),
-    "zarr_format": configs.zarr_format,
-    "consolidated": True,
-  }
-  if configs.zarr_format == 3 and configs.subchunk_write_order != "lexicographic":
-    logger.info(f"Writing with zarr-python (TensorStore cannot write {configs.subchunk_write_order} order)")
-    standardized.to_zarr(output_path, **to_zarr_kwargs)
-    return
+  """Write to a local Zarr store: metadata and coordinates with xarray, data variables with TensorStore."""
   # Without computing, to_zarr writes metadata and in-memory (coordinate) arrays only.
-  standardized.to_zarr(output_path, compute=False, **to_zarr_kwargs)
+  standardized.to_zarr(
+    output_path,
+    mode="w" if overwrite else "w-",
+    compute=False,
+    encoding=get_encoding(standardized, configs),
+    zarr_format=configs.zarr_format,
+    consolidated=True,
+  )
   driver = "zarr3" if configs.zarr_format == 3 else "zarr"
   names = list(standardized.data_vars)
   targets = [
@@ -226,8 +215,8 @@ def download(
 ):
   """Write the standardized anomalies of DATASET to OUTPUT, a local Zarr store with consolidated metadata.
 
-  DATASET, CLIMATOLOGY and ANOMALY_STD are Zarr stores with consolidated metadata, given as local paths or fsspec
-  URLs (e.g. s3://bucket/datasets/res=0p25).
+  DATASET, CLIMATOLOGY and ANOMALY_STD are Zarr stores with consolidated metadata, given as local paths or URLs
+  (e.g. s3://bucket/path).
   """
   logging.basicConfig(
     format="%(levelname)s - %(asctime)s: %(message)s",
@@ -241,9 +230,9 @@ def download(
   logger.info(f"Using settings: {configs!r}")
 
   context = get_tensorstore_context(configs)
-  dataset = open_input(dataset_path, configs.storage_options, context)
-  climatology = open_input(climatology_path, configs.storage_options, context)
-  anomaly_std = open_input(anomaly_std_path, configs.storage_options, context)
+  dataset = open_input(dataset_path, context)
+  climatology = open_input(climatology_path, context)
+  anomaly_std = open_input(anomaly_std_path, context)
 
   standardized = standardize(dataset, climatology, anomaly_std, configs)
   logger.info(f"Writing {humanize.naturalsize(standardized.nbytes)} (uncompressed) to {output_path}")

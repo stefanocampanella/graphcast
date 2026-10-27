@@ -1,14 +1,9 @@
-# Standardized anomalies in Zarr v3: shards of 8 (with depth) or 256 timesteps with the chunks of each shard in lexicographic order (as zarr_v3_lexi in JUBE).
+# Standardized anomalies in Zarr v3: one chunk per timestep and depth level, in shards of 8 (with depth) or 256
+# timesteps; the chunks of each shard are ordered by time, then depth.
 zarr_format = 3
 time_shard = 256
 depth_time_shard = 8
-subchunk_write_order = "lexicographic"
-# Threads tuned for a booster node (288 cores, benchmark on 64 days); on login nodes (20-core quota)
-# use num_workers = 8 and io_threads = 16. Dask threads hold about 8 GB of memory each.
+subchunk_order = "lexicographic"
+# Dask threads hold about 8 GB of memory each; on a node with few cores use num_workers = 8 and io_threads = 16.
 num_workers = 16
 io_threads = 64
-
-# fsspec options of the inputs: an AWS profile, or anonymous S3 access.
-[storage_options]
-#profile = "xarray-s3-writer"
-#anon = true

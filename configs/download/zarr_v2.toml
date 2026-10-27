@@ -1,11 +1,5 @@
-# Standardized anomalies in Zarr v2: one chunk per timestep and depth level (as zarr_v2 in JUBE).
+# Standardized anomalies in Zarr v2: one chunk per timestep and depth level.
 zarr_format = 2
-# Threads tuned for a booster node (288 cores, benchmark on 64 days); on login nodes (20-core quota)
-# use num_workers = 8 and io_threads = 16. Dask threads hold about 8 GB of memory each.
+# Dask threads hold about 8 GB of memory each; on a node with few cores use num_workers = 8 and io_threads = 16.
 num_workers = 32
 io_threads = 256
-
-# fsspec options of the inputs: an AWS profile, or anonymous S3 access.
-[storage_options]
-#profile = "xarray-s3-writer"
-#anon = true
