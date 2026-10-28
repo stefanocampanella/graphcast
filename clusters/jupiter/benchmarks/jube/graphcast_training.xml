@@ -169,7 +169,7 @@
             </parameter>
             <!-- Small, loaded once (graphcast download-mask; tendency statistics): the same for all formats. -->
             <parameter name="mask_path">$anomalies_dir/glorys_mask</parameter>
-            <parameter name="tendency_std_path">/e/scratch/training2647/graphcast_data/zarr_v2/tendency_std</parameter>
+            <parameter name="tendency_std_path">$anomalies_dir/tendency_std</parameter>
         </parameterset>
 
         <parameterset name="execute_set">
