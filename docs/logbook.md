@@ -352,3 +352,6 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
     (`70e07cd`, returned in the loss's dtype).
   - **Job 2568724** (60 steps): the loss went from 0.73 to 0.49, every target variable by 30–40%. Data wait was
     0.021 s and compute 0.385 s per step; XLA memory was 49.2 GiB per GPU.
+- **2026-10-29 00:50 Experiment:** the `zarr_v2` SquashFS image (5.44 TB, 2,502,289 entries, matching the store)
+  took 2 h 35 min. All three images of the recomputed stores are in `$FSCRATCH/graphcast/data/anomalies/squashfs`.
+  The old `zarr_v2` (`zarr_v2.deleting`) was still being removed.
