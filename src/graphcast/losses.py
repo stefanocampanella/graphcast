@@ -177,16 +177,18 @@ def _masked_mean_preserving_batch(
   Masked points do not count, so variables and levels are not down-weighted by their number of masked points; levels
   without points contribute 0.
   """
-  weights = latitude_weights * mask.astype(loss.dtype)
+  # Sums in float32: xarray rejects bfloat16 in sums, which would also lose precision over many points.
+  loss = loss.astype(np.float32)
+  weights = latitude_weights.astype(np.float32) * mask.astype(np.float32)
   spatial = [d for d in loss.dims if d not in ("batch", "level")]
-  total = (loss.where(mask, 0.0) * weights).sum(spatial)
+  total = (loss.where(mask, 0.0) * weights).sum(spatial, skipna=False)
   # Sum of the weights over the dimensions of the loss: those the weights lack (e.g. time) count by their size.
-  norm = weights.sum([d for d in spatial if d in weights.dims]) * math.prod(
+  norm = weights.sum([d for d in spatial if d in weights.dims], skipna=False) * math.prod(
     loss.sizes[d] for d in spatial if d not in weights.dims
   )
   per_level = total / norm.where(norm > 0, 1.0)
   if level_weights is not None and "level" in per_level.dims:
-    return (per_level * level_weights).mean("level")
+    return (per_level * level_weights.astype(np.float32)).mean("level", skipna=False)
   return per_level
 
 

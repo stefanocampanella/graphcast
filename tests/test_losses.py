@@ -64,3 +64,15 @@ def test_a_level_without_points_contributes_zero():
   only_first, _ = _loss(predictions, targets, mask)
   level_weights = losses.normalized_level_weights(targets["x"], coord="depth").values
   assert only_first == pytest.approx(level_weights[0] * 1.0 / 2)
+
+
+def test_bfloat16_losses():
+  """Inside the model, predictions and targets are bfloat16: the masked mean is computed in float32."""
+  import ml_dtypes
+
+  predictions, targets = _data()
+  mask = xr.DataArray(np.ones((LAT.size, 2), dtype=bool), dims=("lat", "lon"))
+  as_bf16 = [data.astype(ml_dtypes.bfloat16) for data in (predictions, targets)]
+  loss, _ = losses.weighted_mse(*as_bf16, levels_normalization_coord="depth", mask=mask)
+  assert loss.dtype == np.float32
+  assert float(loss.values[0]) == pytest.approx(_loss(predictions, targets)[0], rel=1e-2)
