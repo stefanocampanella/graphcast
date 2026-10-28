@@ -154,3 +154,6 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   relaunched on `jpbl-s02-04` with `nohup setsid`, packing `zarr_v3_lexi`, `zarr_v3_colexi` and `zarr_v2` in turn.
 - **12:21 Request:** keep this logbook of requests, changes, experiments and insights, with date and time, as a
   project-wide record to be merged later with earlier sessions.
+- **12:27 Request:** keep temporary files in `$PROJECT`, so that work can be resumed on another login node.
+  **Change:** CLAUDE.md sets `$PROJECT/claude-work/<branch or task>/` for them; the scripts of this task moved
+  there.
