@@ -3,9 +3,9 @@
 <jube>
     <tags forced="true">
         <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt|model|memfit</check_tags>
-        <tag name="format">Dataset formats of the standardized anomalies: zarr v2, zarr v3 (sharded; morton, lexicographic and colexicographic sub-chunk order) and SquashFS images, at two Grain settings</tag>
-        <tag name="grain">Grain workers x threads on zarr v3</tag>
-        <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
+        <tag name="format">Dataset formats of the standardized anomalies: zarr v2, zarr v3 (sharded; lexicographic and colexicographic sub-chunk order) and SquashFS images, at two Grain settings</tag>
+        <tag name="grain">Grain workers x threads on zarr v3 (lexicographic)</tag>
+        <tag name="zarr">zarr thread pool and concurrency on zarr v3 (lexicographic)</tag>
         <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
         <tag name="scaling">2 and 4 nodes for the baseline case</tag>
         <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
@@ -41,21 +41,21 @@
         <comment>GraphCast training with different dataset formats, Grain loader and zarr I/O settings</comment>
 
         <!-- One value per case: format:grain_workers:grain_threads:zarr_max_workers:zarr_concurrency:nodes:cpus_per_task.
-             Tagged values are concatenated; each sweep varies one factor around the baseline zarr_v3:4:2:8:32:1:72. -->
+             Tagged values are concatenated; each sweep varies one factor around the baseline zarr_v3_lexi:4:2:8:32:1:72. -->
         <parameterset name="case_set" duplicate="concat">
             <parameter name="case" tag="format">
-                squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,
+                squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,
                 zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72,zarr_v3_colexi:2:2:8:32:1:72,
                 zarr_v3_colexi:8:2:8:32:1:72,squashfs_v3_lexi:8:2:8:32:1:72,squashfs_v3_colexi:8:2:8:32:1:72
             </parameter>
             <parameter name="case" tag="grain">
-                zarr_v3:0:4:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:1:8:32:1:72,zarr_v3:4:4:8:32:1:72
+                zarr_v3_lexi:0:4:8:32:1:72,zarr_v3_lexi:1:2:8:32:1:72,zarr_v3_lexi:4:2:8:32:1:72,zarr_v3_lexi:8:1:8:32:1:72,zarr_v3_lexi:4:4:8:32:1:72
             </parameter>
             <parameter name="case" tag="zarr">
-                zarr_v3:4:2:4:10:1:72,zarr_v3:4:2:4:32:1:72,zarr_v3:4:2:8:10:1:72,zarr_v3:4:2:32:10:1:72,zarr_v3:4:2:32:32:1:72
+                zarr_v3_lexi:4:2:4:10:1:72,zarr_v3_lexi:4:2:4:32:1:72,zarr_v3_lexi:4:2:8:10:1:72,zarr_v3_lexi:4:2:32:10:1:72,zarr_v3_lexi:4:2:32:32:1:72
             </parameter>
-            <parameter name="case" tag="cpus">zarr_v3:4:2:8:32:1:1,zarr_v3:4:2:8:32:1:8</parameter>
-            <parameter name="case" tag="scaling">zarr_v3:4:2:8:32:2:72,zarr_v3:4:2:8:32:4:72</parameter>
+            <parameter name="case" tag="cpus">zarr_v3_lexi:4:2:8:32:1:1,zarr_v3_lexi:4:2:8:32:1:8</parameter>
+            <parameter name="case" tag="scaling">zarr_v3_lexi:4:2:8:32:2:72,zarr_v3_lexi:4:2:8:32:4:72</parameter>
             <!-- An optional eighth field names a set of XLA/JAX settings, see opt_env. -->
             <parameter name="case" tag="opt">
                 zarr_v2:8:2:8:32:1:72:image,zarr_v2:8:2:8:32:1:72:no_lhs,zarr_v2:8:2:8:32:1:72:env_valid,
@@ -70,12 +70,12 @@
             <parameter name="case" tag="memfit+one_worker">zarr_v3_lexi:1:2:8:32:1:72</parameter>
             <parameter name="case" tag="memfit+no_workers">zarr_v3_lexi:0:4:8:32:1:72</parameter>
             <parameter name="case" tag="workers">
-                zarr_v3:2:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,squashfs:4:2:8:32:1:72,
-                zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:4:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72
+                zarr_v3_colexi:2:2:8:32:1:72,zarr_v3_colexi:4:2:8:32:1:72,zarr_v3_colexi:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,
+                squashfs:4:2:8:32:1:72,zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:4:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72
             </parameter>
             <parameter name="case" tag="lowmem">
-                squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:0:4:8:32:1:72,
-                zarr_v3_lexi:2:2:8:32:1:72
+                squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3_colexi:2:2:8:32:1:72,zarr_v3_lexi:1:2:8:32:1:72,
+                zarr_v3_lexi:0:4:8:32:1:72,zarr_v3_lexi:2:2:8:32:1:72
             </parameter>
         </parameterset>
 
@@ -159,12 +159,12 @@
 
             <!-- Standardized anomaly stores (graphcast download) and SquashFS images of them, all on fscratch, so that
                  only the format differs: zarr v2; zarr v3 sharded 8 time x 50 depth, with the chunks of each shard in
-                 morton (zarr_v3, written by an earlier downloader), lexicographic or colexicographic order. -->
+                 lexicographic or colexicographic order. -->
             <parameter name="anomalies_dir">/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies</parameter>
             <parameter name="dataset_path" mode="python">{"squashfs": "$anomalies_dir/squashfs/zarr_v2.sqsh",
                 "squashfs_v3_lexi": "$anomalies_dir/squashfs/zarr_v3_lexi.sqsh",
                 "squashfs_v3_colexi": "$anomalies_dir/squashfs/zarr_v3_colexi.sqsh",
-                "zarr_v2": "$anomalies_dir/zarr_v2", "zarr_v3": "$anomalies_dir/zarr_v3",
+                "zarr_v2": "$anomalies_dir/zarr_v2",
                 "zarr_v3_lexi": "$anomalies_dir/zarr_v3_lexi", "zarr_v3_colexi": "$anomalies_dir/zarr_v3_colexi"}["$format"]
             </parameter>
             <!-- Small, loaded once (graphcast download-mask; tendency statistics): the same for all formats. -->

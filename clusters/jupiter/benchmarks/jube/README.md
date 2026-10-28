@@ -31,15 +31,15 @@ Every run needs at least one sweep tag:
 
 | Tag       | Cases (format:workers:threads:zarr_pool:zarr_concurrency:nodes:cpus)  | Jobs |
 |-----------|-----------------------------------------------------------------------|------|
-| `format`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi, zarr_v3_colexi at 2x2 and 8x2; squashfs_v3_lexi, squashfs_v3_colexi at 8x2 | 12   |
-| `grain`   | zarr_v3 at 0x4 (threads only), 1x2, 4x2 (baseline), 8x1, 4x4          | 5    |
-| `zarr`    | zarr_v3 4x2 with zarr pool/concurrency 4/10, 4/32, 8/10, 32/10, 32/32 | 5    |
-| `cpus`    | zarr_v3 4x2 with 1 and 8 CPUs per task                                | 2    |
-| `scaling` | zarr_v3 4x2 on 2 and 4 nodes                                          | 2    |
+| `format`  | squashfs, zarr_v2, zarr_v3_lexi, zarr_v3_colexi at 2x2 and 8x2; squashfs_v3_lexi, squashfs_v3_colexi at 8x2 | 10   |
+| `grain`   | zarr_v3_lexi at 0x4 (threads only), 1x2, 4x2 (baseline), 8x1, 4x4     | 5    |
+| `zarr`    | zarr_v3_lexi 4x2 with zarr pool/concurrency 4/10, 4/32, 8/10, 32/10, 32/32 | 5 |
+| `cpus`    | zarr_v3_lexi 4x2 with 1 and 8 CPUs per task                           | 2    |
+| `scaling` | zarr_v3_lexi 4x2 on 2 and 4 nodes                                     | 2    |
 | `opt`     | zarr_v2 8x2 with 9 XLA/JAX setting sets on 1 node and 4 on 2 nodes    | 13   |
 | `model`   | zarr_v2 8x2, coarse mesh, 8, 10, 12, 14, 16 message passing steps     | 5    |
-| `lowmem`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi 2x2; zarr_v3 1x2 and 0x4     | 6    |
-| `workers` | zarr_v3, zarr_v3_lexi 2x2, 4x2, 8x2; zarr_v2, squashfs 4x2            | 8    |
+| `lowmem`  | squashfs, zarr_v2, zarr_v3_colexi, zarr_v3_lexi 2x2; zarr_v3_lexi 1x2 and 0x4 | 6 |
+| `workers` | zarr_v3_colexi, zarr_v3_lexi 2x2, 4x2, 8x2; zarr_v2, squashfs 4x2     | 8    |
 | `memfit`  | zarr_v3_lexi 2x2, 8 uniform meshes (120 to 35 km) x 8 to 16 message passing steps | 40   |
 
 `lowmem`, `workers` and `memfit` are meant for `all_levels`. Each case runs twice (`rep=1,2`, different seeds) for 60 training steps. Modifiers:
@@ -56,8 +56,8 @@ for `all_levels` runs, e.g. `bench_run_all_levels`, to keep their results apart.
 uv run jube run graphcast_training.xml --tag format grain dryrun --outpath /tmp/jube_dry
 
 # Submit
-uv run jube run graphcast_training.xml --tag format          # 24 jobs
-uv run jube run graphcast_training.xml --tag format grain zarr cpus scaling   # 52 jobs
+uv run jube run graphcast_training.xml --tag format          # 20 jobs
+uv run jube run graphcast_training.xml --tag format grain zarr cpus scaling   # 48 jobs
 
 uv run jube status bench_run --id last    # wait for jobs
 uv run jube continue bench_run --id last  # pick up finished jobs
@@ -208,8 +208,8 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
   runs. The jobs read the standardized anomaly stores written by `graphcast download`, all in
   `$FSCRATCH/graphcast/data/anomalies` so that only the storage format differs: `zarr_v2`, the sharded zarr v3 stores
-  (8 time x 50 depth) with the sub-chunks of each shard in morton (`zarr_v3`), lexicographic (`zarr_v3_lexi`) or
-  colexicographic (`zarr_v3_colexi`) order, and SquashFS images of zarr_v2, zarr_v3_lexi and zarr_v3_colexi
+  (8 time x 50 depth) with the sub-chunks of each shard in lexicographic (`zarr_v3_lexi`) or colexicographic
+  (`zarr_v3_colexi`) order (the morton `zarr_v3` of earlier results is gone), and SquashFS images of zarr_v2, zarr_v3_lexi and zarr_v3_colexi
   (`squashfs`, `squashfs_v3_lexi`, `squashfs_v3_colexi`). The mask (`graphcast download-mask`) and `tendency_std` are
   small and loaded once, the same for all formats; the zarr pool and concurrency settings apply only to them. Results
   recorded before 28 Oct 2026 are from the previous dataloader, which read the raw dataset, climatology and
