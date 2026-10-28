@@ -137,12 +137,23 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
      residuals divided only where tendency_std > 0; `Mask` per variable, keeping the input at excluded points. Targets
      are the ocean variables.
   Normalization statistics over 1993–2023 include the held-out period after `split_date`: accepted for now.
-- **Residual connection disabled since 27 Mar 2026** (commit 21edee5): `normalization.InputsAndResiduals` takes its
-  residual branch only `if self._residual_locations is not None`, which is always `None` (upstream GraphCast always
-  uses residuals; the intended condition is on `_residual_scales`). So training predicts the standardized targets
-  directly, and `tendency_std` is loaded but never used. Experiment (28 Oct 2026, `exp_src` in claude-work,
-  `GRAPHCAST_EXP_RESIDUALS`): direct vs residual without output normalization vs residual / tendency_std, 2000 steps
-  each, with the state error (z-score units) of predictions, persistence and climatology logged per step.
+- **Residual connection was disabled from 27 Mar to 28 Oct 2026** (commit 21edee5): `normalization.InputsAndResiduals`
+  took its residual branch only `if self._residual_locations is not None`, always `None`, so training predicted the
+  standardized targets directly and `tendency_std` was loaded but unused; models trained in that period are direct
+  predictors. Fixed on 28 Oct 2026: the branch tests `_residual_scales` (residuals when `tendency_std` is given, direct
+  prediction otherwise, as the docstring says; `tests/test_normalization.py`). Experiment (28 Oct 2026, `exp_src` in
+  claude-work, `GRAPHCAST_EXP_RESIDUALS`): direct vs residual without output normalization vs residual /
+  tendency_std, 2000 steps each, with the state error (z-score units) of predictions, persistence and climatology
+  logged per step.
+- Vertical coordinate: z-levels with per-variable, per-level loss masks for now. Sigma coordinates (all levels valid
+  sea, depth varying per column) would avoid loss masking and are to be reconsidered later. They would need: a sigma
+  level definition (number, stretching, whether the top follows the free surface `zos`); GLORYS level bounds (only
+  centres are in the data) for conservative remapping and partial bottom cells; a bottom condition for `uo`/`vo`
+  (`thetao_bottom`/`so_bottom` exist, no velocity bottom values); a rule for shallow columns with 1–2 z-levels;
+  standardizing before (interpolate z-scores, cheap) or after (recompute climatology/anomaly_std on sigma levels)
+  remapping; the inverse remapping for evaluation on z-levels. In the model: the depth of each level becomes a 2D
+  (3D with `zos`) feature next to the bathymetry (`glorys_deptho`), and loss level weights come from layer
+  thicknesses H·Δσ instead of the 1D `depth` coordinate.
 - Training data path: `dataloader_utils.get_dataset` opens the store lazily with xarray-tensorstore and selects
   `task.levels` (`dataloader.select_levels`); `StandardizedAnomalySource` stores only the path, levels, `split_date` and
   `dataset.io_threads` and reopens the store in each process (`__getstate__` drops it), so Grain workers never pickle

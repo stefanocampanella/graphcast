@@ -310,3 +310,8 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   units) of the predictions, of persistence and of the climatology is logged at every step. The three 2000-step
   runs are jobs 2566428, 2566430 and 2566431 on booster with `training2647`. The develbooster nodes are in the
   `maint_row_6.1` maintenance reservation from 28 Oct 17:00 to 29 Nov, so they run on the regular partition.
+- **19:12 Request:** keep the sigma-coordinate notes for later; keep z-levels and mask the loss for now; wait for
+  the experiments; fix the residual bug in the PR; recap the requested changes to input and output normalization.
+  **Change:** `InputsAndResiduals` branches on `_residual_scales`, so training uses residuals divided by
+  `tendency_std` again. `tests/test_normalization.py` fails on the old code. The sigma-coordinate requirements are
+  in CLAUDE.md.

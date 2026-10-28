@@ -178,7 +178,7 @@ class InputsAndResiduals(predictor_base.Predictor):
     norm_predictions = self._predictor(
       inputs=norm_inputs, targets_template=targets_template, forcings=norm_forcings, **kwargs
     )
-    if self._residual_locations is not None:
+    if self._residual_scales is not None:
       return xarray_tree.map_structure(
         lambda pred: self._unnormalize_prediction_and_add_input(inputs, pred),
         norm_predictions,
@@ -209,7 +209,7 @@ class InputsAndResiduals(predictor_base.Predictor):
     """The loss computed on normalized data, with unnormalized predictions."""
     norm_inputs = normalize(inputs, self._scales, self._locations, skip_names=self._skip_names)
     norm_forcings = normalize(forcings, self._scales, self._locations, skip_names=self._skip_names)
-    if self._residual_locations is not None:
+    if self._residual_scales is not None:
       norm_target_residuals = xarray_tree.map_structure(
         lambda t: self._subtract_input_and_normalize_target(inputs, t), targets
       )
