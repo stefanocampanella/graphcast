@@ -103,9 +103,9 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   `thetao_bottom` only have cause 1 (and the few `so` points of causes 2–3).
 - Conventions for the standardized store and tendency_std (decided and implemented on 28 Oct 2026, commit 5b7026c:
   `DownloadConfig.masks`, `static_variables`, `equal_tolerance`, `reference_period`, `TendencyStdConfig.zero_inflated`,
-  `dataloader_utils.get_loss_masks`, per-variable `Mask` and losses). The stores in
-  `$FSCRATCH/graphcast/data/anomalies`, their SquashFS images and tendency_std predate them and are to be recomputed
-  (a real 5-day subset passes all checks; the anomaly_std floors take ~2 min to compute):
+  `dataloader_utils.get_loss_masks`, per-variable `Mask` and losses). The stores, their SquashFS images and
+  tendency_std in `$FSCRATCH/graphcast/data/anomalies` were recomputed with them on 28 Oct 2026 (see Outputs); the
+  anomaly_std floors take ~2 min to compute:
   1. Feb 29 is kept, standardized with Feb 28's climatology and anomaly_std (they vary smoothly), and its differences
      count in tendency_std (as now; arco-make's copy dropped them).
   2. `z` and `lsm` are static: excluded from climatology/anomaly_std, min-max normalized to 0–1, no tendency_std.
@@ -209,10 +209,17 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   data (`tests/conftest.py`); throwaway scripts compared real subsets (20 days around 29 Feb 2020, local and S3 inputs) and windows of the full stores (agreement
   within 1e-6).
 - Full 10.5 TB (5.1 TB on disk) on booster nodes: v3 lexicographic 34 min and v2 2 h (three jobs at once), v3
-  colexicographic 32 min alone; login node (use 8 Dask and 16 I/O threads): v3 lexicographic ~1 h. Outputs:
-  `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3,zarr_v3_lexi}` (26 Oct 2026; `zarr_v3` is
-  morton, written by an earlier version) and `zarr_v3_colexi` (27 Oct 2026); the mask in `glorys_mask` (28 Oct 2026,
-  from the local raw copy with `configs/download/mask.toml`, 9 s).
+  colexicographic 32 min alone; login node (use 8 Dask and 16 I/O threads): v3 lexicographic ~1 h. Outputs (28 Oct
+  2026, with the conventions above; three booster jobs at once: `zarr_v2` 2 h 4 min, `zarr_v3_lexi` 54 min,
+  `zarr_v3_colexi` 60 min; identical to an in-memory standardization over windows with Feb 29):
+  `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}`, `tendency_std`
+  (from `zarr_v2`, 31 min on a booster node; 25 variables, finite, 0 outside the masks) and the mask `glorys_mask`
+  (from the local raw copy with `configs/download/mask.toml`, 9 s). The earlier stores (including the morton
+  `zarr_v3`) and the arco-make tendency_std copy are incompatible with the conventions and were deleted (the copy
+  remains in `/e/scratch/training2647/graphcast_data/zarr_v2/tendency_std` and on S3).
+- Training check (28 Oct 2026, job 2568724, 60 steps, 1 node): residuals / tendency_std with per-variable loss masks
+  train (loss 0.73 → 0.49, every target variable −30–40%); data wait 0.021 s, compute 0.385 s per step; XLA memory
+  49.2 GiB per GPU (47.1 GiB with the single mask: per-variable masks are larger arrays).
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier images in `/e/project1/e-dev-2026d09-119/squashfs` (from

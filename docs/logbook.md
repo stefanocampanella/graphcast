@@ -335,3 +335,20 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 
   **Insight:** `$FSCRATCH` holds 42 TB (`du`) against a 40 TB soft limit (44 TB hard); `jutil` reports 0. The new
   stores need old ones deleted first.
+- **20:07 Request:** delete the old stores and images and recompute. **Change:** the old stores, SquashFS images and
+  tendency_std were deleted, and the old `zarr_v2` (2.5 M files) was removed in the background. `.env` and JUBE now
+  read `tendency_std` from `$FSCRATCH/graphcast/data/anomalies/tendency_std` (`8740ccf`).
+- **20:11–22:49 Experiment:** jobs 2567233–2567236 (`e-dev-2026d09-119`) wrote `zarr_v2` in 2 h 4 min,
+  `zarr_v3_lexi` in 54 min and `zarr_v3_colexi` in 60 min; then `tendency_std` from `zarr_v2` in 31 min. A
+  detached watcher packs the SquashFS images: v3 lexi and colexi in 13 min each (entries match).
+- **Verification:**
+  - **Stores:** the three are identical to an in-memory standardization of two windows (including Feb 29, 2004),
+    with static `z` and `lsm`.
+  - **`tendency_std`:** 25 variables, finite, 0 outside the masks; `siconc` is 0 at the 66% of sea points that
+    never see ice.
+- **Training check:**
+  - **First runs:** jobs 2568564 and 2568639 failed before training. The masked mean summed in bfloat16, which
+    xarray rejects (`213fa7d`, sums in float32), and then returned float32, while `Bfloat16Cast` expects bfloat16
+    (`70e07cd`, returned in the loss's dtype).
+  - **Job 2568724** (60 steps): the loss went from 0.73 to 0.49, every target variable by 30–40%. Data wait was
+    0.021 s and compute 0.385 s per step; XLA memory was 49.2 GiB per GPU.
