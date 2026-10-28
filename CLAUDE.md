@@ -101,6 +101,34 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
      fields varies, before it equals the static land count exactly), which are finite in both but ~0.6 of the copy.
   The four target variables (`thetao`, `so`, `uo`, `vo`), `zos`, ERA5 forcings other than `z`/`lsm`, `tp`,
   `thetao_bottom` only have cause 1 (and the few `so` points of causes 2–3).
+- Conventions for the standardized store and tendency_std (decided 28 Oct 2026, **not implemented yet**; the
+  stores, their SquashFS images and tendency_std are to be recomputed, which is acceptable):
+  1. Feb 29 is kept, standardized with Feb 28's climatology and anomaly_std (they vary smoothly), and its differences
+     count in tendency_std (as now; arco-make's copy dropped them).
+  2. `z` and `lsm` are static: excluded from climatology/anomaly_std, min-max normalized to 0–1, no tendency_std.
+     They should be constant; ARCO-OCEAN has glitches: `z` changes on 2022-10-01 at the two polar rows (lat ±90, all
+     1440 longitudes, ~6×), `lsm` differs on 1998-05-04 and 2014-04-05 at 532 points (18–24°S). Take a glitch-free
+     day.
+  3. Wave variables under sea ice are 0 (already so inside `waverys_mask`, via ARCO-OCEAN's `masked_fill`).
+  4. Values equal to the climatology within a relative tolerance, `|x − c| ≤ k·eps·max(|x|, |c|)` (float32 eps, k a
+     few units), have a z-score of 0 whatever the anomaly_std (constant series such as deep salinity, zero river
+     discharge; without it z is a ratio of rounding errors, e.g. ±1).
+  5. Anomaly_std has a floor (for data the statistics do not cover); the heavy in-sample tails (`dis24`, `so`, `tp`)
+     are kept, so the floor must not change in-sample z-scores. Smallest positive in-sample anomaly_std inside the
+     masks: `siconc` 4e-12, `dis24` 1.5e-11, `sithick` 8e-11, `tp` 1.5e-8, `so_bottom` 2.7e-6, `so` (level 49)
+     1.4e-5, `swh` 2e-5; ERA5 forcings ≥ 0.04; `uo`/`vo` at level 49 are 0 at all 16,664 sea points.
+  6. A point whose series is constant (after 4) has tendency_std 0, and is excluded from the loss for that variable
+     (no clipping of tendency_std).
+  7. Sea-ice variables (`siconc`, `sithick`, `usi`, `vsi`): tendency_std is the std of the non-zero differences only
+     (their differences are zero-inflated).
+  8. Data outside their source's static mask are 0: GLORYS `glorys_mask` (3D for `thetao`, `so`, `uo`, `vo`; level 0
+     for `zos`, sea ice, `thetao_bottom`, `so_bottom`), WAVERYS `waverys_mask` (`swh`, `mwp`, `mwd`, `usd`, `vsd`),
+     GLOFAS `glofas_mask` (`dis24`); ERA5 has no mask. Wave values that are 0 inside the GLORYS mask (different grids)
+     are accepted.
+  9. Loss masks per variable (and level), replacing the single surface mask: today `Mask` and
+     `losses._mean_preserving_batch` broadcast the 2D surface `glorys_mask` over all levels and variables, so land
+     below the surface of ocean columns is in the loss (targets 0, copy's tendency_std NaN → 1) and is predicted.
+  Normalization statistics over 1993–2023 include the held-out period after `split_date`: accepted for now.
 - Training data path: `dataloader_utils.get_dataset` opens the store lazily with xarray-tensorstore and selects
   `task.levels` (`dataloader.select_levels`); `StandardizedAnomalySource` stores only the path, levels, `split_date` and
   `dataset.io_threads` and reopens the store in each process (`__getstate__` drops it), so Grain workers never pickle

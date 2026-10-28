@@ -265,3 +265,27 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   4. **Statistics undefined at points with data on some days:** the wave points outside the static mask.
 
   `thetao`, `so`, `uo`, `vo`, `zos` and most forcings have only cause 1.
+- **17:46 Request** (decisions on the tendency_std differences):
+  - keep Feb 29, standardized with Feb 28's statistics;
+  - `z` and `lsm` are static, min-max normalized;
+  - waves under sea ice are 0;
+  - values equal to the climatology have a z-score of 0;
+  - constant series have tendency_std 0;
+  - the sea-ice differences are zero-inflated;
+  - data outside their source's static mask are 0.
+
+  Is anything still missing? **Answer:** a tolerance for "equal", small anomaly_std, the sea-ice estimator, the
+  variable-to-mask mapping, `lsm` not exactly constant, what tendency_std 0 means in training, the loss mask, data
+  outside 1993–2023, and normalization over the held-out years.
+- **18:11 Request** (decisions): the relative tolerance; heavy tails kept; std of the non-zero differences for the
+  sea-ice variables only; the proposed mask mapping; `z` and `lsm` are constant (variations are upstream bugs);
+  exclude zero-tendency points from the loss per variable, without clipping; a floor on anomaly_std; leakage
+  accepted; recomputing everything is acceptable. Revise the notes and check what is still missing.
+- **Experiment and Insight:**
+  - **`z`** changes only on 2022-10-01, at the polar rows (lat ±90, all longitudes, about 6×).
+  - **`lsm`** differs from its first day on 1998-05-04 and 2014-04-05 only, at 532 points (18–24°S).
+  - **`uo`/`vo` at level 49** have an anomaly_std of 0 at all 16,664 sea points.
+  - **Smallest positive anomaly_std inside the masks:** `siconc` 4e-12, `dis24` 1.5e-11, `tp` 1.5e-8.
+- **18:18 Request:** doesn't the current implementation exclude land below the surface? **Insight:** no. `Mask`
+  and the loss broadcast the 2D surface `glorys_mask` over all levels and variables, so land below the surface of
+  ocean columns is in the loss and is predicted.
