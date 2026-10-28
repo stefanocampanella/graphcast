@@ -101,6 +101,14 @@ float32) and writes one local store; the batch dimension and relative time stay 
   colexicographic 32 min alone; login node (use 8 Dask and 16 I/O threads): v3 lexicographic ~1 h. Outputs:
   `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3,zarr_v3_lexi}` (26 Oct 2026; `zarr_v3` is
   morton, written by an earlier version) and `zarr_v3_colexi` (27 Oct 2026).
+- SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
+  `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
+  by `mksquashfs.sh` there, with the settings of the earlier images in `/e/project1/e-dev-2026d09-119/squashfs` (from
+  `~/.bash_eternal_history`): `mksquashfs SRC DST.sqsh -noappend -no-xattrs -noI -noD -noF -b 1M -comp lz4 -progress`
+  (uncompressed, as chunks are already Blosc-compressed; 1 MB blocks, the first tries used 4 KB), plus `-mem 32G` on
+  login nodes: the default working memory (25% of RAM) equals the 143 GiB per-user limit, and a first run writing
+  fscratch → fscratch at ~4 GB/s was killed at 69%. `scripts/train.sh`
+  binds `.sqsh` files under `/data` like directories.
 
 ### I/O measurements for the dataloader refactoring
 
@@ -195,7 +203,13 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   monthly mode (regular projects, not these) spreads the quota evenly over months: available = current month's
   quota + the previous month's leftover; one month may be borrowed from the next (not in the last month) at normal
   priority, beyond that jobs get the lowest priority for the rest of the month. When a quota is exhausted (or
-  overdrawn by more than a month), jobs only run when the machine has free capacity, limited to 6 h.
+  overdrawn by more than a month), jobs only run when the machine has free capacity, limited to 6 h. The page does
+  not say explicitly that the monthly rules are off in fixed mode: that is inferred from `acct-mode=fixed` and from
+  `jutil` reporting all usage under the current month.
+- Queue: 1-node booster jobs submitted with a 6–12 h limit on 27 Oct 2026 waited ~16 h (reason `Priority`); for
+  I/O-only work (e.g. `mksquashfs`), a login node is usually faster to get.
+- Logbook: `docs/logbook.md` records, with date and time (CET), the maintainer's requests, code changes,
+  experiments and insights; append entries as work proceeds (CLAUDE.md keeps what stays valid).
 - Workflow: one feature branch and PR per task into `develop@esiwace3_hackathon`; the maintainer reviews on GitHub
   or asks for changes directly. Reply to each review comment once addressed. Keep PR descriptions short (purpose,
   usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by Claude
