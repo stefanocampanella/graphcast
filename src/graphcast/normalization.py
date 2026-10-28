@@ -17,7 +17,6 @@ The Predictor which is wrapped sees normalized inputs and targets, and makes
 normalized predictions. The wrapper handles translating the predictions back
 to the original domain.
 """
-# TODO: fix implementation for sea ice variables, that have residual scales equal to zero on most of the domain.
 
 import logging
 from collections.abc import Iterable
@@ -129,6 +128,11 @@ class InputsAndResiduals(predictor_base.Predictor):
     self._residual_scales = diffs_stddev_by_level
     if self._residual_scales is None:
       logger.info("Residual scales have not been provided, predicting targets directly.")
+      self._residual_divisors = None
+    else:
+      # Residual scales are 0 where a series is constant (excluded from the loss): divide by 1 there, while
+      # predictions, scaled by 0, keep the input.
+      self._residual_divisors = xarray_tree.map_structure(lambda scale: scale.where(scale > 0, 1), diffs_stddev_by_level)
     self._residual_locations = None
     self._skip_names = skip_names
 
@@ -162,7 +166,7 @@ class InputsAndResiduals(predictor_base.Predictor):
       target_residual = target
       last_input = inputs[target.name].isel(time=-1)
       target_residual = target_residual - last_input
-      return normalize(target_residual, self._residual_scales, self._residual_locations)
+      return normalize(target_residual, self._residual_divisors, self._residual_locations)
     else:
       return normalize(target, self._scales, self._locations)
 

@@ -149,17 +149,19 @@ def train(
   dataset = dataloader_utils.get_dataset(configs)
   task_config = dataloader_utils.get_task_config(configs, dataset)
   tendency_std = dataloader_utils.get_tendency_std(configs)
+  # Per target variable and level: grid points whose series is not constant (tendency_std > 0).
+  loss_masks = dataloader_utils.get_loss_masks(tendency_std, mask, task_config.target_variables)
   static_data = xarray_jax.wrap_data(
-    (tendency_std, mask), to_jax=True, np_contiguous=False
+    (tendency_std, loss_masks), to_jax=True, np_contiguous=False
   )
 
   @hk.without_apply_rng
   @hk.transform
   def loss_fn(
-      data: Datasets, static_data: tuple[xr.Dataset, xr.DataArray]
+      data: Datasets, static_data: tuple[xr.Dataset, xr.Dataset]
   ) -> JAXLossAndDiagnostics:
     inputs, targets, forcings = data
-    tendency_std, mask_da = static_data
+    tendency_std, loss_masks = static_data
     predictor = trn_utils.get_predictor(
       configs=configs,
       model_config=model_config,
@@ -170,7 +172,7 @@ def train(
       grid_mask=grid_mask,
       mean_by_level=None,
       stddev_by_level=None,
-      mask_da=mask_da,
+      mask_da=loss_masks,
       diffs_stddev_by_level=tendency_std,
     )
     loss, diagnostics = predictor.loss(

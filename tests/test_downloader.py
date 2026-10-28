@@ -122,26 +122,104 @@ def test_open_input_keeps_masks_undecoded(opened_inputs, inputs):
   np.testing.assert_array_equal(xarray_tensorstore.read(dataset["thetao"]).values, inputs[0]["thetao"].values)
 
 
-def test_standardize_matches_the_reference(opened_inputs, reference):
-  standardized = downloader.standardize(*opened_inputs, DownloadConfig()).compute()
-  _assert_equal_to_reference(standardized, reference)
-  assert not any(np.isnan(values).any() for values in standardized.data_vars.values())
-  assert "graphcast download" in standardized.attrs["history"]
+class TestStandardize:
+  def test_matches_the_reference(self, opened_inputs, reference, download_settings):
+    standardized = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
+    _assert_equal_to_reference(standardized, reference)
+    assert all(np.isfinite(values).all() for values in standardized.data_vars.values())
+    assert "graphcast download" in standardized.attrs["history"]
 
+  @pytest.fixture
+  def standardized(self, opened_inputs, download_settings) -> xr.Dataset:
+    return downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
 
-def test_standardize_requires_statistics(opened_inputs):
-  dataset, climatology, anomaly_std = opened_inputs
-  with pytest.raises(ValueError, match="zos"):
-    downloader.standardize(dataset, climatology.drop_vars("zos"), anomaly_std, DownloadConfig())
+  def test_zero_outside_the_masks(self, standardized, inputs, special_points):
+    land = ~inputs[0]["glorys_mask"].astype(bool)
+    assert (standardized["thetao"].where(land) == 0).sum() == land.sum() * standardized.sizes["time"]
+    lat, lon = special_points["land_column"]
+    assert (standardized["zos"].isel(lat=lat, lon=lon) == 0).all()
+    assert standardized["deptho"].isel(lat=lat, lon=lon) == 0
 
+  def test_equal_to_the_climatology_is_zero(self, standardized, inputs, special_points):
+    """A zero anomaly_std gives z = 0 where the value equals the climatology, and (x - c) / floor elsewhere."""
+    dataset, climatology, anomaly_std = inputs
+    day = pd.Timestamp("2020-03-01")
+    assert standardized["zos"].sel(time=day)[special_points["zos_equal"]] == 0
+    point = special_points["zos_unequal"]
+    floor = anomaly_std["zos"].where(anomaly_std["zos"] > 0).min()
+    expected = (dataset["zos"].sel(time=day)[point] - climatology["zos"][(59, *point)]) / floor
+    np.testing.assert_allclose(standardized["zos"].sel(time=day)[point], expected, rtol=1e-6)
 
-@pytest.mark.parametrize(("settings", "thetao", "zos"), [(V2, 8, 15), (V3_LEXI, 2, 4)], ids=["default", "v3_lexi"])
-def test_standardize_chunks_by_shard(opened_inputs, settings, thetao, zos):
-  """Dask chunks are shards (whole along dimensions other than time), so that each shard is written once."""
-  standardized = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(settings))
-  assert standardized["thetao"].data.chunksize == (thetao, 3, 4, 5)
-  assert standardized["zos"].data.chunksize == (zos, 4, 5)
-  assert standardized["glorys_mask"].data.chunksize == (3, 4, 5)
+  def test_values_within_the_tolerance_are_zero(self, opened_inputs, download_settings):
+    dataset, climatology, anomaly_std = (xarray_tensorstore.read(data).compute() for data in opened_inputs)
+    shifted = dataset.copy(deep=True)
+    # One float32 epsilon away from the climatology, with a tiny anomaly_std: within the tolerance of 4.
+    day, point = 3, (2, 2)
+    mean = float(climatology["zos"][(dataset.indexes["time"][day].dayofyear - 1, *point)])
+    shifted["zos"][(day, *point)] = np.float32(mean) * (1 + np.finfo(np.float32).eps)
+    configs = DownloadConfig.model_validate(download_settings)
+    standardized = downloader.standardize(shifted, climatology, anomaly_std, configs).compute()
+    assert standardized["zos"][(day, *point)] == 0
+    loose = DownloadConfig.model_validate({**download_settings, "equal_tolerance": 1e-3})
+    assert downloader.standardize(shifted, climatology, anomaly_std, loose).compute()["zos"][(day, *point)] != 0
+
+  def test_static_variables(self, standardized, inputs):
+    """Time-dependent but constant in fact: the first timestep, min-max normalized."""
+    assert standardized["lsm"].dims == ("lat", "lon")
+    lsm = inputs[0]["lsm"].isel(time=0)
+    np.testing.assert_allclose(standardized["lsm"], (lsm - lsm.min()) / (lsm.max() - lsm.min()), rtol=1e-6)
+
+  def test_non_finite_values_inside_masks_fail(self, opened_inputs, download_settings):
+    dataset, climatology, anomaly_std = (xarray_tensorstore.read(data).compute() for data in opened_inputs)
+    broken = dataset.copy(deep=True)
+    broken["zos"][(2, 1, 2)] = np.nan
+    configs = DownloadConfig.model_validate(download_settings)
+    with pytest.raises(ValueError, match="zos: non-finite values inside its mask"):
+      downloader.standardize(broken, climatology, anomaly_std, configs).compute()
+    # Without masks, the missing values of the land points fail too.
+    with pytest.raises(ValueError, match="non-finite"):
+      unmasked = DownloadConfig(static_variables=["lsm"])
+      downloader.standardize(dataset, climatology, anomaly_std, unmasked).compute()
+
+  def test_reference_period_caps_z_outside(self, opened_inputs, download_settings):
+    configs = DownloadConfig.model_validate({**download_settings, "reference_period": ["2020-02-20", "2020-02-28"]})
+    capped = downloader.standardize(*opened_inputs, configs).compute()
+    plain = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
+    inside = plain["zos"].sel(time=slice(None, "2020-02-28"))
+    cap = abs(inside).max()
+    outside = plain["zos"].sel(time=slice("2020-02-29", None))
+    xr.testing.assert_allclose(capped["zos"].sel(time=slice(None, "2020-02-28")), inside)
+    xr.testing.assert_allclose(capped["zos"].sel(time=slice("2020-02-29", None)), outside.clip(-cap, cap))
+    # The zero-anomaly_std point of 2020-03-01 is out of range: capped.
+    assert abs(outside).max() > cap
+
+  @pytest.mark.parametrize(
+    "settings",
+    [
+      {"masks": {"missing_mask": ["zos"]}, "static_variables": ["lsm"]},
+      {"masks": {"glorys_mask": ["missing"]}, "static_variables": ["lsm"]},
+      {"static_variables": ["lsm", "missing"]},
+    ],
+  )
+  def test_unknown_variables(self, opened_inputs, settings):
+    with pytest.raises(ValueError, match="missing"):
+      downloader.standardize(*opened_inputs, DownloadConfig.model_validate(settings))
+
+  def test_requires_statistics(self, opened_inputs, download_settings):
+    dataset, climatology, anomaly_std = opened_inputs
+    with pytest.raises(ValueError, match="zos"):
+      downloader.standardize(
+        dataset, climatology.drop_vars("zos"), anomaly_std, DownloadConfig.model_validate(download_settings)
+      )
+
+  @pytest.mark.parametrize(("settings", "thetao", "zos"), [(V2, 8, 15), (V3_LEXI, 2, 4)], ids=["default", "v3_lexi"])
+  def test_chunks_by_shard(self, opened_inputs, download_settings, settings, thetao, zos):
+    """Dask chunks are shards (whole along dimensions other than time), so that each shard is written once."""
+    configs = DownloadConfig.model_validate({**download_settings, **settings})
+    standardized = downloader.standardize(*opened_inputs, configs)
+    assert standardized["thetao"].data.chunksize == (thetao, 3, 4, 5)
+    assert standardized["zos"].data.chunksize == (zos, 4, 5)
+    assert standardized["glorys_mask"].data.chunksize == (3, 4, 5)
 
 
 @pytest.mark.parametrize(
@@ -159,26 +237,27 @@ def test_subchunk_transpose(dims, order, expected):
 
 
 @FORMATS
-def test_write(opened_inputs, reference, output_path, settings):
-  _write(opened_inputs, output_path, DownloadConfig.model_validate(settings))
+def test_write(opened_inputs, reference, output_path, download_settings, settings):
+  _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **settings}))
   _assert_equal_to_reference(xr.open_zarr(output_path, consolidated=True).load(), reference)
   written = xarray_tensorstore.open_zarr(str(output_path), consolidated=True)
   _assert_equal_to_reference(xarray_tensorstore.read(written).compute(), reference)
 
 
-def test_write_v2_layout(opened_inputs, output_path):
-  _write(opened_inputs, output_path, DownloadConfig.model_validate(V2))
+def test_write_v2_layout(opened_inputs, output_path, download_settings):
+  _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **V2}))
   metadata = json.loads((output_path / ".zmetadata").read_text())["metadata"]
   thetao, zos, mask = (metadata[f"{name}/.zarray"] for name in ("thetao", "zos", "glorys_mask"))
   assert thetao["chunks"] == [1, 1, 4, 5]
   assert zos["chunks"] == [1, 4, 5]
   assert mask["chunks"] == [3, 4, 5]
+  assert metadata["lsm/.zarray"]["chunks"] == [4, 5]
   assert thetao["compressor"] == {"id": "blosc", "cname": "lz4", "clevel": 1, "shuffle": 1, "blocksize": 0}
 
 
 @pytest.mark.parametrize(("settings", "filters"), [(V3_LEXI, []), (V3_COLEXI, ["transpose"])], ids=["lexi", "colexi"])
-def test_write_v3_layout(opened_inputs, output_path, settings, filters):
-  _write(opened_inputs, output_path, DownloadConfig.model_validate(settings))
+def test_write_v3_layout(opened_inputs, output_path, download_settings, settings, filters):
+  _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **settings}))
   metadata = json.loads((output_path / "zarr.json").read_text())["consolidated_metadata"]["metadata"]
   thetao, zos = metadata["thetao"], metadata["zos"]
   assert thetao["chunk_grid"]["configuration"]["chunk_shape"] == [2, 3, 4, 5]
@@ -193,9 +272,9 @@ def test_write_v3_layout(opened_inputs, output_path, settings, filters):
 
 
 @pytest.mark.parametrize("settings", [V3_LEXI, V3_COLEXI], ids=["lexi", "colexi"])
-def test_write_v3_shard_order(opened_inputs, output_path, settings):
+def test_write_v3_shard_order(opened_inputs, output_path, download_settings, settings):
   """Chunks are stored in the order of the shard index: by time, then depth, or (transposed) by depth, then time."""
-  _write(opened_inputs, output_path, DownloadConfig.model_validate(settings))
+  _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **settings}))
   shard = (output_path / "thetao" / "c" / "0" / "0" / "0" / "0").read_bytes()
   # The index is at the end of the shard: (offset, nbytes) per chunk, then a crc32c checksum.
   num_chunks = 2 * 3
@@ -203,8 +282,8 @@ def test_write_v3_shard_order(opened_inputs, output_path, settings):
   assert np.all(np.diff(index[:, 0].astype(np.int64)) > 0)
 
 
-def test_write_refuses_existing_output(opened_inputs, output_path):
-  configs = DownloadConfig()
+def test_write_refuses_existing_output(opened_inputs, output_path, download_settings):
+  configs = DownloadConfig.model_validate(download_settings)
   _write(opened_inputs, output_path, configs)
   standardized = downloader.standardize(*opened_inputs, configs)
   with pytest.raises(FileExistsError):
@@ -225,24 +304,25 @@ class TestCli:
     return CliRunner().invoke(downloader.download, [*input_paths, str(output_path), "--log-level", "warning", *options])
 
   @FORMATS
-  def test_download(self, input_paths, output_path, reference, tmp_path, settings):
-    config_path = tmp_path / "configs.toml"
-    config_path.write_text("".join(f"{key} = {json.dumps(value)}\n" for key, value in settings.items()))
+  def test_download(self, input_paths, output_path, reference, download_settings, write_config, settings):
+    config_path = write_config({**download_settings, **settings})
     result = self._run(input_paths, output_path, "--config", str(config_path))
     assert result.exit_code == 0, result.output
     written = xarray_tensorstore.open_zarr(str(output_path), consolidated=True)
     _assert_equal_to_reference(xarray_tensorstore.read(written).compute(), reference)
 
-  def test_download_without_config_writes_zarr_v2(self, input_paths, output_path):
-    assert self._run(input_paths, output_path).exit_code == 0
-    assert (output_path / ".zmetadata").exists()
+  def test_download_without_masks_fails_on_missing_values(self, input_paths, output_path, write_config):
+    result = self._run(input_paths, output_path, "--config", str(write_config({"static_variables": ["lsm"]})))
+    assert result.exit_code != 0
+    assert "non-finite" in str(result.exception)
 
-  def test_existing_output_requires_overwrite(self, input_paths, output_path):
-    assert self._run(input_paths, output_path).exit_code == 0
-    result = self._run(input_paths, output_path)
+  def test_existing_output_requires_overwrite(self, input_paths, output_path, download_settings, write_config):
+    config = ["--config", str(write_config(download_settings))]
+    assert self._run(input_paths, output_path, *config).exit_code == 0
+    result = self._run(input_paths, output_path, *config)
     assert result.exit_code != 0
     assert "--overwrite" in result.output
-    assert self._run(input_paths, output_path, "--overwrite").exit_code == 0
+    assert self._run(input_paths, output_path, *config, "--overwrite").exit_code == 0
 
   def test_invalid_config(self, input_paths, output_path, tmp_path):
     config_path = tmp_path / "configs.toml"
@@ -304,27 +384,43 @@ class TestMask:
 
 class TestTendencyStd:
   @staticmethod
-  def _expected(values: np.ndarray, zero_as_missing: bool = True) -> np.ndarray:
+  def _expected(values: np.ndarray, zero_inflated: bool = False) -> np.ndarray:
     diffs = np.diff(values.astype(np.float64), axis=0)
-    std = np.sqrt(np.mean(diffs * diffs, axis=0))
-    return np.where(std > 0, std, np.nan if zero_as_missing else 0.0).astype(np.float32)
+    squares = diffs * diffs
+    if zero_inflated:
+      count = (diffs != 0).sum(axis=0)
+      return np.sqrt(squares.sum(axis=0) / np.maximum(count, 1)).astype(np.float32)
+    return np.sqrt(np.mean(squares, axis=0)).astype(np.float32)
 
   @pytest.fixture
   def standardized(self, standardized_path) -> xr.Dataset:
     return downloader.open_input(standardized_path, get_tensorstore_context(2))
 
-  @pytest.mark.parametrize("zero_as_missing", [True, False])
-  def test_matches_the_reference(self, standardized, zero_as_missing):
-    configs = TendencyStdConfig(time_chunk=4, zero_as_missing=zero_as_missing)
-    result = downloader.tendency_std(standardized, configs).compute()
+  def test_matches_the_reference(self, standardized):
+    result = downloader.tendency_std(standardized, TendencyStdConfig(time_chunk=4)).compute()
     assert set(result.data_vars) == {"thetao", "zos"}
     for name, values in result.data_vars.items():
       assert values.dtype == np.float32
       assert "time" not in values.dims
       source = xarray_tensorstore.read(standardized[name]).values
-      np.testing.assert_allclose(values.values, self._expected(source, zero_as_missing), rtol=1e-6, err_msg=name)
-    # Below the first level, the land point is missing at all times in the inputs: 0 in the store, NaN here.
-    assert bool(np.isnan(result["thetao"].isel(depth=1, lat=0, lon=0))) == zero_as_missing
+      np.testing.assert_allclose(values.values, self._expected(source), rtol=1e-6, err_msg=name)
+    # Below the first level, the land point is 0 in the store at all times: constant, 0 here.
+    assert result["thetao"].isel(depth=1, lat=0, lon=0) == 0
+
+  def test_zero_inflated(self):
+    """Only the non-zero differences count; a series that never changes has 0."""
+    values = np.zeros((10, 2, 1), dtype=np.float32)
+    values[4:6, 0, 0] = [0.5, 2.0]
+    store = xr.Dataset({"siconc": (("time", "lat", "lon"), values)}, coords={"time": np.arange(10)})
+    configs = TendencyStdConfig(zero_inflated=["siconc"])
+    result = downloader.tendency_std(store, configs).compute()["siconc"].values
+    diffs = np.array([0.5, 1.5, -2.0])
+    np.testing.assert_allclose(result[0, 0], np.sqrt(np.mean(diffs**2)), rtol=1e-6)
+    assert result[1, 0] == 0
+    plain = downloader.tendency_std(store, TendencyStdConfig()).compute()["siconc"].values
+    np.testing.assert_allclose(plain[0, 0], np.sqrt(np.sum(diffs**2) / 9), rtol=1e-6)
+    with pytest.raises(ValueError, match="sithick"):
+      downloader.tendency_std(store, TendencyStdConfig(zero_inflated=["sithick"]))
 
   def test_variables(self, standardized):
     result = downloader.tendency_std(standardized, TendencyStdConfig(variables=["zos"]))

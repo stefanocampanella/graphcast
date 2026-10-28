@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
 from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
 from graphcast.downloader import compute_tendency_std
-from graphcast.training_config import SourceConfig, TrainingConfig
+from graphcast.training_config import MaskConfig, SourceConfig, TrainingConfig
 
 FULL_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "full.toml"
 LEVELS = [2, 0]
@@ -158,15 +158,48 @@ def test_stream_with_grain_workers(training_configs, num_workers):
         np.testing.assert_allclose(np.array(xarray_jax.unwrap(streamed[name].data)), values.values, err_msg=name)
 
 
-def test_tendency_std_of_the_store(training_configs, standardized_path, tmp_path):
-  """graphcast compute-tendency-std writes what training reads: task levels selected, NaN (no data) filled with 1."""
+@pytest.fixture
+def tendency_std_path(standardized_path, tmp_path) -> str:
   output = tmp_path / "tendency_std"
   result = CliRunner().invoke(compute_tendency_std, [standardized_path, str(output), "--log-level", "warning"])
   assert result.exit_code == 0, result.output
-  configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=str(output))})
+  return str(output)
+
+
+def test_tendency_std_of_the_store(training_configs, tendency_std_path):
+  """graphcast compute-tendency-std writes what training reads: task levels selected, 0 at constant points."""
+  configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=tendency_std_path)})
   tendency_std = dataloader_utils.get_tendency_std(configs)
   assert set(tendency_std.data_vars) == {"thetao", "zos"}
   assert tendency_std["level"].values.tolist() == LEVELS
-  # Below the first level, the land point has no data.
-  assert float(tendency_std["thetao"].sel(level=2).isel(lat=0, lon=0)) == 1.0
-  assert bool((tendency_std["thetao"] > 0).all())
+  # Land (outside the mask) is 0 in the store at all times: constant, tendency_std 0.
+  assert float(tendency_std["thetao"].sel(level=2).isel(lat=0, lon=0)) == 0.0
+  assert float(tendency_std["zos"].isel(lat=3, lon=4)) == 0.0
+  assert int((tendency_std["thetao"] == 0).sum()) == 2 + 1  # land column at both levels, land below level 0 at level 2
+
+
+def test_tendency_std_with_missing_values_fails(training_configs, tendency_std_path, tmp_path):
+  broken = xr.open_zarr(tendency_std_path).load()
+  broken["zos"][0, 0] = np.nan
+  path = tmp_path / "broken"
+  broken.drop_encoding().to_zarr(path, zarr_format=2, consolidated=True)
+  configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=str(path))})
+  with pytest.raises(ValueError, match="zos has missing or negative values"):
+    dataloader_utils.get_tendency_std(configs)
+
+
+def test_loss_masks(training_configs, tendency_std_path, mask_path):
+  """Per target variable and level: grid points with a non-constant series."""
+  configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=tendency_std_path)})
+  tendency_std = dataloader_utils.get_tendency_std(configs)
+  grid_mask = dataloader_utils.get_mask(MaskConfig(path=mask_path, fill_value=0.0))
+  masks = dataloader_utils.get_loss_masks(tendency_std, grid_mask, ["thetao", "zos"])
+  assert masks["thetao"].dtype == bool and masks["thetao"].dims == ("level", "lat", "lon")
+  assert masks["zos"].dims == ("lat", "lon")
+  # Land below the surface of an ocean column is excluded at that level only.
+  assert not masks["thetao"].sel(level=2).isel(lat=0, lon=0) and masks["thetao"].sel(level=0).isel(lat=0, lon=0)
+  # The land column is outside the grid mask and constant.
+  assert not masks["zos"].isel(lat=3, lon=4) and not masks["thetao"].isel(lat=3, lon=4).any()
+  assert int(masks["thetao"].sum()) == 2 * 20 - 3
+  with pytest.raises(ValueError, match="so"):
+    dataloader_utils.get_loss_masks(tendency_std, grid_mask, ["thetao", "so"])

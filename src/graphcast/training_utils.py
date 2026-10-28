@@ -160,7 +160,7 @@ def get_predictor(
   grid_mask: np.ndarray,
     mean_by_level: xr.Dataset | None,
     stddev_by_level: xr.Dataset | None,
-  mask_da: xr.DataArray,
+  mask_da: xr.DataArray | xr.Dataset,
     diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
   # Deeper one-step predictor.

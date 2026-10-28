@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+from collections.abc import Iterable
 from functools import partial
 
 import grain.python as grain
@@ -50,13 +51,33 @@ def get_dataset(configs: TrainingConfig) -> xr.Dataset:
 
 
 def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
+  """Load the tendency_std written by graphcast compute-tendency-std, with the task levels.
+
+  It is 0 where a series is constant (including outside the masks of the variables): those points are excluded from
+  the loss (`get_loss_masks`) and predicted as their input. Missing values are an error.
+  """
   logger.info(f"Loading tendency_std from {configs.tendency_std.path}")
   read_configs = configs.tendency_std.read.model_dump(exclude_unset=True)
   tendency_std = xr.open_dataset(configs.tendency_std.path, **read_configs)
-  tendency_std = select_levels(tendency_std, _get_level_selection(configs.task.levels))
-  tendency_std = tendency_std.fillna(value=1.0)
-  tendency_std = tendency_std.clip(min=1e-16)
+  tendency_std = select_levels(tendency_std, _get_level_selection(configs.task.levels)).load()
+  for name, values in tendency_std.data_vars.items():
+    if not np.isfinite(values.values).all() or (values.values < 0).any():
+      raise ValueError(
+        f"tendency_std of {name} has missing or negative values: write it with graphcast compute-tendency-std"
+      )
   return tendency_std
+
+
+def get_loss_masks(tendency_std: xr.Dataset, grid_mask: xr.DataArray, target_variables: Iterable[str]) -> xr.Dataset:
+  """Points of each target variable (and level) that count in the loss: in the grid mask, and not constant.
+
+  Constant points (tendency_std 0) include those outside the masks of the variables (0 in the standardized store),
+  e.g. land below the surface of ocean columns.
+  """
+  missing = [name for name in target_variables if name not in tendency_std]
+  if missing:
+    raise ValueError(f"No tendency_std for the target variables {missing}")
+  return xr.Dataset({name: (tendency_std[name] > 0) & grid_mask for name in target_variables})
 
 
 def get_mask(configs: MaskConfig) -> xr.DataArray:

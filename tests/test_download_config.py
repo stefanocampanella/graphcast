@@ -49,6 +49,25 @@ def test_shipped_configs_exist():
 def test_shipped_configs_are_valid(path):
   configs = cli_utils.read_configs(path, schema=DownloadConfig)
   assert configs.zarr_format == (2 if path.stem == "zarr_v2" else 3)
+  assert configs.static_variables == ["z", "lsm"]
+  assert set(configs.masks) == {"glorys_mask", "waverys_mask", "glofas_mask"}
+  assert {"thetao", "so", "uo", "vo", "zos", "siconc"} <= set(configs.masks["glorys_mask"])
+  assert configs.masks["glofas_mask"] == ["dis24", "uparea"]
+  assert configs.equal_tolerance == 4.0 and configs.reference_period is None
+
+
+@pytest.mark.parametrize(
+  ("settings", "message"),
+  [
+    ({"masks": {"a_mask": ["x"], "b_mask": ["x"]}}, "more than one mask"),
+    ({"masks": {"a_mask": ["b_mask"], "b_mask": ["x"]}}, "cannot mask each other"),
+    ({"reference_period": ["2023-12-31", "1993-01-01"]}, "start before it ends"),
+    ({"equal_tolerance": 0}, "greater than 0"),
+  ],
+)
+def test_invalid_mask_and_tolerance_settings(settings, message):
+  with pytest.raises(pydantic.ValidationError, match=message):
+    DownloadConfig.model_validate(settings)
 
 
 def test_invalid_toml_is_a_click_error(tmp_path):
@@ -76,7 +95,8 @@ def test_shipped_mask_config_is_valid():
 
 def test_shipped_tendency_std_config_is_valid():
   configs = cli_utils.read_configs(CONFIG_DIR / "tendency_std.toml", schema=TendencyStdConfig)
-  assert configs.variables is None and configs.zero_as_missing
+  assert configs.variables is None
+  assert configs.zero_inflated == ["siconc", "sithick", "usi", "vsi"]
   assert "title" in configs.attrs
 
 

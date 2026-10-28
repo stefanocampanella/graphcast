@@ -14,6 +14,7 @@
 """Loss functions (and terms for use in loss functions) used for weather."""
 
 import functools
+import math
 from collections.abc import Callable, Hashable, Mapping
 from typing import Protocol
 
@@ -62,7 +63,7 @@ def weighted_mse(
   per_variable_weights: Mapping[str, float] | None = None,
   levels_normalization_coord: str = "level",
   weights_decreasing_with_level: bool = False,
-  mask: xr.DataArray | None = None,
+  mask: xr.DataArray | xr.Dataset | None = None,
 ) -> LossAndDiagnostics:
   """Variable-, latitude- and level-weighted, masked MSE loss."""
 
@@ -85,7 +86,7 @@ def weighted_tweedie_deviance(
   per_variable_weights: Mapping[str, float] | None = None,
   levels_normalization_coord: str = "level",
   weights_decreasing_with_level: bool = False,
-  mask: xr.DataArray | None = None,
+  mask: xr.DataArray | xr.Dataset | None = None,
   p: float = 0.0,
 ) -> LossAndDiagnostics:
   """Variable-, latitude- and level-weighted, masked Tweedie deviance loss."""
@@ -114,7 +115,7 @@ def get_weighted_loss(
   per_variable_weights: Mapping[str, float] | None = None,
   levels_normalization_coord: str = "level",
   weights_decreasing_with_level: bool = False,
-  mask: xr.DataArray | None = None,
+  mask: xr.DataArray | xr.Dataset | None = None,
 ) -> Callable[[xr.Dataset, xr.Dataset], LossAndDiagnostics]:
   """Returns a Dataset function that computes variable-, latitude-, and level-weighted, masked loss for a given loss
   function."""
@@ -137,27 +138,56 @@ def get_weighted_loss_per_variable(
   loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
   levels_normalization_coord: str = "level",
   weights_decreasing_with_level: bool = False,
-  mask: xr.DataArray | None = None,
+  mask: xr.DataArray | xr.Dataset | None = None,
 ) -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
   """Returns a DataArray function that computes (latitude) area-weighted, masked loss for a given loss function."""
 
   @functools.wraps(loss_fn)
   def weighted_loss_per_variable_fn(prediction: xr.DataArray, target: xr.DataArray) -> xr.DataArray:
     loss = loss_fn(prediction, target)
-    loss = loss * normalized_latitude_weights(target).astype(loss.dtype)
+    latitude_weights = normalized_latitude_weights(target).astype(loss.dtype)
+    level_weights = None
     if "level" in target.dims:
-      loss = loss * normalized_level_weights(
+      level_weights = normalized_level_weights(
         target, coord=levels_normalization_coord, decreasing=weights_decreasing_with_level
       ).astype(loss.dtype)
-    return _mean_preserving_batch(loss, mask=mask)
+    if mask is None:
+      loss = loss * latitude_weights
+      if level_weights is not None:
+        loss = loss * level_weights
+      return _mean_preserving_batch(loss)
+    variable_mask = mask[target.name] if isinstance(mask, xr.Dataset) else mask
+    return _masked_mean_preserving_batch(loss, variable_mask, latitude_weights, level_weights)
 
   return weighted_loss_per_variable_fn
 
 
-def _mean_preserving_batch(x: xr.DataArray, mask: xr.DataArray | None = None) -> xr.DataArray:
-  if mask is not None:
-    x = x.where(mask, 0.0)
+def _mean_preserving_batch(x: xr.DataArray) -> xr.DataArray:
   return x.mean([d for d in x.dims if d != "batch"], skipna=False)
+
+
+def _masked_mean_preserving_batch(
+  loss: xr.DataArray,
+  mask: xr.DataArray,
+  latitude_weights: xr.DataArray,
+  level_weights: xr.DataArray | None,
+) -> xr.DataArray:
+  """Latitude-weighted mean over the points of the mask, per level, then level-weighted mean over levels.
+
+  Masked points do not count, so variables and levels are not down-weighted by their number of masked points; levels
+  without points contribute 0.
+  """
+  weights = latitude_weights * mask.astype(loss.dtype)
+  spatial = [d for d in loss.dims if d not in ("batch", "level")]
+  total = (loss.where(mask, 0.0) * weights).sum(spatial)
+  # Sum of the weights over the dimensions of the loss: those the weights lack (e.g. time) count by their size.
+  norm = weights.sum([d for d in spatial if d in weights.dims]) * math.prod(
+    loss.sizes[d] for d in spatial if d not in weights.dims
+  )
+  per_level = total / norm.where(norm > 0, 1.0)
+  if level_weights is not None and "level" in per_level.dims:
+    return (per_level * level_weights).mean("level")
+  return per_level
 
 
 def sum_per_variable_losses(

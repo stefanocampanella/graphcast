@@ -36,11 +36,26 @@ def test_residuals_normalized_by_residual_scales(data):
   inner = _Recorder(value=1.0)
   predictor = InputsAndResiduals(inner, stddev_by_level=None, mean_by_level=None, diffs_stddev_by_level=residual_scales)
   _, predictions = predictor.loss_and_predictions(inputs, targets, forcings=xr.Dataset())
+  assert inner.targets is not None
   # The inner predictor is trained on (target - last input) / residual scale.
   np.testing.assert_allclose(inner.targets["x"].values, [[(4 - 3) / 0.5, (9 - 5) / 2.0]])
   # Its normalized predictions are mapped back: last input + prediction * residual scale.
   np.testing.assert_allclose(predictions["x"].values, [[3 + 0.5, 5 + 2.0]])
   np.testing.assert_allclose(predictor(inputs, targets, forcings=xr.Dataset())["x"].values, [[3.5, 7.0]])
+
+
+def test_zero_residual_scales_keep_the_input(data):
+  """Where the residual scale is 0 (constant series, excluded from the loss), targets are divided by 1 and
+  predictions keep the last input."""
+  inputs, targets, residual_scales = data
+  residual_scales["x"][1] = 0.0
+  inner = _Recorder(value=1.0)
+  predictor = InputsAndResiduals(inner, stddev_by_level=None, mean_by_level=None, diffs_stddev_by_level=residual_scales)
+  _, predictions = predictor.loss_and_predictions(inputs, targets, forcings=xr.Dataset())
+  assert inner.targets is not None
+  np.testing.assert_allclose(inner.targets["x"].values, [[(4 - 3) / 0.5, 9 - 5]])
+  assert np.isfinite(inner.targets["x"].values).all()
+  np.testing.assert_allclose(predictions["x"].values, [[3 + 0.5, 5]])
 
 
 def test_targets_predicted_directly_without_residual_scales(data):

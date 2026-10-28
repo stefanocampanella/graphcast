@@ -90,46 +90,150 @@ def _write_chunks(variable: xr.Variable, configs: DownloadConfig) -> dict[str, i
   return {"time": configs.depth_time_shard if "depth" in variable.dims else configs.time_shard}
 
 
+def _variable_masks(dataset: xr.Dataset, configs: DownloadConfig) -> dict[Hashable, xr.DataArray]:
+  """Boolean mask of each masked variable (read into memory); a mask with depth masks variables without it by level 0."""
+  masks = {}
+  for mask_name, names in configs.masks.items():
+    if mask_name not in dataset:
+      raise ValueError(f"Mask {mask_name!r} not in the dataset")
+    mask = xarray_tensorstore.read(dataset[mask_name]).compute().astype(bool).drop_encoding()
+    for name in names:
+      if name not in dataset:
+        raise ValueError(f"Variable {name!r} of mask {mask_name!r} not in the dataset")
+      if "depth" in mask.dims and "depth" not in dataset[name].dims:
+        masks[name] = mask.isel(depth=0, drop=True)
+      else:
+        masks[name] = mask
+  return masks
+
+
+def _check_finite(values: xr.DataArray, name: Hashable) -> xr.DataArray:
+  """Fail, when computed, on values that are not finite: missing data must be outside the variable's mask."""
+
+  def check(block: np.ndarray) -> np.ndarray:
+    if not np.isfinite(block).all():
+      raise ValueError(f"{name}: non-finite values inside its mask (or without a mask); check the inputs and masks")
+    return block
+
+  return xr.apply_ufunc(check, values, dask="parallelized", output_dtypes=[values.dtype])
+
+
+def _anomaly_std_floor(anomaly_std: xr.DataArray, inside: xr.DataArray | None) -> xr.DataArray:
+  """Smallest positive anomaly_std inside the mask, per depth level (one level at a time, to bound memory).
+
+  As a floor it leaves the in-sample z-scores unchanged and keeps out-of-sample values with a zero anomaly_std finite.
+  Levels without positive values take the smallest value of the other levels (1 if there is none).
+  """
+
+  def smallest_positive(std: xr.DataArray, mask: xr.DataArray | None) -> float:
+    values = xarray_tensorstore.read(std).values
+    positive = values > 0
+    if mask is not None:
+      positive &= np.broadcast_to(mask.transpose(*std.dims[1:]).values, values.shape)
+    return float(values[positive].min()) if positive.any() else np.nan
+
+  if "depth" not in anomaly_std.dims:
+    floors = np.array(smallest_positive(anomaly_std, inside))
+    dims, coords = (), {}
+  else:
+    floors = np.array(
+      [
+        smallest_positive(
+          anomaly_std.isel(depth=level),
+          None if inside is None else inside.isel(depth=level) if "depth" in inside.dims else inside,
+        )
+        for level in range(anomaly_std.sizes["depth"])
+      ]
+    )
+    dims, coords = ("depth",), {"depth": anomaly_std["depth"]}
+  if np.isnan(floors).all():
+    floors = np.ones_like(floors)
+  floors = np.where(np.isnan(floors), np.nanmin(floors), floors)
+  return xr.DataArray(floors.astype(np.float32), dims=dims, coords=coords)
+
+
+def _min_max(values: xr.DataArray, inside: xr.DataArray | None) -> xr.DataArray:
+  """Min-max normalize a static field over the points inside its mask; integer fields (masks) are only cast."""
+  if not np.issubdtype(values.dtype, np.floating):
+    return values.astype(np.float32)
+  values = xarray_tensorstore.read(values).compute()
+  inside_values = values if inside is None else values.where(inside)
+  minimum = inside_values.min()
+  span = inside_values.max() - minimum
+  return ((values - minimum) / span.where(span != 0, 1)).astype(np.float32)
+
+
 def standardize(
   dataset: xr.Dataset,
   climatology: xr.Dataset,
   anomaly_std: xr.Dataset,
   configs: DownloadConfig,
 ) -> xr.Dataset:
-  """Return the anomaly z-scores of the time-dependent variables and the normalized static variables (lazily)."""
+  """Return the anomaly z-scores of the time-dependent variables and the normalized static variables (lazily).
+
+  - z = (x - climatology) / max(anomaly_std, floor), with the floor of `_anomaly_std_floor`; z = 0 where x equals the
+    climatology within `equal_tolerance` float32 epsilons, whatever the anomaly_std (constant series).
+  - Outside `reference_period`, if set, |z| is capped at its largest value inside it, per variable and level.
+  - Static variables, including `static_variables` (from their first timestep), are min-max normalized.
+  - Values outside the variable's mask (`masks`) are 0; non-finite values elsewhere are an error.
+  """
+  static = set(configs.static_variables)
+  if unknown := sorted(static - set(dataset.data_vars)):
+    raise ValueError(f"Static variables not in the dataset: {unknown}")
   missing = [
     name
     for name, values in dataset.data_vars.items()
-    if "time" in values.dims and (name not in climatology or name not in anomaly_std)
+    if "time" in values.dims and name not in static and (name not in climatology or name not in anomaly_std)
   ]
   if missing:
     raise ValueError(f"Time-dependent variables without climatology or anomaly_std: {missing}")
+  masks = _variable_masks(dataset, configs)
 
   # Align climatology and anomaly_std with the timeseries; the lazy indexing reads only the selected days.
   index = climatology_index(dataset["time"])
-  climatology = climatology.isel(time=index).assign_coords(time=dataset["time"])
-  anomaly_std = anomaly_std.isel(time=index).assign_coords(time=dataset["time"])
+  aligned_climatology = climatology.isel(time=index).assign_coords(time=dataset["time"])
+  aligned_anomaly_std = anomaly_std.isel(time=index).assign_coords(time=dataset["time"])
+  if configs.reference_period is None:
+    in_period = None
+  else:
+    start, end = (np.datetime64(day, "ns") for day in configs.reference_period)
+    in_period = (dataset["time"] >= start) & (dataset["time"] <= end + np.timedelta64(1, "D") - np.timedelta64(1, "ns"))
+    if bool(in_period.all()):
+      in_period = None
 
   standardized = {}
   for name, values in dataset.data_vars.items():
-    chunks = _write_chunks(values.variable, configs)
-    values = values.chunk(chunks)
-    if "time" in values.dims:
-      mean = climatology[name].chunk(chunks).fillna(value=0.0)
-      std = anomaly_std[name].chunk(chunks).fillna(value=1.0).clip(min=1e-16)
-      values = (values - mean) / std
-    elif np.issubdtype(values.dtype, np.floating):
-      # Min-max normalization of static fields; masks (integers) are only cast to float32.
-      minimum = values.min()
-      span = values.max() - minimum
-      values = (values - minimum) / span.where(span != 0, 1)
-    standardized[name] = values.fillna(value=0.0).astype(np.float32)
+    inside = masks.get(name)
+    if "time" not in values.dims or name in static:
+      if "time" in values.dims:
+        values = values.isel(time=0, drop=True)
+      # One chunk, as written (in memory after the normalization).
+      result = _min_max(values, inside).chunk({})
+    else:
+      chunks = _write_chunks(values.variable, configs)
+      x = values.chunk(chunks)
+      mean = aligned_climatology[name].chunk(chunks)
+      std = aligned_anomaly_std[name].chunk(chunks)
+      floor = _anomaly_std_floor(anomaly_std[name], inside)
+      # NaN anomaly_std stays NaN (an error inside the mask): xr.where, not a maximum.
+      result = (x - mean) / xr.where(std < floor, floor, std)
+      tolerance = configs.equal_tolerance * np.finfo(np.float32).eps
+      equal = abs(x - mean) <= tolerance * xr.ufuncs.maximum(abs(x), abs(mean))
+      result = xr.where(equal, 0.0, result)
+      if in_period is not None:
+        reduced = [dim for dim in result.dims if dim != "depth"]
+        cap = abs(result.where(in_period)).max(reduced)
+        result = xr.where(in_period, result, result.clip(-cap, cap))
+    if inside is not None:
+      result = result.where(inside, 0.0)
+    standardized[name] = _check_finite(result.astype(np.float32), name)
 
   result = xr.Dataset(standardized, attrs=dataset.attrs).drop_encoding()
   result.attrs["history"] = (
     f"{dataset.attrs.get('history', '')}\n"
-    "Standardized anomalies (climatology and anomaly_std: missing values filled with 0 and 1, std clipped below at "
-    "1e-16), static variables min-max normalized, missing values filled with 0 (graphcast download)."
+    "Standardized anomalies: z = (x - climatology) / max(anomaly_std, smallest positive anomaly_std), 0 where x equals "
+    f"the climatology within {configs.equal_tolerance:g} float32 epsilons; static variables min-max normalized; 0 "
+    "outside the masks of the variables (graphcast download)."
   ).strip()
   return result
 
@@ -249,11 +353,13 @@ def tendency_std(standardized: xr.Dataset, configs: TendencyStdConfig) -> xr.Dat
   """Return the standard deviation of the one-step differences of the time-dependent variables (lazily).
 
   The mean of the differences is taken as zero: it is (x_N - x_1) / (N - 1), a telescopic sum, negligible for long
-  series. Squares are accumulated in float64; the result is float32, without the time dimension.
+  series. For `zero_inflated` variables (e.g. sea ice, whose differences are mostly zero) only the non-zero differences
+  count. Constant series have 0 (training excludes them from the loss). Squares are accumulated in float64; the result
+  is float32, without the time dimension.
   """
   time_dependent = [name for name, values in standardized.data_vars.items() if "time" in values.dims]
   names = time_dependent if configs.variables is None else configs.variables
-  unknown = [name for name in names if name not in time_dependent]
+  unknown = [name for name in [*names, *configs.zero_inflated] if name not in time_dependent]
   if unknown:
     raise ValueError(f"Not time-dependent variables of the dataset: {unknown}")
   result = {}
@@ -262,14 +368,18 @@ def tendency_std(standardized: xr.Dataset, configs: TendencyStdConfig) -> xr.Dat
     values = standardized[name]
     values = values.chunk({"time": configs.time_chunk, **({"depth": 1} if "depth" in values.dims else {})})
     diffs = values.astype(np.float64).diff("time")
-    std = xr.ufuncs.sqrt((diffs * diffs).mean("time"))
-    if configs.zero_as_missing:
-      std = std.where(std > 0)
-    result[name] = std.astype(np.float32).assign_attrs(standardized[name].attrs)
+    squares = diffs * diffs
+    if name in configs.zero_inflated:
+      count = (diffs != 0).sum("time")
+      variance = squares.sum("time") / count.where(count > 0, 1)
+    else:
+      variance = squares.mean("time")
+    result[name] = xr.ufuncs.sqrt(variance).astype(np.float32).assign_attrs(standardized[name].attrs)
   dataset = xr.Dataset(result, attrs=standardized.attrs).drop_encoding()
+  zero_inflated = [name for name in names if name in configs.zero_inflated]
   dataset.attrs["history"] = (
     f"{standardized.attrs.get('history', '')}\nStandard deviation of the one-step differences, assuming zero mean"
-    f"{', 0 written as NaN' if configs.zero_as_missing else ''} (graphcast compute-tendency-std)."
+    f"{f', of the non-zero ones for {zero_inflated}' if zero_inflated else ''} (graphcast compute-tendency-std)."
   ).strip()
   dataset.attrs.update(configs.attrs)
   return dataset
