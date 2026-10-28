@@ -76,12 +76,31 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   to be deleted there), was computed with arco-make's `diff_std` step, which is expensive: keep it. `graphcast
   compute-tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml` (`downloader.tendency_std`,
   `TendencyStdConfig`; `download.sh`/`download.slurm --tendency-std`) recomputes it from a standardized store,
-  in float64, with Dask chunks of 256 days of one depth level. A std of 0 (no data: the store fills missing values
-  with 0) is written as NaN, as in the copy (NaN wherever a variable has no data, never 0); training fills NaN with 1.
-  Check on 28 Oct 2026, 5 variables of `zarr_v2` (235 GB in 85 s on a login node, 2.8 GB/s): NaN patterns equal,
-  median relative difference 3–4e-4 (arco-make dropped Feb 29 with a 365-day calendar, the store keeps it); points
-  missing only part of the time differ more (`siconc`, `swh`: 99th percentile 0.5–0.7), as the 0 filling enters the
-  differences. The full store (5.1 TB) would take about 30 min on a login node.
+  in float64, with Dask chunks of 256 days of one depth level. A std of 0 is written as NaN (`zero_as_missing`);
+  training fills NaN with 1 and clips at 1e-16. Full recomputation (28 Oct 2026, booster node, 32 threads): 34.6 min,
+  `$FSCRATCH/graphcast/data/anomalies/tendency_std_recomputed`. Comparison with the copy, all 27 variables and levels
+  (scripts and CSV in `$PROJECT/claude-work/5ec59923-bcb3-483e-a402-cd793d0e8df5/tendency_report*`); every difference
+  has one of four causes:
+  1. Feb 29: arco-make converted to a 365-day calendar, dropping it; the store keeps it. Median relative difference
+     3–6e-4 everywhere; without Feb 29 the recomputation matches the copy within 1e-7 (float32), including the few
+     points of clean series more than 5% apart (an extreme day around Feb 29 carries 11–18% of the sum of squares).
+  2. Days with anomaly_std exactly 0 (value = climatology = 0): arco-make's z is 0/0 = NaN there and skipped, the
+     store's is 0 and counted, so the new values are smaller (0.65–0.9). Sea-ice variables (`siconc`, `sithick`,
+     `usi`, `vsi`: 37–42% of their finite points > 5% apart), the five wave variables (11%: ARCO-OCEAN's `masked_fill`
+     wrote 0 where WAVERYS has no waves, under sea ice, inside the static `waverys_mask`), `dis24` (12%), `so` at
+     levels 45–47 (130 points), `so_bottom` (31), `lsm` (332).
+  3. Constant series with a defined z-score (`z` and `lsm`, ERA5 fields constant in time; 9–10 deep `so` points): the
+     climatology and anomaly_std differ from the value by float32 rounding, so z is a constant ratio of rounding
+     errors (about ±1); the copy has exactly 0 (590,566 `z`, 143,162 `lsm` points), the recomputation NaN. The
+     standardized `z` and `lsm` themselves are such rounding noise (0, ±1, ±1.41), not geopotential or land fraction.
+  4. Statistics undefined on all days at points with data on some days: copy NaN, recomputation finite (the store
+     filled climatology with 0, anomaly_std with 1, so z is the raw value). Wave variables outside the static
+     `waverys_mask` (version 202311 bathymetry; the dynamic fields are 202411): 319 points with data only on
+     1993-01-01 (48–80°N; 268 NaN mismatches for `swh`, 191–319 for the other wave variables), plus 82 coastal points
+     with data only from 2013-01-01 (50 every day, 32 intermittently; after 2013 the daily NaN count of the wave
+     fields varies, before it equals the static land count exactly), which are finite in both but ~0.6 of the copy.
+  The four target variables (`thetao`, `so`, `uo`, `vo`), `zos`, ERA5 forcings other than `z`/`lsm`, `tp`,
+  `thetao_bottom` only have cause 1 (and the few `so` points of causes 2–3).
 - Training data path: `dataloader_utils.get_dataset` opens the store lazily with xarray-tensorstore and selects
   `task.levels` (`dataloader.select_levels`); `StandardizedAnomalySource` stores only the path, levels, `split_date` and
   `dataset.io_threads` and reopens the store in each process (`__getstate__` drops it), so Grain workers never pickle

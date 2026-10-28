@@ -237,3 +237,31 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   **Insight:** the file count, not the size, sets the time (v2 took 11× longer). Windows read through each image,
   bound as `scripts/train.sh` binds it, are identical to those of the directory store (3 windows each, 0.1–0.2 s
   on a login node); the `.env` comments list the images as DATASET alternatives.
+- **15:31 Request:** explain the NaN differences between the original and the recomputed `tendency_std`.
+  **Insight** (correcting 15:09): the large `siconc`/`swh` differences are not points missing part of the time.
+  They have data every day, but the anomaly_std is 0 on 40–48% of days, where arco-make's z is 0/0 (skipped) and the
+  store's is 0 (counted). The 268 `swh` NaN mismatches have data only on 1993-01-01, while their climatology is NaN
+  on every day.
+- **15:52 Request:** all variables will be used in training: research the differences across all of them,
+  including `thetao`, `so`, `uo` and `vo`, and report in detail. **15:54–16:30 Experiment:** job 2563819
+  (`training2647`, develbooster) recomputed `tendency_std` for all 27 variables in 34.6 min, into
+  `$FSCRATCH/graphcast/data/anomalies/tendency_std_recomputed`.
+- **16:00 Request:** inspect arco-make and the ARCO-OCEAN settings to find why `swh` has data only on some dates.
+  **Insight:**
+  - **WAVERYS pipeline:** 3-hourly instantaneous fields, regridded conservatively (`skipna`, `nan_threshold = 1.0`)
+    and resampled to daily means (`skipna`).
+  - **Static mask:** `masked_fill` fills NaN with 0 only inside `waverys_mask` (bathymetry > 0, dataset version
+    202311; the dynamic fields are 202411). So the wave variables are 0, not NaN, under sea ice.
+  - **NaN pattern over time:** from 1993-01-02 to 2012-12-31 the NaN points are exactly the 393,555 static-land
+    points. Outside the mask there is data on 1993-01-01 (319 points, 48–80°N, median 0.09 m) and from 2013-01-01
+    (50 points every day, 32 intermittently, coastal). The same holds for `mwp`, `mwd`, `usd` and `vsd`.
+  - **Unconfirmed:** the 3-hourly source was not inspected (it needs a CMEMS download).
+- **16:30–16:42 Experiment and Insight:** comparison over all variables and levels. Every difference has one of
+  four causes (details in CLAUDE.md, "tendency_std"):
+  1. **Feb 29:** dropped by arco-make; without it the recomputation matches within 1e-7.
+  2. **Zero anomaly_std days:** sea-ice, wave, discharge, some deep `so` points and `lsm`.
+  3. **Constant series:** `z` and `lsm` are constant ERA5 fields, so the copy is 0 and the recomputation NaN. Their
+     standardized values are float32 rounding noise.
+  4. **Statistics undefined at points with data on some days:** the wave points outside the static mask.
+
+  `thetao`, `so`, `uo`, `vo`, `zos` and most forcings have only cause 1.
