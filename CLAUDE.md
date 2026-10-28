@@ -101,8 +101,11 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
      fields varies, before it equals the static land count exactly), which are finite in both but ~0.6 of the copy.
   The four target variables (`thetao`, `so`, `uo`, `vo`), `zos`, ERA5 forcings other than `z`/`lsm`, `tp`,
   `thetao_bottom` only have cause 1 (and the few `so` points of causes 2–3).
-- Conventions for the standardized store and tendency_std (decided 28 Oct 2026, **not implemented yet**; the
-  stores, their SquashFS images and tendency_std are to be recomputed, which is acceptable):
+- Conventions for the standardized store and tendency_std (decided and implemented on 28 Oct 2026, commit 5b7026c:
+  `DownloadConfig.masks`, `static_variables`, `equal_tolerance`, `reference_period`, `TendencyStdConfig.zero_inflated`,
+  `dataloader_utils.get_loss_masks`, per-variable `Mask` and losses). The stores in
+  `$FSCRATCH/graphcast/data/anomalies`, their SquashFS images and tendency_std predate them and are to be recomputed
+  (a real 5-day subset passes all checks; the anomaly_std floors take ~2 min to compute):
   1. Feb 29 is kept, standardized with Feb 28's climatology and anomaly_std (they vary smoothly), and its differences
      count in tendency_std (as now; arco-make's copy dropped them).
   2. `z` and `lsm` are static: excluded from climatology/anomaly_std, min-max normalized to 0–1, no tendency_std.
@@ -144,7 +147,12 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   prediction otherwise, as the docstring says; `tests/test_normalization.py`). Experiment (28 Oct 2026, `exp_src` in
   claude-work, `GRAPHCAST_EXP_RESIDUALS`): direct vs residual without output normalization vs residual /
   tendency_std, 2000 steps each, with the state error (z-score units) of predictions, persistence and climatology
-  logged per step.
+  logged per step. Results (state error / persistence, steps 1900–2000): direct 0.56, residual unscaled 0.51,
+  residual / tendency_std 0.53; all learn. Per variable, direct prediction does not beat persistence for `thetao`
+  (1.12) and `so` (1.18), slow variables whose daily changes are near the bfloat16 resolution of the full state;
+  residuals do (unscaled 0.88 / 0.96, normalized 0.83 / 0.92). Unscaled residuals do best on `uo`/`vo` (0.43),
+  normalized ones on `zos`, `thetao` and `so`: output normalization moves capacity to slow variables. One seed,
+  2000 steps, 10 levels.
 - Vertical coordinate: z-levels with per-variable, per-level loss masks for now. Sigma coordinates (all levels valid
   sea, depth varying per column) would avoid loss masking and are to be reconsidered later. They would need: a sigma
   level definition (number, stretching, whether the top follows the free surface `zos`); GLORYS level bounds (only

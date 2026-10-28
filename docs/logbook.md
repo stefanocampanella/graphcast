@@ -315,3 +315,23 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   **Change:** `InputsAndResiduals` branches on `_residual_scales`, so training uses residuals divided by
   `tendency_std` again. `tests/test_normalization.py` fails on the old code. The sigma-coordinate requirements are
   in CLAUDE.md.
+- **19:20 Experiment** (jobs 2566428, 2566430, 2566431, 18.6 min each): the state error divided by persistence,
+  over steps 1900–2000.
+  - **Overall:** direct 0.56, residual unscaled 0.51, residual / tendency_std 0.53. Climatology is 9.5× worse than
+    persistence.
+  - **Per variable, direct prediction** does not beat persistence for `thetao` (1.12) and `so` (1.18).
+  - **Residuals** do: 0.88 / 0.96 unscaled, 0.83 / 0.92 normalized. The unscaled residual is best on `uo`/`vo`
+    (0.43), the normalized one on `zos`, `thetao` and `so`.
+- **19:31 Request:** implement the requested normalization and loss-masking changes. **Change** `5b7026c`:
+  - **Configs:** `DownloadConfig` has `masks`, `static_variables`, `equal_tolerance` and `reference_period`;
+    `TendencyStdConfig` has `zero_inflated`, and `zero_as_missing` is gone.
+  - **Training:** `get_tendency_std` is strict, and `get_loss_masks` (grid mask and `tendency_std > 0`) is new.
+  - **Loss and predictions:** losses use per-variable masked means per level; residual divisors are 1 where
+    tendency_std is 0; `Mask` is per variable and keeps the input at excluded points.
+  - **Tests:** 121 pass.
+
+  **Experiment:** a real 5-day subset with `zarr_v2.toml` passes all checks: finite values, zero outside the masks,
+  static `z` and `lsm`, and floors computed in 136 s.
+
+  **Insight:** `$FSCRATCH` holds 42 TB (`du`) against a 40 TB soft limit (44 TB hard); `jutil` reports 0. The new
+  stores need old ones deleted first.
