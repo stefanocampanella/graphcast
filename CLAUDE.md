@@ -139,8 +139,11 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   `~/.bash_eternal_history`): `mksquashfs SRC DST.sqsh -noappend -no-xattrs -noI -noD -noF -b 1M -comp lz4 -progress`
   (uncompressed, as chunks are already Blosc-compressed; 1 MB blocks, the first tries used 4 KB), plus `-mem 32G` on
   login nodes: the default working memory (25% of RAM) equals the 143 GiB per-user limit, and a first run writing
-  fscratch → fscratch at ~4 GB/s was killed at 69%. `scripts/train.sh`
-  binds `.sqsh` files under `/data` like directories.
+  fscratch → fscratch at ~4 GB/s was killed at 69%. With `-mem 32G` (28 Oct 2026, `jpbl-s02-04`, about 18 GB used, no
+  OOM kill): `zarr_v3_lexi` 13 min, `zarr_v3_colexi` 14 min (5.55 TB each, 25,891 entries), `zarr_v2` 159 min (5.52 TB,
+  2,525,068 entries: the file count, not the size, sets the time); entry counts equal the sources'. `scripts/train.sh`
+  binds `.sqsh` files under `/data` like directories (`image-src=/`); windows read through the bound images are
+  identical to those of the directory stores.
 
 ### I/O measurements for the dataloader refactoring
 

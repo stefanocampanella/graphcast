@@ -226,3 +226,14 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
     cause is Feb 29: arco-make dropped it, while the store keeps it.
   - **`siconc` and `swh`:** the median is the same, but the 99th percentile is 0.5–0.7, at points missing only part
     of the time, where the store's 0 filling enters the differences.
+- **15:23 Experiment:** the SquashFS run (`-mem 32G`, `jpbl-s02-04`) finished with no OOM kill:
+
+  | Image | Time | Size | Entries (source = image) |
+  |---|---|---|---|
+  | `zarr_v3_lexi.sqsh` | 13 min | 5.55 TB | 25,891 |
+  | `zarr_v3_colexi.sqsh` | 14 min | 5.55 TB | 25,891 |
+  | `zarr_v2.sqsh` | 159 min | 5.52 TB | 2,525,068 |
+
+  **Insight:** the file count, not the size, sets the time (v2 took 11× longer). Windows read through each image,
+  bound as `scripts/train.sh` binds it, are identical to those of the directory store (3 windows each, 0.1–0.2 s
+  on a login node); the `.env` comments list the images as DATASET alternatives.
