@@ -160,3 +160,45 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 - **12:30 Request:** name that directory after the session, which outlives branch and task renames. **Change:**
   `$PROJECT/claude-work/$CLAUDE_CODE_SESSION_ID/`, which stays the same when a session is resumed. This session's
   files are in `/e/project1/e-dev-2026d09-119/claude-work/5ec59923-bcb3-483e-a402-cd793d0e8df5/`.
+- **12:29–12:44 Experiment:** `zarr_v3_lexi.sqsh` took 13 min and `zarr_v3_colexi.sqsh` 14 min (5.1 TB each), with
+  entry counts matching their sources; with `-mem 32G` memory stayed at about 18 GB. `zarr_v2.sqsh` (2.5 M files) was
+  still being packed at 14:51.
+
+## 2026-10-28: dataloader and training on the standardized store (PR #1, widened)
+
+- **14:09 Request:** the PR should now also ship the refactored dataloader, training scripts, related files and
+  configs, working with the precomputed store. Update the PR title and description, and run the tests in the image.
+  **14:13 Decisions:** read the store with xarray-tensorstore, but keep `xarray.open_dataset` for `tendency_std` and
+  the mask (small, loaded once); remove the old on-the-fly path; verify with tests plus a short training run.
+- **14:25 Request:** add a downloader command, with its own CLI and config, that writes the mask (e.g.
+  `glorys_mask`) at a configurable level to a Zarr store as a single DataArray, loaded as is by training (no level
+  selection at training time).
+- **Change** (uncommitted until the checks passed):
+  - **Mask downloader:** `graphcast download-mask` (`downloader.get_mask`, `MaskDownloadConfig`, `configs/download/mask.toml`;
+    `download.sh` and `download.slurm` take `--mask`).
+  - **Dataloader:** `dataloader.StandardizedAnomalySource` replaces `ARCOTimeseriesSource`. It reopens the store
+    lazily in each process, and `__getstate__` drops it.
+  - **Shared helpers:** `get_tensorstore_context` and `select_levels` move to `dataloader.py`, and
+    `climatology_index` moves to `downloader.py`.
+  - **Data access:** `dataloader_utils.get_mask(MaskConfig)` replaces `get_surface_mask`; `get_climatology` and
+    `get_anomaly_std` are removed.
+  - **Configs:** `TrainingConfig` has `dataset: StoreConfig(path, io_threads)` and `MaskConfig(path, fill_value)`,
+    and no `climatology` or `anomaly_std` sections.
+  - **Scripts and benchmarks:** `train.sh` binds DATASET, MASK and TENDENCY_STD. `.env` and JUBE point at the new
+    stores; the JUBE format sweep has 12 cases, including colexicographic and SquashFS images.
+- **Experiment:** the tests grew to 87, all passing in the image. Two insights from writing them:
+  - Grain worker processes need `absl.flags.FLAGS.mark_as_parsed()`, as the CLI does.
+  - Batches from workers hold shared-memory arrays, which xarray operations reject (`xarray_jax.unwrap` gets the
+    array).
+- **14:43 Experiment:** `download-mask` wrote `$FSCRATCH/graphcast/data/anomalies/glorys_mask` from the local raw
+  copy in 9 s (7.5 KB). It equals the old `get_surface_mask` result: 693,039 ocean points of 721 × 1440.
+- **Experiment:** three training samples (inputs, targets, forcings after extraction) were built with the old
+  pipeline, from `git archive HEAD` on the raw local copies, and with the new pipeline on `zarr_v2`. They are
+  bit-identical (112 arrays), and the new samples took 0.08–0.16 s each on a login node.
+- **14:45–14:49 Experiment:** job 2561874 (`training2647`, develbooster, 1 node, 4 GPUs) ran 60 steps of
+  `demo_5000.toml` on the zarr_v2 store with 8 Grain workers. Results:
+  - compilation and the memory report (47.1 GiB per GPU) worked, and so did the checkpoints and saving the model;
+  - the loss fell from 0.49 (steps 0–4) to 0.14 (steps 55–59);
+  - from step 8 on, the data wait was 0.022 s (median) and compute 0.394 s;
+  - steps 1–7 waited about 3.1 s each while the Grain workers started, against 6–8 s with the old dataloader
+    (`results/2026-10-22-final-v2/io-10levels`, zarr_v2, 8×2).

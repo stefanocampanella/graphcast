@@ -1,7 +1,7 @@
 # GraphCast training benchmark (JUBE)
 
 Benchmarks GraphCast training on JUPITER while varying how the data is stored and read:
-dataset format (SquashFS images, zarr v2, sharded zarr v3), Grain workers and threads, the
+format of the standardized anomaly store (SquashFS images, zarr v2, sharded zarr v3), Grain workers and threads, the
 zarr thread pool and request concurrency, CPUs per task and node count, as well as XLA/JAX settings and the
 number of message passing steps. It follows the structure of the
 [AI4HPC JUBE benchmark](https://gitlab.jsc.fz-juelich.de/SLFSE/codes/ai4hpc/-/tree/master/Bench):
@@ -31,7 +31,7 @@ Every run needs at least one sweep tag:
 
 | Tag       | Cases (format:workers:threads:zarr_pool:zarr_concurrency:nodes:cpus)  | Jobs |
 |-----------|-----------------------------------------------------------------------|------|
-| `format`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi at 2x2 and 8x2 workers x threads | 8    |
+| `format`  | squashfs, zarr_v2, zarr_v3, zarr_v3_lexi, zarr_v3_colexi at 2x2 and 8x2; squashfs_v3_lexi, squashfs_v3_colexi at 8x2 | 12   |
 | `grain`   | zarr_v3 at 0x4 (threads only), 1x2, 4x2 (baseline), 8x1, 4x4          | 5    |
 | `zarr`    | zarr_v3 4x2 with zarr pool/concurrency 4/10, 4/32, 8/10, 32/10, 32/32 | 5    |
 | `cpus`    | zarr_v3 4x2 with 1 and 8 CPUs per task                                | 2    |
@@ -56,8 +56,8 @@ for `all_levels` runs, e.g. `bench_run_all_levels`, to keep their results apart.
 uv run jube run graphcast_training.xml --tag format grain dryrun --outpath /tmp/jube_dry
 
 # Submit
-uv run jube run graphcast_training.xml --tag format          # 16 jobs
-uv run jube run graphcast_training.xml --tag format grain zarr cpus scaling   # 44 jobs
+uv run jube run graphcast_training.xml --tag format          # 24 jobs
+uv run jube run graphcast_training.xml --tag format grain zarr cpus scaling   # 52 jobs
 
 uv run jube status bench_run --id last    # wait for jobs
 uv run jube continue bench_run --id last  # pick up finished jobs
@@ -206,10 +206,14 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
   benchmark config saves only step 0 (`full.toml` saves every 500 steps). The checkpoint time is still reported
   separately.
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
-  runs. All datasets are on `/e/scratch`, so that only the storage format differs: the SquashFS images in
-  `/e/scratch/training2647/ogs_team`, the zarr v2 extraction of these images and the zarr v3 conversion (same chunks,
-  lz4 Blosc, sharded 8 time x 50 depth) in `/e/scratch/training2647/graphcast_data`. `zarr_v3_lexi` is the same conversion with the
-  sub-chunks of each shard stored in lexicographic order.
+  runs. The jobs read the standardized anomaly stores written by `graphcast download`, all in
+  `$FSCRATCH/graphcast/data/anomalies` so that only the storage format differs: `zarr_v2`, the sharded zarr v3 stores
+  (8 time x 50 depth) with the sub-chunks of each shard in morton (`zarr_v3`), lexicographic (`zarr_v3_lexi`) or
+  colexicographic (`zarr_v3_colexi`) order, and SquashFS images of zarr_v2, zarr_v3_lexi and zarr_v3_colexi
+  (`squashfs`, `squashfs_v3_lexi`, `squashfs_v3_colexi`). The mask (`graphcast download-mask`) and `tendency_std` are
+  small and loaded once, the same for all formats; the zarr pool and concurrency settings apply only to them. Results
+  recorded before 28 Oct 2026 are from the previous dataloader, which read the raw dataset, climatology and
+  anomaly_std (in `/e/scratch/training2647`) with zarr-python and standardized each sample.
 - **Concurrent jobs share the file system**: jobs that run while many others read from `/e/scratch` see data
   stalls of seconds on single ranks (in `results/2026-10-22-final-v2`, jobs started after the I/O experiments
   were in full swing took 0.88 instead of 0.47 s per step, with the same median compute). Compare cases that ran

@@ -5,9 +5,10 @@ import pydantic
 import pytest
 
 from graphcast import cli_utils
-from graphcast.download_config import DownloadConfig
+from graphcast.download_config import DownloadConfig, MaskDownloadConfig
 
-CONFIGS = sorted((pathlib.Path(__file__).parents[1] / "configs" / "download").glob("*.toml"))
+CONFIG_DIR = pathlib.Path(__file__).parents[1] / "configs" / "download"
+CONFIGS = sorted(CONFIG_DIR.glob("zarr_*.toml"))
 
 
 def test_defaults():
@@ -55,3 +56,19 @@ def test_invalid_toml_is_a_click_error(tmp_path):
   path.write_text("zarr_format = 5\n")
   with pytest.raises(click.ClickException, match="zarr_format"):
     cli_utils.read_configs(path, schema=DownloadConfig)
+
+
+def test_mask_defaults():
+  configs = MaskDownloadConfig()
+  assert (configs.name, configs.level, configs.zarr_format) == ("glorys_mask", 0, 2)
+
+
+@pytest.mark.parametrize("settings", [{"level": -1}, {"zarr_format": 4}, {"levels": [0]}, {"compressor": {}}])
+def test_invalid_mask_settings(settings):
+  with pytest.raises(pydantic.ValidationError):
+    MaskDownloadConfig.model_validate(settings)
+
+
+def test_shipped_mask_config_is_valid():
+  configs = cli_utils.read_configs(CONFIG_DIR / "mask.toml", schema=MaskDownloadConfig)
+  assert (configs.name, configs.level) == ("glorys_mask", 0)

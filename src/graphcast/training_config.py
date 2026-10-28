@@ -109,11 +109,19 @@ class SourceConfig(ApplicationConfig):
     return values
 
 
-class MaskConfig(SourceConfig):
-  name: str
-  level: Annotated[
-    float, Field(ge=0, description="Depth selected using nearest neighbour")
-  ]
+class StoreConfig(ApplicationConfig):
+  """A standardized anomaly store written by graphcast download, read with TensorStore."""
+
+  path: str
+  io_threads: PositiveInt = Field(
+    default=16, description="TensorStore concurrency of file I/O and decoding, per process (Grain worker)"
+  )
+
+
+class MaskConfig(ApplicationConfig):
+  """A boolean (lat, lon) mask written by graphcast download-mask."""
+
+  path: str
   fill_value: float
 
 
@@ -193,14 +201,12 @@ class TrainingConfig(ApplicationConfig):
   normalization: NormalizationConfig
   policy: PolicyConfig = Field(default_factory=PolicyConfig)
   grain_dataset: GrainDatasetConfig
-  dataset: SourceConfig
-  climatology: SourceConfig
-  anomaly_std: SourceConfig
+  dataset: StoreConfig
   tendency_std: SourceConfig
   optimizer: OptimizerConfig
   checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
 
-  @field_validator("dataset", "climatology", "anomaly_std", "tendency_std")
+  @field_validator("tendency_std")
   @classmethod
   def warn_about_chunks(cls, source: SourceConfig, info: ValidationInfo):
     if source.read.chunks is not None:

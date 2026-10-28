@@ -1,37 +1,156 @@
+import pathlib
+import pickle
+
 import numpy as np
-import pandas as pd
 import pytest
 import xarray as xr
+from absl import flags
 
-from graphcast.dataloader import climatology_index
+from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
+from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
+from graphcast.training_config import TrainingConfig
 
-
-def _index(dates) -> np.ndarray:
-  return climatology_index(xr.DataArray(pd.to_datetime(dates), dims="time"))
-
-
-@pytest.mark.parametrize(
-  ("date", "expected"),
-  [
-    ("2019-01-01", 0),
-    ("2019-02-27", 57),
-    ("2019-02-28", 58),
-    ("2019-03-01", 59),
-    ("2019-12-31", 364),
-    ("2020-01-01", 0),
-    ("2020-02-27", 57),
-    ("2020-02-28", 58),
-    ("2020-02-29", 58),
-    ("2020-03-01", 59),
-    ("2020-12-31", 364),
-  ],
-)
-def test_climatology_index(date, expected):
-  assert _index([date]).tolist() == [expected]
+FULL_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "full.toml"
+LEVELS = [2, 0]
 
 
-@pytest.mark.parametrize("year", [2019, 2020, 2000, 2100])
-def test_climatology_index_covers_the_climatology(year):
-  index = _index(pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D"))
-  np.testing.assert_array_equal(np.unique(index), np.arange(365))
-  assert np.all(np.diff(index) >= 0)
+def _expected_window(reference: xr.Dataset, start: int, size: int) -> xr.Dataset:
+  """The window of the reference as the dataloader returns it: selected levels, batch dimension, relative time."""
+  window = select_levels(reference, LEVELS).isel(time=slice(start, start + size))
+  window = window.expand_dims(dim="batch", axis=0)
+  window = window.assign_coords({"datetime": window["time"].expand_dims(dim="batch", axis=0)})
+  return window.assign_coords(time=window["time"] - window["time"][0])
+
+
+@pytest.fixture
+def source(standardized_path) -> StandardizedAnomalySource:
+  return StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=3, io_threads=2)
+
+
+def test_tensorstore_context():
+  limits = {"data_copy_concurrency": {"limit": 7}, "file_io_concurrency": {"limit": 7}}
+  limits["s3_request_concurrency"] = {"limit": 7}
+  assert get_tensorstore_context(7).spec.to_json() == limits
+  context = get_tensorstore_context(7, {"type": "anonymous"})
+  assert context.spec.to_json() == {**limits, "aws_credentials": {"type": "anonymous"}}
+
+
+def test_select_levels_keeps_order_and_depth(reference):
+  selected = select_levels(reference, LEVELS)
+  assert selected["level"].values.tolist() == LEVELS
+  np.testing.assert_array_equal(selected["depth"].values, reference["depth"].values[LEVELS])
+  with pytest.raises(ValueError, match="zero levels"):
+    select_levels(reference, slice(5, None))
+
+
+@pytest.mark.parametrize("start", [0, 5, 12])
+def test_window_matches_the_reference(source, reference, start):
+  window = source[start]
+  expected = _expected_window(reference, start, 3)
+  assert set(window.data_vars) == set(expected.data_vars)
+  for name, values in expected.data_vars.items():
+    assert window[name].dtype == np.float32, name
+    assert window[name].dims == values.dims, name
+    np.testing.assert_allclose(window[name].values, values.values, rtol=1e-6, atol=1e-6, err_msg=name)
+  for coord in ("time", "datetime", "level", "depth", "lat", "lon"):
+    np.testing.assert_array_equal(window[coord].values, expected[coord].values, err_msg=coord)
+  assert window["time"].values[0] == np.timedelta64(0, "ns")
+
+
+def test_length_and_end_date(standardized_path, reference):
+  num_days = reference.sizes["time"]
+  assert len(StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=3)) == num_days - 2
+  source = StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=3, end_date="2020-03-01")
+  assert len(source) == (np.datetime64("2020-03-01") - np.datetime64("2020-02-20")).astype(int) + 1 - 2
+  assert source[len(source) - 1]["datetime"].values[0, -1] == np.datetime64("2020-03-01")
+
+
+def test_valid_dates(standardized_path, reference):
+  dates = reference.indexes["time"][[1, 4]].to_numpy()
+  source = StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=2, valid_dates=dates)
+  assert len(source) == 2
+  assert source[1]["datetime"].values[0, 0] == dates[1]
+  with pytest.raises(ValueError, match="valid_dates"):
+    StandardizedAnomalySource(
+      standardized_path, levels=LEVELS, window_size=2, valid_dates=reference.indexes["time"][-1:]
+    )
+
+
+def test_invalid_window_size(standardized_path, reference):
+  with pytest.raises(ValueError, match="window_size"):
+    StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=reference.sizes["time"] + 1)
+
+
+def test_pickled_source_reopens_the_store(source):
+  """Grain workers receive pickled sources: the open store is not pickled, but reopened."""
+  window = source[4]
+  restored = pickle.loads(pickle.dumps(source))
+  assert restored._dataset is None
+  xr.testing.assert_identical(restored[4], window)
+
+
+@pytest.fixture
+def training_configs(standardized_path) -> TrainingConfig:
+  """The full training config, with the synthetic store and its variables."""
+  configs = cli_utils.read_configs(FULL_CONFIG)
+  configs["dataset"] = {"path": standardized_path, "io_threads": 2}
+  configs["task"].update(
+    input_variables=["thetao", "zos", "year_progress_sin", "year_progress_cos"],
+    target_variables=["thetao", "zos"],
+    forcing_variables=["deptho", "glorys_mask", "year_progress_sin", "year_progress_cos"],
+    levels=LEVELS,
+  )
+  configs["grain_dataset"]["split_date"] = "2020-03-01"
+  return TrainingConfig.model_validate(configs)
+
+
+def test_shipped_training_configs_are_valid():
+  for path in FULL_CONFIG.parent.glob("*.toml"):
+    configs = cli_utils.read_configs(path, schema=TrainingConfig)
+    assert configs.dataset.path == "/data/dataset"
+    assert configs.mask.path == "/data/mask"
+
+
+@pytest.mark.parametrize("section", ["climatology", "anomaly_std"])
+def test_statistics_of_the_old_dataloader_are_rejected(training_configs, section):
+  with pytest.raises(ValueError, match=section):
+    TrainingConfig.model_validate({**training_configs.model_dump(), section: {"path": "/data/" + section}})
+
+
+def test_map_dataset_yields_inputs_targets_forcings(training_configs):
+  dataset = dataloader_utils.get_dataset(training_configs)
+  assert dataset["level"].values.tolist() == LEVELS
+  map_dataset = dataloader_utils.get_map_dataset(training_configs, dataset, seed=0)
+  sample = map_dataset[0]
+  assert sample is not None
+  inputs, targets, forcings = sample
+  task = training_configs.task
+  assert set(inputs.data_vars) == set(task.input_variables)
+  assert set(targets.data_vars) == set(task.target_variables)
+  assert set(forcings.data_vars) == set(task.forcing_variables)
+  # One input day and one target day, as input_duration and target_lead_times in the config are "1d".
+  assert inputs.sizes["time"] == 1 and targets.sizes["time"] == 1
+  assert inputs["thetao"].sizes["level"] == len(LEVELS)
+  assert inputs["thetao"].sizes["batch"] == training_configs.grain_dataset.local_batch_size
+  # Training dates end at split_date: the target of the last window is that day at the latest.
+  assert len(map_dataset) > 0
+
+
+@pytest.mark.parametrize("num_workers", [0, 1])
+def test_stream_with_grain_workers(training_configs, num_workers):
+  """Grain workers get the pickled pipeline and reopen the store; batches match those read in this process."""
+  # Grain reads absl flags, which the graphcast CLI marks as parsed.
+  flags.FLAGS.mark_as_parsed()
+  dataset = dataloader_utils.get_dataset(training_configs)
+  grain_runtime = grain_utils.GrainRuntimeConfig(num_workers=num_workers, num_threads=1, prefetch_buffer_size=1)
+  stream = dataloader_utils.get_dataset_stream(training_configs, dataset, seed=0, grain_runtime=grain_runtime)
+  iterator = iter(stream.dataset)
+  expected = dataloader_utils.get_map_dataset(training_configs, dataset, seed=0)
+  for step in range(2):
+    sample = expected[step]
+    assert sample is not None
+    for streamed, read in zip(next(iterator), sample, strict=True):
+      # Batches from workers hold shared-memory arrays, which xarray operations reject: compare copies.
+      assert set(streamed.data_vars) == set(read.data_vars)
+      for name, values in read.data_vars.items():
+        np.testing.assert_allclose(np.array(xarray_jax.unwrap(streamed[name].data)), values.values, err_msg=name)

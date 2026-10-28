@@ -29,7 +29,7 @@ def inputs() -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
   dataset = xr.Dataset(fields(len(time), 10.0, 5.0), coords={"time": time, **coords})
   dataset["deptho"] = (("lat", "lon"), rng.uniform(100.0, 5000.0, (LAT, LON)))
   dataset["deptho"][0, 1] = np.nan
-  dataset["mask"] = (("depth", "lat", "lon"), (~land).astype(np.int8))
+  dataset["glorys_mask"] = (("depth", "lat", "lon"), (~land).astype(np.int8))
   climatology = xr.Dataset(fields(365, 10.0, 5.0), coords={"time": np.arange(365), **coords})
   anomaly_std = xr.Dataset(fields(365, 0.5, 1.0), coords={"time": np.arange(365), **coords})
   # Zero deviations are clipped, missing ones filled.
@@ -53,3 +53,53 @@ def input_paths(inputs, tmp_path_factory) -> tuple[str, ...]:
 @pytest.fixture
 def output_path(tmp_path) -> pathlib.Path:
   return tmp_path / "standardized.zarr"
+
+
+def _climatology_day(date: pd.Timestamp) -> int:
+  """Zero-based day of a 365-day climatology: February 29 reuses February 28, later leap-year days shift back."""
+  if date.is_leap_year and (date.month, date.day) >= (2, 29):
+    return date.dayofyear - 1 - 1
+  return date.dayofyear - 1
+
+
+@pytest.fixture(scope="session")
+def reference(inputs) -> xr.Dataset:
+  """Standardized anomalies of the inputs, computed directly (absolute time, no batch dimension)."""
+  dataset, climatology, anomaly_std = inputs
+  days = [_climatology_day(date) for date in dataset.indexes["time"]]
+  result = {}
+  for name, values in dataset.data_vars.items():
+    if "time" in values.dims:
+      mean = climatology[name].isel(time=days).fillna(0.0).values
+      std = anomaly_std[name].isel(time=days).fillna(1.0).clip(min=1e-16).values
+      values = (values - mean) / std
+    elif np.issubdtype(values.dtype, np.floating):
+      values = (values - values.min()) / (values.max() - values.min())
+    result[name] = values.fillna(0.0).astype(np.float32)
+  return xr.Dataset(result)
+
+
+@pytest.fixture(scope="session")
+def standardized_path(input_paths, tmp_path_factory) -> str:
+  """The inputs standardized by graphcast download into a Zarr v2 store."""
+  from click.testing import CliRunner
+
+  from graphcast.downloader import download
+
+  path = tmp_path_factory.mktemp("standardized") / "zarr_v2"
+  result = CliRunner().invoke(download, [*input_paths, str(path), "--log-level", "warning"])
+  assert result.exit_code == 0, result.output
+  return str(path)
+
+
+@pytest.fixture(scope="session")
+def mask_path(input_paths, tmp_path_factory) -> str:
+  """The surface mask of the inputs written by graphcast download-mask."""
+  from click.testing import CliRunner
+
+  from graphcast.downloader import download_mask
+
+  path = tmp_path_factory.mktemp("mask") / "mask"
+  result = CliRunner().invoke(download_mask, [input_paths[0], str(path), "--log-level", "warning"])
+  assert result.exit_code == 0, result.output
+  return str(path)

@@ -3,7 +3,7 @@
 <jube>
     <tags forced="true">
         <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt|model|memfit</check_tags>
-        <tag name="format">Dataset formats: SquashFS images, zarr v2, zarr v3 (sharded; zarr_v3_lexi with lexicographic sub-chunk order), at two Grain settings</tag>
+        <tag name="format">Dataset formats of the standardized anomalies: zarr v2, zarr v3 (sharded; morton, lexicographic and colexicographic sub-chunk order) and SquashFS images, at two Grain settings</tag>
         <tag name="grain">Grain workers x threads on zarr v3</tag>
         <tag name="zarr">zarr thread pool and concurrency on zarr v3</tag>
         <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
@@ -45,7 +45,8 @@
         <parameterset name="case_set" duplicate="concat">
             <parameter name="case" tag="format">
                 squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,zarr_v3:2:2:8:32:1:72,zarr_v3:8:2:8:32:1:72,
-                zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72
+                zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72,zarr_v3_colexi:2:2:8:32:1:72,
+                zarr_v3_colexi:8:2:8:32:1:72,squashfs_v3_lexi:8:2:8:32:1:72,squashfs_v3_colexi:8:2:8:32:1:72
             </parameter>
             <parameter name="case" tag="grain">
                 zarr_v3:0:4:8:32:1:72,zarr_v3:1:2:8:32:1:72,zarr_v3:4:2:8:32:1:72,zarr_v3:8:1:8:32:1:72,zarr_v3:4:4:8:32:1:72
@@ -156,28 +157,19 @@
                 $per_worker_buffer_size * 0.7 + max($num_workers, 1) * $num_threads * 2.0), 1)
             </parameter>
 
-            <!-- Datasets: all on /e/scratch, so that only the format differs. -->
-            <parameter name="sqsh_dir">/e/scratch/training2647/ogs_team</parameter>
-            <parameter name="zarr_v2_dir">/e/scratch/training2647/graphcast_data/zarr_v2</parameter>
-            <parameter name="zarr_v3_dir">/e/scratch/training2647/graphcast_data/zarr_v3</parameter>
-            <!-- Same data, shards and chunks as zarr_v3, with the sub-chunks of each shard in lexicographic order. -->
-            <parameter name="zarr_v3_lexi_dir">/e/scratch/training2647/graphcast_data/zarr_v3_lexi</parameter>
-            <parameter name="dataset_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-data.sqsh", "zarr_v2":
-                "$zarr_v2_dir/data", "zarr_v3": "$zarr_v3_dir/dataset",
-                "zarr_v3_lexi": "$zarr_v3_lexi_dir/dataset"}["$format"]
+            <!-- Standardized anomaly stores (graphcast download) and SquashFS images of them, all on fscratch, so that
+                 only the format differs: zarr v2; zarr v3 sharded 8 time x 50 depth, with the chunks of each shard in
+                 morton (zarr_v3, written by an earlier downloader), lexicographic or colexicographic order. -->
+            <parameter name="anomalies_dir">/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies</parameter>
+            <parameter name="dataset_path" mode="python">{"squashfs": "$anomalies_dir/squashfs/zarr_v2.sqsh",
+                "squashfs_v3_lexi": "$anomalies_dir/squashfs/zarr_v3_lexi.sqsh",
+                "squashfs_v3_colexi": "$anomalies_dir/squashfs/zarr_v3_colexi.sqsh",
+                "zarr_v2": "$anomalies_dir/zarr_v2", "zarr_v3": "$anomalies_dir/zarr_v3",
+                "zarr_v3_lexi": "$anomalies_dir/zarr_v3_lexi", "zarr_v3_colexi": "$anomalies_dir/zarr_v3_colexi"}["$format"]
             </parameter>
-            <parameter name="climatology_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-climatology.sqsh",
-                "zarr_v2": "$zarr_v2_dir/climatology", "zarr_v3": "$zarr_v3_dir/climatology",
-                "zarr_v3_lexi": "$zarr_v3_lexi_dir/climatology"}["$format"]
-            </parameter>
-            <parameter name="anomaly_std_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-anomaly_std.sqsh",
-                "zarr_v2": "$zarr_v2_dir/anomaly_std", "zarr_v3": "$zarr_v3_dir/anomaly_std",
-                "zarr_v3_lexi": "$zarr_v3_lexi_dir/anomaly_std"}["$format"]
-            </parameter>
-            <parameter name="tendency_std_path" mode="python">{"squashfs": "$sqsh_dir/arco-ocean-tendency_std.sqsh",
-                "zarr_v2": "$zarr_v2_dir/tendency_std", "zarr_v3": "$zarr_v3_dir/tendency_std",
-                "zarr_v3_lexi": "$zarr_v3_lexi_dir/tendency_std"}["$format"]
-            </parameter>
+            <!-- Small, loaded once (graphcast download-mask; tendency statistics): the same for all formats. -->
+            <parameter name="mask_path">$anomalies_dir/glorys_mask</parameter>
+            <parameter name="tendency_std_path">/e/scratch/training2647/graphcast_data/zarr_v2/tendency_std</parameter>
         </parameterset>
 
         <parameterset name="execute_set">
@@ -221,8 +213,7 @@
             <sub source="#ENV_FILE#" dest="$env_file"/>
             <sub source="#PROJECT_DIR#" dest="$project_dir"/>
             <sub source="#DATASET#" dest="$dataset_path"/>
-            <sub source="#CLIMATOLOGY#" dest="$climatology_path"/>
-            <sub source="#ANOMALY_STD#" dest="$anomaly_std_path"/>
+            <sub source="#MASK#" dest="$mask_path"/>
             <sub source="#TENDENCY_STD#" dest="$tendency_std_path"/>
             <sub source="#NUM_WORKERS#" dest="$num_workers"/>
             <sub source="#NUM_THREADS#" dest="$num_threads"/>

@@ -3,14 +3,16 @@ import json
 import botocore.credentials
 import dask
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 import xarray_tensorstore
 from click.testing import CliRunner
 
-from graphcast import downloader
-from graphcast.dataloader import ARCOTimeseriesSource
-from graphcast.download_config import DownloadConfig
+from graphcast import dataloader_utils, downloader
+from graphcast.dataloader import get_tensorstore_context
+from graphcast.download_config import DownloadConfig, MaskDownloadConfig
+from graphcast.training_config import MaskConfig
 
 V2 = {"zarr_format": 2}
 V3_LEXI = {"zarr_format": 3, "time_shard": 4, "depth_time_shard": 2}
@@ -20,23 +22,46 @@ FORMATS = pytest.mark.parametrize("settings", [V2, V3_LEXI, V3_COLEXI], ids=["v2
 
 @pytest.fixture
 def opened_inputs(input_paths) -> tuple[xr.Dataset, ...]:
-  context = downloader.get_tensorstore_context(DownloadConfig())
+  context = get_tensorstore_context(DownloadConfig().io_threads)
   return tuple(downloader.open_input(path, context) for path in input_paths)
-
-
-@pytest.fixture
-def reference(inputs) -> xr.Dataset:
-  """The whole dataset preprocessed by the dataloader, without the batch dimension and with absolute time."""
-  dataset, climatology, anomaly_std = inputs
-  window = ARCOTimeseriesSource(dataset, climatology, anomaly_std, window_size=dataset.sizes["time"])[0]
-  return window.isel(batch=0).drop_vars("datetime").assign_coords(time=dataset["time"])
 
 
 def _write(opened_inputs, output_path, configs: DownloadConfig) -> xr.Dataset:
   standardized = downloader.standardize(*opened_inputs, configs)
   with dask.config.set(scheduler="threads", num_workers=2):
-    downloader.write(standardized, output_path, configs, downloader.get_tensorstore_context(configs))
+    downloader.write(standardized, output_path, configs, get_tensorstore_context(configs.io_threads))
   return standardized
+
+
+def _climatology_index(dates) -> np.ndarray:
+  return downloader.climatology_index(xr.DataArray(pd.to_datetime(dates), dims="time"))
+
+
+@pytest.mark.parametrize(
+  ("date", "expected"),
+  [
+    ("2019-01-01", 0),
+    ("2019-02-27", 57),
+    ("2019-02-28", 58),
+    ("2019-03-01", 59),
+    ("2019-12-31", 364),
+    ("2020-01-01", 0),
+    ("2020-02-27", 57),
+    ("2020-02-28", 58),
+    ("2020-02-29", 58),
+    ("2020-03-01", 59),
+    ("2020-12-31", 364),
+  ],
+)
+def test_climatology_index(date, expected):
+  assert _climatology_index([date]).tolist() == [expected]
+
+
+@pytest.mark.parametrize("year", [2019, 2020, 2000, 2100])
+def test_climatology_index_covers_the_climatology(year):
+  index = _climatology_index(pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D"))
+  np.testing.assert_array_equal(np.unique(index), np.arange(365))
+  assert np.all(np.diff(index) >= 0)
 
 
 def _assert_equal_to_reference(written: xr.Dataset, reference: xr.Dataset):
@@ -90,23 +115,14 @@ class TestAwsCredentials:
     assert "AWS_SESSION_TOKEN" not in downloader.os.environ
 
 
-def test_tensorstore_context():
-  configs = DownloadConfig(io_threads=7)
-  limits = {"data_copy_concurrency": {"limit": 7}, "file_io_concurrency": {"limit": 7}}
-  limits["s3_request_concurrency"] = {"limit": 7}
-  assert downloader.get_tensorstore_context(configs).spec.to_json() == limits
-  context = downloader.get_tensorstore_context(configs, {"type": "anonymous"})
-  assert context.spec.to_json() == {**limits, "aws_credentials": {"type": "anonymous"}}
-
-
 def test_open_input_keeps_masks_undecoded(opened_inputs, inputs):
   dataset, _, _ = opened_inputs
-  assert dataset["mask"].dtype == np.int8
+  assert dataset["glorys_mask"].dtype == np.int8
   assert np.issubdtype(dataset["time"].dtype, np.datetime64)
   np.testing.assert_array_equal(xarray_tensorstore.read(dataset["thetao"]).values, inputs[0]["thetao"].values)
 
 
-def test_standardize_matches_the_dataloader(opened_inputs, reference):
+def test_standardize_matches_the_reference(opened_inputs, reference):
   standardized = downloader.standardize(*opened_inputs, DownloadConfig()).compute()
   _assert_equal_to_reference(standardized, reference)
   assert not any(np.isnan(values).any() for values in standardized.data_vars.values())
@@ -125,7 +141,7 @@ def test_standardize_chunks_by_shard(opened_inputs, settings, thetao, zos):
   standardized = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(settings))
   assert standardized["thetao"].data.chunksize == (thetao, 3, 4, 5)
   assert standardized["zos"].data.chunksize == (zos, 4, 5)
-  assert standardized["mask"].data.chunksize == (3, 4, 5)
+  assert standardized["glorys_mask"].data.chunksize == (3, 4, 5)
 
 
 @pytest.mark.parametrize(
@@ -153,7 +169,7 @@ def test_write(opened_inputs, reference, output_path, settings):
 def test_write_v2_layout(opened_inputs, output_path):
   _write(opened_inputs, output_path, DownloadConfig.model_validate(V2))
   metadata = json.loads((output_path / ".zmetadata").read_text())["metadata"]
-  thetao, zos, mask = (metadata[f"{name}/.zarray"] for name in ("thetao", "zos", "mask"))
+  thetao, zos, mask = (metadata[f"{name}/.zarray"] for name in ("thetao", "zos", "glorys_mask"))
   assert thetao["chunks"] == [1, 1, 4, 5]
   assert zos["chunks"] == [1, 4, 5]
   assert mask["chunks"] == [3, 4, 5]
@@ -192,8 +208,8 @@ def test_write_refuses_existing_output(opened_inputs, output_path):
   _write(opened_inputs, output_path, configs)
   standardized = downloader.standardize(*opened_inputs, configs)
   with pytest.raises(FileExistsError):
-    downloader.write(standardized, output_path, configs, downloader.get_tensorstore_context(configs))
-  downloader.write(standardized, output_path, configs, downloader.get_tensorstore_context(configs), overwrite=True)
+    downloader.write(standardized, output_path, configs, get_tensorstore_context(configs.io_threads))
+  downloader.write(standardized, output_path, configs, get_tensorstore_context(configs.io_threads), overwrite=True)
 
 
 class TestCli:
@@ -235,3 +251,52 @@ class TestCli:
     assert result.exit_code != 0
     assert "requires zarr_format = 3" in result.output
     assert not output_path.exists()
+
+
+class TestMask:
+  @pytest.mark.parametrize("level", [0, 1])
+  def test_get_mask(self, opened_inputs, inputs, level):
+    mask = downloader.get_mask(opened_inputs[0], MaskDownloadConfig(level=level))
+    assert mask.dtype == bool
+    assert mask.dims == ("lat", "lon")
+    assert "depth" not in mask.coords
+    expected = inputs[0]["glorys_mask"].isel(depth=level).values.astype(bool)
+    np.testing.assert_array_equal(mask.values, expected)
+    np.testing.assert_array_equal(mask["lat"].values, inputs[0]["lat"].values)
+
+  def test_rejects_time_dependent_variables(self, opened_inputs):
+    with pytest.raises(ValueError, match="depends on time"):
+      downloader.get_mask(opened_inputs[0], MaskDownloadConfig(name="thetao"))
+
+  def test_rejects_unknown_variables(self, opened_inputs):
+    with pytest.raises(ValueError, match="not in the dataset"):
+      downloader.get_mask(opened_inputs[0], MaskDownloadConfig(name="missing"))
+
+  def test_rejects_levels_of_variables_without_depth(self, opened_inputs):
+    with pytest.raises(ValueError, match="no depth dimension"):
+      downloader.get_mask(opened_inputs[0], MaskDownloadConfig(name="deptho", level=1))
+
+  def test_cli_writes_the_mask_read_by_training(self, mask_path, opened_inputs):
+    """The store holds one boolean DataArray, loaded as is by dataloader_utils.get_mask."""
+    mask = dataloader_utils.get_mask(MaskConfig(path=mask_path, fill_value=0.0))
+    expected = downloader.get_mask(opened_inputs[0], MaskDownloadConfig())
+    xr.testing.assert_identical(mask.drop_attrs(), expected.drop_attrs())
+    assert "graphcast download-mask" in mask.attrs["history"]
+
+  def test_cli_requires_overwrite(self, input_paths, tmp_path):
+    output = tmp_path / "mask"
+    arguments = [input_paths[0], str(output), "--log-level", "warning"]
+    assert CliRunner().invoke(downloader.download_mask, arguments).exit_code == 0
+    result = CliRunner().invoke(downloader.download_mask, arguments)
+    assert result.exit_code != 0
+    assert "--overwrite" in result.output
+    assert CliRunner().invoke(downloader.download_mask, [*arguments, "--overwrite"]).exit_code == 0
+
+  def test_cli_level_from_config(self, input_paths, inputs, tmp_path):
+    config_path = tmp_path / "mask.toml"
+    config_path.write_text("level = 1\nzarr_format = 3\n")
+    output = tmp_path / "mask"
+    result = CliRunner().invoke(downloader.download_mask, [input_paths[0], str(output), "--config", str(config_path)])
+    assert result.exit_code == 0, result.output
+    mask = xr.open_dataarray(output, engine="zarr").load()
+    np.testing.assert_array_equal(mask.values, inputs[0]["glorys_mask"].isel(depth=1).values.astype(bool))

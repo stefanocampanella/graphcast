@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveInt, model_validator
 
 
 class ApplicationConfig(BaseModel):
@@ -37,3 +37,9 @@ class DownloadConfig(ApplicationConfig):
     if self.zarr_format == 2 and self.subchunk_order != "lexicographic":
       raise ValueError("subchunk_order requires zarr_format = 3")
     return self
+
+
+class MaskDownloadConfig(ApplicationConfig):
+  name: str = Field(default="glorys_mask", description="Mask variable of the dataset")
+  level: NonNegativeInt = Field(default=0, description="Zero-based position along depth, as in task.levels")
+  zarr_format: Literal[2, 3] = 2

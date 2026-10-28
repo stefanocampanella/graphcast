@@ -142,14 +142,12 @@ def train(
 
   model_config = trn_utils.get_model_config(configs)
   mesh_data = trn_utils.get_mesh(configs)
-  mask = dataloader_utils.get_surface_mask(configs)
+  mask = dataloader_utils.get_mask(configs.mask)
   grid_lat = mask["lat"].to_numpy()
   grid_lon = mask["lon"].to_numpy()
   grid_mask = mask.transpose("lat", "lon").to_numpy()
   dataset = dataloader_utils.get_dataset(configs)
   task_config = dataloader_utils.get_task_config(configs, dataset)
-  climatology = dataloader_utils.get_climatology(configs)
-  anomaly_std = dataloader_utils.get_anomaly_std(configs)
   tendency_std = dataloader_utils.get_tendency_std(configs)
   static_data = xarray_jax.wrap_data(
     (tendency_std, mask), to_jax=True, np_contiguous=False
@@ -192,8 +190,6 @@ def train(
   train_stream = dataloader_utils.get_dataset_stream(
     configs=configs,
     dataset=dataset,
-    climatology=climatology,
-    anomaly_std=anomaly_std,
     seed=configs.seed,
     grain_runtime=grain_runtime,
   )

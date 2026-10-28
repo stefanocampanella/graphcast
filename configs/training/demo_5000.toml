@@ -88,24 +88,17 @@ path = "/data/geometry/uniform_coarse.msh"
 mesh_size_tag_name = "MeshSize"
 step = 0
 
+# Boolean (lat, lon) mask written by graphcast download-mask (configs/download/mask.toml selects variable and level).
 [mask]
-path = "/data/dataset"
-name = "glorys_mask"
-level = 0
+path = "/data/mask"
 fill_value = 0.0
 
-[mask.read]
-engine = "zarr"
-
-# xarray.open_dataset options, independent of Grain's reader options below.
-# All four sources select task.levels; there are no per-artifact level settings.
-# Training currently requires chunks=None. TOML has no null, so omit chunks
-# from the read tables to use this default. Other values warn but are not overridden.
+# Standardized anomaly store written by graphcast download, read with TensorStore; task.levels are selected here and
+# in tendency_std.
 [dataset]
 path = "/data/dataset"
-
-[dataset.read]
-engine = "zarr"
+# TensorStore concurrency of file I/O and decoding, per process (each Grain worker has its own).
+io_threads = 16
 
 [grain_dataset]
 target_lead_times = "1d"
@@ -131,18 +124,8 @@ scan = true
 # Update edge sets with more edges in chunks of this many edges (0: off).
 edge_chunk_size = 0
 
-[climatology]
-path = '/data/climatology'
-
-[climatology.read]
-engine = "zarr"
-
-[anomaly_std]
-path = '/data/anomaly_std'
-
-[anomaly_std.read]
-engine = "zarr"
-
+# Standard deviation of the one-step tendencies (residual normalization), read with xarray.open_dataset (read table:
+# its options; training requires chunks=None, the default when chunks is omitted).
 [tendency_std]
 path = '/data/tendency_std'
 

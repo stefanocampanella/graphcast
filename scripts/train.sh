@@ -21,7 +21,8 @@ Options override environment defaults; relative host paths use PROJECT_DIR.
   --help               Show help without checking dependencies
 
 DATA_ROOT defaults to PROJECT_DIR/data.
-Required readable SquashFS files or directories: DATASET, CLIMATOLOGY, ANOMALY_STD, TENDENCY_STD.
+Required readable SquashFS files or directories: DATASET (standardized anomalies, graphcast download),
+MASK (graphcast download-mask), TENDENCY_STD.
 Required paths: GEOMETRY_DIR.
 Bind paths cannot contain ':' or ',' (Apptainer separators).
 Site setup, --env-file and --log-dir belong to the cluster launcher.
@@ -198,11 +199,10 @@ CONFIG_PATH="$CONFIG_DIR/$CONFIG_NAME.toml"
 readable_file 'training config' "$CONFIG_PATH"
 check_bind_path "$DATA_DIR"
 
-# Preserve the four existing data destinations; extra inputs use --bind.
+# Data destinations used by the training configs; extra inputs use --bind.
 APPTAINER_ARGS=(run --nv --pwd "$PROJECT_DIR")
 add_data_bind DATASET "${DATASET:-}" dataset
-add_data_bind CLIMATOLOGY "${CLIMATOLOGY:-}" climatology
-add_data_bind ANOMALY_STD "${ANOMALY_STD:-}" anomaly_std
+add_data_bind MASK "${MASK:-}" mask
 add_data_bind TENDENCY_STD "${TENDENCY_STD:-}" tendency_std
 add_directory_bind GEOMETRY_DIR "${GEOMETRY_DIR:-}" geometry
 

@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
 # SPDX-License-Identifier: MIT
-"""Write the standardized anomalies of a dataset, read from local storage or object storage, to a local Zarr store.
+"""Write the standardized anomalies of a dataset, and its mask, read from local or object storage, to local Zarr stores.
 
-The preprocessing is that of `dataloader.ARCOTimeseriesSource`, except adding the batch dimension and making time
-relative to the first timestep, which stay in the dataloader.
+Time-dependent variables become anomaly z-scores with respect to a 365-day climatology and anomaly standard deviation,
+static variables are min-max normalized, missing values are filled with 0 and all variables are float32. Training
+reads these stores (dataloader.StandardizedAnomalySource), adding the batch dimension and relative time.
 """
 
 import logging
@@ -26,13 +27,26 @@ from dask.diagnostics import ProgressBar
 from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec, TransposeCodec
 
 from graphcast import cli_utils
-from graphcast.dataloader import climatology_index
-from graphcast.download_config import DownloadConfig
+from graphcast.dataloader import get_tensorstore_context
+from graphcast.download_config import DownloadConfig, MaskDownloadConfig
 
 logger = logging.getLogger(__name__)
 
 # Dimensions with one chunk per index; arrays are whole along the others.
 _CHUNKED_DIMS = ("time", "depth")
+
+# Day of year of February 29 (1-based).
+_FEB_29 = 60
+
+
+def climatology_index(time: xr.DataArray) -> np.ndarray:
+  """Return the index of each date in a 365-day climatology with time coordinates 0, ..., 364.
+
+  In leap years, February 29 takes the values of February 28 and later days are shifted back by one.
+  """
+  dayofyear = time.dt.dayofyear.values
+  after_feb_28 = time.dt.is_leap_year.values & (dayofyear >= _FEB_29)
+  return dayofyear - 1 - after_feb_28
 
 
 def get_aws_credentials() -> dict:
@@ -56,17 +70,6 @@ def get_aws_credentials() -> dict:
   else:
     os.environ.pop("AWS_SESSION_TOKEN", None)
   return {"type": "environment"}
-
-
-def get_tensorstore_context(configs: DownloadConfig, aws_credentials: dict | None = None) -> tensorstore.Context:
-  resources = {
-    "data_copy_concurrency": {"limit": configs.io_threads},
-    "file_io_concurrency": {"limit": configs.io_threads},
-    "s3_request_concurrency": {"limit": configs.io_threads},
-  }
-  if aws_credentials is not None:
-    resources["aws_credentials"] = aws_credentials
-  return tensorstore.Context(resources)
 
 
 def open_input(path: str, context: tensorstore.Context) -> xr.Dataset:
@@ -220,27 +223,105 @@ def write(
   )
 
 
-@click.command()
-@click.argument("dataset_path", metavar="DATASET", type=str)
-@click.argument("climatology_path", metavar="CLIMATOLOGY", type=str)
-@click.argument("anomaly_std_path", metavar="ANOMALY_STD", type=str)
-@click.argument(
-  "output_path",
-  metavar="OUTPUT",
-  type=click.Path(path_type=pathlib.Path, file_okay=False, resolve_path=True),
-)
-@click.option(
+def get_mask(dataset: xr.Dataset, configs: MaskDownloadConfig) -> xr.DataArray:
+  """Return the mask variable of the dataset at one depth level, as a boolean array without depth (read)."""
+  if configs.name not in dataset:
+    raise ValueError(f"Mask {configs.name!r} not in the dataset")
+  mask = dataset[configs.name]
+  if "time" in mask.dims:
+    raise ValueError(f"Mask {configs.name!r} depends on time: expected a static variable")
+  if "depth" in mask.dims:
+    mask = mask.isel(depth=configs.level, drop=True)
+  elif configs.level != 0:
+    raise ValueError(f"Mask {configs.name!r} has no depth dimension: level must be 0")
+  # The source encoding (e.g. an integer dtype and fill value) does not apply to booleans.
+  mask = xarray_tensorstore.read(mask).compute().astype(bool).drop_encoding()
+  mask.attrs["history"] = (
+    f"{mask.attrs.get('history', '')}\n{configs.name} at depth position {configs.level}, as booleans (graphcast "
+    "download-mask)."
+  ).strip()
+  return mask
+
+
+_CONFIG_OPTION = click.option(
   "--config",
   "config_path",
   type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False, resolve_path=True),
-  help="TOML settings (graphcast.download_config.DownloadConfig); defaults to Zarr v2.",
+  help="TOML settings; defaults are used without it.",
 )
-@click.option("--overwrite", is_flag=True, default=False, help="Overwrite OUTPUT if it exists.")
-@click.option(
+_OVERWRITE_OPTION = click.option("--overwrite", is_flag=True, default=False, help="Overwrite OUTPUT if it exists.")
+_LOG_LEVEL_OPTION = click.option(
   "--log-level",
   default="info",
   type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
 )
+_OUTPUT_ARGUMENT = click.argument(
+  "output_path",
+  metavar="OUTPUT",
+  type=click.Path(path_type=pathlib.Path, file_okay=False, resolve_path=True),
+)
+
+
+def _set_up[Config: (DownloadConfig, MaskDownloadConfig)](
+  schema: type[Config],
+  config_path: pathlib.Path | None,
+  output_path: pathlib.Path,
+  overwrite: bool,
+  log_level: str,
+) -> Config:
+  """Configure logging, read the settings (defaults without a config file) and check the output path."""
+  logging.basicConfig(
+    format="%(levelname)s - %(asctime)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    level=log_level.upper(),
+    force=True,
+  )
+  configs = schema() if config_path is None else cli_utils.read_configs(config_path, schema=schema)
+  if output_path.exists() and not overwrite:
+    raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
+  logger.info(f"Using settings: {configs!r}")
+  return configs
+
+
+def _input_context(io_threads: int, *paths: str) -> tensorstore.Context:
+  """TensorStore context of the inputs, with S3 credentials if any of them is on S3."""
+  is_s3 = any(path.startswith("s3://") for path in paths)
+  return get_tensorstore_context(io_threads, get_aws_credentials() if is_s3 else None)
+
+
+@click.command()
+@click.argument("dataset_path", metavar="DATASET", type=str)
+@_OUTPUT_ARGUMENT
+@_CONFIG_OPTION
+@_OVERWRITE_OPTION
+@_LOG_LEVEL_OPTION
+def download_mask(
+  dataset_path: str,
+  output_path: pathlib.Path,
+  config_path: pathlib.Path | None = None,
+  overwrite: bool = False,
+  log_level: str = "info",
+):
+  """Write a mask of DATASET at one depth level to OUTPUT, a local Zarr store holding one boolean DataArray.
+
+  DATASET is a Zarr store with consolidated metadata, given as a local path or a URL (e.g. s3://bucket/path). The
+  mask variable and level come from the settings (graphcast.download_config.MaskDownloadConfig).
+  """
+  configs = _set_up(MaskDownloadConfig, config_path, output_path, overwrite, log_level)
+  dataset = open_input(dataset_path, _input_context(1, dataset_path))
+  mask = get_mask(dataset, configs)
+  logger.info(f"Writing {configs.name} ({dict(mask.sizes)}, {int(mask.sum())} unmasked points) to {output_path}")
+  mask.to_zarr(output_path, mode="w" if overwrite else "w-", zarr_format=configs.zarr_format, consolidated=True)
+
+
+@click.command()
+@click.argument("dataset_path", metavar="DATASET", type=str)
+@click.argument("climatology_path", metavar="CLIMATOLOGY", type=str)
+@click.argument("anomaly_std_path", metavar="ANOMALY_STD", type=str)
+@_OUTPUT_ARGUMENT
+@_CONFIG_OPTION
+@_OVERWRITE_OPTION
+@_LOG_LEVEL_OPTION
 def download(
   dataset_path: str,
   climatology_path: str,
@@ -253,21 +334,10 @@ def download(
   """Write the standardized anomalies of DATASET to OUTPUT, a local Zarr store with consolidated metadata.
 
   DATASET, CLIMATOLOGY and ANOMALY_STD are Zarr stores with consolidated metadata, given as local paths or URLs
-  (e.g. s3://bucket/path).
+  (e.g. s3://bucket/path). Settings: graphcast.download_config.DownloadConfig (Zarr v2 without a config file).
   """
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
-  configs = DownloadConfig() if config_path is None else cli_utils.read_configs(config_path, schema=DownloadConfig)
-  if output_path.exists() and not overwrite:
-    raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
-  logger.info(f"Using settings: {configs!r}")
-
-  is_s3 = any(path.startswith("s3://") for path in (dataset_path, climatology_path, anomaly_std_path))
-  context = get_tensorstore_context(configs, get_aws_credentials() if is_s3 else None)
+  configs = _set_up(DownloadConfig, config_path, output_path, overwrite, log_level)
+  context = _input_context(configs.io_threads, dataset_path, climatology_path, anomaly_std_path)
   dataset = open_input(dataset_path, context)
   climatology = open_input(climatology_path, context)
   anomaly_std = open_input(anomaly_std_path, context)

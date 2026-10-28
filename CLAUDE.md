@@ -19,12 +19,15 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute` (basis).
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
-  (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds the dataset, climatology,
-  anomaly_std, tendency_std (SquashFS or directories) and `GEOMETRY_DIR` under `/data` in the container.
-  Use `--reservation=develbooster` for short tests on up to 4 nodes.
+  (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
+  store), MASK, TENDENCY_STD (SquashFS or directories) and `GEOMETRY_DIR` under `/data` in the container.
+  Use `--reservation=develbooster` for short tests on up to 4 nodes. To test the code of a worktree, use an env file
+  with `APPTAINERENV_PYTHONPATH` set to the worktree's `src` (the shared `.env` points at the main checkout) and
+  submit from the worktree.
 - Standardized anomaly stores (preprocessing done once): `bash clusters/jupiter/slurm/download.slurm DATASET
   CLIMATOLOGY ANOMALY_STD OUTPUT --config configs/download/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.toml` on a login
-  node (S3 or local inputs), or the same with `sbatch` on a booster node (no internet: local inputs only). See
+  node (S3 or local inputs), or the same with `sbatch` on a booster node (no internet: local inputs only); the mask
+  with `bash clusters/jupiter/slurm/download.slurm --mask DATASET OUTPUT --config configs/download/mask.toml`. See
   "Standardized anomaly stores" below.
 - Mesh-size study: `clusters/jupiter/slurm/mesh_study.sh STUDY MESH[:EDGE_CHUNK_SIZE[:HH:MM:SS[:lowmem]]] ...`.
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
@@ -58,10 +61,25 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 
 ## Standardized anomaly stores
 
-`graphcast download` (`downloader.py`, settings in `download_config.py`) applies the preprocessing of
-`dataloader.ARCOTimeseriesSource` once (climatology alignment, filling, clipping, z-scores, min-max static fields,
-float32) and writes one local store; the batch dimension and relative time stay in the dataloader. Next task
-(`TODO.md`): make the dataloader read this single store instead of dataset, climatology and anomaly_std.
+`graphcast download` (`downloader.py`, settings in `download_config.py`) standardizes the raw dataset once
+(climatology alignment, filling, clipping, z-scores, min-max static fields, float32) and writes one local store;
+training reads it with `dataloader.StandardizedAnomalySource`, which adds the batch dimension, the `datetime`
+coordinate and relative time (the previous `ARCOTimeseriesSource` did all of this per sample from the raw dataset,
+climatology and anomaly_std; it was removed on 28 Oct 2026). `graphcast download-mask` writes the training mask: the
+mask variable (`name`, default `glorys_mask`) at one depth position (`level`), as a single boolean `(lat, lon)`
+DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_utils.get_mask`).
+
+- Training data path: `dataloader_utils.get_dataset` opens the store lazily with xarray-tensorstore and selects
+  `task.levels` (`dataloader.select_levels`); `StandardizedAnomalySource` stores only the path, levels, `split_date` and
+  `dataset.io_threads` and reopens the store in each process (`__getstate__` drops it), so Grain workers never pickle
+  TensorStore objects. A window is read with `xarray_tensorstore.read(...).compute()`. `tendency_std` and the mask
+  are small and stay on `xarray.open_dataset`. Grain workers return shared-memory arrays (`xarray_jax.unwrap` to get
+  the numpy array; xarray operations reject them), and tests that use Grain must call `flags.FLAGS.mark_as_parsed()`
+  (absl), as the CLI does.
+- Equivalence (28 Oct 2026): training samples (inputs, targets, forcings after extraction) of the new pipeline on
+  `zarr_v2` are bit-identical to those of the old pipeline on the raw local copies (3 samples, 112 arrays); the mask
+  equals the old `get_surface_mask` result (693,039 ocean points of 721 × 1440). Samples took 0.08–0.16 s on a login
+  node with 16 I/O threads.
 
 - Entry points: `scripts/download.sh` is portable (inherited environment, `APPTAINER_IMAGE` defaulting to
   `PROJECT_DIR/graphcast.sif`); `clusters/jupiter/slurm/download.slurm` sources `clusters/jupiter/.env` (or
@@ -79,8 +97,8 @@ float32) and writes one local store; the batch dimension and relative time stay 
   before an explicit `ShardingCodec`. TensorStore fills shards in lexicographic order of the transposed grid and still
   reads single chunks, while zarr-python reads whole shards of such arrays ("Combining a `sharding_indexed` codec
   disables partial reads"). Morton order (zarr-python writer only) was dropped: 2 h to write, no faster to read.
-- Leap years: `dataloader.climatology_index` maps Feb 29 to Feb 28's climatology and later days back by one (the old
-  `_handle_leap_years` gave Feb 26 and 27 the same day); both the dataloader and the downloader use it.
+- Leap years: `downloader.climatology_index` maps Feb 29 to Feb 28's climatology and later days back by one (the old
+  `_handle_leap_years` gave Feb 26 and 27 the same day).
 - S3 credentials come from the environment, never from configs (profiles are user-specific): on JUPITER
   `AWS_PROFILE=xarray-s3-writer` (a `credential_process` with `aws_signing_helper` in `~/.local/bin`, hence
   `APPTAINERENV_PREPEND_PATH`), or `FSSPEC_S3_ANON=true`. The default profile is an expired `aws login` session
@@ -94,13 +112,14 @@ float32) and writes one local store; the batch dimension and relative time stay 
   Concurrency is set by the `data_copy_concurrency`, `file_io_concurrency` and `s3_request_concurrency` resources.
 - Dependencies added: `xarray-tensorstore`, `fsspec`, `s3fs >= 2026.9.0` (without the bound, pip falls back to s3fs
   0.4), `botocore[crt]` (for `aws login` sessions).
-- Verification: `tests/test_downloader.py` compares with `ARCOTimeseriesSource` on synthetic data; throwaway scripts
-  compared real subsets (20 days around 29 Feb 2020, local and S3 inputs) and windows of the full stores (agreement
+- Verification: `tests/` compares the downloader and the dataloader with a direct reference computation on synthetic
+  data (`tests/conftest.py`); throwaway scripts compared real subsets (20 days around 29 Feb 2020, local and S3 inputs) and windows of the full stores (agreement
   within 1e-6).
 - Full 10.5 TB (5.1 TB on disk) on booster nodes: v3 lexicographic 34 min and v2 2 h (three jobs at once), v3
   colexicographic 32 min alone; login node (use 8 Dask and 16 I/O threads): v3 lexicographic ~1 h. Outputs:
   `/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies/{zarr_v2,zarr_v3,zarr_v3_lexi}` (26 Oct 2026; `zarr_v3` is
-  morton, written by an earlier version) and `zarr_v3_colexi` (27 Oct 2026).
+  morton, written by an earlier version) and `zarr_v3_colexi` (27 Oct 2026); the mask in `glorys_mask` (28 Oct 2026,
+  from the local raw copy with `configs/download/mask.toml`, 9 s).
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier images in `/e/project1/e-dev-2026d09-119/squashfs` (from
@@ -177,11 +196,11 @@ geodesic edge features use `gis_utils.py`.
 - `edge_chunk_size > 0` updates large edge sets in remat'd chunks (`typed_graph_net._edge_update`). It saves GPU
   memory but costs compute.
 
-**Data** (`dataloader.py`, `dataloader_utils.py`, `grain_utils.py`, `data_utils.py`, `xarray_jax.py`): zarr
-(v2 fastest) or SquashFS sources read with xarray and fed through Grain multiprocessing workers; normalization
-statistics come from climatology/anomaly_std/tendency_std datasets. At all 50 depth levels, host memory limits
-Grain to about 2 workers. `ARCOTimeseriesSource` still standardizes each window on the fly; the precomputed stores
-and the TensorStore measurements above are the basis for refactoring it.
+**Data** (`dataloader.py`, `dataloader_utils.py`, `grain_utils.py`, `data_utils.py`, `xarray_jax.py`): windows of
+the standardized anomaly store (zarr or SquashFS, read with xarray-tensorstore) fed through Grain multiprocessing
+workers; residuals are normalized with `tendency_std`, and the boolean surface mask comes from `graphcast
+download-mask`. With the previous dataloader (zarr-python, standardizing per sample), host memory limited Grain to
+about 2 workers at all 50 depth levels; this is to be measured again with the new one.
 
 **Meshes**: `geospatial_mesh.py` (seamsh, coastline shapefiles) generates `.msh` files from `configs/mesh/*.toml`;
 generated meshes and geometry live in `data/geometry` (gitignored, bound as `/data/geometry`).

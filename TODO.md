@@ -15,7 +15,7 @@
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
-* Read the single standardized anomaly dataset written by `graphcast download` in the dataloader, instead of dataset, climatology and anomaly_std. **HIGH PRIORITY**
+* Benchmark the dataloader on the standardized anomaly stores (JUBE `format` sweep: zarr v2, v3 lexicographic and colexicographic, SquashFS images) and re-tune Grain workers and `dataset.io_threads`, also at all 50 levels. **HIGH PRIORITY**
 * Implement CLI and document train.slurm script the same way as for the other scripts (e.g., download_dataset.slurm). (Medium priority)
 * Debug PGLE, currently broken. (Medium priority) 
 * Simplify SLURM scripts by forwarding arguments to Python CLI, without building flags using getopt. (Medium priority)
@@ -85,6 +85,7 @@
 
 ## Completed tasks
 
+* ~~Read the single standardized anomaly dataset written by `graphcast download` in the dataloader, instead of dataset, climatology and anomaly_std; write the training mask with `graphcast download-mask`.~~ **DONE**
 * ~~Replace learnable Fourier features with fixed $\sin$ and $\cos$ encodings using concatenation.~~ **DONE**
 * ~~Streamline dataset downloading and post-processing, in particular the download-and-postprocess then
   merge-and-postprocess workflow should be implemented as a single operation.~~ **DONE, now in a separate package:
