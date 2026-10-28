@@ -289,3 +289,24 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 - **18:18 Request:** doesn't the current implementation exclude land below the surface? **Insight:** no. `Mask`
   and the loss broadcast the 2D surface `glorys_mask` over all levels and variables, so land below the surface of
   ocean columns is in the loss and is predicted.
+- **18:50 Request** (decisions):
+  - floor at the smallest in-sample anomaly_std per variable, and a |z| cap for new data;
+  - the targets are the ocean variables;
+  - excluded points keep their input values;
+  - check that static fields are already 0 outside their masks;
+  - no minimum number of non-zero differences for the sea-ice estimator;
+  - GLORYS data outside the GLORYS mask are irrelevant;
+  - the tolerance multiplier k = 4.
+
+  Questions: what would sigma coordinates need? Run an experiment without output normalization, and what are its
+  cons?
+- **Insight** (static fields): `waverys_deptho` is 0 outside its mask. `glorys_deptho` is 0 or NaN there (3 points
+  ≤ 1.3e-7), and `uparea` is NaN; both become 0 in the store after min-max.
+- **Insight:** the residual connection has been disabled since commit 21edee5 (27 Mar 2026).
+  `InputsAndResiduals` tests `_residual_locations is not None`, which is always `None`, so the model predicts the
+  standardized targets directly and `tendency_std` is unused. Upstream GraphCast always predicts residuals.
+- **Experiment** (setup): an experiment copy of `src` in claude-work (`exp_src`). There,
+  `GRAPHCAST_EXP_RESIDUALS` selects `direct`, `residual_unit` or `residual_std`, and the state error (z-score
+  units) of the predictions, of persistence and of the climatology is logged at every step. The three 2000-step
+  runs are jobs 2566428, 2566430 and 2566431 on booster with `training2647`. The develbooster nodes are in the
+  `maint_row_6.1` maintenance reservation from 28 Oct 17:00 to 29 Nov, so they run on the regular partition.

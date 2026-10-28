@@ -110,25 +110,39 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
      1440 longitudes, ~6×), `lsm` differs on 1998-05-04 and 2014-04-05 at 532 points (18–24°S). Take a glitch-free
      day.
   3. Wave variables under sea ice are 0 (already so inside `waverys_mask`, via ARCO-OCEAN's `masked_fill`).
-  4. Values equal to the climatology within a relative tolerance, `|x − c| ≤ k·eps·max(|x|, |c|)` (float32 eps, k a
-     few units), have a z-score of 0 whatever the anomaly_std (constant series such as deep salinity, zero river
-     discharge; without it z is a ratio of rounding errors, e.g. ±1).
-  5. Anomaly_std has a floor (for data the statistics do not cover); the heavy in-sample tails (`dis24`, `so`, `tp`)
-     are kept, so the floor must not change in-sample z-scores. Smallest positive in-sample anomaly_std inside the
-     masks: `siconc` 4e-12, `dis24` 1.5e-11, `sithick` 8e-11, `tp` 1.5e-8, `so_bottom` 2.7e-6, `so` (level 49)
-     1.4e-5, `swh` 2e-5; ERA5 forcings ≥ 0.04; `uo`/`vo` at level 49 are 0 at all 16,664 sea points.
+  4. Values equal to the climatology within a relative tolerance, `|x − c| ≤ 4·eps·max(|x|, |c|)` (float32 eps), have
+     a z-score of 0 whatever the anomaly_std (constant series such as deep salinity, zero river discharge; without it
+     z is a ratio of rounding errors, e.g. ±1).
+  5. Anomaly_std floor, per variable (and level): its smallest positive in-sample value inside the mask, so in-sample
+     z-scores (and the heavy tails of `dis24`, `so`, `tp`) are unchanged; for data outside 1993–2023, |z| is also
+     capped at the variable's in-sample maximum. Smallest positive values: `siconc` 4e-12, `dis24` 1.5e-11, `sithick`
+     8e-11, `tp` 1.5e-8, `so_bottom` 2.7e-6, `so` (level 49) 1.4e-5, `swh` 2e-5; ERA5 forcings ≥ 0.04; `uo`/`vo` at
+     level 49 are 0 at all 16,664 sea points.
   6. A point whose series is constant (after 4) has tendency_std 0, and is excluded from the loss for that variable
-     (no clipping of tendency_std).
+     (no clipping of tendency_std); predictions there keep the input value (also outside the masks, where it is 0).
   7. Sea-ice variables (`siconc`, `sithick`, `usi`, `vsi`): tendency_std is the std of the non-zero differences only
-     (their differences are zero-inflated).
+     (their differences are zero-inflated), with no minimum number of them.
   8. Data outside their source's static mask are 0: GLORYS `glorys_mask` (3D for `thetao`, `so`, `uo`, `vo`; level 0
      for `zos`, sea ice, `thetao_bottom`, `so_bottom`), WAVERYS `waverys_mask` (`swh`, `mwp`, `mwd`, `usd`, `vsd`),
      GLOFAS `glofas_mask` (`dis24`); ERA5 has no mask. Wave values that are 0 inside the GLORYS mask (different grids)
-     are accepted.
-  9. Loss masks per variable (and level), replacing the single surface mask: today `Mask` and
+     are accepted. GLORYS values outside the 3D mask (6,315 points at level 10, 13,206 at level 40, close to the
+     neighbouring sea) are not relevant and become 0. Raw values outside the masks today: sea-ice variables are 0;
+     `glorys_deptho` 0 or NaN (and 3 points ≤ 1.3e-7); `waverys_deptho` 0; `uparea` NaN (min-max over the mask maps
+     its smallest river point to 0, like land).
+  9. Loss masks per target variable and level, replacing the single surface mask: today `Mask` and
      `losses._mean_preserving_batch` broadcast the 2D surface `glorys_mask` over all levels and variables, so land
-     below the surface of ocean columns is in the loss (targets 0, copy's tendency_std NaN → 1) and is predicted.
+     below the surface of ocean columns is in the loss (targets 0, tendency_std NaN → 1) and is predicted, and the mean
+     counts masked points as zeros. Plan: mask = grid mask ∧ `tendency_std > 0` (zero outside masks and at constant
+     points by 6 and 8); per-variable masks in `losses`, averaging over valid points per level before depth weights;
+     residuals divided only where tendency_std > 0; `Mask` per variable, keeping the input at excluded points. Targets
+     are the ocean variables.
   Normalization statistics over 1993–2023 include the held-out period after `split_date`: accepted for now.
+- **Residual connection disabled since 27 Mar 2026** (commit 21edee5): `normalization.InputsAndResiduals` takes its
+  residual branch only `if self._residual_locations is not None`, which is always `None` (upstream GraphCast always
+  uses residuals; the intended condition is on `_residual_scales`). So training predicts the standardized targets
+  directly, and `tendency_std` is loaded but never used. Experiment (28 Oct 2026, `exp_src` in claude-work,
+  `GRAPHCAST_EXP_RESIDUALS`): direct vs residual without output normalization vs residual / tendency_std, 2000 steps
+  each, with the state error (z-score units) of predictions, persistence and climatology logged per step.
 - Training data path: `dataloader_utils.get_dataset` opens the store lazily with xarray-tensorstore and selects
   `task.levels` (`dataloader.select_levels`); `StandardizedAnomalySource` stores only the path, levels, `split_date` and
   `dataset.io_threads` and reopens the store in each process (`__getstate__` drops it), so Grain workers never pickle
