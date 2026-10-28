@@ -289,7 +289,7 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 - **18:18 Request:** doesn't the current implementation exclude land below the surface? **Insight:** no. `Mask`
   and the loss broadcast the 2D surface `glorys_mask` over all levels and variables, so land below the surface of
   ocean columns is in the loss and is predicted.
-- **18:50 Request** (decisions):
+- **18:52 Request** (decisions):
   - floor at the smallest in-sample anomaly_std per variable, and a |z| cap for new data;
   - the targets are the ocean variables;
   - excluded points keep their input values;
