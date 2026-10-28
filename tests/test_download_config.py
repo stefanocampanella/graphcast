@@ -5,7 +5,7 @@ import pydantic
 import pytest
 
 from graphcast import cli_utils
-from graphcast.download_config import DownloadConfig, MaskDownloadConfig
+from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
 
 CONFIG_DIR = pathlib.Path(__file__).parents[1] / "configs" / "download"
 CONFIGS = sorted(CONFIG_DIR.glob("zarr_*.toml"))
@@ -72,3 +72,15 @@ def test_invalid_mask_settings(settings):
 def test_shipped_mask_config_is_valid():
   configs = cli_utils.read_configs(CONFIG_DIR / "mask.toml", schema=MaskDownloadConfig)
   assert (configs.name, configs.level) == ("glorys_mask", 0)
+
+
+def test_shipped_tendency_std_config_is_valid():
+  configs = cli_utils.read_configs(CONFIG_DIR / "tendency_std.toml", schema=TendencyStdConfig)
+  assert configs.variables is None and configs.zero_as_missing
+  assert "title" in configs.attrs
+
+
+@pytest.mark.parametrize("settings", [{"time_chunk": 0}, {"attrs": {"title": 1}}, {"subchunk_order": "lexicographic"}])
+def test_invalid_tendency_std_settings(settings):
+  with pytest.raises(pydantic.ValidationError):
+    TendencyStdConfig.model_validate(settings)

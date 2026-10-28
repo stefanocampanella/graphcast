@@ -1,0 +1,22 @@
+# Standard deviation of the one-step differences of the standardized anomalies (graphcast compute-tendency-std),
+# assuming zero mean, over the whole store: the tendency_std of the training configs, which normalizes the residuals
+# predicted by the model. One chunk per depth level, Blosc lz4.
+# All time-dependent variables of the store; list them to compute only some:
+# variables = ["zos", "thetao"]
+# Missing values of the store are 0: a standard deviation of 0 means no data at all and is written as NaN.
+zero_as_missing = true
+zarr_format = 2
+# Dask chunks of 256 timesteps of one depth level (about 1 GB each); each Dask thread holds a few of them.
+time_chunk = 256
+num_workers = 8
+io_threads = 16
+
+[compressor]
+cname = "lz4"
+clevel = 1
+shuffle = "shuffle"
+
+# Global attributes, added to those of the standardized store.
+[attrs]
+title = "Tendency standard deviation of the standardized daily anomalies"
+summary = "Standard deviation of the first-order time differences of the z-score-normalized daily anomalies, assuming zero mean, over the whole time series."

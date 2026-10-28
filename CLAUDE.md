@@ -27,7 +27,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 - Standardized anomaly stores (preprocessing done once): `bash clusters/jupiter/slurm/download.slurm DATASET
   CLIMATOLOGY ANOMALY_STD OUTPUT --config configs/download/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.toml` on a login
   node (S3 or local inputs), or the same with `sbatch` on a booster node (no internet: local inputs only); the mask
-  with `bash clusters/jupiter/slurm/download.slurm --mask DATASET OUTPUT --config configs/download/mask.toml`. See
+  with `bash clusters/jupiter/slurm/download.slurm --mask DATASET OUTPUT --config configs/download/mask.toml`, the
+  tendency statistics with `--tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml`. See
   "Standardized anomaly stores" below.
 - Mesh-size study: `clusters/jupiter/slurm/mesh_study.sh STUDY MESH[:EDGE_CHUNK_SIZE[:HH:MM:SS[:lowmem]]] ...`.
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
@@ -69,6 +70,18 @@ climatology and anomaly_std; it was removed on 28 Oct 2026). `graphcast download
 mask variable (`name`, default `glorys_mask`) at one depth position (`level`), as a single boolean `(lat, lon)`
 DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_utils.get_mask`).
 
+- `tendency_std` (residual normalization in training) is the zero-mean standard deviation of the one-step differences
+  of the standardized anomalies over the whole series, per variable and point (no time dimension). The copy in use,
+  `/e/scratch/training2647/graphcast_data/zarr_v2/tendency_std` (also `s3://ogs-arco-ocean/tendency_std/res=0p25`,
+  to be deleted there), was computed with arco-make's `diff_std` step, which is expensive: keep it. `graphcast
+  compute-tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml` (`downloader.tendency_std`,
+  `TendencyStdConfig`; `download.sh`/`download.slurm --tendency-std`) recomputes it from a standardized store,
+  in float64, with Dask chunks of 256 days of one depth level. A std of 0 (no data: the store fills missing values
+  with 0) is written as NaN, as in the copy (NaN wherever a variable has no data, never 0); training fills NaN with 1.
+  Check on 28 Oct 2026, 5 variables of `zarr_v2` (235 GB in 85 s on a login node, 2.8 GB/s): NaN patterns equal,
+  median relative difference 3–4e-4 (arco-make dropped Feb 29 with a 365-day calendar, the store keeps it); points
+  missing only part of the time differ more (`siconc`, `swh`: 99th percentile 0.5–0.7), as the 0 filling enters the
+  differences. The full store (5.1 TB) would take about 30 min on a login node.
 - Training data path: `dataloader_utils.get_dataset` opens the store lazily with xarray-tensorstore and selects
   `task.levels` (`dataloader.select_levels`); `StandardizedAnomalySource` stores only the path, levels, `split_date` and
   `dataset.io_threads` and reopens the store in each process (`__getstate__` drops it), so Grain workers never pickle

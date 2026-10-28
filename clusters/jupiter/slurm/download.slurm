@@ -14,11 +14,13 @@ usage() {
 Usage: sbatch clusters/jupiter/slurm/download.slurm [--env-file FILE] DATASET CLIMATOLOGY ANOMALY_STD OUTPUT
                                                    [--config FILE] [--overwrite] [--log-level LEVEL]
        bash clusters/jupiter/slurm/download.slurm [--env-file FILE] --mask DATASET OUTPUT [--config FILE] ...
+       sbatch clusters/jupiter/slurm/download.slurm [--env-file FILE] --tendency-std STANDARDIZED OUTPUT [--config FILE] ...
 
 Write the standardized anomaly dataset on a compute node, using all of its CPUs (no GPUs). Compute nodes have no
 internet access: DATASET, CLIMATOLOGY and ANOMALY_STD must be local paths. On a login node, where S3 URLs work, run
 this script with bash instead of sbatch (and fewer threads in the --config TOML). With --mask, write the mask of
-DATASET at one depth level instead (small: run it with bash on a login node).
+DATASET at one depth level instead (small: run it with bash on a login node); with --tendency-std, the standard
+deviation of the one-step differences of a standardized store (reads all of it).
   --env-file FILE   Bash environment (default: PROJECT_DIR/clusters/jupiter/.env), providing APPTAINER_IMAGE and
                     APPTAINERENV_PYTHONPATH
 Other arguments are forwarded to scripts/download.sh (submit from the project directory); see its --help.

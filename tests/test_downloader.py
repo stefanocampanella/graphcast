@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from graphcast import dataloader_utils, downloader
 from graphcast.dataloader import get_tensorstore_context
-from graphcast.download_config import DownloadConfig, MaskDownloadConfig
+from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
 from graphcast.training_config import MaskConfig
 
 V2 = {"zarr_format": 2}
@@ -300,3 +300,53 @@ class TestMask:
     assert result.exit_code == 0, result.output
     mask = xr.open_dataarray(output, engine="zarr").load()
     np.testing.assert_array_equal(mask.values, inputs[0]["glorys_mask"].isel(depth=1).values.astype(bool))
+
+
+class TestTendencyStd:
+  @staticmethod
+  def _expected(values: np.ndarray, zero_as_missing: bool = True) -> np.ndarray:
+    diffs = np.diff(values.astype(np.float64), axis=0)
+    std = np.sqrt(np.mean(diffs * diffs, axis=0))
+    return np.where(std > 0, std, np.nan if zero_as_missing else 0.0).astype(np.float32)
+
+  @pytest.fixture
+  def standardized(self, standardized_path) -> xr.Dataset:
+    return downloader.open_input(standardized_path, get_tensorstore_context(2))
+
+  @pytest.mark.parametrize("zero_as_missing", [True, False])
+  def test_matches_the_reference(self, standardized, zero_as_missing):
+    configs = TendencyStdConfig(time_chunk=4, zero_as_missing=zero_as_missing)
+    result = downloader.tendency_std(standardized, configs).compute()
+    assert set(result.data_vars) == {"thetao", "zos"}
+    for name, values in result.data_vars.items():
+      assert values.dtype == np.float32
+      assert "time" not in values.dims
+      source = xarray_tensorstore.read(standardized[name]).values
+      np.testing.assert_allclose(values.values, self._expected(source, zero_as_missing), rtol=1e-6, err_msg=name)
+    # Below the first level, the land point is missing at all times in the inputs: 0 in the store, NaN here.
+    assert bool(np.isnan(result["thetao"].isel(depth=1, lat=0, lon=0))) == zero_as_missing
+
+  def test_variables(self, standardized):
+    result = downloader.tendency_std(standardized, TendencyStdConfig(variables=["zos"]))
+    assert list(result.data_vars) == ["zos"]
+    with pytest.raises(ValueError, match="deptho"):
+      downloader.tendency_std(standardized, TendencyStdConfig(variables=["zos", "deptho"]))
+
+  def test_attributes(self, standardized):
+    result = downloader.tendency_std(standardized, TendencyStdConfig(attrs={"title": "Tendencies"}))
+    assert result.attrs["title"] == "Tendencies"
+    assert "graphcast compute-tendency-std" in result.attrs["history"]
+    assert "graphcast download" in result.attrs["history"]
+
+  def test_cli(self, standardized_path, standardized, tmp_path):
+    """The store has one chunk per depth level (dataloader_utils.get_tendency_std reads it: test_dataloader.py)."""
+    output = tmp_path / "tendency_std"
+    arguments = [standardized_path, str(output), "--log-level", "warning"]
+    result = CliRunner().invoke(downloader.compute_tendency_std, arguments)
+    assert result.exit_code == 0, result.output
+    metadata = json.loads((output / ".zmetadata").read_text())["metadata"]
+    assert metadata["thetao/.zarray"]["chunks"] == [1, 4, 5]
+    written = xr.open_zarr(output).load()
+    expected = self._expected(xarray_tensorstore.read(standardized["thetao"]).values)
+    np.testing.assert_allclose(written["thetao"].values, expected, rtol=1e-6)
+    assert CliRunner().invoke(downloader.compute_tendency_std, arguments).exit_code != 0

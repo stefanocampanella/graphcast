@@ -202,3 +202,27 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - from step 8 on, the data wait was 0.022 s (median) and compute 0.394 s;
   - steps 1–7 waited about 3.1 s each while the Grain workers started, against 6–8 s with the old dataloader
     (`results/2026-10-22-final-v2/io-10levels`, zarr_v2, 8×2).
+- **14:52 Change** `96e2fb9`: the above, committed and pushed. PR #1 was renamed "Train on precomputed standardized
+  anomalies: downloader, mask, dataloader and training", with a new description.
+- **15:04 Request:** add a command, with configs, that recomputes `tendency_std` from the standardized store,
+  mimicking arco-make and following the arco-ocean configs. The copy in use (also on S3, to be deleted there) was
+  expensive to compute and is kept.
+- **Insight:**
+  - **The copy:** its attributes describe the standard deviation of the first-order time differences of the z-score
+    anomalies, assuming zero mean, over 1993–2023. That is arco-make's `diff_std` processing step (its
+    `compute_climatology` computes the climatology and anomaly_std, with a 365-day calendar, 29-day Gaussian
+    window). The copy has 27 static variables, float32, lz4 Blosc, one chunk per depth level.
+  - **Missing values:** the copy is NaN wherever a variable has no data (land; 66% of sea points for `siconc`, 8%
+    for `swh`) and never 0.
+- **Change:**
+  - **The command:** `graphcast compute-tendency-std STANDARDIZED OUTPUT` (`downloader.tendency_std`,
+    `TendencyStdConfig`, `configs/download/tendency_std.toml`; `download.sh`/`download.slurm --tendency-std`).
+  - **Computation:** float64 squares and Dask chunks of 256 days of one depth level, since chunks along time alone
+    would hold all 50 levels (about 13 GB). A std of 0 is written as NaN (`zero_as_missing`), as in the copy.
+  - **Tests:** 97, all passing in the image.
+- **15:09 Experiment:** 5 variables recomputed from `zarr_v2` (235 GB in 85 s on a login node) against the copy:
+  - **NaN patterns** are equal.
+  - **`zos`, `2t` and `so_bottom`:** median relative difference 3–4e-4, with a 99th percentile below 3e-3. The likely
+    cause is Feb 29: arco-make dropped it, while the store keeps it.
+  - **`siconc` and `swh`:** the median is the same, but the 99th percentile is 0.5–0.7, at points missing only part
+    of the time, where the store's 0 filling enters the differences.

@@ -5,10 +5,12 @@ import numpy as np
 import pytest
 import xarray as xr
 from absl import flags
+from click.testing import CliRunner
 
 from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
 from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
-from graphcast.training_config import TrainingConfig
+from graphcast.downloader import compute_tendency_std
+from graphcast.training_config import SourceConfig, TrainingConfig
 
 FULL_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "full.toml"
 LEVELS = [2, 0]
@@ -154,3 +156,17 @@ def test_stream_with_grain_workers(training_configs, num_workers):
       assert set(streamed.data_vars) == set(read.data_vars)
       for name, values in read.data_vars.items():
         np.testing.assert_allclose(np.array(xarray_jax.unwrap(streamed[name].data)), values.values, err_msg=name)
+
+
+def test_tendency_std_of_the_store(training_configs, standardized_path, tmp_path):
+  """graphcast compute-tendency-std writes what training reads: task levels selected, NaN (no data) filled with 1."""
+  output = tmp_path / "tendency_std"
+  result = CliRunner().invoke(compute_tendency_std, [standardized_path, str(output), "--log-level", "warning"])
+  assert result.exit_code == 0, result.output
+  configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=str(output))})
+  tendency_std = dataloader_utils.get_tendency_std(configs)
+  assert set(tendency_std.data_vars) == {"thetao", "zos"}
+  assert tendency_std["level"].values.tolist() == LEVELS
+  # Below the first level, the land point has no data.
+  assert float(tendency_std["thetao"].sel(level=2).isel(lat=0, lon=0)) == 1.0
+  assert bool((tendency_std["thetao"] > 0).all())

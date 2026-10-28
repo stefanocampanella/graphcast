@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
 # SPDX-License-Identifier: MIT
-"""Write the standardized anomalies of a dataset, and its mask, read from local or object storage, to local Zarr stores.
+"""Write the standardized anomalies of a dataset, its mask and the tendency statistics to local Zarr stores.
 
 Time-dependent variables become anomaly z-scores with respect to a 365-day climatology and anomaly standard deviation,
 static variables are min-max normalized, missing values are filled with 0 and all variables are float32. Training
@@ -28,7 +28,7 @@ from zarr.codecs import BloscCodec, BytesCodec, ShardingCodec, TransposeCodec
 
 from graphcast import cli_utils
 from graphcast.dataloader import get_tensorstore_context
-from graphcast.download_config import DownloadConfig, MaskDownloadConfig
+from graphcast.download_config import CompressorConfig, DownloadConfig, MaskDownloadConfig, TendencyStdConfig
 
 logger = logging.getLogger(__name__)
 
@@ -149,18 +149,20 @@ def _subchunk_transpose(variable: xr.Variable, configs: DownloadConfig) -> tuple
   return tuple(order)
 
 
-def get_encoding(dataset: xr.Dataset, configs: DownloadConfig) -> dict[Hashable, dict]:
-  """One chunk per timestep and depth level, sharded along time in Zarr v3; static and coordinate arrays whole."""
-  blosc = configs.compressor
-  if configs.zarr_format == 2:
+def _compressor(blosc: CompressorConfig, zarr_format: int) -> numcodecs.Blosc | BloscCodec:
+  if zarr_format == 2:
     shuffle = {
       "noshuffle": numcodecs.Blosc.NOSHUFFLE,
       "shuffle": numcodecs.Blosc.SHUFFLE,
       "bitshuffle": numcodecs.Blosc.BITSHUFFLE,
     }[blosc.shuffle]
-    compressor = numcodecs.Blosc(cname=blosc.cname, clevel=blosc.clevel, shuffle=shuffle)
-  else:
-    compressor = BloscCodec(cname=blosc.cname, clevel=blosc.clevel, shuffle=blosc.shuffle)
+    return numcodecs.Blosc(cname=blosc.cname, clevel=blosc.clevel, shuffle=shuffle)
+  return BloscCodec(cname=blosc.cname, clevel=blosc.clevel, shuffle=blosc.shuffle)
+
+
+def get_encoding(dataset: xr.Dataset, configs: DownloadConfig) -> dict[Hashable, dict]:
+  """One chunk per timestep and depth level, sharded along time in Zarr v3; static and coordinate arrays whole."""
+  compressor = _compressor(configs.compressor, configs.zarr_format)
   encoding = {}
   for name, variable in dataset.variables.items():
     if name in dataset.coords or "time" not in variable.dims:
@@ -243,6 +245,36 @@ def get_mask(dataset: xr.Dataset, configs: MaskDownloadConfig) -> xr.DataArray:
   return mask
 
 
+def tendency_std(standardized: xr.Dataset, configs: TendencyStdConfig) -> xr.Dataset:
+  """Return the standard deviation of the one-step differences of the time-dependent variables (lazily).
+
+  The mean of the differences is taken as zero: it is (x_N - x_1) / (N - 1), a telescopic sum, negligible for long
+  series. Squares are accumulated in float64; the result is float32, without the time dimension.
+  """
+  time_dependent = [name for name, values in standardized.data_vars.items() if "time" in values.dims]
+  names = time_dependent if configs.variables is None else configs.variables
+  unknown = [name for name in names if name not in time_dependent]
+  if unknown:
+    raise ValueError(f"Not time-dependent variables of the dataset: {unknown}")
+  result = {}
+  for name in names:
+    # One depth level per chunk, as in the store: chunks along time only would hold all levels.
+    values = standardized[name]
+    values = values.chunk({"time": configs.time_chunk, **({"depth": 1} if "depth" in values.dims else {})})
+    diffs = values.astype(np.float64).diff("time")
+    std = xr.ufuncs.sqrt((diffs * diffs).mean("time"))
+    if configs.zero_as_missing:
+      std = std.where(std > 0)
+    result[name] = std.astype(np.float32).assign_attrs(standardized[name].attrs)
+  dataset = xr.Dataset(result, attrs=standardized.attrs).drop_encoding()
+  dataset.attrs["history"] = (
+    f"{standardized.attrs.get('history', '')}\nStandard deviation of the one-step differences, assuming zero mean"
+    f"{', 0 written as NaN' if configs.zero_as_missing else ''} (graphcast compute-tendency-std)."
+  ).strip()
+  dataset.attrs.update(configs.attrs)
+  return dataset
+
+
 _CONFIG_OPTION = click.option(
   "--config",
   "config_path",
@@ -262,7 +294,7 @@ _OUTPUT_ARGUMENT = click.argument(
 )
 
 
-def _set_up[Config: (DownloadConfig, MaskDownloadConfig)](
+def _set_up[Config: (DownloadConfig, MaskDownloadConfig, TendencyStdConfig)](
   schema: type[Config],
   config_path: pathlib.Path | None,
   output_path: pathlib.Path,
@@ -312,6 +344,52 @@ def download_mask(
   mask = get_mask(dataset, configs)
   logger.info(f"Writing {configs.name} ({dict(mask.sizes)}, {int(mask.sum())} unmasked points) to {output_path}")
   mask.to_zarr(output_path, mode="w" if overwrite else "w-", zarr_format=configs.zarr_format, consolidated=True)
+
+
+@click.command()
+@click.argument("standardized_path", metavar="STANDARDIZED", type=str)
+@_OUTPUT_ARGUMENT
+@_CONFIG_OPTION
+@_OVERWRITE_OPTION
+@_LOG_LEVEL_OPTION
+def compute_tendency_std(
+  standardized_path: str,
+  output_path: pathlib.Path,
+  config_path: pathlib.Path | None = None,
+  overwrite: bool = False,
+  log_level: str = "info",
+):
+  """Write the standard deviation of the one-step differences of STANDARDIZED to OUTPUT, a local Zarr store.
+
+  STANDARDIZED is a store written by graphcast download, given as a local path or a URL (e.g. s3://bucket/path). The
+  output (tendency_std of the training configs) normalizes the residuals predicted by the model. Settings:
+  graphcast.download_config.TendencyStdConfig.
+  """
+  configs = _set_up(TendencyStdConfig, config_path, output_path, overwrite, log_level)
+  standardized = open_input(standardized_path, _input_context(configs.io_threads, standardized_path))
+  result = tendency_std(standardized, configs)
+  compressor = _compressor(configs.compressor, configs.zarr_format)
+  encoding = {
+    name: {
+      "chunks": tuple(1 if dim == "depth" else size for dim, size in values.sizes.items()),
+      "compressors": compressor,
+    }
+    for name, values in result.data_vars.items()
+  }
+  logger.info(f"Reading {humanize.naturalsize(standardized[list(result.data_vars)].nbytes)} of {standardized_path}")
+  start_time = time.perf_counter()
+  with (
+    dask.config.set(scheduler="threads", num_workers=configs.num_workers),
+    ProgressBar(dt=5),
+  ):
+    result.to_zarr(
+      output_path,
+      mode="w" if overwrite else "w-",
+      encoding=encoding,
+      zarr_format=configs.zarr_format,
+      consolidated=True,
+    )
+  logger.info(f"Done in {humanize.precisedelta(time.perf_counter() - start_time)}")
 
 
 @click.command()
