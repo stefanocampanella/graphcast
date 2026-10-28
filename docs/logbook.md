@@ -157,3 +157,6 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 - **12:27 Request:** keep temporary files in `$PROJECT`, so that work can be resumed on another login node.
   **Change:** CLAUDE.md sets `$PROJECT/claude-work/<branch or task>/` for them; the scripts of this task moved
   there.
+- **12:30 Request:** name that directory after the session, which outlives branch and task renames. **Change:**
+  `$PROJECT/claude-work/$CLAUDE_CODE_SESSION_ID/`, which stays the same when a session is resumed. This session's
+  files are in `/e/project1/e-dev-2026d09-119/claude-work/5ec59923-bcb3-483e-a402-cd793d0e8df5/`.

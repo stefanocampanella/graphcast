@@ -209,9 +209,11 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - Queue: 1-node booster jobs submitted with a 6–12 h limit on 27 Oct 2026 waited ~16 h (reason `Priority`); for
   I/O-only work (e.g. `mksquashfs`), a login node is usually faster to get.
 - Temporary files (throwaway scripts, benchmark logs, PR bodies, commit messages): keep them in
-  `$PROJECT/claude-work/<branch or task>/` (`$PROJECT` is `/e/project1/e-dev-2026d09-119`), not in `/tmp` or the
-  session scratchpad. `/tmp` is local to each login node, and sessions resumed on another node lose it. Large data
-  goes to `$FSCRATCH` instead; delete a task's directory once its PR is merged.
+  `$PROJECT/claude-work/$CLAUDE_CODE_SESSION_ID/` (`$PROJECT` is `/e/project1/e-dev-2026d09-119`), not in `/tmp` or
+  the session scratchpad. `/tmp` is local to each login node, and sessions resumed on another node lose it. The
+  session ID stays the same when a session is resumed or compacted, and does not depend on branch or task names; a
+  new session gets a new directory, so the logbook records each session's directory. Large data goes to `$FSCRATCH`
+  instead; delete a session's directory once its PR is merged.
 - Logbook: `docs/logbook.md` records, with date and time (CET), the maintainer's requests, code changes,
   experiments and insights; append entries as work proceeds (CLAUDE.md keeps what stays valid).
 - Workflow: one feature branch and PR per task into `develop@esiwace3_hackathon`; the maintainer reviews on GitHub
