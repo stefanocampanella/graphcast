@@ -283,13 +283,19 @@ def train(
 
   def validate(params) -> JAXLossAndDiagnostics:
     """Mean loss and diagnostics over the validation batches (all of the same size)."""
-    read_options = grain.ReadOptions(num_threads=configs.validation.read_threads, prefetch_buffer_size=1)
+    # A thread pool and buffer of its own, in this process: read_threads windows are read ahead (Grain submits at most
+    # prefetch_buffer_size reads at a time), and the pool is shut down after the last batch.
+    threads = configs.validation.read_threads
+    read_options = grain.ReadOptions(num_threads=threads, prefetch_buffer_size=threads)
     iterator = iter(validation_dataset.to_iter_dataset(read_options=read_options))
     metrics = []
-    for _ in range(len(validation_dataset)):
-      batch = dataloader_utils.next_batch_on_device(iterator, device_mesh=device_mesh)
-      with jax.sharding.set_mesh(device_mesh):
-        metrics.append(eval_step(params, batch, static_data))
+    try:
+      for _ in range(len(validation_dataset)):
+        batch = dataloader_utils.next_batch_on_device(iterator, device_mesh=device_mesh)
+        with jax.sharding.set_mesh(device_mesh):
+          metrics.append(eval_step(params, batch, static_data))
+    finally:
+      iterator.close()
     return jax.tree_util.tree_map(lambda *values: jax.numpy.mean(jax.numpy.stack(values)), *metrics)
 
   mp_prefetch = train_stream.options.multiprocessing_options is not None

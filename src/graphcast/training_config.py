@@ -199,7 +199,8 @@ class ValidationConfig(ApplicationConfig):
     "up to a multiple of the global batch size. The same windows at every validation and in every run.",
   )
   read_threads: PositiveInt = Field(
-    default=1, description="Threads reading validation windows in each process (each holds one window in memory)."
+    default=1,
+    description="Windows read ahead in each process, by as many threads; each holds one window in host memory.",
   )
 
 
