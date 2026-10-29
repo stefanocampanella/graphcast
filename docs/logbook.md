@@ -428,3 +428,15 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - `losses.py`: `depth` is now the default of `normalized_level_weights` and the loss functions.
   - `model.py`: the explicit argument is dropped.
   - Tests: the loss tests use the default; a new test checks that the weights are linear in depth.
+- **13:15 Experiment:**
+  - **Review check** (job 2573884, 10 levels, 60 steps) passed with the same losses as job 2568724 before the
+    refactoring (0.732 → 0.493). Compute was 0.387 s per step (median) and data 0.021 s.
+  - **50-level check** (job 2574217) failed at model construction: `GraphCast` refused inputs that are neither
+    targets nor forcings ("Input variables should be either predicted or forced.").
+
+  **Change** (`547e098`): the check is removed. Rollouts already treat such inputs as constant and check that they
+  have no time dimension (`autoregressive._get_and_validate_constant_inputs`), as upstream GraphCast does.
+
+  **Check:** on a real sample, the static inputs have a batch dimension and no time dimension; `glorys_mask` adds
+  one channel per level. At 3 levels this gives 27 input and 11 forcing channels. The check was resubmitted as job
+  2576513. The branch is pushed, and the five review comments have replies.
