@@ -21,7 +21,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
   store), MASK, TENDENCY_STD (SquashFS or directories) and `GEOMETRY_DIR` under `/data` in the container.
-  Use `--reservation=develbooster` for short tests on up to 4 nodes. To test the code of a worktree, use an env file
+  Use `--reservation=develbooster` for short tests on up to 4 nodes (its nodes jpbo-101-[01-08] are in maintenance
+  until 29 Nov 2026, `maint_row_6.1`: until then use the normal queue). To test the code of a worktree, use an env file
   with `APPTAINERENV_PYTHONPATH` set to the worktree's `src` (the shared `.env` points at the main checkout) and
   submit from the worktree.
 - Standardized anomaly stores (preprocessing done once): `bash clusters/jupiter/slurm/download.slurm DATASET
@@ -33,7 +34,11 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 - Mesh-size study: `clusters/jupiter/slurm/mesh_study.sh STUDY MESH[:EDGE_CHUNK_SIZE[:HH:MM:SS[:lowmem]]] ...`.
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run graphcast_training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
-  `run_final.sh` / `run_memfit.sh` submit the standard experiments; `summarize.py RESULTS_DIR` writes the CSVs.
+  Everything runs at all 50 levels (`full.toml`); cases are `format:workers:threads:io_threads:nodes:cpus` (baseline
+  `zarr_v2:4:2:16:1:72`), sweeps `loader` (6 layouts × 0x4 to 8x2), `io_threads`, `cpus`, `scaling`, `memfit`; jobs
+  use the `src` of the checkout JUBE runs from. `run_final.sh` (loader, io_threads, cpus, scaling, `long`) /
+  `run_memfit.sh` submit the standard experiments; `summarize.py RESULTS_DIR` writes the CSVs. Earlier results
+  (10 levels, previous dataloader) are not comparable.
   The README there documents tags and findings; reports live in `results/<date>-<name>/REPORT.md` (gitignored)
   and are copied to `docs/jupiter-hackathon/results/` for the reveal.js presentation (`docs/jupiter-hackathon/index.html`).
 - Tests: new code is tested with **pytest** in `tests/` (`test_<module>.py`, shared fixtures in `tests/conftest.py`;
@@ -267,6 +272,12 @@ Preliminary (27 Oct 2026, login node with a 20-core quota, short runs, throwaway
 task, model, mesh, mask, dataset, grain_dataset, normalization, policy, optimizer, checkpoints, …). Paths in the
 TOML are container paths (`/data/...`). Grain worker/buffer settings come from `GRAPHCAST_GRAIN_*` environment
 variables (`grain_utils.GrainRuntimeConfig`), not the TOML; Grain iterator checkpoints depend on the worker count.
+Variables (29 Oct 2026): targets `zos`, `thetao`, `so`, `uo`, `vo` and sea ice (`siconc`, `sithick`, `usi`, `vsi`),
+which are also inputs; static inputs `glorys_deptho`, `glorys_mask`, `glofas_mask`, `uparea`, `z`, `lsm` (no time
+dimension, as `land_sea_mask` in GraphCast); forcings the 8 ERA5 variables and `dis24`; year progress in both. Waves
+(for a later study), `thetao_bottom` and `so_bottom` are unused. Level weights sum to 1 (upstream GraphCast: mean 1),
+so a volume variable's loss is about 1/n_levels of a surface variable's: surface variables have
+`per_variable_weights` 0.02 = 1/50 to count as one volume variable each (change them with the number of levels).
 
 **Training loop** (`training.py`, helpers in `training_utils.py`): builds the mesh (`get_mesh` →
 `mesh_graph.read_mesh_data`), the predictor, an optax optimizer from named transformations, Orbax checkpoints,

@@ -374,3 +374,46 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Names:** `loss_masks` replaces `mask_da`.
   - **Dead code:** `valid_dates` is removed; only its own test used it.
   - **Tests:** every test has a docstring, and the normalization tests are new (128 pass).
+
+## 2026-10-29: variables and all-levels benchmarks
+
+- **08:20 Request:** review what JUBE benchmarks after the dataloader change and what can be dropped, given that only
+  all 50 levels matter. Then: implement the changes, rerun the benchmarks and update CLAUDE.md, and first put all
+  variables in the training configs. After revision:
+  - waves are left for a later PR;
+  - the ocean variables and sea ice are targets;
+  - river discharge is a forcing;
+  - static fields are inputs;
+  - `thetao_bottom` and `so_bottom` are not used;
+  - surface loss weights follow option A.
+- **Insight (loss weights):** level weights sum to 1 in this fork (upstream: mean 1), so a volume variable's loss is
+  about 1/50 of a surface variable's at 50 levels. With option A, surface weights of 0.02 make each surface variable
+  count as one volume variable. Option B (weights 1, surface variables dominating) was not chosen.
+- **09:00 Change:** in `full.toml` and `demo_5000.toml`:
+  - inputs: the 9 targets, the static fields (`glorys_deptho`, `glorys_mask`, `glofas_mask`, `uparea`, `z`, `lsm`)
+    and the year progress;
+  - targets: `zos`, `thetao`, `so`, `uo`, `vo`, `siconc`, `sithick`, `usi`, `vsi`;
+  - forcings: the 8 ERA5 variables, `dis24` and the year progress;
+  - `levels = "all"`.
+
+  All ERA5 variables of the store are used. The unused store variables are the waves, `waverys_*` and
+  `*_bottom`. Every target has a `tendency_std`, and static inputs carry no time dimension (test updated, 128
+  pass).
+- **09:10 Change:** JUBE runs everything at all levels.
+  - **Case string:** `format:workers:threads:io_threads:nodes:cpus`, with baseline `zarr_v2:4:2:16:1:72`.
+  - **Sweeps:**
+    - `loader`: 6 layouts × 0x4/1x2/2x2/4x2/8x2;
+    - `io_threads`: 8/16/32;
+    - `cpus`: 8/72;
+    - `scaling`: 1/2/4 nodes;
+    - `memfit`: run as scan, scan + offloading with 0 workers, and scan + edge chunks.
+  - **Dropped:** the 10-level, zarr pool/concurrency, XLA (`opt`) and `model` sweeps and their tags.
+  - **Renamed:** `squashfs` is now `squashfs_v2`.
+  - **Fix:** jobs now use the `src` of the checkout JUBE runs from. The shared `.env` pointed them at the main
+    checkout.
+- **09:15 Experiment:**
+  - **Training check:** `develbooster` is in maintenance until 29 Nov 2026 (`maint_row_6.1`), so the 50-level check
+    (60 steps, 4 Grain workers) was resubmitted as job 2574217 in the normal queue.
+  - **Benchmarks:** `run_final.sh 2026-10-29 alllevels` submitted 76 jobs (`long`, 1024 steps) into
+    `results/2026-10-29-alllevels`.
+  - **Pending:** memfit is to follow once these finish, so that its reads do not perturb the loader measurements.
