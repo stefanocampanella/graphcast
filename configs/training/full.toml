@@ -166,3 +166,8 @@ weight_decay = 0.1
 max_to_keep=3
 # Saving every step (the default) costs time; save every 500 steps.
 save_interval_steps = 500
+
+# Validation loss on held-out windows after grain_dataset.split_date, the same windows in every run.
+[validation]
+interval_steps = 250
+num_samples = 128
