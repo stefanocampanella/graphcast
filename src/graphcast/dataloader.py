@@ -1,10 +1,8 @@
 import operator
-from collections.abc import Sequence
 from typing import SupportsIndex
 
 import grain.python as grain
 import jax
-import numpy as np
 import tensorstore
 import xarray as xr
 import xarray_tensorstore
@@ -66,7 +64,6 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
     window_size: int,
     end_date: str | None = None,
     io_threads: int = 16,
-    valid_dates: Sequence[np.datetime64] | None = None,
   ):
     self._path = path
     self._levels = levels
@@ -77,12 +74,7 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
     window_size = operator.index(window_size)
     if not 0 < window_size <= dataset.sizes["time"]:
       raise ValueError("window_size must be positive and no larger than the dataset time dimension.")
-    if valid_dates is not None:
-      indices = dataset.get_index("time").get_indexer(valid_dates)
-      if np.any(indices < 0) or np.any(indices + window_size > dataset.sizes["time"]):
-        raise ValueError("valid_dates must occur in the dataset and leave enough timesteps for a full window.")
     self._window_size = window_size
-    self._valid_dates = valid_dates
 
   @property
   def dataset(self) -> xr.Dataset:
@@ -95,15 +87,11 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
     return {**self.__dict__, "_dataset": None}
 
   def __len__(self):
-    if self._valid_dates is None:
-      return self.dataset.sizes["time"] - self._window_size + 1
-    return len(self._valid_dates)
+    return self.dataset.sizes["time"] - self._window_size + 1
 
   def __getitem__(self, record_key: SupportsIndex) -> xr.Dataset:
-    """Return the window of `_window_size` timesteps starting at `record_key` (or at its valid date)."""
+    """Return the window of `_window_size` timesteps starting at `record_key`."""
     idx = record_key.__index__()
-    if self._valid_dates is not None:
-      idx = self.dataset.get_index("time").get_loc(self._valid_dates[idx])
     window = self.dataset.isel(time=slice(idx, idx + self._window_size))
     # Read all variables concurrently.
     window = xarray_tensorstore.read(window).compute()

@@ -1,3 +1,7 @@
+"""Tests of the masked, latitude- and level-weighted losses: masked points do not count, per-variable masks, empty
+levels, and bfloat16 inputs (as inside the model).
+"""
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -24,6 +28,7 @@ def _loss(predictions, targets, mask=None):
 
 
 def test_a_full_mask_is_the_unmasked_mean():
+  """A mask selecting all points gives the unmasked loss."""
   predictions, targets = _data()
   full = xr.DataArray(np.ones((LAT.size, 2), dtype=bool), dims=("lat", "lon"))
   assert _loss(predictions, targets, full)[0] == pytest.approx(_loss(predictions, targets)[0])
@@ -42,6 +47,7 @@ def test_masked_points_do_not_count():
 
 
 def test_per_variable_masks():
+  """Each variable is averaged over the points of its own mask."""
   predictions, targets = _data()
   predictions["y"], targets["y"] = predictions["x"] * 2, targets["x"]
   masks = xr.Dataset(
@@ -58,6 +64,7 @@ def test_per_variable_masks():
 
 
 def test_a_level_without_points_contributes_zero():
+  """A level without points adds 0 to the level-weighted mean."""
   predictions, targets = _data()
   mask = xr.DataArray(np.ones((2, LAT.size, 2), dtype=bool), dims=("level", "lat", "lon"))
   mask[1] = False

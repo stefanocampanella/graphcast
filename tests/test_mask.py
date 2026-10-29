@@ -1,3 +1,7 @@
+"""Tests of the Mask predictor wrapper: per-variable masks are passed to the loss, and predictions keep the last input
+outside them.
+"""
+
 import numpy as np
 import xarray as xr
 
@@ -38,6 +42,7 @@ def _data():
 
 
 def test_predictions_keep_the_input_outside_per_variable_masks():
+  """With one mask per variable, predictions keep the last input outside its mask, and the masks reach the loss."""
   inputs, targets = _data()
   masks = xr.Dataset(
     {
@@ -59,6 +64,7 @@ def test_predictions_keep_the_input_outside_per_variable_masks():
 
 
 def test_a_single_mask_for_all_variables():
+  """One mask for all variables, broadcast to their dimensions."""
   inputs, targets = _data()
   mask = xr.DataArray(np.array([True, False]), dims="lat")
   (_, _), predictions = Mask(_Constant(9.0), mask=mask).loss_and_predictions(inputs, targets, forcings=xr.Dataset())

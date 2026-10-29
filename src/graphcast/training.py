@@ -142,15 +142,13 @@ def train(
 
   model_config = trn_utils.get_model_config(configs)
   mesh_data = trn_utils.get_mesh(configs)
-  mask = dataloader_utils.get_mask(configs.mask)
-  grid_lat = mask["lat"].to_numpy()
-  grid_lon = mask["lon"].to_numpy()
-  grid_mask = mask.transpose("lat", "lon").to_numpy()
+  grid = dataloader_utils.get_grid(configs.mask)
+  grid_lat, grid_lon, grid_mask = grid
   dataset = dataloader_utils.get_dataset(configs)
   task_config = dataloader_utils.get_task_config(configs, dataset)
   tendency_std = dataloader_utils.get_tendency_std(configs)
   # Per target variable and level: grid points whose series is not constant (tendency_std > 0).
-  loss_masks = dataloader_utils.get_loss_masks(tendency_std, mask, task_config.target_variables)
+  loss_masks = dataloader_utils.get_loss_masks(tendency_std, grid, task_config.target_variables)
   static_data = xarray_jax.wrap_data(
     (tendency_std, loss_masks), to_jax=True, np_contiguous=False
   )
@@ -172,7 +170,7 @@ def train(
       grid_mask=grid_mask,
       mean_by_level=None,
       stddev_by_level=None,
-      mask_da=loss_masks,
+      loss_masks=loss_masks,
       diffs_stddev_by_level=tendency_std,
     )
     loss, diagnostics = predictor.loss(

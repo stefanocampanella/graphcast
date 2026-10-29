@@ -1,3 +1,10 @@
+"""Tests of the training data path: windows of the standardized anomaly store (StandardizedAnomalySource), the Grain
+pipeline built from the training config, and the static training inputs (grid, tendency_std, loss masks).
+
+The synthetic store is written by graphcast download from the inputs of conftest.py; `reference` holds the same
+standardized anomalies computed directly.
+"""
+
 import pathlib
 import pickle
 
@@ -13,6 +20,7 @@ from graphcast.downloader import compute_tendency_std
 from graphcast.training_config import MaskConfig, SourceConfig, TrainingConfig
 
 FULL_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "full.toml"
+# Task levels: zero-based depth positions in a non-sorted order, to check that the order is kept.
 LEVELS = [2, 0]
 
 
@@ -30,6 +38,7 @@ def source(standardized_path) -> StandardizedAnomalySource:
 
 
 def test_tensorstore_context():
+  """The context limits all TensorStore concurrency resources to io_threads, with optional S3 credentials."""
   limits = {"data_copy_concurrency": {"limit": 7}, "file_io_concurrency": {"limit": 7}}
   limits["s3_request_concurrency"] = {"limit": 7}
   assert get_tensorstore_context(7).spec.to_json() == limits
@@ -38,6 +47,7 @@ def test_tensorstore_context():
 
 
 def test_select_levels_keeps_order_and_depth(reference):
+  """Levels are selected by depth position, in the given order, keeping the depth coordinate along them."""
   selected = select_levels(reference, LEVELS)
   assert selected["level"].values.tolist() == LEVELS
   np.testing.assert_array_equal(selected["depth"].values, reference["depth"].values[LEVELS])
@@ -47,6 +57,7 @@ def test_select_levels_keeps_order_and_depth(reference):
 
 @pytest.mark.parametrize("start", [0, 5, 12])
 def test_window_matches_the_reference(source, reference, start):
+  """A window holds the reference values (float32) with a batch dimension, datetime and time relative to its start."""
   window = source[start]
   expected = _expected_window(reference, start, 3)
   assert set(window.data_vars) == set(expected.data_vars)
@@ -60,6 +71,7 @@ def test_window_matches_the_reference(source, reference, start):
 
 
 def test_length_and_end_date(standardized_path, reference):
+  """One window per start day; end_date (the training split) is the last day of the last window."""
   num_days = reference.sizes["time"]
   assert len(StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=3)) == num_days - 2
   source = StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=3, end_date="2020-03-01")
@@ -67,18 +79,8 @@ def test_length_and_end_date(standardized_path, reference):
   assert source[len(source) - 1]["datetime"].values[0, -1] == np.datetime64("2020-03-01")
 
 
-def test_valid_dates(standardized_path, reference):
-  dates = reference.indexes["time"][[1, 4]].to_numpy()
-  source = StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=2, valid_dates=dates)
-  assert len(source) == 2
-  assert source[1]["datetime"].values[0, 0] == dates[1]
-  with pytest.raises(ValueError, match="valid_dates"):
-    StandardizedAnomalySource(
-      standardized_path, levels=LEVELS, window_size=2, valid_dates=reference.indexes["time"][-1:]
-    )
-
-
 def test_invalid_window_size(standardized_path, reference):
+  """A window longer than the store is rejected."""
   with pytest.raises(ValueError, match="window_size"):
     StandardizedAnomalySource(standardized_path, levels=LEVELS, window_size=reference.sizes["time"] + 1)
 
@@ -107,6 +109,7 @@ def training_configs(standardized_path) -> TrainingConfig:
 
 
 def test_shipped_training_configs_are_valid():
+  """The training configs validate and read the store and mask bound by scripts/train.sh."""
   for path in FULL_CONFIG.parent.glob("*.toml"):
     configs = cli_utils.read_configs(path, schema=TrainingConfig)
     assert configs.dataset.path == "/data/dataset"
@@ -115,11 +118,13 @@ def test_shipped_training_configs_are_valid():
 
 @pytest.mark.parametrize("section", ["climatology", "anomaly_std"])
 def test_statistics_of_the_old_dataloader_are_rejected(training_configs, section):
+  """The raw-data statistics of the previous dataloader are no longer accepted in training configs."""
   with pytest.raises(ValueError, match=section):
     TrainingConfig.model_validate({**training_configs.model_dump(), section: {"path": "/data/" + section}})
 
 
 def test_map_dataset_yields_inputs_targets_forcings(training_configs):
+  """The pipeline built from the config yields batches of inputs, targets and forcings with the task's variables."""
   dataset = dataloader_utils.get_dataset(training_configs)
   assert dataset["level"].values.tolist() == LEVELS
   map_dataset = dataloader_utils.get_map_dataset(training_configs, dataset, seed=0)
@@ -134,7 +139,6 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert inputs.sizes["time"] == 1 and targets.sizes["time"] == 1
   assert inputs["thetao"].sizes["level"] == len(LEVELS)
   assert inputs["thetao"].sizes["batch"] == training_configs.grain_dataset.local_batch_size
-  # Training dates end at split_date: the target of the last window is that day at the latest.
   assert len(map_dataset) > 0
 
 
@@ -160,6 +164,7 @@ def test_stream_with_grain_workers(training_configs, num_workers):
 
 @pytest.fixture
 def tendency_std_path(standardized_path, tmp_path) -> str:
+  """tendency_std of the synthetic store, written by graphcast compute-tendency-std."""
   output = tmp_path / "tendency_std"
   result = CliRunner().invoke(compute_tendency_std, [standardized_path, str(output), "--log-level", "warning"])
   assert result.exit_code == 0, result.output
@@ -179,6 +184,7 @@ def test_tendency_std_of_the_store(training_configs, tendency_std_path):
 
 
 def test_tendency_std_with_missing_values_fails(training_configs, tendency_std_path, tmp_path):
+  """Missing values in tendency_std are an error (no filling at training time)."""
   broken = xr.open_zarr(tendency_std_path).load()
   broken["zos"][0, 0] = np.nan
   path = tmp_path / "broken"
@@ -188,12 +194,21 @@ def test_tendency_std_with_missing_values_fails(training_configs, tendency_std_p
     dataloader_utils.get_tendency_std(configs)
 
 
+def test_grid(mask_path, inputs):
+  """get_grid returns the latitudes, longitudes and boolean (lat, lon) mask of the mask store, as numpy arrays."""
+  grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+  np.testing.assert_array_equal(grid.lat, inputs[0]["lat"].values)
+  np.testing.assert_array_equal(grid.lon, inputs[0]["lon"].values)
+  np.testing.assert_array_equal(grid.mask, inputs[0]["glorys_mask"].isel(depth=0).values.astype(bool))
+
+
 def test_loss_masks(training_configs, tendency_std_path, mask_path):
   """Per target variable and level: grid points with a non-constant series."""
   configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=tendency_std_path)})
   tendency_std = dataloader_utils.get_tendency_std(configs)
-  grid_mask = dataloader_utils.get_mask(MaskConfig(path=mask_path, fill_value=0.0))
-  masks = dataloader_utils.get_loss_masks(tendency_std, grid_mask, ["thetao", "zos"])
+  grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+  masks = dataloader_utils.get_loss_masks(tendency_std, grid, ["thetao", "zos"])
+  # Volume variables get one mask per level, surface variables a (lat, lon) one.
   assert masks["thetao"].dtype == bool and masks["thetao"].dims == ("level", "lat", "lon")
   assert masks["zos"].dims == ("lat", "lon")
   # Land below the surface of an ocean column is excluded at that level only.
@@ -201,5 +216,8 @@ def test_loss_masks(training_configs, tendency_std_path, mask_path):
   # The land column is outside the grid mask and constant.
   assert not masks["zos"].isel(lat=3, lon=4) and not masks["thetao"].isel(lat=3, lon=4).any()
   assert int(masks["thetao"].sum()) == 2 * 20 - 3
+  # A target variable without tendency_std, or a grid with other coordinates, is an error.
   with pytest.raises(ValueError, match="so"):
-    dataloader_utils.get_loss_masks(tendency_std, grid_mask, ["thetao", "so"])
+    dataloader_utils.get_loss_masks(tendency_std, grid, ["thetao", "so"])
+  with pytest.raises(ValueError, match="lat coordinates"):
+    dataloader_utils.get_loss_masks(tendency_std, grid._replace(lat=grid.lat + 1), ["thetao"])

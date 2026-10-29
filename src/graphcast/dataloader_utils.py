@@ -2,6 +2,7 @@ import dataclasses
 import logging
 from collections.abc import Iterable
 from functools import partial
+from typing import NamedTuple
 
 import grain.python as grain
 import jax
@@ -50,6 +51,14 @@ def get_dataset(configs: TrainingConfig) -> xr.Dataset:
   )
 
 
+class Grid(NamedTuple):
+  """The model grid: latitudes, longitudes and the boolean (lat, lon) mask of the grid points that are nodes."""
+
+  lat: np.ndarray
+  lon: np.ndarray
+  mask: np.ndarray
+
+
 def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
   """Load the tendency_std written by graphcast compute-tendency-std, with the task levels.
 
@@ -68,8 +77,8 @@ def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
   return tendency_std
 
 
-def get_loss_masks(tendency_std: xr.Dataset, grid_mask: xr.DataArray, target_variables: Iterable[str]) -> xr.Dataset:
-  """Points of each target variable (and level) that count in the loss: in the grid mask, and not constant.
+def get_loss_masks(tendency_std: xr.Dataset, grid: Grid, target_variables: Iterable[str]) -> xr.Dataset:
+  """Points of each target variable (and level) that count in the loss: grid nodes whose series is not constant.
 
   Constant points (tendency_std 0) include those outside the masks of the variables (0 in the standardized store),
   e.g. land below the surface of ocean columns.
@@ -77,19 +86,25 @@ def get_loss_masks(tendency_std: xr.Dataset, grid_mask: xr.DataArray, target_var
   missing = [name for name in target_variables if name not in tendency_std]
   if missing:
     raise ValueError(f"No tendency_std for the target variables {missing}")
+  for dim, values in (("lat", grid.lat), ("lon", grid.lon)):
+    if not np.array_equal(tendency_std[dim].values, values):
+      raise ValueError(f"tendency_std and the grid mask have different {dim} coordinates")
+  grid_mask = xr.DataArray(grid.mask, dims=("lat", "lon"), coords={"lat": grid.lat, "lon": grid.lon})
+  # For volume variables (thetao, so, ...) `tendency_std[name] > 0` is a (level, lat, lon) array, so each level gets
+  # its own mask; `&` broadcasts the 2D grid mask over the levels. Surface variables get (lat, lon) masks.
   return xr.Dataset({name: (tendency_std[name] > 0) & grid_mask for name in target_variables})
 
 
-def get_mask(configs: MaskConfig) -> xr.DataArray:
-  """Load the boolean (lat, lon) mask written by graphcast download-mask."""
-  logger.info(f"Loading mask from {configs.path}")
+def get_grid(configs: MaskConfig) -> Grid:
+  """Load the grid from the boolean (lat, lon) mask written by graphcast download-mask."""
+  logger.info(f"Loading the grid mask from {configs.path}")
   mask = xr.open_dataarray(configs.path, engine="zarr", chunks=None).load()
   if mask.dtype != bool or set(mask.dims) != {"lat", "lon"}:
     raise ValueError(
       f"Expected a boolean (lat, lon) mask in {configs.path}, found {mask.dtype} {mask.dims}: "
       "write it with graphcast download-mask"
     )
-  return mask
+  return Grid(lat=mask["lat"].to_numpy(), lon=mask["lon"].to_numpy(), mask=mask.transpose("lat", "lon").to_numpy())
 
 
 def get_task_config(

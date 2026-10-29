@@ -355,3 +355,22 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 - **2026-10-29 00:50 Experiment:** the `zarr_v2` SquashFS image (5.44 TB, 2,502,289 entries, matching the store)
   took 2 h 35 min. All three images of the recomputed stores are in `$FSCRATCH/graphcast/data/anomalies/squashfs`.
   The old `zarr_v2` (`zarr_v2.deleting`) was still being removed.
+
+## 2026-10-29: review of PR #1
+
+- **07:12 Review** (`stefanocampanella`), **08:13 Request** to address it. The review asked to:
+  - comment the tests;
+  - split input and output normalization into two nested predictors, and revise the log messages;
+  - have `get_mask` return the grid arrays, under a new name;
+  - rename `mask_da`;
+  - check whether the `valid_dates` paths are ever reached;
+  - explain the broadcasting in `get_loss_masks`.
+
+  **Change:**
+  - **Normalization:** `InputNormalization` and `OutputNormalization` replace `InputsAndResiduals`, and training
+    wraps only the latter.
+  - **Grid:** `get_grid` returns a `Grid(lat, lon, mask)`; `get_loss_masks` checks the coordinates and comments the
+    broadcasting.
+  - **Names:** `loss_masks` replaces `mask_da`.
+  - **Dead code:** `valid_dates` is removed; only its own test used it.
+  - **Tests:** every test has a docstring, and the normalization tests are new (128 pass).

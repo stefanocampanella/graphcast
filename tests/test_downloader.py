@@ -1,3 +1,10 @@
+"""Tests of the preprocessing commands (downloader.py): the climatology index, S3 credentials, the standardization
+rules, the store layouts written in Zarr v2 and v3, the CLIs, the mask, and tendency_std.
+
+Inputs are the synthetic dataset, climatology and anomaly_std of conftest.py; `reference` holds their standardized
+anomalies computed directly by the rules.
+"""
+
 import json
 
 import botocore.credentials
@@ -54,11 +61,13 @@ def _climatology_index(dates) -> np.ndarray:
   ],
 )
 def test_climatology_index(date, expected):
+  """Day of the 365-day climatology: Feb 29 reuses Feb 28, later leap-year days shift back."""
   assert _climatology_index([date]).tolist() == [expected]
 
 
 @pytest.mark.parametrize("year", [2019, 2020, 2000, 2100])
 def test_climatology_index_covers_the_climatology(year):
+  """Every year maps onto all 365 days, in order."""
   index = _climatology_index(pd.date_range(f"{year}-01-01", f"{year}-12-31", freq="D"))
   np.testing.assert_array_equal(np.unique(index), np.arange(365))
   assert np.all(np.diff(index) >= 0)
@@ -89,16 +98,19 @@ class TestAwsCredentials:
 
   @pytest.mark.parametrize("value", ["true", "True", "1"])
   def test_anonymous_when_requested(self, monkeypatch, value):
+    """FSSPEC_S3_ANON selects anonymous access, without exporting keys."""
     monkeypatch.setenv("FSSPEC_S3_ANON", value)
     self._botocore_returns(monkeypatch, botocore.credentials.Credentials("key", "secret"))
     assert downloader.get_aws_credentials() == {"type": "anonymous"}
     assert "AWS_ACCESS_KEY_ID" not in downloader.os.environ
 
   def test_anonymous_without_credentials(self, monkeypatch):
+    """Without credentials, S3 is read anonymously."""
     self._botocore_returns(monkeypatch, None)
     assert downloader.get_aws_credentials() == {"type": "anonymous"}
 
   def test_credentials_exported_to_the_environment(self, monkeypatch):
+    """Keys resolved by botocore are exported for TensorStore."""
     self._botocore_returns(monkeypatch, botocore.credentials.Credentials("key", "secret", "token"))
     assert downloader.get_aws_credentials() == {"type": "environment"}
     environ = downloader.os.environ
@@ -109,6 +121,7 @@ class TestAwsCredentials:
     )
 
   def test_stale_session_token_removed(self, monkeypatch):
+    """A session token of earlier credentials is removed when the new ones have none."""
     monkeypatch.setenv("AWS_SESSION_TOKEN", "stale")
     self._botocore_returns(monkeypatch, botocore.credentials.Credentials("key", "secret"))
     assert downloader.get_aws_credentials() == {"type": "environment"}
@@ -116,6 +129,7 @@ class TestAwsCredentials:
 
 
 def test_open_input_keeps_masks_undecoded(opened_inputs, inputs):
+  """Inputs are read undecoded (masks stay int8), with time decoded."""
   dataset, _, _ = opened_inputs
   assert dataset["glorys_mask"].dtype == np.int8
   assert np.issubdtype(dataset["time"].dtype, np.datetime64)
@@ -124,6 +138,7 @@ def test_open_input_keeps_masks_undecoded(opened_inputs, inputs):
 
 class TestStandardize:
   def test_matches_the_reference(self, opened_inputs, reference, download_settings):
+    """The standardization (or tendency_std) equals the direct computation of the rules."""
     standardized = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
     _assert_equal_to_reference(standardized, reference)
     assert all(np.isfinite(values).all() for values in standardized.data_vars.values())
@@ -134,6 +149,7 @@ class TestStandardize:
     return downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
 
   def test_zero_outside_the_masks(self, standardized, inputs, special_points):
+    """Values outside a variable's mask are 0: land below the surface, the land column."""
     land = ~inputs[0]["glorys_mask"].astype(bool)
     assert (standardized["thetao"].where(land) == 0).sum() == land.sum() * standardized.sizes["time"]
     lat, lon = special_points["land_column"]
@@ -151,6 +167,7 @@ class TestStandardize:
     np.testing.assert_allclose(standardized["zos"].sel(time=day)[point], expected, rtol=1e-6)
 
   def test_values_within_the_tolerance_are_zero(self, opened_inputs, download_settings):
+    """A value within the tolerance of the climatology has z = 0."""
     dataset, climatology, anomaly_std = (xarray_tensorstore.read(data).compute() for data in opened_inputs)
     shifted = dataset.copy(deep=True)
     # One float32 epsilon away from the climatology, with a tiny anomaly_std: within the tolerance of 4.
@@ -170,6 +187,7 @@ class TestStandardize:
     np.testing.assert_allclose(standardized["lsm"], (lsm - lsm.min()) / (lsm.max() - lsm.min()), rtol=1e-6)
 
   def test_non_finite_values_inside_masks_fail(self, opened_inputs, download_settings):
+    """Missing values inside a mask (or without a mask) are an error."""
     dataset, climatology, anomaly_std = (xarray_tensorstore.read(data).compute() for data in opened_inputs)
     broken = dataset.copy(deep=True)
     broken["zos"][(2, 1, 2)] = np.nan
@@ -182,6 +200,7 @@ class TestStandardize:
       downloader.standardize(dataset, climatology, anomaly_std, unmasked).compute()
 
   def test_reference_period_caps_z_outside(self, opened_inputs, download_settings):
+    """Outside the reference period |z| is capped at its in-period maximum."""
     configs = DownloadConfig.model_validate({**download_settings, "reference_period": ["2020-02-20", "2020-02-28"]})
     capped = downloader.standardize(*opened_inputs, configs).compute()
     plain = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
@@ -202,10 +221,12 @@ class TestStandardize:
     ],
   )
   def test_unknown_variables(self, opened_inputs, settings):
+    """Masks, masked variables and static variables must exist in the dataset."""
     with pytest.raises(ValueError, match="missing"):
       downloader.standardize(*opened_inputs, DownloadConfig.model_validate(settings))
 
   def test_requires_statistics(self, opened_inputs, download_settings):
+    """Time-dependent variables need a climatology and an anomaly_std."""
     dataset, climatology, anomaly_std = opened_inputs
     with pytest.raises(ValueError, match="zos"):
       downloader.standardize(
@@ -231,6 +252,7 @@ class TestStandardize:
   ],
 )
 def test_subchunk_transpose(dims, order, expected):
+  """The transpose codec order reverses time and depth, for colexicographic shards only."""
   variable = xr.Variable(dims, np.zeros((1,) * len(dims)))
   configs = DownloadConfig(zarr_format=3, subchunk_order=order)
   assert downloader._subchunk_transpose(variable, configs) == expected
@@ -238,6 +260,7 @@ def test_subchunk_transpose(dims, order, expected):
 
 @FORMATS
 def test_write(opened_inputs, reference, output_path, download_settings, settings):
+  """Written stores read back equal to the reference, with zarr-python and with TensorStore."""
   _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **settings}))
   _assert_equal_to_reference(xr.open_zarr(output_path, consolidated=True).load(), reference)
   written = xarray_tensorstore.open_zarr(str(output_path), consolidated=True)
@@ -245,6 +268,7 @@ def test_write(opened_inputs, reference, output_path, download_settings, setting
 
 
 def test_write_v2_layout(opened_inputs, output_path, download_settings):
+  """Zarr v2: one chunk per timestep and level, whole static arrays, Blosc lz4."""
   _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **V2}))
   metadata = json.loads((output_path / ".zmetadata").read_text())["metadata"]
   thetao, zos, mask = (metadata[f"{name}/.zarray"] for name in ("thetao", "zos", "glorys_mask"))
@@ -257,6 +281,7 @@ def test_write_v2_layout(opened_inputs, output_path, download_settings):
 
 @pytest.mark.parametrize(("settings", "filters"), [(V3_LEXI, []), (V3_COLEXI, ["transpose"])], ids=["lexi", "colexi"])
 def test_write_v3_layout(opened_inputs, output_path, download_settings, settings, filters):
+  """Zarr v3: shards of timesteps holding one chunk per timestep and level; transpose codec if colexicographic."""
   _write(opened_inputs, output_path, DownloadConfig.model_validate({**download_settings, **settings}))
   metadata = json.loads((output_path / "zarr.json").read_text())["consolidated_metadata"]["metadata"]
   thetao, zos = metadata["thetao"], metadata["zos"]
@@ -283,6 +308,7 @@ def test_write_v3_shard_order(opened_inputs, output_path, download_settings, set
 
 
 def test_write_refuses_existing_output(opened_inputs, output_path, download_settings):
+  """An existing store is replaced only with overwrite."""
   configs = DownloadConfig.model_validate(download_settings)
   _write(opened_inputs, output_path, configs)
   standardized = downloader.standardize(*opened_inputs, configs)
@@ -305,6 +331,7 @@ class TestCli:
 
   @FORMATS
   def test_download(self, input_paths, output_path, reference, download_settings, write_config, settings):
+    """graphcast download writes the reference, for each format."""
     config_path = write_config({**download_settings, **settings})
     result = self._run(input_paths, output_path, "--config", str(config_path))
     assert result.exit_code == 0, result.output
@@ -312,11 +339,13 @@ class TestCli:
     _assert_equal_to_reference(xarray_tensorstore.read(written).compute(), reference)
 
   def test_download_without_masks_fails_on_missing_values(self, input_paths, output_path, write_config):
+    """Without masks, the missing land values fail the download."""
     result = self._run(input_paths, output_path, "--config", str(write_config({"static_variables": ["lsm"]})))
     assert result.exit_code != 0
     assert "non-finite" in str(result.exception)
 
   def test_existing_output_requires_overwrite(self, input_paths, output_path, download_settings, write_config):
+    """The CLI refuses to replace an existing store without --overwrite."""
     config = ["--config", str(write_config(download_settings))]
     assert self._run(input_paths, output_path, *config).exit_code == 0
     result = self._run(input_paths, output_path, *config)
@@ -325,6 +354,7 @@ class TestCli:
     assert self._run(input_paths, output_path, *config, "--overwrite").exit_code == 0
 
   def test_invalid_config(self, input_paths, output_path, tmp_path):
+    """Invalid settings fail before anything is written."""
     config_path = tmp_path / "configs.toml"
     config_path.write_text('subchunk_order = "colexicographic"\n')
     result = self._run(input_paths, output_path, "--config", str(config_path))
@@ -336,6 +366,7 @@ class TestCli:
 class TestMask:
   @pytest.mark.parametrize("level", [0, 1])
   def test_get_mask(self, opened_inputs, inputs, level):
+    """The mask at a depth position is boolean (lat, lon), without depth."""
     mask = downloader.get_mask(opened_inputs[0], MaskDownloadConfig(level=level))
     assert mask.dtype == bool
     assert mask.dims == ("lat", "lon")
@@ -345,25 +376,31 @@ class TestMask:
     np.testing.assert_array_equal(mask["lat"].values, inputs[0]["lat"].values)
 
   def test_rejects_time_dependent_variables(self, opened_inputs):
+    """A mask must be static."""
     with pytest.raises(ValueError, match="depends on time"):
       downloader.get_mask(opened_inputs[0], MaskDownloadConfig(name="thetao"))
 
   def test_rejects_unknown_variables(self, opened_inputs):
+    """The mask variable must exist."""
     with pytest.raises(ValueError, match="not in the dataset"):
       downloader.get_mask(opened_inputs[0], MaskDownloadConfig(name="missing"))
 
   def test_rejects_levels_of_variables_without_depth(self, opened_inputs):
+    """Only masks with depth have levels other than 0."""
     with pytest.raises(ValueError, match="no depth dimension"):
       downloader.get_mask(opened_inputs[0], MaskDownloadConfig(name="deptho", level=1))
 
   def test_cli_writes_the_mask_read_by_training(self, mask_path, opened_inputs):
-    """The store holds one boolean DataArray, loaded as is by dataloader_utils.get_mask."""
-    mask = dataloader_utils.get_mask(MaskConfig(path=mask_path, fill_value=0.0))
+    """The store holds one boolean DataArray, which training reads as its grid (dataloader_utils.get_grid)."""
+    grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
     expected = downloader.get_mask(opened_inputs[0], MaskDownloadConfig())
-    xr.testing.assert_identical(mask.drop_attrs(), expected.drop_attrs())
-    assert "graphcast download-mask" in mask.attrs["history"]
+    np.testing.assert_array_equal(grid.mask, expected.transpose("lat", "lon").values)
+    np.testing.assert_array_equal(grid.lat, expected["lat"].values)
+    np.testing.assert_array_equal(grid.lon, expected["lon"].values)
+    assert "graphcast download-mask" in xr.open_dataarray(mask_path, engine="zarr").attrs["history"]
 
   def test_cli_requires_overwrite(self, input_paths, tmp_path):
+    """The mask CLI refuses to replace an existing store without --overwrite."""
     output = tmp_path / "mask"
     arguments = [input_paths[0], str(output), "--log-level", "warning"]
     assert CliRunner().invoke(downloader.download_mask, arguments).exit_code == 0
@@ -373,6 +410,7 @@ class TestMask:
     assert CliRunner().invoke(downloader.download_mask, [*arguments, "--overwrite"]).exit_code == 0
 
   def test_cli_level_from_config(self, input_paths, inputs, tmp_path):
+    """The mask level and Zarr format come from the config."""
     config_path = tmp_path / "mask.toml"
     config_path.write_text("level = 1\nzarr_format = 3\n")
     output = tmp_path / "mask"
@@ -397,6 +435,7 @@ class TestTendencyStd:
     return downloader.open_input(standardized_path, get_tensorstore_context(2))
 
   def test_matches_the_reference(self, standardized):
+    """The standardization (or tendency_std) equals the direct computation of the rules."""
     result = downloader.tendency_std(standardized, TendencyStdConfig(time_chunk=4)).compute()
     assert set(result.data_vars) == {"thetao", "zos"}
     for name, values in result.data_vars.items():
@@ -423,12 +462,14 @@ class TestTendencyStd:
       downloader.tendency_std(store, TendencyStdConfig(zero_inflated=["sithick"]))
 
   def test_variables(self, standardized):
+    """A subset of time-dependent variables can be computed; static ones are rejected."""
     result = downloader.tendency_std(standardized, TendencyStdConfig(variables=["zos"]))
     assert list(result.data_vars) == ["zos"]
     with pytest.raises(ValueError, match="deptho"):
       downloader.tendency_std(standardized, TendencyStdConfig(variables=["zos", "deptho"]))
 
   def test_attributes(self, standardized):
+    """Configured attributes and the history are written."""
     result = downloader.tendency_std(standardized, TendencyStdConfig(attrs={"title": "Tendencies"}))
     assert result.attrs["title"] == "Tendencies"
     assert "graphcast compute-tendency-std" in result.attrs["history"]

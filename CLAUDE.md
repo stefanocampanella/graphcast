@@ -68,7 +68,7 @@ training reads it with `dataloader.StandardizedAnomalySource`, which adds the ba
 coordinate and relative time (the previous `ARCOTimeseriesSource` did all of this per sample from the raw dataset,
 climatology and anomaly_std; it was removed on 28 Oct 2026). `graphcast download-mask` writes the training mask: the
 mask variable (`name`, default `glorys_mask`) at one depth position (`level`), as a single boolean `(lat, lon)`
-DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_utils.get_mask`).
+DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_utils.get_grid`: lat, lon, mask).
 
 - `tendency_std` (residual normalization in training) is the zero-mean standard deviation of the one-step differences
   of the standardized anomalies over the whole series, per variable and point (no time dimension). The copy in use,
@@ -141,8 +141,8 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
      are the ocean variables.
   Normalization statistics over 1993–2023 include the held-out period after `split_date`: accepted for now.
 - **Residual connection was disabled from 27 Mar to 28 Oct 2026** (commit 21edee5): `normalization.InputsAndResiduals`
-  took its residual branch only `if self._residual_locations is not None`, always `None`, so training predicted the
-  standardized targets directly and `tendency_std` was loaded but unused; models trained in that period are direct
+  (since split into `InputNormalization` and `OutputNormalization`) took its residual branch only
+  `if self._residual_locations is not None`, always `None`, so training predicted the standardized targets directly and `tendency_std` was loaded but unused; models trained in that period are direct
   predictors. Fixed on 28 Oct 2026: the branch tests `_residual_scales` (residuals when `tendency_std` is given, direct
   prediction otherwise, as the docstring says; `tests/test_normalization.py`). Experiment (28 Oct 2026, `exp_src` in
   claude-work, `GRAPHCAST_EXP_RESIDUALS`): direct vs residual without output normalization vs residual /
@@ -275,8 +275,9 @@ lowered and compiled once; its XLA memory analysis (`cli_utils.run_analysis_and_
 log) predicts GPU OOM before training starts.
 
 **Predictor stack** (`training_utils.get_predictor`), outermost first:
-`Mask` (`mask.py`) → `InputsAndResiduals` (`normalization.py`) → `Bfloat16Cast` (`casting.py`) → `GraphCast`
-(`model.py`). Training is one-step; `autoregressive.py` / `rollout.py` handle multi-step.
+`Mask` (`mask.py`, per-variable loss masks) → `OutputNormalization` (`normalization.py`, residuals / tendency_std) →
+[`InputNormalization`, only with input statistics; the standardized store needs none] → `Bfloat16Cast` (`casting.py`)
+→ `GraphCast` (`model.py`). Training is one-step; `autoregressive.py` / `rollout.py` handle multi-step.
 
 **GraphCast model** (`model.py`): grid ↔ mesh connectivity comes from `mesh_connectivity.py` (encoder edges by
 radius query, decoder edges by containing triangle, both restricted by the ocean mask). With
