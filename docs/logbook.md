@@ -477,3 +477,29 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Slides:** a new stack with three slides (standardized store and variables, loader, GPU memory). The
     recommended configuration is updated, the old 50-level slide is marked as the previous dataloader, and the next
     steps are revised.
+
+## 2026-10-29: validation loss and mesh study design
+
+- **15:15 Request:** make `zarr_v3_lexi` the default dataset, and run a mesh study varying both the mesh and the
+  number of message passing steps.
+
+  **Insight:** training logs only the training loss. Ranking models by it favours larger models even when they merely
+  fit the training years, so the study needs a held-out loss. The test loss had been removed earlier: its stream had
+  its own Grain workers (host memory) and was computed alongside training (compute).
+- **Change:**
+  - **`.env`:** `DATASET` is now `zarr_v3_lexi`. `zarr_v2` and its SquashFS image are kept.
+  - **Config:** an optional `[validation]` section with `interval_steps` (250), `num_samples` (128) and
+    `read_threads` (1).
+  - **Windows** (`dataloader_utils.get_validation_dataset`): evenly spaced after `split_date`, in order, and the
+    same for every seed and mesh. They are read in the training process, with no Grain workers, only during
+    validation, with a prefetch buffer of 1.
+  - **Evaluation:** `eval_step` is the training loss without gradients. Its results are logged as `valid/*` in
+    TensorBoard and as "Step N validation" lines.
+  - **Tests:** windows held out, evenly spaced and reproducible; errors (132 tests pass).
+- **15:43 Experiment:** check job 2579554 (50 levels, 1 node, 100 steps, `zarr_v3_lexi`, 1 Grain worker,
+  validation of 16 windows every 20 steps, i.e. 4 per GPU).
+  - **Validation loss:** 0.158 → 0.147.
+  - **Validation time:** 1.2–1.3 s, plus 17 s at the first one, mostly compilation.
+  - **Training steps unaffected:** data 0.041 s (max 0.064 s, no spike after a validation), compute 0.411 s.
+  - **Projected overhead:** about 1% of run time at 250-step intervals (128 windows on 8 nodes are also 4 per GPU).
+  - **Memory:** XLA planned 55.2 GiB per GPU for the training step. Host memory was not recorded (`sacct` MaxRSS 0).

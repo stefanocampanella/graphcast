@@ -189,6 +189,20 @@ class CheckpointConfig(BaseModel):
   enable_async_checkpointing: bool = True
 
 
+class ValidationConfig(ApplicationConfig):
+  interval_steps: PositiveInt = Field(
+    default=250, description="Compute the validation loss every this many steps, and after the last one."
+  )
+  num_samples: PositiveInt = Field(
+    default=128,
+    description="Held-out windows (after grain_dataset.split_date), evenly spaced over the held-out period; rounded "
+    "up to a multiple of the global batch size. The same windows at every validation and in every run.",
+  )
+  read_threads: PositiveInt = Field(
+    default=1, description="Threads reading validation windows in each process (each holds one window in memory)."
+  )
+
+
 class TrainingConfig(ApplicationConfig):
   description: str = ""
   license: str = ""
@@ -205,6 +219,7 @@ class TrainingConfig(ApplicationConfig):
   tendency_std: SourceConfig
   optimizer: OptimizerConfig
   checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
+  validation: ValidationConfig | None = None
 
   @field_validator("tendency_std")
   @classmethod

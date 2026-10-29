@@ -7,6 +7,7 @@ from typing import NamedTuple
 import grain.python as grain
 import jax
 import numpy as np
+import pandas as pd
 import xarray as xr
 from grain.experimental import pick_performance_config
 from grain.python import DatasetIterator, IterDataset
@@ -175,7 +176,63 @@ def get_map_dataset(
     .shuffle(seed=seed)
     .slice(slice(jax.process_index(), None, jax.process_count()))
   )
+  return _batch_and_extract(map_dataset, configs, task_config)
 
+
+def get_validation_dataset(configs: TrainingConfig, dataset: xr.Dataset) -> grain.MapDataset:
+  """Held-out batches after grain_dataset.split_date: validation.num_samples windows, evenly spaced, in order.
+
+  The windows depend only on the store and the config (not on the seed or mesh), so validation losses of different
+  runs are comparable. Each process gets every process_count-th window; the number of windows is rounded up to a
+  multiple of the global batch size.
+  """
+  if configs.validation is None:
+    raise ValueError("No [validation] section in the config")
+  task_config = get_task_config(configs, dataset)
+  times = dataset["time"].values
+  held_out = times[times > np.datetime64(pd.Timestamp(configs.grain_dataset.split_date))]
+  if held_out.size == 0:
+    raise ValueError(f"No timesteps after split_date {configs.grain_dataset.split_date}")
+  datasource = StandardizedAnomalySource(
+    configs.dataset.path,
+    levels=_get_level_selection(configs.task.levels),
+    start_date=str(held_out[0]),
+    io_threads=configs.dataset.io_threads,
+    window_size=_get_steps_per_window(
+      dataset=dataset,
+      input_duration=task_config.input_duration,
+      target_lead_times=configs.grain_dataset.target_lead_times,
+    ),
+  )
+  global_batch_size = jax.process_count() * configs.grain_dataset.local_batch_size
+  num_samples = -(-configs.validation.num_samples // global_batch_size) * global_batch_size
+  if num_samples > len(datasource):
+    raise ValueError(f"{num_samples} validation windows requested, the held-out period has {len(datasource)}")
+  indices = np.linspace(0, len(datasource) - 1, num_samples).round().astype(int)
+  map_dataset = (
+    grain.MapDataset.source(FlatSource(_Subset(datasource, indices.tolist())))
+    .map(_unflatten_sample)
+    .slice(slice(jax.process_index(), None, jax.process_count()))
+  )
+  return _batch_and_extract(map_dataset, configs, task_config)
+
+
+class _Subset(grain.RandomAccessDataSource):
+  """The records of a source at the given indices, in their order."""
+
+  def __init__(self, source: grain.RandomAccessDataSource, indices: list[int]):
+    self._source = source
+    self._indices = indices
+
+  def __len__(self) -> int:
+    return len(self._indices)
+
+  def __getitem__(self, record_key):
+    return self._source[self._indices[record_key.__index__()]]
+
+
+def _batch_and_extract(map_dataset: grain.MapDataset, configs: TrainingConfig, task_config: TaskConfig):
+  """Batch local_batch_size samples per device, then split them into inputs, targets and forcings."""
   local_batch_size = configs.grain_dataset.local_batch_size
   if local_batch_size > 1:
     logger.info(f"Batching {local_batch_size} samples per device.")
@@ -186,7 +243,7 @@ def get_map_dataset(
     )
 
   # Extract once per batch, before prefetch/device transfer.
-  map_dataset = map_dataset.map(
+  return map_dataset.map(
     partial(
       extract_inputs_targets_forcings,
       input_variables=task_config.input_variables,
@@ -198,7 +255,6 @@ def get_map_dataset(
       to_jax=False,
     )
   )
-  return map_dataset
 
 
 def get_grain_options(

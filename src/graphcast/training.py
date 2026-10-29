@@ -19,6 +19,7 @@ import time
 from functools import partial
 
 import click
+import grain.python as grain
 import haiku as hk
 import jax
 import optax
@@ -186,7 +187,12 @@ def train(
 
   optimizer, schedule = trn_utils.get_optimizer(configs)
 
-  # There is no test stream: computing a test loss would cost host memory (its own Grain workers) and time.
+  # Validation windows are read in this process (no Grain workers), only when the validation loss is computed.
+  validation_dataset = None
+  if configs.validation is not None:
+    validation_dataset = dataloader_utils.get_validation_dataset(configs, dataset)
+    logger.info(f"Validation on {len(validation_dataset)} batches per process every "
+                f"{configs.validation.interval_steps} steps.")
   train_stream = dataloader_utils.get_dataset_stream(
     configs=configs,
     dataset=dataset,
@@ -264,6 +270,28 @@ def train(
 
     return updated_params, next_opt_state, loss_and_diagnostics
 
+  @jax.jit
+  def eval_step(params, data, static_data):
+    loss_and_diagnostics = shard_map(
+      loss_fn.apply,
+      mesh=device_mesh,
+      in_specs=(P(), P("batch"), None),
+      out_specs=P("batch"),
+      check_rep=False,
+    )(params, data, static_data)
+    return jax.tree_util.tree_map(jax.numpy.mean, loss_and_diagnostics)
+
+  def validate(params) -> JAXLossAndDiagnostics:
+    """Mean loss and diagnostics over the validation batches (all of the same size)."""
+    read_options = grain.ReadOptions(num_threads=configs.validation.read_threads, prefetch_buffer_size=1)
+    iterator = iter(validation_dataset.to_iter_dataset(read_options=read_options))
+    metrics = []
+    for _ in range(len(validation_dataset)):
+      batch = dataloader_utils.next_batch_on_device(iterator, device_mesh=device_mesh)
+      with jax.sharding.set_mesh(device_mesh):
+        metrics.append(eval_step(params, batch, static_data))
+    return jax.tree_util.tree_map(lambda *values: jax.numpy.mean(jax.numpy.stack(values)), *metrics)
+
   mp_prefetch = train_stream.options.multiprocessing_options is not None
   compiled_train_step = None
   for current_step in range(latest_step, training_steps):
@@ -294,6 +322,16 @@ def train(
     )
     checkpoint_end = time.perf_counter()
     tb_logger.log(current_step, train_metrics, lr=schedule(current_step))
+    if validation_dataset is not None and (
+      (current_step + 1) % configs.validation.interval_steps == 0 or current_step + 1 == training_steps
+    ):
+      validation_start = time.perf_counter()
+      validation_metrics = jax.block_until_ready(validate(params))
+      tb_logger.log(current_step, validation_metrics, prefix="valid")
+      logger.info(
+        f"Step {current_step} validation: loss {validation_metrics[0].item():.5f}, "
+        f"{time.perf_counter() - validation_start:.1f} s"
+      )
     # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
     step_end = time.perf_counter()
     logger.info(

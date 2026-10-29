@@ -40,14 +40,15 @@ def open_standardized_anomalies(
   levels: LevelSelection,
   end_date: str | None = None,
   io_threads: int = 16,
+  start_date: str | None = None,
 ) -> xr.Dataset:
   """Open a standardized anomaly store (written by graphcast download) lazily, with TensorStore.
 
-  Only the selected levels and the timesteps up to end_date (included) are kept.
+  Only the selected levels and the timesteps from start_date to end_date (both included) are kept.
   """
   context = get_tensorstore_context(io_threads)
   dataset = xarray_tensorstore.open_zarr(path, context=context, mask_and_scale=False, consolidated=True)
-  return select_levels(dataset, levels).sel(time=slice(None, end_date))
+  return select_levels(dataset, levels).sel(time=slice(start_date, end_date))
 
 
 class StandardizedAnomalySource(grain.RandomAccessDataSource):
@@ -64,9 +65,11 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
     window_size: int,
     end_date: str | None = None,
     io_threads: int = 16,
+    start_date: str | None = None,
   ):
     self._path = path
     self._levels = levels
+    self._start_date = start_date
     self._end_date = end_date
     self._io_threads = io_threads
     self._dataset = None
@@ -80,7 +83,9 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
   def dataset(self) -> xr.Dataset:
     """The lazily opened store, with the selected levels and timesteps."""
     if self._dataset is None:
-      self._dataset = open_standardized_anomalies(self._path, self._levels, self._end_date, self._io_threads)
+      self._dataset = open_standardized_anomalies(
+        self._path, self._levels, self._end_date, self._io_threads, start_date=self._start_date
+      )
     return self._dataset
 
   def __getstate__(self):
@@ -101,7 +106,8 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
 
   def __repr__(self):
     return (
-      f"{self.__class__.__name__}(path={self._path!r}, levels={self._levels!r}, end_date={self._end_date!r}, "
+      f"{self.__class__.__name__}(path={self._path!r}, levels={self._levels!r}, start_date={self._start_date!r}, "
+      f"end_date={self._end_date!r}, "
       f"window_size={self._window_size})"
     )
 

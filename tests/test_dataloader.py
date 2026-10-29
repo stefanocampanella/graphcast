@@ -145,6 +145,38 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert len(map_dataset) > 0
 
 
+@pytest.mark.parametrize(("num_samples", "first_input_days"), [(3, ["2020-03-02", "2020-03-03", "2020-03-04"]),
+                                                               (2, ["2020-03-02", "2020-03-04"])])
+def test_validation_windows_are_held_out_and_evenly_spaced(
+  training_configs, reference, num_samples, first_input_days
+):
+  """Validation windows start after split_date, spread evenly over the held-out days, and are the same every time."""
+  configs = TrainingConfig.model_validate({**training_configs.model_dump(), "validation": {"num_samples": num_samples}})
+  dataset = dataloader_utils.get_dataset(configs)
+  validation = dataloader_utils.get_validation_dataset(configs, dataset)
+  assert len(validation) == num_samples
+  for day, sample, again in zip(
+    first_input_days, validation, dataloader_utils.get_validation_dataset(configs, dataset), strict=True
+  ):
+    for a, b in zip(sample, again, strict=True):
+      xr.testing.assert_identical(a, b)
+    inputs, targets, _ = sample
+    assert set(targets.data_vars) == set(configs.task.target_variables)
+    # The input day of the window is the expected held-out day.
+    expected = select_levels(reference, LEVELS)["thetao"].sel(time=day)
+    np.testing.assert_allclose(inputs["thetao"].isel(batch=0, time=0).values, expected.values)
+
+
+def test_validation_needs_enough_held_out_windows(training_configs):
+  """More validation windows than the held-out period has are an error, as is a missing [validation] section."""
+  dataset = dataloader_utils.get_dataset(training_configs)
+  with pytest.raises(ValueError, match="No \\[validation\\]"):
+    dataloader_utils.get_validation_dataset(training_configs, dataset)
+  configs = TrainingConfig.model_validate({**training_configs.model_dump(), "validation": {"num_samples": 4}})
+  with pytest.raises(ValueError, match="held-out period has 3"):
+    dataloader_utils.get_validation_dataset(configs, dataset)
+
+
 @pytest.mark.parametrize("num_workers", [0, 1])
 def test_stream_with_grain_workers(training_configs, num_workers):
   """Grain workers get the pickled pipeline and reopen the store; batches match those read in this process."""
