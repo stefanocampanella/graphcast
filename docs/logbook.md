@@ -503,3 +503,16 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Training steps unaffected:** data 0.041 s (max 0.064 s, no spike after a validation), compute 0.411 s.
   - **Projected overhead:** about 1% of run time at 250-step intervals (128 windows on 8 nodes are also 4 per GPU).
   - **Memory:** XLA planned 55.2 GiB per GPU for the training step. Host memory was not recorded (`sacct` MaxRSS 0).
+- **16:20 Request:** run the mesh study on `training2647` with two seeds.
+  - **Budget:** 619,913 core-hours (2,152 node-hours) per `jutil`, last updated before 27 Oct, minus 45 node-hours
+    used since, leaves ~2,107.
+  - **Usage share:** 26% of the quota so far (262,081 core-hours), other project members 12.5%.
+- **16:25 Experiment:** `mesh_study.sh --account training2647 mesh_msg 42,43 ...` submitted 30 jobs (2580169–2580199)
+  at commit `bbad6cb`.
+  - **Grid:** meshes coarse, 85 km, 60 km, 50 km and 40 km × 8, 12 and 16 message passing steps × seeds 42 and 43.
+  - **Setup:** `demo_5000` on 8 nodes, 50 levels, `zarr_v3_lexi`, 1 Grain worker, validation of 128 windows every
+    250 steps.
+  - **Fitting 40 km:** with 12 and 16 steps it uses edge chunks of 262144.
+  - **Time limits:** 1.3 × the expected time plus 20 min (1:30 to 6:00).
+  - **Estimated cost:** ~350 node-hours.
+  - **Outputs:** configs in `runs/mesh_msg/configs`, TensorBoard in `$DATA_ROOT/tensorboard/mesh_msg/`.
