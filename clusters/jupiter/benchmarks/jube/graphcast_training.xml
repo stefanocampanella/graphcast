@@ -2,17 +2,12 @@
 <!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">
-        <check_tags>format|grain|zarr|cpus|scaling|lowmem|workers|opt|model|memfit</check_tags>
-        <tag name="format">Dataset formats of the standardized anomalies: zarr v2, zarr v3 (sharded; lexicographic and colexicographic sub-chunk order) and SquashFS images, at two Grain settings</tag>
-        <tag name="grain">Grain workers x threads on zarr v3 (lexicographic)</tag>
-        <tag name="zarr">zarr thread pool and concurrency on zarr v3 (lexicographic)</tag>
-        <tag name="cpus">CPUs per task (1 is what the current launcher gets by default)</tag>
-        <tag name="scaling">2 and 4 nodes for the baseline case</tag>
-        <tag name="lowmem">Low-memory cases (at most 2 Grain workers), e.g. for all_levels</tag>
-        <tag name="workers">2 to 8 Grain workers, to find how many fit in memory, e.g. for all_levels</tag>
-        <tag name="opt">XLA and JAX optimization settings (see opt_env) with the fastest loader, on 1 and 2 nodes</tag>
-        <tag name="model">Coarse mesh with 8 to 16 message passing steps, fastest loader, default settings</tag>
-        <tag name="memfit">GPU memory fit: uniform meshes from coarse (120 km) to fine (704078 nodes) with 8 to 16 message passing steps, zarr_v3_lexi 2x2 (fits in host memory at all levels)</tag>
+        <check_tags>loader|io_threads|cpus|scaling|memfit</check_tags>
+        <tag name="loader">Store layouts (zarr v2, zarr v3 sharded with lexicographic and colexicographic chunk order, and SquashFS images of each) with 0x4, 1x2, 2x2, 4x2 and 8x2 Grain workers x threads</tag>
+        <tag name="io_threads">TensorStore I/O threads per reader (dataset.io_threads): 8, 16 and 32 on the baseline</tag>
+        <tag name="cpus">8 and 72 CPUs per task on the baseline</tag>
+        <tag name="scaling">1, 2 and 4 nodes on the baseline</tag>
+        <tag name="memfit">GPU memory fit: uniform meshes from coarse (120 km) to fine (704078 nodes) with 8 to 16 message passing steps, zarr_v2 2x2</tag>
         <tag name="one_worker">memfit with 1 Grain worker x 2 threads instead of 2 x 2 (less host memory)</tag>
         <tag name="no_workers">memfit with Grain threads only (0 workers x 4 threads, no worker processes)</tag>
         <tag name="fine">Use the fine mesh (uniform_fine.msh) instead of the coarse one of full.toml</tag>
@@ -23,60 +18,29 @@
         <tag name="devel">Use the develbooster reservation</tag>
         <tag name="dryrun">Check job scripts with bash -n instead of submitting them</tag>
         <tag name="small_buffers">Buffer one sample per Grain worker and in the reader prefetch, instead of two</tag>
-        <tag name="no_offload">Disable activation offloading to pinned host memory</tag>
-        <tag name="prevent_cse">Rematerialized blocks with prevent_cse (policy.prevent_cse = true)</tag>
-        <tag name="scan">Message passing steps of the processor in a scan (policy.scan = true, the default of full.toml)</tag>
-        <tag name="connected_grid_nodes">Grid nodes only for grid points connected by an edge (model.connected_grid_nodes = true, the default)</tag>
-        <tag name="all_grid_nodes">Grid nodes for all grid points (model.connected_grid_nodes = false)</tag>
-        <tag name="edge_chunks">Update edges in chunks of 262144 (policy.edge_chunk_size)</tag>
-        <tag name="edge_chunks_512k">Update edges in chunks of 524288</tag>
-        <tag name="edge_chunks_1m">Update edges in chunks of 1048576</tag>
-        <tag name="unrolled">Message passing steps of the processor unrolled (policy.scan = false)</tag>
         <tag name="offload">Offload the named activations: checkpoint with the policy around the whole loss (policy.remat_loss = true)</tag>
-        <tag name="no_remat_loss">No checkpoint with the policy around the whole loss (policy.remat_loss = false, the default of full.toml): nothing is offloaded</tag>
-        <tag name="all_levels">Train on all 50 depth levels (task.levels = "all") instead of the 10 of full.toml</tag>
+        <tag name="edge_chunks">Update edges in chunks of 262144 (policy.edge_chunk_size)</tag>
     </tags>
 
     <benchmark name="graphcast_training_io" outpath="bench_run">
-        <comment>GraphCast training with different dataset formats, Grain loader and zarr I/O settings</comment>
+        <comment>GraphCast training at all depth levels with different store layouts, Grain and TensorStore settings</comment>
 
-        <!-- One value per case: format:grain_workers:grain_threads:zarr_max_workers:zarr_concurrency:nodes:cpus_per_task.
-             Tagged values are concatenated; each sweep varies one factor around the baseline zarr_v3_lexi:4:2:8:32:1:72. -->
+        <!-- One value per case: format:grain_workers:grain_threads:io_threads:nodes:cpus_per_task.
+             Tagged values are concatenated; the sweeps other than loader vary one factor around the baseline
+             zarr_v2:4:2:16:1:72 (the defaults of .env and full.toml). -->
         <parameterset name="case_set" duplicate="concat">
-            <parameter name="case" tag="format">
-                squashfs:2:2:8:32:1:72,squashfs:8:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v2:8:2:8:32:1:72,
-                zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72,zarr_v3_colexi:2:2:8:32:1:72,
-                zarr_v3_colexi:8:2:8:32:1:72,squashfs_v3_lexi:8:2:8:32:1:72,squashfs_v3_colexi:8:2:8:32:1:72
+            <parameter name="case" tag="loader" mode="python">",".join(f"{f}:{w}:16:1:72"
+                for f in ("zarr_v2", "zarr_v3_lexi", "zarr_v3_colexi", "squashfs_v2", "squashfs_v3_lexi",
+                          "squashfs_v3_colexi")
+                for w in ("0:4", "1:2", "2:2", "4:2", "8:2"))
             </parameter>
-            <parameter name="case" tag="grain">
-                zarr_v3_lexi:0:4:8:32:1:72,zarr_v3_lexi:1:2:8:32:1:72,zarr_v3_lexi:4:2:8:32:1:72,zarr_v3_lexi:8:1:8:32:1:72,zarr_v3_lexi:4:4:8:32:1:72
-            </parameter>
-            <parameter name="case" tag="zarr">
-                zarr_v3_lexi:4:2:4:10:1:72,zarr_v3_lexi:4:2:4:32:1:72,zarr_v3_lexi:4:2:8:10:1:72,zarr_v3_lexi:4:2:32:10:1:72,zarr_v3_lexi:4:2:32:32:1:72
-            </parameter>
-            <parameter name="case" tag="cpus">zarr_v3_lexi:4:2:8:32:1:1,zarr_v3_lexi:4:2:8:32:1:8</parameter>
-            <parameter name="case" tag="scaling">zarr_v3_lexi:4:2:8:32:2:72,zarr_v3_lexi:4:2:8:32:4:72</parameter>
-            <!-- An optional eighth field names a set of XLA/JAX settings, see opt_env. -->
-            <parameter name="case" tag="opt">
-                zarr_v2:8:2:8:32:1:72:image,zarr_v2:8:2:8:32:1:72:no_lhs,zarr_v2:8:2:8:32:1:72:env_valid,
-                zarr_v2:8:2:8:32:1:72:pgle,zarr_v2:8:2:8:32:1:72:opt_o3,zarr_v2:8:2:8:32:1:72:fit_o3,
-                zarr_v2:8:2:8:32:1:72:async_alloc,zarr_v2:8:2:8:32:1:72:cache,zarr_v2:8:2:8:32:1:72:all,
-                zarr_v2:8:2:8:32:2:72:image,zarr_v2:8:2:8:32:2:72:env_valid,zarr_v2:8:2:8:32:2:72:all,
-                zarr_v2:8:2:8:32:2:72:no_ib
-            </parameter>
-            <parameter name="case" tag="model">zarr_v2:8:2:8:32:1:72</parameter>
+            <parameter name="case" tag="io_threads">zarr_v2:4:2:8:1:72,zarr_v2:4:2:16:1:72,zarr_v2:4:2:32:1:72</parameter>
+            <parameter name="case" tag="cpus">zarr_v2:4:2:16:1:8,zarr_v2:4:2:16:1:72</parameter>
+            <parameter name="case" tag="scaling">zarr_v2:4:2:16:1:72,zarr_v2:4:2:16:2:72,zarr_v2:4:2:16:4:72</parameter>
             <!-- one_worker and no_workers free host memory (for offloading): 1 Grain worker, or threads only. -->
-            <parameter name="case" tag="memfit+!one_worker+!no_workers">zarr_v3_lexi:2:2:8:32:1:72</parameter>
-            <parameter name="case" tag="memfit+one_worker">zarr_v3_lexi:1:2:8:32:1:72</parameter>
-            <parameter name="case" tag="memfit+no_workers">zarr_v3_lexi:0:4:8:32:1:72</parameter>
-            <parameter name="case" tag="workers">
-                zarr_v3_colexi:2:2:8:32:1:72,zarr_v3_colexi:4:2:8:32:1:72,zarr_v3_colexi:8:2:8:32:1:72,zarr_v2:4:2:8:32:1:72,
-                squashfs:4:2:8:32:1:72,zarr_v3_lexi:2:2:8:32:1:72,zarr_v3_lexi:4:2:8:32:1:72,zarr_v3_lexi:8:2:8:32:1:72
-            </parameter>
-            <parameter name="case" tag="lowmem">
-                squashfs:2:2:8:32:1:72,zarr_v2:2:2:8:32:1:72,zarr_v3_colexi:2:2:8:32:1:72,zarr_v3_lexi:1:2:8:32:1:72,
-                zarr_v3_lexi:0:4:8:32:1:72,zarr_v3_lexi:2:2:8:32:1:72
-            </parameter>
+            <parameter name="case" tag="memfit+!one_worker+!no_workers">zarr_v2:2:2:16:1:72</parameter>
+            <parameter name="case" tag="memfit+one_worker">zarr_v2:1:2:16:1:72</parameter>
+            <parameter name="case" tag="memfit+no_workers">zarr_v2:0:4:16:1:72</parameter>
         </parameterset>
 
         <parameterset name="param_set">
@@ -90,36 +54,9 @@
             <parameter name="format" mode="python">"$case".split(":")[0]</parameter>
             <parameter name="num_workers" type="int" mode="python">int("$case".split(":")[1])</parameter>
             <parameter name="num_threads" type="int" mode="python">int("$case".split(":")[2])</parameter>
-            <parameter name="zarr_max_workers" type="int" mode="python">int("$case".split(":")[3])</parameter>
-            <parameter name="zarr_concurrency" type="int" mode="python">int("$case".split(":")[4])</parameter>
-            <parameter name="nodes" type="int" mode="python">int("$case".split(":")[5])</parameter>
-            <parameter name="cpus_per_task" type="int" mode="python">int("$case".split(":")[6])</parameter>
-            <parameter name="opt" mode="python">(lambda f: f[7] if len(f) > 7 else "default")("$case".split(":"))</parameter>
-            <!-- XLA/JAX settings exported after the site .env. The container image sets XLA_FLAGS itself, which takes
-                 precedence over the host's, so XLA flags must be passed as APPTAINERENV_XLA_FLAGS.
-                 "image" keeps the image's XLA_FLAGS (latency hiding scheduler only), as all runs before the .env fix;
-                 "default" uses the .env flags (env_valid). share_bin (JAX_SHARE_BINARY_BETWEEN_HOSTS) is not swept:
-                 it hung at the first compilation on 2 nodes. -->
-            <parameter name="jax_cache_dir">${project_dir}/clusters/jupiter/benchmarks/jube/jax_cache</parameter>
-            <parameter name="opt_env" mode="python">(lambda xla, extra: {
-                "default": "", "image": "unset APPTAINERENV_XLA_FLAGS; ",
-                "no_lhs": xla("--xla_gpu_enable_latency_hiding_scheduler=false"),
-                "env_valid": xla(),
-                "pgle": xla() + extra("JAX_ENABLE_PGLE=true JAX_PGLE_PROFILING_RUNS=3 JAX_PGLE_AGGREGATION_PERCENTILE=85"),
-                "opt_o3": xla() + extra("JAX_OPTIMIZATION_LEVEL=O3"),
-                "fit_o3": xla() + extra("JAX_MEMORY_FITTING_LEVEL=O3"),
-                "async_alloc": xla() + extra("TF_GPU_ALLOCATOR=cuda_malloc_async"),
-                "cache": xla() + extra("JAX_COMPILATION_CACHE_DIR=$jax_cache_dir"),
-                "all": xla() + extra("JAX_ENABLE_PGLE=true JAX_PGLE_PROFILING_RUNS=3 JAX_PGLE_AGGREGATION_PERCENTILE=85 "
-                                     "JAX_OPTIMIZATION_LEVEL=O3 JAX_MEMORY_FITTING_LEVEL=O3 TF_GPU_ALLOCATOR=cuda_malloc_async"),
-                "share_bin": xla() + extra("JAX_SHARE_BINARY_BETWEEN_HOSTS=true"),
-                "no_ib": xla() + extra("NCCL_IB_DISABLE=1"),
-            }["$opt"])(
-                lambda flags="--xla_gpu_enable_latency_hiding_scheduler=true --xla_gpu_triton_gemm_any=true "
-                             "--xla_gpu_enable_highest_priority_async_stream=true":
-                    "export APPTAINERENV_XLA_FLAGS='" + flags + "'; ",
-                lambda assignments: "".join("export " + a + "; " for a in assignments.split()))
-            </parameter>
+            <parameter name="io_threads" type="int" mode="python">int("$case".split(":")[3])</parameter>
+            <parameter name="nodes" type="int" mode="python">int("$case".split(":")[4])</parameter>
+            <parameter name="cpus_per_task" type="int" mode="python">int("$case".split(":")[5])</parameter>
             <parameter name="prefetch_buffer_size" type="int" tag="!small_buffers">2</parameter>
             <parameter name="prefetch_buffer_size" type="int" tag="small_buffers">1</parameter>
             <parameter name="per_worker_buffer_size" type="int" tag="!small_buffers">2</parameter>
@@ -131,9 +68,6 @@
             <!-- Model size: mesh and message passing steps; later definitions replace earlier ones. -->
             <parameter name="mesh_file" tag="!fine">uniform_coarse.msh</parameter>
             <parameter name="mesh_file" tag="fine">uniform_fine.msh</parameter>
-            <!-- The fine mesh does not fit in GPU memory: single allocations of 279 to 504 GiB per GPU for 8 to 16
-                 message passing steps (local batch size 1, activation offloading). -->
-            <parameter name="mesh_file" tag="model">uniform_coarse.msh</parameter>
             <!-- Target mesh sizes 120 (coarse), 100, 85, 70, 60, 50, 40, 35 and 30 km: 34750, 48662, 65943, 95303, 127948,
                  181980, 280245, 363900 and 491676 nodes (configs/mesh/uniform_*.toml), and the fine mesh: 704078 nodes,
                  made in January 2026 for 35 km (about 25 km with the current mesh code). -->
@@ -144,24 +78,20 @@
             <parameter name="msg_steps" type="int">8</parameter>
             <parameter name="msg_steps" type="int" tag="msg12">12</parameter>
             <parameter name="msg_steps" type="int" tag="msg16">16</parameter>
-            <parameter name="msg_steps" type="int" tag="model">8,10,12,14,16</parameter>
             <parameter name="msg_steps" type="int" tag="memfit">8,10,12,14,16</parameter>
             <parameter name="mesh" mode="python">"$mesh_file".split("_")[1].split(".")[0]</parameter>
 
-            <!-- Rough host memory per task: the training stream has num_workers processes, buffering
-                 ~0.7 GB samples and building ~2 GB per in-flight sample. Compare with the measured MaxRSS. -->
-            <!-- Samples scale with the number of levels: about 5 times larger with all 50 levels than with 10. -->
-            <parameter name="level_factor" type="float" tag="!all_levels">1.0</parameter>
-            <parameter name="level_factor" type="float" tag="all_levels">5.0</parameter>
-            <parameter name="est_mem_gb" type="float" mode="python">round($level_factor * ($num_workers *
-                $per_worker_buffer_size * 0.7 + max($num_workers, 1) * $num_threads * 2.0), 1)
+            <!-- Rough host memory per task at all 50 levels: the training stream has num_workers processes, buffering
+                 ~3.5 GB samples and building ~10 GB per in-flight sample. Compare with the measured MaxRSS. -->
+            <parameter name="est_mem_gb" type="float" mode="python">round($num_workers * $per_worker_buffer_size * 3.5
+                + max($num_workers, 1) * $num_threads * 10.0, 1)
             </parameter>
 
             <!-- Standardized anomaly stores (graphcast download) and SquashFS images of them, all on fscratch, so that
                  only the format differs: zarr v2; zarr v3 sharded 8 time x 50 depth, with the chunks of each shard in
                  lexicographic or colexicographic order. -->
             <parameter name="anomalies_dir">/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies</parameter>
-            <parameter name="dataset_path" mode="python">{"squashfs": "$anomalies_dir/squashfs/zarr_v2.sqsh",
+            <parameter name="dataset_path" mode="python">{"squashfs_v2": "$anomalies_dir/squashfs/zarr_v2.sqsh",
                 "squashfs_v3_lexi": "$anomalies_dir/squashfs/zarr_v3_lexi.sqsh",
                 "squashfs_v3_colexi": "$anomalies_dir/squashfs/zarr_v3_colexi.sqsh",
                 "zarr_v2": "$anomalies_dir/zarr_v2",
@@ -219,9 +149,6 @@
             <sub source="#NUM_THREADS#" dest="$num_threads"/>
             <sub source="#PREFETCH_BUFFER_SIZE#" dest="$prefetch_buffer_size"/>
             <sub source="#PER_WORKER_BUFFER_SIZE#" dest="$per_worker_buffer_size"/>
-            <sub source="#ZARR_MAX_WORKERS#" dest="$zarr_max_workers"/>
-            <sub source="#ZARR_CONCURRENCY#" dest="$zarr_concurrency"/>
-            <sub source="#OPT_ENV#" dest="$opt_env"/>
             <sub source="#CASE#" dest="$case rep=$rep seed=$seed steps=$steps"/>
             <sub source="#READY_FILE#" dest="$ready_file"/>
             <sub source="#USAGE_INTERVAL#" dest="$usage_interval"/>
@@ -235,19 +162,9 @@
             <sub source='(?m)^path = "/data/geometry/[^"]*"' dest='path = "/data/geometry/$mesh_file"' mode="regex"/>
             <sub source="(?m)^gnn_msg_steps = \d+" dest="gnn_msg_steps = $msg_steps" mode="regex"/>
             <sub source="(?m)^save_interval_steps = [\d_]+" dest="save_interval_steps = $ckpt_interval" mode="regex"/>
-            <sub source="(?m)^levels = \[[^\]]*\]" dest='levels = "all"' mode="regex" tag="all_levels"/>
-            <sub source="(?m)^names_which_can_be_offloaded = \[[^\]]*\]" dest="names_which_can_be_offloaded = []"
-                 mode="regex" tag="no_offload"/>
-            <sub source="(?m)^remat_loss = \w+" dest="remat_loss = false" mode="regex" tag="no_remat_loss"/>
+            <sub source="(?m)^io_threads = \d+" dest="io_threads = $io_threads" mode="regex"/>
             <sub source="(?m)^remat_loss = \w+" dest="remat_loss = true" mode="regex" tag="offload"/>
-            <sub source="(?m)^prevent_cse = \w+" dest="prevent_cse = true" mode="regex" tag="prevent_cse"/>
-            <sub source="(?m)^scan = \w+" dest="scan = true" mode="regex" tag="scan"/>
-            <sub source="(?m)^scan = \w+" dest="scan = false" mode="regex" tag="unrolled"/>
             <sub source="(?m)^edge_chunk_size = \d+" dest="edge_chunk_size = 262144" mode="regex" tag="edge_chunks"/>
-            <sub source="(?m)^edge_chunk_size = \d+" dest="edge_chunk_size = 524288" mode="regex" tag="edge_chunks_512k"/>
-            <sub source="(?m)^edge_chunk_size = \d+" dest="edge_chunk_size = 1048576" mode="regex" tag="edge_chunks_1m"/>
-            <sub source="(?m)^connected_grid_nodes = \w+" dest="connected_grid_nodes = true" mode="regex" tag="connected_grid_nodes"/>
-            <sub source="(?m)^connected_grid_nodes = \w+" dest="connected_grid_nodes = false" mode="regex" tag="all_grid_nodes"/>
         </substituteset>
 
         <step name="submit">
@@ -305,20 +222,18 @@
         <result>
             <use>analyse</use>
             <table name="result" style="pretty"
-                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,mesh,msg_steps,opt,rep">
+                   sort="format,num_workers,num_threads,io_threads,nodes,cpus_per_task,mesh,msg_steps,rep">
                 <column>jube_wp_id</column>
                 <column>slurm_job</column>
                 <column>status</column>
                 <column>format</column>
                 <column title="workers">num_workers</column>
                 <column title="threads">num_threads</column>
-                <column title="zarr_pool">zarr_max_workers</column>
-                <column title="zarr_conc">zarr_concurrency</column>
+                <column title="io">io_threads</column>
                 <column>nodes</column>
                 <column title="cpus">cpus_per_task</column>
                 <column>mesh</column>
                 <column title="msg">msg_steps</column>
-                <column>opt</column>
                 <column>rep</column>
                 <column title="steps">step_last</column>
                 <column title="first_step_s" format=".1f">first_step_elapsed</column>
@@ -343,7 +258,7 @@
                 <column title="gpu_w" format=".0f">gpu_power</column>
             </table>
             <table name="result_csv" style="csv"
-                   sort="format,num_workers,num_threads,zarr_max_workers,zarr_concurrency,nodes,cpus_per_task,mesh,msg_steps,opt,rep">
+                   sort="format,num_workers,num_threads,io_threads,nodes,cpus_per_task,mesh,msg_steps,rep">
                 <column>jube_wp_id</column>
                 <column>slurm_job</column>
                 <column>status</column>
@@ -351,13 +266,11 @@
                 <column>format</column>
                 <column>num_workers</column>
                 <column>num_threads</column>
-                <column>zarr_max_workers</column>
-                <column>zarr_concurrency</column>
+                <column>io_threads</column>
                 <column>nodes</column>
                 <column>cpus_per_task</column>
                 <column>mesh</column>
                 <column>msg_steps</column>
-                <column>opt</column>
                 <column>rep</column>
                 <column>seed</column>
                 <column>step_last</column>

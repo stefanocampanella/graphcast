@@ -1,6 +1,6 @@
 description = """
   GraphCast model for the ocean at 0.25deg resolution, \
-  10 depth levels, and a full set of atmospheric and hydrological forcing variables. \
+  50 depth levels and sea ice, forced by atmospheric variables and river discharge. \
   This model is trained on ARCO-OCEAN data from 01-01-1993 to 30-06-2019, \
   and can be causally evaluated on later years. \
   It uses a global ocean mesh with uniform target mesh size of 120 km. \
@@ -22,36 +22,39 @@ training_steps = 40_000
 seed = 42
 
 [task]
+# State at the input time; static fields are inputs too (as in GraphCast).
 input_variables = [
     "zos",
     "thetao",
-    "siconc",
-    "sithick",
     "so",
     "uo",
-    "usi",
     "vo",
+    "siconc",
+    "sithick",
+    "usi",
     "vsi",
+    "glorys_deptho",
+    "glorys_mask",
+    "glofas_mask",
+    "uparea",
+    "z",
+    "lsm",
     "year_progress_sin",
     "year_progress_cos",
 ]
-# Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts and include them in forcings
 target_variables = [
     "zos",
     "thetao",
     "so",
     "uo",
     "vo",
-]
-forcing_variables = [
     "siconc",
     "sithick",
     "usi",
     "vsi",
-    "glorys_deptho",
-    "z",
-    "glorys_mask",
-    "lsm",
+]
+# Given at the target time: atmosphere and river discharge (waves are not used yet).
+forcing_variables = [
     "10u",
     "10v",
     "2d",
@@ -60,12 +63,13 @@ forcing_variables = [
     "ssrd",
     "strd",
     "tp",
+    "dis24",
     "year_progress_sin",
     "year_progress_cos",
 ]
-levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
+levels = "all"
 # Alternatives use original zero-based depth positions, independently per source:
-# levels = "all"
+# levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 # levels = { start = 0, stop = 8, step = 2 }  # Inclusive stop: 0, 2, 4, 6, 8.
 # Bounds may be omitted; step defaults to 1. Negative/reverse slices are unsupported.
 input_duration = "1d"
@@ -77,9 +81,19 @@ hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 # Grid nodes only for grid points connected by an edge (encoder senders, decoder receivers): the others only cost memory.
 connected_grid_nodes = true
-# The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
-# (except for 2m temperature?)
-per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
+
+# Level weights sum to 1, so a volume variable's loss is about 1/50 of a surface variable's at 50 levels: weights of
+# 1/50 = 0.02 make each surface variable count as one volume variable. Change them with the number of levels.
+[model.per_variable_weights]
+zos = 0.02
+siconc = 0.02
+sithick = 0.02
+usi = 0.02
+vsi = 0.02
+thetao = 1.0
+so = 1.0
+uo = 1.0
+vo = 1.0
 
 [mesh]
 path = "/data/geometry/uniform_coarse.msh"

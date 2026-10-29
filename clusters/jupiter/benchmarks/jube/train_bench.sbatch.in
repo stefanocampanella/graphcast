@@ -21,11 +21,13 @@ ulimit -c 0
 trap 'touch "#READY_FILE#"' EXIT
 trap 'echo "BENCH_STATUS: terminated"; exit 143' TERM
 
-# Site defaults first, then this case's dataset, Grain and zarr settings.
+# Site defaults first, then this case's dataset and Grain settings.
 MODULES=()
 set -a
 # shellcheck source=/dev/null
 source "#ENV_FILE#"
+# The code of the checkout the benchmark runs from (e.g. a worktree), not the one of the site defaults.
+APPTAINERENV_PYTHONPATH="#PROJECT_DIR#/src"
 DATASET="#DATASET#"
 MASK="#MASK#"
 TENDENCY_STD="#TENDENCY_STD#"
@@ -35,12 +37,8 @@ GRAPHCAST_GRAIN_PREFETCH_BUFFER_SIZE=#PREFETCH_BUFFER_SIZE#
 GRAPHCAST_GRAIN_PER_WORKER_BUFFER_SIZE=#PER_WORKER_BUFFER_SIZE#
 # Profiling servers in workers would perturb the measurement.
 GRAPHCAST_GRAIN_ENABLE_PROFILING=false
-ZARR_THREADING__MAX_WORKERS=#ZARR_MAX_WORKERS#
-ZARR_ASYNC__CONCURRENCY=#ZARR_CONCURRENCY#
 # srun does not inherit --cpus-per-task from sbatch (Slurm >= 22.05).
 SRUN_CPUS_PER_TASK=#CPUS_PER_TASK#
-# XLA/JAX settings of this case (opt_env in graphcast_training.xml), if any.
-#OPT_ENV#
 set +a
 
 for MODULE in ${MODULES[@]+"${MODULES[@]}"}; do

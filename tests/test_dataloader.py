@@ -99,9 +99,10 @@ def training_configs(standardized_path) -> TrainingConfig:
   configs = cli_utils.read_configs(FULL_CONFIG)
   configs["dataset"] = {"path": standardized_path, "io_threads": 2}
   configs["task"].update(
-    input_variables=["thetao", "zos", "year_progress_sin", "year_progress_cos"],
+    # Static fields are inputs, as in the shipped configs.
+    input_variables=["thetao", "zos", "deptho", "glorys_mask", "lsm", "year_progress_sin", "year_progress_cos"],
     target_variables=["thetao", "zos"],
-    forcing_variables=["deptho", "glorys_mask", "year_progress_sin", "year_progress_cos"],
+    forcing_variables=["year_progress_sin", "year_progress_cos"],
     levels=LEVELS,
   )
   configs["grain_dataset"]["split_date"] = "2020-03-01"
@@ -137,6 +138,8 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert set(forcings.data_vars) == set(task.forcing_variables)
   # One input day and one target day, as input_duration and target_lead_times in the config are "1d".
   assert inputs.sizes["time"] == 1 and targets.sizes["time"] == 1
+  # Static inputs have no time dimension.
+  assert "time" not in inputs["deptho"].dims and "time" not in inputs["lsm"].dims
   assert inputs["thetao"].sizes["level"] == len(LEVELS)
   assert inputs["thetao"].sizes["batch"] == training_configs.grain_dataset.local_batch_size
   assert len(map_dataset) > 0
