@@ -38,7 +38,19 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `zarr_v2:4:2:16:1:72`), sweeps `loader` (6 layouts × 0x4 to 8x2), `io_threads`, `cpus`, `scaling`, `memfit`; jobs
   use the `src` of the checkout JUBE runs from. `run_final.sh` (loader, io_threads, cpus, scaling, `long`) /
   `run_memfit.sh` submit the standard experiments; `summarize.py RESULTS_DIR` writes the CSVs. Earlier results
-  (10 levels, previous dataloader) are not comparable.
+  (10 levels, previous dataloader) are not comparable. Results of 29 Oct 2026 (`results/2026-10-29-alllevels`,
+  `results/2026-10-29-memfit-alllevels`; REPORT.md and CSVs copied to `docs/jupiter-hackathon/results/
+  {benchmark,memfit}-2026-10-29`, shareable report https://claude.ai/artifact/QaPPanmobJWisuDa8MN8ZR):
+  - loader (coarse × 8, 1 node): all six layouts and 0x4 to 4x2 run at 0.48–0.55 s per step (compute 0.43–0.49 s, data
+    0.013–0.05 s; the old dataloader took 2.4 s at 50 levels with 2x2); SquashFS 3–8 % slower; 8x2 filled the node's
+    858 GB and hung at step 4 (12/12 jobs). Node memory peaks: 0 workers 580–630 GB, 1: 605–680, 2: 700–750, 4:
+    840–857 GB; a sample is ~5.7 GB, the training processes ~580 GB per node. Threads only (0x4) waits least for data but
+    computes 3–5 % slower.
+  - io_threads 8/16/32: no difference; 8 CPUs per task instead of 72: 24 % slower; 1/2/4 nodes: 0.515/0.502/0.506 s per
+    step (linear scaling); step 0 ends 83–105 s after launch.
+  - memfit (50 levels, 9 targets): the defaults fit up to 50 km × 16 (1.29 s per step, 74 GiB) and 40 km × 8 (1.08 s);
+    offloading (0 workers) adds 40 km × 14 (1.99 s); edge chunks add 35 km × 12 (2.87 s); 30 km and the fine mesh fit
+    with none. Same limits as on 25 Oct. 40,000 steps take 5.6 h (coarse × 8) to 14.3 h (50 km × 16).
   The README there documents tags and findings; reports live in `results/<date>-<name>/REPORT.md` (gitignored)
   and are copied to `docs/jupiter-hackathon/results/` for the reveal.js presentation (`docs/jupiter-hackathon/index.html`).
 - Tests: new code is tested with **pytest** in `tests/` (`test_<module>.py`, shared fixtures in `tests/conftest.py`;
@@ -319,7 +331,8 @@ geodesic edge features use `gis_utils.py`.
 the standardized anomaly store (zarr or SquashFS, read with xarray-tensorstore) fed through Grain multiprocessing
 workers; residuals are normalized with `tendency_std`, and the boolean surface mask comes from `graphcast
 download-mask`. With the previous dataloader (zarr-python, standardizing per sample), host memory limited Grain to
-about 2 workers at all 50 depth levels; this is to be measured again with the new one.
+about 2 workers at all 50 depth levels. With the new one (29 Oct 2026) every setting from 0 x 4 to 4 x 2 keeps the
+GPUs busy at 50 levels and 8 x 2 runs out of host memory; the `.env` default is 1 worker x 2 threads.
 
 **Meshes**: `geospatial_mesh.py` (seamsh, coastline shapefiles) generates `.msh` files from `configs/mesh/*.toml`;
 generated meshes and geometry live in `data/geometry` (gitignored, bound as `/data/geometry`).

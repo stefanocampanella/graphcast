@@ -543,6 +543,7 @@
       <!-- 50 levels -->
       <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
         <h2>All 50 depth levels: host memory is the limit</h2>
+        <p class="small muted">Previous dataloader (standardizing each sample); see the 29 Oct results for the current one.</p>
         <div class="cols-3-2">
           <div>
             <table>
@@ -712,6 +713,90 @@
     </section>
 
     <section>
+      <!-- After the hackathon: standardized store, 50 levels (29 Oct 2026) -->
+      <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+        <h2>After the hackathon: standardize once, read fast</h2>
+        <div class="kpis">
+          <div class="kpi"><div class="v">~5×</div><div class="l">faster steps at 50 levels: 2.4 s → 0.49 s</div></div>
+          <div class="kpi"><div class="v">0.02–0.05 s</div><div class="l">data wait per step, every layout from 0 × 4 to 4 × 2</div></div>
+          <div class="kpi"><div class="v">5.1 TB</div><div class="l">standardized store, written once in 34 min to 2 h</div></div>
+          <div class="kpi"><div class="v">9 targets</div><div class="l">ocean state and sea ice; river discharge as a forcing</div></div>
+        </div>
+        <div class="cols">
+          <ul class="small">
+            <li><code>graphcast download</code> standardizes the raw data once: z-scores, masks, static fields, float32.</li>
+            <li>Training reads windows with TensorStore; Grain workers reopen the store instead of pickling it.</li>
+            <li>Residual connection fixed (disabled since 27 Mar), per-variable loss masks, depth-linear level weights.</li>
+          </ul>
+          <ul class="small">
+            <li>Targets: <code>zos</code>, <code>thetao</code>, <code>so</code>, <code>uo</code>, <code>vo</code>, <code>siconc</code>, <code>sithick</code>, <code>usi</code>, <code>vsi</code>.</li>
+            <li>Static inputs: bathymetry, masks, river area, <code>z</code>, <code>lsm</code>.</li>
+            <li>Surface loss weights 0.02 = 1/50: surface and volume variables contribute equally.</li>
+          </ul>
+        </div>
+        <p class="more">↓ more: loader, memory, model size</p>
+      </section>
+
+      <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+        <h2>Every layout keeps the GPUs busy at 50 levels</h2>
+        <div class="cols-3-2">
+          <div>
+            <table>
+              <thead><tr><th>Layout</th><th>0 × 4</th><th>1 × 2</th><th>2 × 2</th><th>4 × 2</th></tr></thead>
+              <tbody>
+                <tr><td>zarr v2</td><td>0.489</td><td>0.497</td><td>0.502</td><td class="best">0.486</td></tr>
+                <tr><td>zarr v3 lexi</td><td>0.504</td><td>0.494</td><td class="best">0.491</td><td class="best">0.484</td></tr>
+                <tr><td>zarr v3 colexi</td><td>0.513</td><td class="best">0.485</td><td>0.498</td><td>0.516</td></tr>
+                <tr><td>SquashFS v2</td><td>0.514</td><td>0.552</td><td>0.515</td><td>0.545</td></tr>
+                <tr><td>SquashFS v3 lexi</td><td>0.543</td><td>0.536</td><td>0.520</td><td>0.538</td></tr>
+                <tr><td>SquashFS v3 colexi</td><td>0.531</td><td>0.537</td><td>0.515</td><td>0.550</td></tr>
+                <tr class="oom"><td>any layout, 8 × 2</td><td colspan="4" style="text-align:center">out of host memory, hung at step 4</td></tr>
+              </tbody>
+              <caption>Seconds per step, coarse mesh × 8, 1 node, two runs of 1024 steps. Compute 0.43–0.49 s.</caption>
+            </table>
+          </div>
+          <div>
+            <ul class="small">
+              <li>Node memory: <strong>~600 GB</strong> with 0–1 workers, ~840 of 858 GB with 4. Samples are 5.7 GB.</li>
+              <li>TensorStore I/O threads 8, 16, 32: no difference.</li>
+              <li>8 CPUs per task instead of 72: 24 % slower.</li>
+              <li>1, 2, 4 nodes: 0.515, 0.502, 0.506 s per step, <strong>linear scaling</strong>.</li>
+            </ul>
+            <p class="small muted">Default now 1 worker × 2 threads. Layouts differ by under 5 %: zarr v3 lexi has 100× fewer files.</p>
+          </div>
+        </div>
+      </section>
+
+      <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
+        <h2>What fits in GPU memory (50 levels, 9 targets)</h2>
+        <div class="cols-3-2">
+          <div>
+            <table>
+              <thead><tr><th>Mesh</th><th>Defaults 8 / 16</th><th>Offloading 8 / 16</th><th>Edge chunks 8 / 16</th></tr></thead>
+              <tbody>
+                <tr><td>coarse 120 km</td><td>0.50 / 0.62</td><td>0.56 / 0.70</td><td>0.64 / 0.72</td></tr>
+                <tr><td>70 km</td><td>0.61 / 0.87</td><td>0.74 / 1.03</td><td>1.15 / 1.88</td></tr>
+                <tr><td>50 km</td><td class="best">0.80 / 1.29</td><td>1.00 / 1.68</td><td>1.44 / 2.45</td></tr>
+                <tr><td>40 km</td><td>1.08 / –</td><td>1.69 / – (14: 1.99)</td><td>1.73 / 2.95</td></tr>
+                <tr><td>35 km</td><td>–</td><td>–</td><td>2.09 / – (12: 2.87)</td></tr>
+                <tr class="oom"><td>30 km, fine</td><td colspan="3" style="text-align:center">does not fit</td></tr>
+              </tbody>
+              <caption>Seconds per step with 8 / 16 message passing steps; – does not fit (about 80–85 GiB per GPU).</caption>
+            </table>
+          </div>
+          <div>
+            <ul class="small">
+              <li>Same limits as on 25 Oct: sea ice and static inputs hardly change GPU memory.</li>
+              <li>Defaults fit up to <strong>50 km × 16</strong> at full speed.</li>
+              <li>Offloading and edge chunks buy one mesh size for 10 %–3× more compute.</li>
+              <li>40,000 steps: 5.6 h (coarse × 8) to 14 h (50 km × 16); under 120 node-hours on 8 nodes.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section>
       <!-- Demo training -->
       <section data-background-image="assets/slide-bg.jpg" data-background-size="cover" id="demo-training">
         <h2>Demo: 5000 training steps on 32 GPUs</h2>
@@ -820,14 +905,15 @@
 
       <!-- Recommended configuration -->
       <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
-        <h2>Recommended configuration (now the defaults)</h2>
+        <h2>Recommended configuration (now the defaults, 29 Oct)</h2>
         <div class="cols">
           <div>
   <pre><code class="language-bash" data-trim>
   # clusters/jupiter/.env
-  DATASET=/e/scratch/training2647/graphcast_data/zarr_v2/data
-  CLIMATOLOGY=/e/scratch/training2647/graphcast_data/zarr_v2/climatology
-  GRAPHCAST_GRAIN_NUM_WORKERS=8
+  DATASET=$FSCRATCH/graphcast/data/anomalies/zarr_v2  # or zarr_v3_lexi
+  MASK=$FSCRATCH/graphcast/data/anomalies/glorys_mask
+  TENDENCY_STD=$FSCRATCH/graphcast/data/anomalies/tendency_std
+  GRAPHCAST_GRAIN_NUM_WORKERS=1
   GRAPHCAST_GRAIN_NUM_THREADS=2
   GRAPHCAST_GRAIN_ENABLE_PROFILING=false
   XLA_PYTHON_CLIENT_MEM_FRACTION=.95
@@ -841,8 +927,12 @@
           <div>
   <pre><code class="language-toml" data-trim>
   # configs/training/full.toml
+  [task]
+  levels = "all"             # 50 levels, 9 targets with sea ice
   [model]
-  gnn_msg_steps = 8          # 16: GraphCast, +23 % compute
+  gnn_msg_steps = 8          # 16: GraphCast, +24 % compute
+  [model.per_variable_weights]
+  zos = 0.02                 # surface: 1/50, volume: 1.0
   [mesh]
   path = "/data/geometry/uniform_coarse.msh"
   connected_grid_nodes = true  # ocean grid nodes only
@@ -859,9 +949,8 @@
     --tb-dir $DATA_ROOT/tensorboard/demo_5000_32gpu_v3 \
     demo_5000 demo_5000_32gpu_v3 demo_5000_32gpu_v3
   </code></pre>
-            <p class="small muted">50 levels: at most 2 workers with small buffers, zarr v3 lexi. Meshes up to 40 km:
-              the defaults; 35 and 30 km: <code>edge_chunk_size = 262144</code>
-              (<code>clusters/jupiter/slurm/mesh_study.sh</code>).</p>
+            <p class="small muted">50 levels: 0–4 Grain workers all keep up, 8 run out of host memory. Meshes up to
+              50 km × 16: the defaults; 40 km × 14: offloading; 35 km × 12: <code>edge_chunk_size = 262144</code>.</p>
           </div>
         </div>
       </section>
@@ -887,9 +976,9 @@
         <div>
           <h3>Next steps</h3>
           <ul class="small">
-            <li>Reduce host memory of the training process (480 GB per node) to fit more loader workers at 50 levels.</li>
+            <li><span class="done">Done</span> (29 Oct): standardized store; the loader keeps up at 50 levels with 1 worker.</li>
             <li>Fit the fine mesh (84–112 GiB per GPU): shard the graph over the 4 GPUs of a node.</li>
-            <li>Mesh size: more message passing steps on fine meshes, several seeds, validation loss.</li>
+            <li>Mesh size again with residuals (the mesh study ran without them): several seeds, held-out evaluation.</li>
             <li>Report the XLA bug (switch in a scan with host offloading) with the reproducer.</li>
             <li>Full training run (40 000 steps) and rollouts.</li>
             <li>Data on node-local or faster storage to isolate jobs from each other.</li>

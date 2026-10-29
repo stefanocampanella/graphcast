@@ -453,3 +453,27 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   of them failed (37 `loader`, 4 `scaling`). The 35 that started from 13:13 ran with the fix: 30 completed and 5
   were still running. The 41 failed workpackages were resubmitted from their work directories, with the failed logs
   moved to `attempt1/`.
+- **14:40 Experiment:** the loader benchmarks finished (`results/2026-10-29-alllevels`).
+  - **8 × 2:** all 12 jobs (6 layouts × 2 repetitions) filled the node's 858 GB and hung at step 4. They were
+    cancelled after 1–1.5 h.
+  - **All the rest are compute bound** at 0.48–0.55 s per step: 0 × 4 to 4 × 2, I/O threads 8/16/32, and 1/2/4 nodes
+    (linear scaling). 8 CPUs per task are 24 % slower.
+  - **Insight:** the shared `.env` still had 8 workers, which hangs at 50 levels (now the `full.toml` default).
+
+  **Change:** `.env` now uses 1 worker × 2 threads. Its comment gives the sample size (~5.7 GB) and the measured
+  node memory.
+- **15:06 Experiment:** memfit at 50 levels (`results/2026-10-29-memfit-alllevels`, 150 jobs: 103 fit, 44 GPU OOM, 3
+  pinned-host OOM) shows the same limits as on 25 Oct:
+  - defaults up to 50 km × 16 and 40 km × 8;
+  - offloading adds 40 km × 14;
+  - edge chunks add 35 km × 12.
+- **Request:** report the findings for the current code, as a reference for the production training run. Also update
+  the slides.
+
+  **Change:**
+  - **Report:** `REPORT.md` in the results directory, a copy with the CSVs in
+    `docs/jupiter-hackathon/results/{benchmark,memfit}-2026-10-29`, and a shareable page
+    (https://claude.ai/artifact/QaPPanmobJWisuDa8MN8ZR).
+  - **Slides:** a new stack with three slides (standardized store and variables, loader, GPU memory). The
+    recommended configuration is updated, the old 50-level slide is marked as the previous dataloader, and the next
+    steps are revised.
