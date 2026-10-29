@@ -449,3 +449,7 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Timings:** data 0.041 s, compute 0.397 s per step (median, after step 0). Compute is only 3% above 10 levels:
     the mesh dominates.
   - **Memory:** XLA plans 54.2 GiB per GPU. MaxRSS is 18 GB per task (`sacct`, without Grain's shared memory).
+- **13:35 Experiment:** the benchmark jobs started at 13:09, minutes before the static-input fix was in `src/`, so 41
+  of them failed (37 `loader`, 4 `scaling`). The 35 that started from 13:13 ran with the fix: 30 completed and 5
+  were still running. The 41 failed workpackages were resubmitted from their work directories, with the failed logs
+  moved to `attempt1/`.
