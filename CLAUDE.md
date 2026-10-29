@@ -225,6 +225,10 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
 - Training check (28 Oct 2026, job 2568724, 60 steps, 1 node): residuals / tendency_std with per-variable loss masks
   train (loss 0.73 → 0.49, every target variable −30–40%); data wait 0.021 s, compute 0.385 s per step; XLA memory
   49.2 GiB per GPU (47.1 GiB with the single mask: per-variable masks are larger arrays).
+- Training check at 50 levels with the `full.toml` variables (29 Oct 2026, job 2576513, 60 steps, 1 node, 4 Grain
+  workers x 2 threads): loss 0.259 → 0.146; volume variables report ~0.03 (level-weighted), surface ones 1.0–2.1, and
+  with the 0.02 weights both groups contribute about equally (0.14 / 0.12). Data 0.041 s, compute 0.397 s per step
+  (10 levels: 0.385 s); XLA memory 54.2 GiB per GPU; MaxRSS 18 GB per task.
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier images in `/e/project1/e-dev-2026d09-119/squashfs` (from

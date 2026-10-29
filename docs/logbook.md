@@ -440,3 +440,12 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   **Check:** on a real sample, the static inputs have a batch dimension and no time dimension; `glorys_mask` adds
   one channel per level. At 3 levels this gives 27 input and 11 forcing channels. The check was resubmitted as job
   2576513. The branch is pushed, and the five review comments have replies.
+- **13:30 Experiment:** the 50-level check (job 2576513; `full.toml` variables, 60 steps, 1 node, 4 Grain workers x
+  2 threads) trains.
+  - **Loss:** 0.259 → 0.146 (−44%).
+    - Sea ice fell 43–75%, `zos` 26%, and `thetao`, `so`, `uo`, `vo` 33–35%.
+    - Volume variables report about 0.03 each (level-weighted mean) and surface variables 1.0–2.1.
+    - With option A, surface variables contribute 0.02 × 7.05 = 0.14 and volume variables 0.12: balanced.
+  - **Timings:** data 0.041 s, compute 0.397 s per step (median, after step 0). Compute is only 3% above 10 levels:
+    the mesh dominates.
+  - **Memory:** XLA plans 54.2 GiB per GPU. MaxRSS is 18 GB per task (`sacct`, without Grain's shared memory).
