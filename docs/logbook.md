@@ -417,3 +417,14 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Benchmarks:** `run_final.sh 2026-10-29 alllevels` submitted 76 jobs (`long`, 1024 steps) into
     `results/2026-10-29-alllevels`.
   - **Pending:** memfit is to follow once these finish, so that its reads do not perturb the loader measurements.
+- **Request:** level averaging should use `depth`, not the `level` coordinate.
+
+  **Finding:** training already weighted levels by depth: `GraphCast.loss_and_predictions` passed
+  `levels_normalization_coord="depth"`, and samples carry `depth` along `level`. A check on levels 0, 10, 20, 30, 40
+  and 49 of `zarr_v2` gave depth weights 0.218, 0.218, 0.215, 0.202, 0.137, 0.01, against 0.328 to 0.01 by level
+  position. The defaults of `losses.py` were `"level"`, though.
+
+  **Change:**
+  - `losses.py`: `depth` is now the default of `normalized_level_weights` and the loss functions.
+  - `model.py`: the explicit argument is dropped.
+  - Tests: the loss tests use the default; a new test checks that the weights are linear in depth.

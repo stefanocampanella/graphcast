@@ -688,7 +688,6 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       predictions,
       targets,
       per_variable_weights=self._per_variable_weights,
-      levels_normalization_coord="depth",
       weights_decreasing_with_level=True,
       **kwargs,
     )

@@ -23,7 +23,7 @@ def _data(levels: int = 2, value: float = 1.0) -> tuple[xr.Dataset, xr.Dataset]:
 
 
 def _loss(predictions, targets, mask=None):
-  loss, diagnostics = losses.weighted_mse(predictions, targets, levels_normalization_coord="depth", mask=mask)
+  loss, diagnostics = losses.weighted_mse(predictions, targets, mask=mask)
   return float(loss.values[0]), {name: float(value.values[0]) for name, value in diagnostics.items()}
 
 
@@ -69,7 +69,7 @@ def test_a_level_without_points_contributes_zero():
   mask = xr.DataArray(np.ones((2, LAT.size, 2), dtype=bool), dims=("level", "lat", "lon"))
   mask[1] = False
   only_first, _ = _loss(predictions, targets, mask)
-  level_weights = losses.normalized_level_weights(targets["x"], coord="depth").values
+  level_weights = losses.normalized_level_weights(targets["x"]).values
   assert only_first == pytest.approx(level_weights[0] * 1.0 / 2)
 
 
@@ -81,6 +81,19 @@ def test_bfloat16_losses():
   predictions, targets = _data()
   mask = xr.DataArray(np.ones((LAT.size, 2), dtype=bool), dims=("lat", "lon"))
   as_bf16 = [data.astype(ml_dtypes.bfloat16) for data in (predictions, targets)]
-  loss, _ = losses.weighted_mse(*as_bf16, levels_normalization_coord="depth", mask=mask)
+  loss, _ = losses.weighted_mse(*as_bf16, mask=mask)
   assert loss.dtype == ml_dtypes.bfloat16
   assert float(loss.values[0]) == pytest.approx(_loss(predictions, targets)[0], rel=1e-2)
+
+
+def test_level_weights_follow_depth():
+  """Level weights are linear in the depth of the levels, not in their positions."""
+  _, targets = _data(levels=3)
+  weights = losses.normalized_level_weights(targets["x"], decreasing=True).values
+  depth = targets["depth"].values
+  assert weights.sum() == pytest.approx(1.0)
+  assert weights.min() == pytest.approx(1e-2)
+  # Equal steps in depth give equal steps in weight: depths 1, 10, 100 are 9 and 90 apart.
+  assert (weights[0] - weights[1]) / (weights[1] - weights[2]) == pytest.approx(
+    (depth[1] - depth[0]) / (depth[2] - depth[1])
+  )

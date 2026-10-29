@@ -61,7 +61,7 @@ def weighted_mse(
   predictions: xr.Dataset,
   targets: xr.Dataset,
   per_variable_weights: Mapping[str, float] | None = None,
-  levels_normalization_coord: str = "level",
+  levels_normalization_coord: str = "depth",
   weights_decreasing_with_level: bool = False,
   mask: xr.DataArray | xr.Dataset | None = None,
 ) -> LossAndDiagnostics:
@@ -84,7 +84,7 @@ def weighted_tweedie_deviance(
   predictions: xr.Dataset,
   targets: xr.Dataset,
   per_variable_weights: Mapping[str, float] | None = None,
-  levels_normalization_coord: str = "level",
+  levels_normalization_coord: str = "depth",
   weights_decreasing_with_level: bool = False,
   mask: xr.DataArray | xr.Dataset | None = None,
   p: float = 0.0,
@@ -113,7 +113,7 @@ def weighted_tweedie_deviance(
 def get_weighted_loss(
   loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
   per_variable_weights: Mapping[str, float] | None = None,
-  levels_normalization_coord: str = "level",
+  levels_normalization_coord: str = "depth",
   weights_decreasing_with_level: bool = False,
   mask: xr.DataArray | xr.Dataset | None = None,
 ) -> Callable[[xr.Dataset, xr.Dataset], LossAndDiagnostics]:
@@ -136,7 +136,7 @@ def get_weighted_loss(
 
 def get_weighted_loss_per_variable(
   loss_fn: Callable[[xr.DataArray, xr.DataArray], xr.DataArray],
-  levels_normalization_coord: str = "level",
+  levels_normalization_coord: str = "depth",
   weights_decreasing_with_level: bool = False,
   mask: xr.DataArray | xr.Dataset | None = None,
 ) -> Callable[[xr.DataArray, xr.DataArray], xr.DataArray]:
@@ -217,7 +217,7 @@ def sum_per_variable_losses(
 
 
 def normalized_level_weights(
-  data: xr.DataArray, coord: str = "level", w_min=1e-2, decreasing: bool = False
+  data: xr.DataArray, coord: str = "depth", w_min=1e-2, decreasing: bool = False
 ) -> xr.DataArray:
   """Compute weights from `coord` at each level.
 
