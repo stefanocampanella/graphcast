@@ -538,3 +538,18 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Reports:** `runs/mesh_msg/REPORT.md` (copied to `docs/jupiter-hackathon/results/mesh_msg-2026-10-29`). The
     benchmark report's mesh caveat is replaced by these results, and the shareable report has a new section.
   - **Slides:** two new slides (the validation grid; sea surface height and reach), and the next steps are updated.
+- **Request:** report the findings on ARCO-OCEAN and its statistics in `docs`, for future revisions of arco-make and
+  the dataset.
+
+  **Change:** `docs/arco-ocean-findings.md` gives 14 findings, each with the affected variables, the evidence, the
+  impact and a recommendation:
+  - calendar: Feb 29;
+  - zero anomaly_std;
+  - static fields stored as time series, and their glitches;
+  - wave mask versions and the zero fill under sea ice;
+  - masks against data;
+  - `tendency_std` NaN conventions and the sea-ice estimator;
+  - reference period and small anomaly_std;
+  - storage layout and S3 access.
+
+  It also lists the conventions adopted here.
