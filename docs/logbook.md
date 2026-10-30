@@ -516,3 +516,25 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Time limits:** 1.3 × the expected time plus 20 min (1:30 to 6:00).
   - **Estimated cost:** ~350 node-hours.
   - **Outputs:** configs in `runs/mesh_msg/configs`, TensorBoard in `$DATA_ROOT/tensorboard/mesh_msg/`.
+- **2026-10-30 02:14 Experiment:** all 30 mesh study runs completed (21:43–02:14, 384 node-hours, no errors).
+  - **Validation loss at step 5000** (mean of seeds):
+    - coarse: 0.0907 / 0.0893 / 0.0884 with 8 / 12 / 16 steps;
+    - 85 km: 0.0887 / 0.0867 / 0.0858;
+    - 60 km: 0.0864 / 0.0842 / 0.0829;
+    - 50 km: 0.0851 / 0.0829 / 0.0818;
+    - 40 km: 0.0842 / 0.0820 / 0.0805.
+  - **Noise:** the two seeds differ by 0.03–0.57 %.
+  - **Overfitting:** none; the minimum is at the last step everywhere, and the validation–training gap is
+    0.010–0.012 in every case.
+- **Insight:**
+  - **Neither axis has saturated:** 12 → 16 steps gains 1.0–1.8 %, and 50 → 40 km gains 1.0–1.6 %.
+  - **`zos` follows the processor's reach** (steps × spacing): +9.6 % at 40 km × 8, +0.6 % at 40 km × 16, −8.1 % at
+    coarse × 16. This confirms the hypothesis of the hackathon study.
+  - **Other fields:** they gain with resolution (40 km × 16: sea-ice thickness −28 %, currents −14 %, salinity
+    −12 %, temperature −10 %).
+  - **Value:** 50 km × 16 is −9.8 % at 1.40 s per step without edge chunks. 40 km × 16 is −11.2 % at 3.10 s with
+    them.
+- **Change:**
+  - **Reports:** `runs/mesh_msg/REPORT.md` (copied to `docs/jupiter-hackathon/results/mesh_msg-2026-10-29`). The
+    benchmark report's mesh caveat is replaced by these results, and the shareable report has a new section.
+  - **Slides:** two new slides (the validation grid; sea surface height and reach), and the next steps are updated.

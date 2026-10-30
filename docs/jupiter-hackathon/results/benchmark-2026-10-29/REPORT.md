@@ -15,7 +15,7 @@ steps, one repetition). Copies of the summaries: `docs/jupiter-hackathon/results
 | TensorStore I/O threads | 16 (default) | 8, 16, 32 equal |
 | CPUs per task | 72 | 8 CPUs: steps 24 % slower |
 | Model memory policy | scan, no offloading, no edge chunks (defaults) | Fits up to 50 km × 16 steps at full speed |
-| Mesh × message passing | Up to 50 km × 16 (1.29 s/step); coarse × 8 is 0.50 s/step | See GPU memory below |
+| Mesh × message passing | 50 km × 16 (best value) or 40 km × 16 (lowest loss) | Mesh study: −9.8 % / −11.2 % validation loss |
 | Nodes | Any: step time is flat from 1 to 4 nodes | Throughput 7.8 → 15.9 → 31.6 samples/s |
 | Variables, loss | As in `full.toml`: surface weights 0.02, depth-linear level weights | Surface and volume variables contribute equally |
 
@@ -143,9 +143,10 @@ Step time in seconds (OOM: does not fit; the limit is about 80–85 GiB planned 
   `split_date` separately (rollouts, against persistence and climatology).
 - **Normalization leakage:** statistics (climatology, anomaly_std, tendency_std) cover 1993–2023, including the
   held-out period (accepted for now).
-- **Mesh results need repeating:** the mesh-size study of the hackathon ran while the residual connection was disabled
-  (27 Mar–28 Oct 2026), so its models were direct predictors. Repeat it with residuals before choosing the mesh, e.g.
-  coarse × 16, 60 km × 16, 50 km × 16, a few thousand steps each, with held-out evaluation.
+- **Mesh choice:** done with residuals and held-out validation (30 Oct 2026, `../mesh_msg-2026-10-29/REPORT.md`).
+  - Validation loss falls along both axes; 40 km × 16 is 11.2 % below coarse × 8, and 50 km × 16 is 9.8 % below at
+    45 % of the cost.
+  - The hackathon's mesh study ran while the residual connection was disabled, and is superseded.
 - **Thin statistics:**
   - the residual comparison used one seed, 10 levels, and 2000 steps;
   - memfit used 30 steps and one run;

@@ -242,6 +242,17 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   workers x 2 threads): loss 0.259 → 0.146; volume variables report ~0.03 (level-weighted), surface ones 1.0–2.1, and
   with the 0.02 weights both groups contribute about equally (0.14 / 0.12). Data 0.041 s, compute 0.397 s per step
   (10 levels: 0.385 s); XLA memory 54.2 GiB per GPU; MaxRSS 18 GB per task.
+- Mesh × message passing study (29–30 Oct 2026, `runs/mesh_msg/REPORT.md`, copy in
+  `docs/jupiter-hackathon/results/mesh_msg-2026-10-29`):
+  - **Setup:** demo_5000 (8 nodes, 5000 steps ≈ 17 epochs), 5 meshes × 8/12/16 steps × 2 seeds, 384 node-h.
+  - **Validation loss falls along both axes:** coarse × 8 0.0907, 50 km × 16 0.0818 (−9.8 %, 1.40 s per step),
+    40 km × 16 0.0805 (−11.2 %, 3.10 s with edge chunks). Neither axis has saturated.
+  - **Noise and overfitting:** seeds differ by under 0.6 %. No overfitting: the minimum is at the last step in all
+    runs, and the validation–training gap is 0.010–0.012 in every case.
+  - **zos needs reach** (steps × spacing): +9.6 % at 40 km × 8, +0.6 % at 40 km × 16. The other fields gain with
+    resolution: sea-ice thickness −28 %, currents −14 % at 40 km × 16.
+  - **Value:** at equal cost more steps beat a finer mesh (50 km × 16 beats 40 km × 12).
+  - **Next:** 20–24 steps on 50 km and 35 km × 12.
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier images in `/e/project1/e-dev-2026d09-119/squashfs` (from
