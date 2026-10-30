@@ -656,3 +656,51 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Tests:** two new tests (one `$Nodes` section with every view readable; three meshes read in sequence). Both
     fail on the previous code. 173 tests pass.
   - **Real data:** the existing two-copy files (120 km, 50 km, 120 km again) read correctly in one process.
+
+## 2026-10-30: blocking operations, Orbax issue 2545
+
+- **Request:** are logger calls blocking in the training loop, and with what effect?
+
+  **Insight** (rank 0 of the 30 mesh study runs):
+  - **TensorBoard logging** blocks: `.item()` of each metric, plus `tf.summary` on rank 0. It takes 8 ms per step
+    (median, p99 13 ms), 0.3–1.7 % of a step.
+  - **The loop is fully serial:** `block_until_ready`, then `push_checkpoint` (3–4 ms, including `.item()` of the
+    metrics every step), TensorBoard and the log line. Then the next batch is fetched (37–39 ms).
+  - **Host share** of a step: 9.9 % (120 km × 8), 3.7 % (50 km × 16), 1.6 % (40 km × 16).
+- **Request:** exploratory analysis of disabling blocking operations.
+
+  **Experiment** (`claude-work/.../exp_loop`, jobs 2603156/2603157, 1 node): four loop variants, each run twice on
+  the same node.
+  - **Variants:**
+    - `baseline`: the current loop;
+    - `no_tb`: without TensorBoard;
+    - `no_sync`: no wait, and `push_checkpoint` only on save steps;
+    - `deferred`: no wait, and the metrics of step n logged after step n+1 is dispatched, so the next batch is
+      fetched while a step runs.
+  - **Models:** 120 km × 8 (400 steps) and 50 km × 16 (300 steps).
+  - **Measure:** throughput from step 50.
+- **Request:** take into account that Orbax issue 2545 (saving under a global mesh) is fixed.
+
+  **Insight:** the fix (Orbax commit 5a0bd47) was verified upstream with JAX 0.11.1 and Orbax 0.12.4, the versions in
+  the image. Our workaround creates the `CheckpointManager` under a per-process mesh. It is also in
+  `check_writable_paths` and `save_model`, and FIXMEs point to it in `push_checkpoint` and `pull_checkpoint`.
+- **Experiment:**
+  - **Single process:** in the image, the issue's reproduction and a `CheckpointManager` save/restore under a global
+    mesh both work.
+  - **2 nodes** (8 processes; `claude-work/.../orbax_check`, jobs 2603190 and 2603287): without the workaround, and
+    with the batch mesh set globally for the whole run.
+    - **Saving:** 60 steps saving every 20, about 0.4 s blocking per save.
+    - **Restoring:** the best checkpoint was restored at the end. A second run restored step 40 and continued to 80.
+    - **Result:** its losses equal the first run's bit for bit, shifted by one step (19 of 19), so parameters,
+      optimizer state and the Grain iterator restore exactly.
+- **Insight** (two existing bugs found):
+  - **Restart off by one:** `train` resumes at `latest_step`, but the checkpoint of step N is saved after step N, so
+    the first resumed step is labelled N while it is really step N+1. Step numbers in logs, TensorBoard and
+    checkpoints are one behind after a restart, and the run makes one extra update. The learning-rate schedule
+    follows the optimizer's count and is not shifted.
+  - **Output path:** `graphcast train` declares `OUTPUT_PATH` as `click.Path(file_okay=False)`, but the model is
+    written as a file there. Rerunning into an existing output fails even with `--overwrite`.
+- **Insight** (conversions to host values):
+  - `push_checkpoint` converts the metrics with `.item()` every step, but Orbax uses them only on save steps.
+  - `TensorboardLogger.log` converts them on every process, but only process 0 writes.
+  - The other numpy conversions are needed (the Grain worker gather, `save_model`'s format).
