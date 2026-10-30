@@ -603,3 +603,19 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **120 km mesh renamed:** `uniform_coarse` is now `uniform_120km`, both the config (description fixed) and the
     `.msh` file. A symlink `data/geometry/uniform_coarse.msh` is kept for the main checkout until the merge.
   - **Paths updated:** `demo_5000.toml`, JUBE, the `mesh_study.sh` example and two notebooks.
+- **12:00 Request:** rename the fine mesh and replace `uniform_fine.toml`. Check that the descriptions of all mesh
+  configs match their settings.
+
+  **Change:**
+  - **25 km config:** `uniform_25km.toml` (25 km uniform field; the ignored `domain.sampling` dropped) replaces
+    `uniform_fine.toml`.
+  - **Mesh file:** `uniform_fine.msh` is renamed `uniform_25km.msh`, with a symlink under the old name until the
+    merge.
+  - **Lambrechts descriptions:** the three `lambrechts*` configs said "a uniform field of 300 km for the interior and
+    10 km for coastlines". They now describe their fields: the smaller of a shore-proximity field (30–200, 100–200,
+    150–300 km) and a bathymetry field (25–500, 100–500, 150–500 km), with coastlines coarsened to 10 km.
+  - **Other configs:** the uniform configs already matched their values.
+  - **References:** JUBE (`fine` tag, memfit list), a notebook and CLAUDE.md.
+- **Experiment:** `uniform_25km.toml` regenerated with today's code (1 min 43 s on a login node) gives 703,409
+  nodes against the January file's 704,078 (−0.1 %), with the same edge lengths (p5/median/p95 20.6/25.0/26.9 km).
+  The January file is kept: the experiments used it.

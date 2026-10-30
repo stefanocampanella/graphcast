@@ -356,12 +356,16 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   after the PR is merged. Each `.msh` stores the size field it was made with (views `MeshSize` and one per field) and
   the config's description. Measured median edge lengths match the targets: 117.8 km for 120 km, 34.9 for 35, 30.0
   for 30.
-- **The fine mesh** (`uniform_fine.msh`, 704,078 nodes, 31 Jan 2026):
+- **The 25 km mesh** (`uniform_25km`, formerly `uniform_fine`, 704,078 nodes, 31 Jan 2026):
   - its stored size field is 25 km at every node, and its median edge is 25.0 km;
-  - it was made from a config that was never committed: `uniform_fine.toml` asked for 30 km then, and asks for 35 km
-    now, identical to `uniform_35km.toml` (its `domain.sampling` is ignored by the code);
+  - it was made from a config that was never committed: `uniform_fine.toml` asked for 30 km then, and for 35 km later,
+    identical to `uniform_35km.toml` (its `domain.sampling` is ignored by the code). It was replaced on 30 Oct 2026 by
+    `uniform_25km.toml`; `data/geometry/uniform_fine.msh` is a symlink to `uniform_25km.msh` until the merge;
   - node counts scale as 1/size², so 363,900 × (35/25)² ≈ 713,000;
-  - its description (150 km), and that of the 120 km mesh, came from an outdated template.
+  - its description (150 km), and that of the 120 km mesh, came from an outdated template; both `.msh` files keep it.
+- **Descriptions** of all `configs/mesh/*.toml` match their fields (checked on 30 Oct 2026). The `lambrechts*`
+  configs take the smaller of a shore-proximity and a bathymetry field; they said "uniform 300 km" before.
+  `domain.sampling` in them is ignored (the shore-proximity field has its own).
 
 ## Repository notes
 
