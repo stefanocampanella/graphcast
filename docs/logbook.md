@@ -619,3 +619,24 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 - **Experiment:** `uniform_25km.toml` regenerated with today's code (1 min 43 s on a login node) gives 703,409
   nodes against the January file's 704,078 (−0.1 %), with the same edge lengths (p5/median/p95 20.6/25.0/26.9 km).
   The January file is kept: the experiments used it.
+- **Request:** validate the mesh generator's settings with pydantic, as the training script does, with tests and the
+  same quality checks.
+
+  **Change:**
+  - **Settings:** `mesh_config.py` (`MeshGenerationConfig`).
+    - It covers the gmsh options (until now hard-coded behind a FIXME, with the same defaults), smoothness, the
+      domain (a `.shp`), boundary coarsening, and the size fields as a union discriminated by `name`.
+    - It checks that size_min ≤ size_max, field_min < field_max and q_low < q_high, that each field type appears at
+      most once, and that `view_tag_name` differs from the field names.
+  - **Command:** `make-ocean-mesh` reads its settings through `cli_utils.read_configs(schema=...)`, so errors become
+    CLI errors before meshing. The meshing itself is `write_ocean_mesh`.
+  - **Size fields:** `CompositeMeshSizeField` takes the validated configs.
+  - **Configs:** the ignored `domain.sampling` was removed from the three `lambrechts*` configs (now rejected).
+  - **Bug fix:** `read_mesh_data` swapped the description and license.
+  - **Tests:** `tests/test_mesh_config.py` (37: shipped configs, invalid settings, the CLI end to end on a synthetic
+    coastline). 171 tests pass; ruff check, ruff format and ty pass on the new modules.
+- **Experiment:** `uniform_120km.toml` regenerated with the new code gives identical vertices and triangles.
+- **Insight:**
+  - **Duplicated mesh:** each field view after the first is appended with the whole mesh again, so `.msh` files hold
+    it twice.
+  - **Reader:** reading a second mesh in the same process fails (gmsh state).

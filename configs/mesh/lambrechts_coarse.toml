@@ -27,7 +27,6 @@ smoothness = 0.3
 filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
-sampling = 5_000.0
 
 [coarsen_boundaries]
 mesh_size = 10_000.0
