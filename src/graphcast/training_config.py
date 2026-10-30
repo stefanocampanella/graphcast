@@ -86,6 +86,14 @@ class ModelConfig(ApplicationConfig):
     description="Grid nodes only for the grid points connected by an edge (encoder senders, decoder receivers): "
     "the others only cost memory.",
   )
+  level_weights_coord: str = Field(
+    default="depth",
+    description="Coordinate along the level dimension from which the loss weights of the levels are computed: linear "
+    "in it, summing to 1 (e.g. depth, or level for the positions of the selected levels).",
+  )
+  level_weights_decreasing: bool = Field(
+    default=True, description="Whether the level weights decrease as the coordinate grows (deeper levels weigh less)."
+  )
 
 
 class MeshConfig(ApplicationConfig):
@@ -109,11 +117,19 @@ class SourceConfig(ApplicationConfig):
     return values
 
 
-class MaskConfig(SourceConfig):
-  name: str
-  level: Annotated[
-    float, Field(ge=0, description="Depth selected using nearest neighbour")
-  ]
+class StoreConfig(ApplicationConfig):
+  """A standardized anomaly store written by graphcast download, read with TensorStore."""
+
+  path: str
+  io_threads: PositiveInt = Field(
+    default=16, description="TensorStore concurrency of file I/O and decoding, per process (Grain worker)"
+  )
+
+
+class MaskConfig(ApplicationConfig):
+  """A boolean (lat, lon) mask written by graphcast download-mask."""
+
+  path: str
   fill_value: float
 
 
@@ -181,6 +197,21 @@ class CheckpointConfig(BaseModel):
   enable_async_checkpointing: bool = True
 
 
+class ValidationConfig(ApplicationConfig):
+  interval_steps: PositiveInt = Field(
+    default=250, description="Compute the validation loss every this many steps, and after the last one."
+  )
+  num_samples: PositiveInt = Field(
+    default=128,
+    description="Held-out windows (after grain_dataset.split_date), evenly spaced over the held-out period; rounded "
+    "up to a multiple of the global batch size. The same windows at every validation and in every run.",
+  )
+  read_threads: PositiveInt = Field(
+    default=1,
+    description="Windows read ahead in each process, by as many threads; each holds one window in host memory.",
+  )
+
+
 class TrainingConfig(ApplicationConfig):
   description: str = ""
   license: str = ""
@@ -193,14 +224,13 @@ class TrainingConfig(ApplicationConfig):
   normalization: NormalizationConfig
   policy: PolicyConfig = Field(default_factory=PolicyConfig)
   grain_dataset: GrainDatasetConfig
-  dataset: SourceConfig
-  climatology: SourceConfig
-  anomaly_std: SourceConfig
+  dataset: StoreConfig
   tendency_std: SourceConfig
   optimizer: OptimizerConfig
   checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
+  validation: ValidationConfig | None = None
 
-  @field_validator("dataset", "climatology", "anomaly_std", "tendency_std")
+  @field_validator("tendency_std")
   @classmethod
   def warn_about_chunks(cls, source: SourceConfig, info: ValidationInfo):
     if source.read.chunks is not None:

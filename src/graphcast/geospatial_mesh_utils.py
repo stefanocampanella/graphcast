@@ -44,6 +44,7 @@ from graphcast.gis_utils import (
   stereographic_crs,
   xarray_to_gdal_raster,
 )
+from graphcast.mesh_config import FieldConfig, field_arguments
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
 
 logger = logging.getLogger(__name__)
@@ -321,20 +322,13 @@ FieldsRegistry = {
 class CompositeMeshSizeField(StereoMeshSizeField):
   """Stereographic mesh size field which takes the minimum of other fields."""
 
-  def __init__(self, fields_config: Iterable[dict[str, Any]], prefix: pathlib.Path | None = None):
+  def __init__(self, fields_config: Iterable[FieldConfig], prefix: pathlib.Path | None = None):
+    """Build each field from its validated settings (mesh_config); file paths are relative to prefix, if given."""
     fields = {}
     for config in fields_config:
-      field_name = config.pop("name")
-      if field_name not in FieldsRegistry:
-        raise ValueError(
-          f"Unknown field type {field_name}. Available types are {FieldsRegistry.keys()}."
-        )
-      if prefix is not None:
-        for key in config.keys():
-          if key == "filepath" or key.endswith("_path"):
-            config[key] = prefix / config[key]
-      logger.info("Creating field %s with config %s.", field_name, config)
-      fields[field_name] = FieldsRegistry[field_name](**config)
+      arguments = field_arguments(config, prefix)
+      logger.info("Creating field %s with config %s.", config.name, arguments)
+      fields[config.name] = FieldsRegistry[config.name](**arguments)
     self.fields = fields
 
   def mesh_size_3d(self, x: Coordinates, projection: osr.SpatialReference) -> np.ndarray:
@@ -370,6 +364,9 @@ def read_mesh(
   mesh_path = pathlib.Path(mesh_path)
   if not mesh_path.exists():
     raise ValueError(f"Input path {mesh_path} does not exist")
+  # gmsh.open creates a new model but keeps the views of the files opened before, so the view looked up by name below
+  # could belong to another mesh (whose node tags do not match: KeyError). Start from an empty state instead.
+  gmsh.clear()
   gmsh.open(str(mesh_path.absolute()))
 
   # Get all nodes
@@ -514,6 +511,6 @@ def read_mesh_data(
     "Mesh graph contains %d vertices and %d edges.", len(graph.vertices), len(graph.edges[0])
   )
   mesh_data = MeshData(
-    mesh_graph=graph, mesh_size=mesh_size, description=mesh_license, license=mesh_description
+    mesh_graph=graph, mesh_size=mesh_size, description=mesh_description, license=mesh_license
   )
   return mesh_data

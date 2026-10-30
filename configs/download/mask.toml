@@ -1,0 +1,5 @@
+# Mask of the surface ocean for training (graphcast download-mask): the mask variable of the dataset at the first
+# depth level, as a boolean (lat, lon) array. level is the zero-based position along depth, as in task.levels.
+name = "glorys_mask"
+level = 0
+zarr_format = 2

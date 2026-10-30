@@ -12,7 +12,6 @@ import jax
 import numpy as np
 import optax
 import xarray as xr
-from grain.python import DatasetIterator
 from jax import checkpoint_policies as cp
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import sync_global_devices
@@ -20,7 +19,7 @@ from jax.experimental.shard_map import shard_map
 from jax.sharding import AxisType, Mesh
 from jax.sharding import PartitionSpec as P
 
-from graphcast import dataloader_utils, xarray_jax
+from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
 from graphcast.dataloader import InputsTargetsForcings
@@ -28,7 +27,7 @@ from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mask import Mask
 from graphcast.mesh_graph import MeshData
 from graphcast.model import CheckPoint, GraphCast, ModelConfig, TaskConfig
-from graphcast.normalization import InputsAndResiduals
+from graphcast.normalization import InputNormalization, OutputNormalization
 from graphcast.predictor_base import Predictor
 from graphcast.training_config import TrainingConfig
 
@@ -160,9 +159,11 @@ def get_predictor(
   grid_mask: np.ndarray,
     mean_by_level: xr.Dataset | None,
     stddev_by_level: xr.Dataset | None,
-  mask_da: xr.DataArray,
+  loss_masks: xr.Dataset,
     diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
+  """Wrap GraphCast, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
+  diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) -> Bfloat16Cast."""
   # Deeper one-step predictor.
   predictor = GraphCast(
     _model_config=model_config,
@@ -181,18 +182,18 @@ def get_predictor(
   # Modify inputs/outputs to `graphcast.GraphCast` to handle conversion to from/to float32 to/from BFloat16.
   predictor = Bfloat16Cast(predictor)
 
-  # Modify inputs/outputs to `casting.Bfloat16Cast` so the casting to/from BFloat16 happens after applying
-  # normalization to the inputs/targets.
-  predictor = InputsAndResiduals(
-    predictor,
-    mean_by_level=mean_by_level,
-    stddev_by_level=stddev_by_level,
-    diffs_stddev_by_level=diffs_stddev_by_level,
-    skip_names=configs.normalization.skip_names,
+  # Normalization wraps `casting.Bfloat16Cast`, so the casting to/from BFloat16 happens on normalized values. The
+  # standardized anomaly store needs no input normalization: inputs are normalized only if statistics are given.
+  if mean_by_level is not None or stddev_by_level is not None:
+    predictor = InputNormalization(
+      predictor, scales=stddev_by_level, locations=mean_by_level, skip_names=configs.normalization.skip_names
+    )
+  predictor = OutputNormalization(
+    predictor, residual_scales=diffs_stddev_by_level, scales=stddev_by_level, locations=mean_by_level
   )
 
   # Mask inputs/outputs. Notice, other not finite values (i.e., inf) are not filled with mask.fill_value.
-  predictor = Mask(predictor, mask=mask_da, value=configs.mask.fill_value)
+  predictor = Mask(predictor, mask=loss_masks, value=configs.mask.fill_value)
 
   return predictor
 
@@ -230,17 +231,15 @@ def get_optimizer(
 
 def get_params(
   init_fn: Callable[..., Params],
-  iterator: DatasetIterator[InputsTargetsForcings],
-    configs: TrainingConfig,
+  sample: InputsTargetsForcings,
+  configs: TrainingConfig,
   seed: int | None = None,
 ) -> Params:
+  """Initialize the parameters from a sample (dataloader_utils.get_init_sample): only its shapes matter."""
   seed = configs.seed if seed is None else seed
   rng_key = jax.random.key(seed)
-  sample_on_host = dataloader_utils.get_first_sample_and_reset(iterator)
-  # FIXME: avoid grain workers failing (harmless, but produce lousy logs)
-  sample = xarray_jax.device_put(sample_on_host)
   logger.info(f"Initializing parameters with {seed=}")
-  return init_fn(rng_key, sample)
+  return init_fn(rng_key, xarray_jax.device_put(sample))
 
 
 class TensorboardLogger:
@@ -267,6 +266,7 @@ class TensorboardLogger:
     current_step: int,
     train_metrics: JAXLossAndDiagnostics,
     lr: float | None = None,
+    prefix: str = "train",
   ) -> None:
     with self._summary_writer.as_default():
 
@@ -275,9 +275,9 @@ class TensorboardLogger:
           self._summary.scalar(key, value, step=current_step)
 
       loss, diagnostics = jax.tree_util.tree_map(lambda x: x.item(), train_metrics)
-      _log("train/loss", loss)
+      _log(f"{prefix}/loss", loss)
       for key, value in diagnostics.items():
-        _log(f"train/{key}", value)
+        _log(f"{prefix}/{key}", value)
 
       if lr is not None:
         _log("learning_rate", lr)

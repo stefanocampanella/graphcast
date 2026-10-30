@@ -1,7 +1,9 @@
 description = """
   Global ocean triangular mesh, \
-  with a target mesh size set to a uniform field with a value of 300km \
-  for the interior of the domain and 10km for coastlines. \
+  with a target mesh size equal to the smaller of two fields: one growing with the distance from the coast, \
+  from 30 km at the coast to 200 km at 500 km or farther, and one growing with the square root \
+  of the depth, from 25 km to 500 km between its 10th and 90th percentiles. \
+  Coastlines are coarsened to 10 km. \
   All units are meters. \
   The code used the seamsh Python package by Jonathan Lambrechts \
   and a description of the algorithm can be found at \
@@ -25,7 +27,6 @@ smoothness = 0.3
 filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
-sampling = 5_000.0
 
 [coarsen_boundaries]
 mesh_size = 10_000.0

@@ -19,6 +19,7 @@ import time
 from functools import partial
 
 import click
+import grain.python as grain
 import haiku as hk
 import jax
 import optax
@@ -91,13 +92,7 @@ def _shutdown_jax_distributed():
   default=cli_utils.get_cwd() / "tb_logdir",
   type=click.Path(path_type=pathlib.Path, resolve_path=True),
 )
-@click.option(
-  "--log-level",
-  default="info",
-  type=click.Choice(
-    ["debug", "info", "warning", "error", "critical"], case_sensitive=False
-  ),
-)
+@cli_utils.LOG_LEVEL_OPTION
 def train(
     config_path: pathlib.Path,
     output_path: pathlib.Path,
@@ -108,12 +103,7 @@ def train(
     log_level: str = "info",
 ):
   start_time = time.perf_counter()
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
+  cli_utils.configure_logging(log_level)
 
   configs = cli_utils.read_configs(config_path, schema=TrainingConfig)
   try:
@@ -142,26 +132,24 @@ def train(
 
   model_config = trn_utils.get_model_config(configs)
   mesh_data = trn_utils.get_mesh(configs)
-  mask = dataloader_utils.get_surface_mask(configs)
-  grid_lat = mask["lat"].to_numpy()
-  grid_lon = mask["lon"].to_numpy()
-  grid_mask = mask.transpose("lat", "lon").to_numpy()
+  grid = dataloader_utils.get_grid(configs.mask)
+  grid_lat, grid_lon, grid_mask = grid
   dataset = dataloader_utils.get_dataset(configs)
   task_config = dataloader_utils.get_task_config(configs, dataset)
-  climatology = dataloader_utils.get_climatology(configs)
-  anomaly_std = dataloader_utils.get_anomaly_std(configs)
   tendency_std = dataloader_utils.get_tendency_std(configs)
+  # Per target variable and level: grid points whose series is not constant (tendency_std > 0).
+  loss_masks = dataloader_utils.get_loss_masks(tendency_std, grid, task_config.target_variables)
   static_data = xarray_jax.wrap_data(
-    (tendency_std, mask), to_jax=True, np_contiguous=False
+    (tendency_std, loss_masks), to_jax=True, np_contiguous=False
   )
 
   @hk.without_apply_rng
   @hk.transform
   def loss_fn(
-      data: Datasets, static_data: tuple[xr.Dataset, xr.DataArray]
+      data: Datasets, static_data: tuple[xr.Dataset, xr.Dataset]
   ) -> JAXLossAndDiagnostics:
     inputs, targets, forcings = data
-    tendency_std, mask_da = static_data
+    tendency_std, loss_masks = static_data
     predictor = trn_utils.get_predictor(
       configs=configs,
       model_config=model_config,
@@ -172,7 +160,7 @@ def train(
       grid_mask=grid_mask,
       mean_by_level=None,
       stddev_by_level=None,
-      mask_da=mask_da,
+      loss_masks=loss_masks,
       diffs_stddev_by_level=tendency_std,
     )
     loss, diagnostics = predictor.loss(
@@ -188,12 +176,15 @@ def train(
 
   optimizer, schedule = trn_utils.get_optimizer(configs)
 
-  # There is no test stream: computing a test loss would cost host memory (its own Grain workers) and time.
+  # Validation windows are read in this process (no Grain workers), only when the validation loss is computed.
+  validation_dataset = None
+  if configs.validation is not None:
+    validation_dataset = dataloader_utils.get_validation_dataset(configs, dataset)
+    logger.info(f"Validation on {len(validation_dataset)} batches per process every "
+                f"{configs.validation.interval_steps} steps.")
   train_stream = dataloader_utils.get_dataset_stream(
     configs=configs,
     dataset=dataset,
-    climatology=climatology,
-    anomaly_std=anomaly_std,
     seed=configs.seed,
     grain_runtime=grain_runtime,
   )
@@ -204,7 +195,7 @@ def train(
   latest_step = 0
   params = trn_utils.get_params(
     lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
-    train_iterator,
+    dataloader_utils.get_init_sample(configs, dataset),
     configs,
   )
   device_mesh = trn_utils.make_batch_mesh()
@@ -268,6 +259,34 @@ def train(
 
     return updated_params, next_opt_state, loss_and_diagnostics
 
+  @jax.jit
+  def eval_step(params, data, static_data):
+    loss_and_diagnostics = shard_map(
+      loss_fn.apply,
+      mesh=device_mesh,
+      in_specs=(P(), P("batch"), None),
+      out_specs=P("batch"),
+      check_rep=False,
+    )(params, data, static_data)
+    return jax.tree_util.tree_map(jax.numpy.mean, loss_and_diagnostics)
+
+  def validate(params) -> JAXLossAndDiagnostics:
+    """Mean loss and diagnostics over the validation batches (all of the same size)."""
+    # A thread pool and buffer of its own, in this process: read_threads windows are read ahead (Grain submits at most
+    # prefetch_buffer_size reads at a time), and the pool is shut down after the last batch.
+    threads = configs.validation.read_threads
+    read_options = grain.ReadOptions(num_threads=threads, prefetch_buffer_size=threads)
+    iterator = iter(validation_dataset.to_iter_dataset(read_options=read_options))
+    metrics = []
+    try:
+      for _ in range(len(validation_dataset)):
+        batch = dataloader_utils.next_batch_on_device(iterator, device_mesh=device_mesh)
+        with jax.sharding.set_mesh(device_mesh):
+          metrics.append(eval_step(params, batch, static_data))
+    finally:
+      iterator.close()
+    return jax.tree_util.tree_map(lambda *values: jax.numpy.mean(jax.numpy.stack(values)), *metrics)
+
   mp_prefetch = train_stream.options.multiprocessing_options is not None
   compiled_train_step = None
   for current_step in range(latest_step, training_steps):
@@ -298,6 +317,16 @@ def train(
     )
     checkpoint_end = time.perf_counter()
     tb_logger.log(current_step, train_metrics, lr=schedule(current_step))
+    if validation_dataset is not None and (
+      (current_step + 1) % configs.validation.interval_steps == 0 or current_step + 1 == training_steps
+    ):
+      validation_start = time.perf_counter()
+      validation_metrics = jax.block_until_ready(validate(params))
+      tb_logger.log(current_step, validation_metrics, prefix="valid")
+      logger.info(
+        f"Step {current_step} validation: loss {validation_metrics[0].item():.5f}, "
+        f"{time.perf_counter() - validation_start:.1f} s"
+      )
     # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
     step_end = time.perf_counter()
     logger.info(

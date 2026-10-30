@@ -21,7 +21,7 @@ import click
 import gmsh
 import seamsh
 
-from graphcast.cli_utils import Configs
+from graphcast import cli_utils
 from graphcast.geospatial_mesh_utils import (
   CompositeMeshSizeField,
   StereoMeshSizeField,
@@ -29,6 +29,7 @@ from graphcast.geospatial_mesh_utils import (
   load_domain,
 )
 from graphcast.gis_utils import CRSRegistry
+from graphcast.mesh_config import MeshGenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +58,7 @@ logger = logging.getLogger(__name__)
   default=False,
   is_flag=True,
 )
-@click.option(
-  "--log-level",
-  default="info",
-  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
-)
+@cli_utils.LOG_LEVEL_OPTION
 def make_ocean_mesh(
   config_path: pathlib.Path,
   output_path: pathlib.Path,
@@ -69,70 +66,47 @@ def make_ocean_mesh(
   overwrite: bool = False,
   log_level: str = "info",
 ):
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
+  """Mesh the ocean bounded by the coastline of CONFIG_PATH and write it, with its mesh size fields, to OUTPUT_PATH."""
+  cli_utils.configure_logging(log_level)
+  # Invalid settings and an existing output fail before meshing.
+  configs = cli_utils.read_configs(config_path, schema=MeshGenerationConfig)
+  if output_path.exists() and not overwrite:
+    raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
+  logger.info(f"Using settings: {configs!r}")
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  write_ocean_mesh(configs, output_path, data_path)
 
+
+def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, data_path: pathlib.Path | None) -> None:
+  """Mesh the domain with seamsh and gmsh, and write the mesh with one view per mesh size field (and their minimum)."""
+  # gmsh needs to be initialized before most seamsh functions can be used.
   if not gmsh.is_initialized():
     logger.info("Initialize gmsh.")
     gmsh.initialize()
-
-  # Open the configuration file and load the TOML configs.
-  configs = Configs.read(config_path)
-
-  # If the destination exists and should not overwrite, raise and exit.
-  if output_path.exists() and not overwrite:
-    raise ValueError(f"Output destination {output_path} already exists")
-
-  if not output_path.parent.exists():
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-  # gmsh needs to be initialized before most seamsh functions can be used, so we do it here.
-  # FIXME: These should be read from the config file.
-  gmsh.option.setNumber("General.Verbosity", 2)
-  gmsh.option.setNumber("PostProcessing.SaveMesh", 1)
-  gmsh.option.setNumber("Mesh.Algorithm", 6)
-  gmsh.option.setNumber("Mesh.MshFileVersion", 4.1)
+  gmsh.option.setNumber("General.Verbosity", configs.gmsh.verbosity)
+  gmsh.option.setNumber("Mesh.Algorithm", configs.gmsh.algorithm)
+  gmsh.option.setNumber("Mesh.MshFileVersion", configs.gmsh.msh_file_version)
   # Create a new model and set license and description attributes
-  model_name = configs.get("model_name", "OceanMesh")
-  gmsh.model.add(model_name)
-  if mesh_license := configs.get("license"):
-    gmsh.model.setAttribute("license", [mesh_license])
-  if mesh_description := configs.get("description"):
-    gmsh.model.setAttribute("description", [mesh_description])
-  if (domain_path := pathlib.Path(configs.get("domain.filepath"))) is None:
-    raise ValueError("Domain filepath must be specified in the config file.")
+  gmsh.model.add(configs.model_name)
+  if configs.license:
+    gmsh.model.setAttribute("license", [configs.license])
+  if configs.description:
+    gmsh.model.setAttribute("description", [configs.description])
+  domain_path = pathlib.Path(configs.domain.filepath)
   if data_path is not None:
     domain_path = data_path / domain_path
   logger.info("Loading and coarsening boundary.")
-  # Default values assume that the field name in the shapefile is "featurecla", and that the curve type is "bspline".
   domain = load_domain(
-    domain_path,
-    physical_name_field=configs.get("domain.physical_name_field", "featurecla"),
-    curve_type=configs.get("domain.curve_type", "bspline"),
+    domain_path, physical_name_field=configs.domain.physical_name_field, curve_type=configs.domain.curve_type
   )
-  # Default values assume that the point (0.0, 0.0) in stereographic coordinates is within the domain.
   boundary = coarsen_boundaries(
     domain,
-    configs.get("coarsen_boundaries.mesh_size"),
-    x0=configs.get("coarsen_boundaries.x0", (0.0, 0.0)),
-    x0_projection_name=configs.get("coarsen_boundaries.x0_projection", "stereographic"),
+    configs.coarsen_boundaries.mesh_size,
+    x0=configs.coarsen_boundaries.x0,
+    x0_projection_name=configs.coarsen_boundaries.x0_projection,
   )
-  # Build mesh size field
-  fields_config = configs.get("fields", [])
-  if not fields_config:
-    raise ValueError("At least one field must be specified in the config file.")
-  mesh_size = CompositeMeshSizeField(fields_config, prefix=data_path)
-  # Mesh using seamsh
-  seamsh.gmsh.mesh(
-    boundary,
-    mesh_size,
-    output_srs=CRSRegistry["cartesian"],
-    smoothness=configs.get("mesh.smoothness", 0.3),
-  )
+  mesh_size = CompositeMeshSizeField(configs.fields, prefix=data_path)
+  seamsh.gmsh.mesh(boundary, mesh_size, output_srs=CRSRegistry["cartesian"], smoothness=configs.mesh.smoothness)
   # Compute and add view containing mesh size field(s), finally save results
   node_tags, node_coords, _ = gmsh.model.mesh.getNodes(includeBoundary=True)
   node_coords = node_coords.reshape(-1, 3)
@@ -140,19 +114,21 @@ def make_ocean_mesh(
 
   def write_model_data(view_tag_name: str, field: StereoMeshSizeField, append=False) -> None:
     mesh_size_at_nodes = field.mesh_size_3d(node_coords, projection=CRSRegistry["cartesian"])
-    mesh_size_at_nodes = mesh_size_at_nodes.tolist()
     view_tag = gmsh.view.add(view_tag_name)
     gmsh.view.addHomogeneousModelData(
       tag=view_tag,
       step=0,
-      modelName=model_name,
+      modelName=configs.model_name,
       dataType="NodeData",
       tags=node_tags,
-      data=mesh_size_at_nodes,
+      data=mesh_size_at_nodes.tolist(),
     )
+    # With PostProcessing.SaveMesh = 1 a view is written together with the whole mesh: only the first view (which
+    # creates the file) needs it. The appended views reference the same nodes by their tags, so without the option the
+    # file holds the mesh once instead of once per view.
+    gmsh.option.setNumber("PostProcessing.SaveMesh", 0 if append else 1)
     gmsh.view.write(view_tag, str(output_path), append=append)
 
-  view_tag_name = configs.get("view_tag_name", "MeshSize")
-  write_model_data(view_tag_name, mesh_size)
+  write_model_data(configs.view_tag_name, mesh_size)
   for field_name, field in mesh_size.fields.items():
     write_model_data(field_name, field, append=True)

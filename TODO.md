@@ -1,22 +1,20 @@
 # TODO list
 
 ## Core
-* Determine how many training steps would make sense based on GraphCast training schedule and dataset. **HIGH PRIORITY**
 * Make the training preemptible (e.g., check why Orbax is not detecting SIGTERM). **HIGH PRIORITY**
-* Fix retrieve shape does not match expected shape bug, and find out what causes recompilation. **HIGH PRIORITY**
-* Measure dataloader performance. **HIGH PRIORITY**
-* Implement the validation code. **HIGH PRIORITY**
 * Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
-* Use climatology instead of the averages for input and output normalizations. **HIGH PRIORITY**
-* Containerize code with Apptainer and using NVIDIA JAX Docker images. **HIGH PRIORITY**
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
-* Implement CLI and document train.slurm script the same way as for the other scripts (e.g., download_dataset.slurm). (Medium priority)
-* Debug PGLE, currently broken. (Medium priority) 
+* Investigate why PGLE makes no optimization (empty profile: "Found 0 instructions from the profile"), probably a bug;
+  now that training is compute bound it may pay off. Hints:
+  https://docs.nvidia.com/jax-toolbox/performance-profiling/pgle-profile-guided-latency-estimation (Medium priority)
+* Run the Grain profiler (execution summary per stage) for the store layouts (zarr v2, v3, their SquashFS images) and
+  add it to the benchmark reports. The loader no longer limits training, so this is for comparison, not tuning.
+  (Low priority)
 * Simplify SLURM scripts by forwarding arguments to Python CLI, without building flags using getopt. (Medium priority)
 * Change implementation to directly save JAX arrays instead of converting them to numpy arrays before passing them to the Orbax checkpointing API. **HIGH PRIORITY**
 * Check if checkpointing rng data, and not rng JAX array, remove some of the warnings from Orbax. **HIGH PRIORITY**
@@ -25,13 +23,15 @@
 * Investigate training using large batch sizes, determine new learning rate. **HIGH PRIORITY**
 * Investigate why the compilation time increase with the number of JAX processes. **HIGH PRIORITY**
 * Check that tensorboard is logging asynchornously. **HIGH PRIORITY**
-* Check that artifacts contain only zero std residuals for sea ice variables. **HIGH PRIORITY**
-* Profile training loop memory usage using xprof/Tensorboard plugin. **HIGH PRIORITY**
+* Break down GPU memory by component (encoder, processor, decoder), e.g. with the xprof memory profile, and record
+  reference numbers. Indirect numbers from the memfit sweep (XLA plan against message passing steps, 50 levels,
+  `results/2026-10-29-memfit-alllevels`): up to 70 km the plan is flat at 50-57 GiB whatever the steps; edge chunks
+  cut the step-independent part from ~54 to ~35 GiB on the 120 km mesh (grid-mesh edge updates of encoder and
+  decoder); the processor costs ~1.2 GiB per step at 50 km, ~2 GiB at 35-40 km (with chunks), 5.6-5.8 GiB on the
+  fine mesh. **HIGH PRIORITY**
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
 * Add routines to check graph statistics (number of nodes, edges, degree, etc.). In particular, one should check that all grid nodes are connected to the processor. **HIGH PRIORITY** 
 * Check that accumulated variables in ARCO-OCEAN are consistent (e.g. they use the (t-24h, t) convention). **HIGH PRIORITY**
-* Debug currently broken multi-processing dataloader. **HIGH PRIORITY**
-* Fix probably-broken DASK scripts (e.g., stats) with new `get_distributed_logger`/`set_up_root_distributed_logger`. (Medium priority)
 * Add logging settings to training toml config file. (Medium priority)
 * Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
 * Investigate why JAX initialization gets logged twice, on stdout and stderr, in training.py. (Low priority)
@@ -39,7 +39,6 @@
 * Make the model serializable and save along other data (e.g., mesh info). (Medium priority)
 * Solve protobuf gencode warnings. (Medium priority)
 * Implement a script that produces a shapefile with an equilateral triangle with some edge length at the south pole, then use the `geospatial_mesh.py` functions to produce a mesh pretending that was the coastline. Then vary the edge length and check the mesh quality metrics, one should see some peaks corresponding to geodetic polyhedra. (Low priority)
-* Port download dataset script to zarr3. (Low priority)
 * Refactor code base to have a `models` module, move the `model.py` and all global ocean related code to a model-specific module. Update `pyproject.toml` accordingly. (Low priority)
 * Revise older code to use Python logging properly and check that expensive format strings are not interpolated. (Low priority)
 
@@ -54,13 +53,24 @@
 * Run all notebooks on Leonardo using papermill, validate results. (Low priority)
 * Download a reduced-resolution version of the ARCO-OCEAN and update to AWS. (Medium priority)
 * Integrate and revise notebooks to explain details of mesh generation. (Medium priority)
-* Choose a test suite (e.g. Pytest), update original codebase tests (using abseil/unittest), and add tests for the new code. Implement CI using GitHub actions. (Low priority)
+* Port the original codebase tests (abseil/unittest, probably broken) to pytest, adopted for new code in `tests/`. Add pytest to the image. Implement CI using GitHub actions. (Low priority)
 * Add animation and plot routines to `plot_utils.py`. (Low priority)
-* Document `--add-spack-mirrors` in `clusters/leonardo/environment/setup.sh`, check that other users are able to
-  reproduce environment creation. (Low priority)
 * Merge into main branch. (Low priority)
 * Most of the documentation is missing or outdated, fix it. (Low priority)
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
+
+## Done
+* Number of training steps: estimated from GraphCast's schedule and the dataset (about 100-200 epochs), see
+  `configs/training/production_run.toml` and the 29 Oct report (30 Oct 2026).
+* Shape mismatch on retrieval and recompilation: not reproduced with the current code and tests (30 Oct 2026).
+* Dataloader performance measured (JUBE loader sweep at 50 levels, all store layouts and Grain settings): compute
+  bound (29 Oct 2026).
+* Validation loss on held-out windows during training (29 Oct 2026).
+* Normalization with climatology and anomaly_std: standardized anomaly stores (`graphcast download`, PR #1).
+* Apptainer image from the NVIDIA JAX container (before the ESiWACE JUPITER hackathon).
+* Train script: CLI and documentation (`clusters/jupiter/slurm/train.slurm`, `scripts/train.sh`).
+* Multiprocessing dataloader (Grain workers reopen the store).
+* Zarr v3: the downloader writes zarr v2 and sharded zarr v3 stores.
 
 ## Long-term goals
 
@@ -84,6 +94,7 @@
 
 ## Completed tasks
 
+* ~~Read the single standardized anomaly dataset written by `graphcast download` in the dataloader, instead of dataset, climatology and anomaly_std; write the training mask with `graphcast download-mask`.~~ **DONE**
 * ~~Replace learnable Fourier features with fixed $\sin$ and $\cos$ encodings using concatenation.~~ **DONE**
 * ~~Streamline dataset downloading and post-processing, in particular the download-and-postprocess then
   merge-and-postprocess workflow should be implemented as a single operation.~~ **DONE, now in a separate package:

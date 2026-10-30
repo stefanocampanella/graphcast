@@ -1,8 +1,9 @@
-# Short training run demonstrating that the model trains: configs/training/full.toml with 5000 steps and the
-# learning rate schedule scaled to them (500 warmup steps, cosine decay to step 5000).
+# Short training run demonstrating that the model trains: production_run.toml with 5000 steps, the learning rate
+# schedule scaled to them (500 warmup steps, cosine decay to step 5000), the coarse mesh and 8 message passing steps
+# (the baseline that clusters/jupiter/slurm/mesh_study.sh varies).
 description = """
   GraphCast model for the ocean at 0.25deg resolution, \
-  10 depth levels, and a full set of atmospheric and hydrological forcing variables. \
+  50 depth levels and sea ice, forced by atmospheric variables and river discharge. \
   This model is trained on ARCO-OCEAN data from 01-01-1993 to 30-06-2019, \
   and can be causally evaluated on later years. \
   It uses a global ocean mesh with uniform target mesh size of 120 km. \
@@ -24,36 +25,39 @@ training_steps = 5_000
 seed = 42
 
 [task]
+# State at the input time; static fields are inputs too (as in GraphCast).
 input_variables = [
     "zos",
     "thetao",
-    "siconc",
-    "sithick",
     "so",
     "uo",
-    "usi",
     "vo",
+    "siconc",
+    "sithick",
+    "usi",
     "vsi",
+    "glorys_deptho",
+    "glorys_mask",
+    "glofas_mask",
+    "uparea",
+    "z",
+    "lsm",
     "year_progress_sin",
     "year_progress_cos",
 ]
-# Sea-ice variables look hard to forecast, we momentarily exclude them from forecasts and include them in forcings
 target_variables = [
     "zos",
     "thetao",
     "so",
     "uo",
     "vo",
-]
-forcing_variables = [
     "siconc",
     "sithick",
     "usi",
     "vsi",
-    "glorys_deptho",
-    "z",
-    "glorys_mask",
-    "lsm",
+]
+# Given at the target time: atmosphere and river discharge (waves are not used yet).
+forcing_variables = [
     "10u",
     "10v",
     "2d",
@@ -62,12 +66,13 @@ forcing_variables = [
     "ssrd",
     "strd",
     "tp",
+    "dis24",
     "year_progress_sin",
     "year_progress_cos",
 ]
-levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
+levels = "all"
 # Alternatives use original zero-based depth positions, independently per source:
-# levels = "all"
+# levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 # levels = { start = 0, stop = 8, step = 2 }  # Inclusive stop: 0, 2, 4, 6, 8.
 # Bounds may be omitted; step defaults to 1. Negative/reverse slices are unsupported.
 input_duration = "1d"
@@ -79,33 +84,36 @@ hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 # Grid nodes only for grid points connected by an edge (encoder senders, decoder receivers): the others only cost memory.
 connected_grid_nodes = true
-# The weights are chosen the same way as GraphCast here, with those of surface variables about equal to 1/num_levels
-# (except for 2m temperature?)
-per_variable_weights = {zos = 0.1, thetao = 1.0, so = 1.0, uo = 1.0, vo = 1.0}
+
+# Level weights sum to 1, so a volume variable's loss is about 1/50 of a surface variable's at 50 levels: weights of
+# 1/50 = 0.02 make each surface variable count as one volume variable. Change them with the number of levels.
+[model.per_variable_weights]
+zos = 0.02
+siconc = 0.02
+sithick = 0.02
+usi = 0.02
+vsi = 0.02
+thetao = 1.0
+so = 1.0
+uo = 1.0
+vo = 1.0
 
 [mesh]
-path = "/data/geometry/uniform_coarse.msh"
+path = "/data/geometry/uniform_120km.msh"
 mesh_size_tag_name = "MeshSize"
 step = 0
 
+# Boolean (lat, lon) mask written by graphcast download-mask (configs/download/mask.toml selects variable and level).
 [mask]
-path = "/data/dataset"
-name = "glorys_mask"
-level = 0
+path = "/data/mask"
 fill_value = 0.0
 
-[mask.read]
-engine = "zarr"
-
-# xarray.open_dataset options, independent of Grain's reader options below.
-# All four sources select task.levels; there are no per-artifact level settings.
-# Training currently requires chunks=None. TOML has no null, so omit chunks
-# from the read tables to use this default. Other values warn but are not overridden.
+# Standardized anomaly store written by graphcast download, read with TensorStore; task.levels are selected here and
+# in tendency_std.
 [dataset]
 path = "/data/dataset"
-
-[dataset.read]
-engine = "zarr"
+# TensorStore concurrency of file I/O and decoding, per process (each Grain worker has its own).
+io_threads = 16
 
 [grain_dataset]
 target_lead_times = "1d"
@@ -131,18 +139,8 @@ scan = true
 # Update edge sets with more edges in chunks of this many edges (0: off).
 edge_chunk_size = 0
 
-[climatology]
-path = '/data/climatology'
-
-[climatology.read]
-engine = "zarr"
-
-[anomaly_std]
-path = '/data/anomaly_std'
-
-[anomaly_std.read]
-engine = "zarr"
-
+# Standard deviation of the one-step tendencies (residual normalization), read with xarray.open_dataset (read table:
+# its options; training requires chunks=None, the default when chunks is omitted).
 [tendency_std]
 path = '/data/tendency_std'
 
@@ -171,3 +169,8 @@ weight_decay = 0.1
 max_to_keep=3
 # Saving every step (the default) costs time; save every 500 steps.
 save_interval_steps = 500
+
+# Validation loss on held-out windows after grain_dataset.split_date, the same windows in every run.
+[validation]
+interval_steps = 250
+num_samples = 128

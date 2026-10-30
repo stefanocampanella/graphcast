@@ -1,0 +1,21 @@
+# Standardized anomalies in Zarr v3: as zarr_v3_lexi.toml, with the chunks of each shard ordered by depth, then time.
+# zarr-python reads whole shards of these arrays (transpose codec before sharding); TensorStore reads single chunks.
+zarr_format = 3
+time_shard = 256
+depth_time_shard = 8
+subchunk_order = "colexicographic"
+# Dask threads hold about 8 GB of memory each; on a node with few cores use num_workers = 8 and io_threads = 16.
+num_workers = 16
+io_threads = 64
+
+# Time-dependent in the dataset but constant in fact: their first timestep is min-max normalized.
+static_variables = ["z", "lsm"]
+
+# Values outside the static mask of their source are 0 (a mask with depth masks variables without depth by its first
+# level); variables without a mask must be finite everywhere.
+[masks]
+glorys_mask = [
+    "thetao", "so", "uo", "vo", "zos", "siconc", "sithick", "usi", "vsi", "thetao_bottom", "so_bottom", "glorys_deptho",
+]
+waverys_mask = ["swh", "mwp", "mwd", "usd", "vsd", "waverys_deptho"]
+glofas_mask = ["dis24", "uparea"]

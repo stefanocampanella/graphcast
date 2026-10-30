@@ -23,8 +23,7 @@ METRICS = [
   "node_shm_peak[GB]", "gpu_mem_peak[GB]", "gpu_util[%]", "gpu_power[W]",
 ]
 CASE_KEYS = [
-  "experiment", "format", "workers", "threads", "zarr_pool", "zarr_conc", "nodes", "cpus", "levels", "mesh",
-  "msg_steps", "opt",
+  "experiment", "format", "workers", "threads", "io_threads", "nodes", "cpus", "mesh", "msg_steps",
 ]
 
 
@@ -79,7 +78,6 @@ def job_rows(root):
         host_alloc = max((float(size) for err in task_errs for size in HOST_OOM.findall(err)), default=None)
         steps = to_float(row["step_last"]) or 0
         target = int(re.search(r"(?m)^training_steps = (\d+)", bench).group(1))
-        fields = row["case"].split(":")
         mesh = re.search(r'(?m)^path = "/data/geometry/uniform_(\w+)\.msh"', bench)
         msg_steps = re.search(r"(?m)^gnn_msg_steps = (\d+)", bench)
         out = {
@@ -88,11 +86,9 @@ def job_rows(root):
           else "oom" if oom
           else "stopped" if steps >= 100 else "timeout" if row["status"] == "143" else "failed",
           "status": row["status"], "format": row["format"], "workers": row["num_workers"],
-          "threads": row["num_threads"], "zarr_pool": row["zarr_max_workers"], "zarr_conc": row["zarr_concurrency"],
-          "nodes": row["nodes"], "cpus": row["cpus_per_task"],
-          "levels": "all" if re.search(r'(?m)^levels = "all"', bench) else "10",
-          "mesh": mesh.group(1) if mesh else "", "msg_steps": msg_steps.group(1) if msg_steps else "",
-          "opt": fields[7] if len(fields) > 7 else "default", "rep": row["rep"], "steps": row["step_last"],
+          "threads": row["num_threads"], "io_threads": row["io_threads"], "nodes": row["nodes"],
+          "cpus": row["cpus_per_task"], "mesh": mesh.group(1) if mesh else "",
+          "msg_steps": msg_steps.group(1) if msg_steps else "", "rep": row["rep"], "steps": row["step_last"],
           "gpu_alloc_GiB": f"{gpu_alloc:g}" if gpu_alloc else "",
           "host_alloc_GiB": f"{host_alloc:g}" if host_alloc else "",
         }
@@ -128,9 +124,9 @@ def main(root):
     outcomes[job["outcome"]] = outcomes.get(job["outcome"], 0) + 1
   print(f"{len(jobs)} jobs {outcomes}, {len(cases)} cases")
   for job in jobs:
-    if job["outcome"] not in ("ok", "stopped", "gpu_oom", "host_oom", "timeout") and not (job["outcome"] == "oom" and job["levels"] == "all"):
+    if job["outcome"] not in ("ok", "stopped", "gpu_oom", "host_oom", "oom", "timeout"):
       print(f"  check: {job['experiment']} wp {job['wp']} {job['format']} {job['workers']}x{job['threads']} "
-            f"{job['opt']}: {job['outcome']} status {job['status']} steps {job['steps']}")
+            f"io {job['io_threads']}: {job['outcome']} status {job['status']} steps {job['steps']}")
 
 
 if __name__ == "__main__":

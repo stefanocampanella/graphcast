@@ -2,6 +2,8 @@
 name = "graphcast"
 version = "0.1"
 dependencies = [
+    # crt: credentials from `aws login` sessions, read by s3fs
+    "botocore[crt]",
     "cartopy >= 0.25.0",
     "cftime",
     "chex",
@@ -9,6 +11,7 @@ dependencies = [
     "dask",
     "dm-haiku",
     "dm-tree",
+    "fsspec",
     # Should be kept in sync with version used in spack containerize
     "gdal-utils == 3.13.1 ; sys_platform == 'linux'",
     "gdal[numpy] == 3.13.1 ; sys_platform == 'linux'",
@@ -35,6 +38,8 @@ dependencies = [
     "pyproj",
     "rich",
     "rtree",
+    # Without a lower bound, pip resolves botocore[crt] to a version aiobotocore rejects and falls back to s3fs 0.4
+    "s3fs >= 2026.9.0",
     "scipy",
     "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
     "tensorboard",
@@ -43,6 +48,7 @@ dependencies = [
     "trimesh",
     "treescope",
     "xarray",
+    "xarray-tensorstore",
     "xprof",
     "zarr",
 ]
@@ -66,12 +72,28 @@ graphcast = "graphcast:cli"
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
+[dependency-groups]
+dev = ["pytest >= 9"]
+
 [build-system]
 requires = ["setuptools (>= 67.0)"]
 build-backend = "setuptools.build_meta"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Test the sources, not the copy of the package installed in the image.
+pythonpath = ["src"]
+addopts = ["--import-mode=importlib"]
+filterwarnings = [
+    # Stores of the downloader are written and read with consolidated metadata in Zarr v3 too.
+    "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification",
+    # zarr-python reads and writes whole shards of colexicographic arrays (transpose codec before sharding).
+    "ignore:Combining a `sharding_indexed` codec disables partial reads",
+]
+
 [tool.ruff]
 indent-width = 2
+line-length = 120
 
 [tool.ruff.format]
 indent-style = "space"

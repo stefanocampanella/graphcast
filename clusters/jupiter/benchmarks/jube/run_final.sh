@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Submit the final benchmark experiments (1024 steps per job, two repetitions) into results/<date>-<name>/.
-# Each experiment is one JUBE run directory, named <study>-<data>-<variant>:
-#   io-*     data loading: format, Grain and zarr settings, CPUs, nodes (10 levels), memory at all levels
-#   xla-*    XLA/JAX optimization settings (opt_env) with the fastest loader, 8 and 16 message passing steps
-#   model-*  model size: coarse mesh, 8 to 16 message passing steps, processor in a scan (default) and unrolled
-# Settings of configs/training/full.toml: processor in a scan, nothing offloaded; "-offload" variants offload the
-# named activations (tag offload). GPU memory limits of larger meshes: run_memfit.sh.
+# Each experiment is one JUBE run directory, all at the 50 depth levels of configs/training/production_run.toml:
+#   loader      store layouts and SquashFS images x Grain workers and threads
+#   io_threads  TensorStore I/O threads per reader, on the baseline zarr_v2 4x2
+#   cpus        8 and 72 CPUs per task
+#   scaling     1, 2 and 4 nodes
+# Coarse mesh and 8 message passing steps; otherwise the settings of production_run.toml: processor in a scan, nothing
+# offloaded. GPU memory limits of larger meshes:
+# run_memfit.sh.
 # Usage: ./run_final.sh [DATE [NAME]]   (run from this directory; DATE defaults to today, NAME to "final")
 set -euo pipefail
 DATE=${1:-$(date +%F)}
@@ -13,15 +15,10 @@ ROOT="results/$DATE-${2:-final}"
 mkdir -p "$ROOT"
 
 EXPERIMENTS=(
-    "io-10levels                     format grain zarr cpus scaling"
-    "io-alllevels-smallbuffers       lowmem all_levels small_buffers"
-    "io-alllevels-smallbuffers-offload lowmem all_levels small_buffers offload"
-    "io-alllevels-workers            workers all_levels"
-    "io-alllevels-workers-offload    workers all_levels offload"
-    "xla-coarse-msg8                 opt"
-    "xla-coarse-msg16                opt msg16"
-    "model-coarse-msg8to16           model"
-    "model-coarse-msg8to16-unrolled  model unrolled"
+    "loader      loader"
+    "io_threads  io_threads"
+    "cpus        cpus"
+    "scaling     scaling"
 )
 
 {
