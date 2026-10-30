@@ -84,7 +84,6 @@ def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, d
     logger.info("Initialize gmsh.")
     gmsh.initialize()
   gmsh.option.setNumber("General.Verbosity", configs.gmsh.verbosity)
-  gmsh.option.setNumber("PostProcessing.SaveMesh", 1)
   gmsh.option.setNumber("Mesh.Algorithm", configs.gmsh.algorithm)
   gmsh.option.setNumber("Mesh.MshFileVersion", configs.gmsh.msh_file_version)
   # Create a new model and set license and description attributes
@@ -124,6 +123,10 @@ def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, d
       tags=node_tags,
       data=mesh_size_at_nodes.tolist(),
     )
+    # With PostProcessing.SaveMesh = 1 a view is written together with the whole mesh: only the first view (which
+    # creates the file) needs it. The appended views reference the same nodes by their tags, so without the option the
+    # file holds the mesh once instead of once per view.
+    gmsh.option.setNumber("PostProcessing.SaveMesh", 0 if append else 1)
     gmsh.view.write(view_tag, str(output_path), append=append)
 
   write_model_data(configs.view_tag_name, mesh_size)

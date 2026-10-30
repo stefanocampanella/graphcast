@@ -364,6 +364,9 @@ def read_mesh(
   mesh_path = pathlib.Path(mesh_path)
   if not mesh_path.exists():
     raise ValueError(f"Input path {mesh_path} does not exist")
+  # gmsh.open creates a new model but keeps the views of the files opened before, so the view looked up by name below
+  # could belong to another mesh (whose node tags do not match: KeyError). Start from an empty state instead.
+  gmsh.clear()
   gmsh.open(str(mesh_path.absolute()))
 
   # Get all nodes

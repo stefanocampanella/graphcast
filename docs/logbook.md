@@ -640,3 +640,19 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Duplicated mesh:** each field view after the first is appended with the whole mesh again, so `.msh` files hold
     it twice.
   - **Reader:** reading a second mesh in the same process fails (gmsh state).
+- **Request:** fix the two mesh I/O bugs, with comments explaining the changes.
+
+  **Experiment** (synthetic coastline, two fields):
+  - **The writer:** with `PostProcessing.SaveMesh = 1`, every `gmsh.view.write` also writes the mesh, 3 copies for 3
+    views. Writing the first view with the mesh and appending the others without it gives one copy: 99 KB against
+    234 KB, with the same data read back. `gmsh.write` with `SaveMesh = 0` writes no mesh at all, and adds a view of
+    seamsh's own (`tri`).
+  - **The reader:** `gmsh.open` keeps the views of earlier files (6 were left after one read), and `read_mesh` takes
+    the first view with the name. `gmsh.clear()` before opening fixes it.
+
+  **Change:**
+  - **Writer:** `write_ocean_mesh` sets `SaveMesh` per view (1 for the first, 0 for the appended ones).
+  - **Reader:** `read_mesh` calls `gmsh.clear()` before `gmsh.open`.
+  - **Tests:** two new tests (one `$Nodes` section with every view readable; three meshes read in sequence). Both
+    fail on the previous code. 173 tests pass.
+  - **Real data:** the existing two-copy files (120 km, 50 km, 120 km again) read correctly in one process.

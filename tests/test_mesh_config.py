@@ -173,3 +173,43 @@ def test_invalid_config_is_a_click_error(coastline):
   result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--data-path", str(coastline)])
   assert result.exit_code != 0 and "Invalid configuration" in result.output
   assert not output.exists()
+
+
+SHORE_FIELD = (
+  '[[fields]]\nname = "shore_proximity"\nfilepath = "coast.shp"\ncurve_type = "polyline"\nsampling = 50_000.0\n'
+  "field_min = 0.0\nfield_max = 3_000_000.0\nsize_min = 500_000.0\nsize_max = 2_000_000.0\n"
+)
+
+
+def _mesh(coastline: pathlib.Path, name: str, extra: str = "") -> pathlib.Path:
+  """Mesh the synthetic coastline with the test settings (plus extra TOML), into coastline / name.msh."""
+  config = _write_config(coastline / f"{name}.toml", extra=extra)
+  output = coastline / f"{name}.msh"
+  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--data-path", str(coastline)])
+  assert result.exit_code == 0, result.output
+  return output
+
+
+def test_the_mesh_is_written_once(coastline):
+  """With two fields (a view each, plus their minimum) the file holds the mesh once, and every view reads back."""
+  output = _mesh(coastline, "two_fields", extra=SHORE_FIELD)
+  assert sum(line.strip() == b"$Nodes" for line in output.open("rb")) == 1
+  sizes = {}
+  for name in ("MeshSize", "uniform", "shore_proximity"):
+    mesh_size = read_mesh_data(output, gmsh_verbosity=0, mesh_size_tag_name=name).mesh_size
+    assert mesh_size is not None
+    sizes[name] = mesh_size
+  np.testing.assert_allclose(sizes["uniform"], 1_000_000.0)
+  np.testing.assert_allclose(sizes["MeshSize"], np.minimum(sizes["uniform"], sizes["shore_proximity"]))
+
+
+def test_meshes_are_read_one_after_the_other(coastline):
+  """Reading a mesh does not pick up the views of a mesh read before it, which have other node tags."""
+  first = _mesh(coastline, "first")
+  second = _mesh(coastline, "second", extra=SHORE_FIELD)
+  for path in (first, second, first):
+    mesh_data = read_mesh_data(path, gmsh_verbosity=0)
+    assert mesh_data.mesh_size is not None
+    assert len(mesh_data.mesh_size) == len(mesh_data.mesh_graph.vertices)
+  # The first mesh, read last, still has its own (uniform) sizes, not those of the second.
+  np.testing.assert_allclose(mesh_data.mesh_size, 1_000_000.0)

@@ -358,11 +358,12 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - **Tests:** `tests/test_mesh_config.py` validates the shipped configs (and that uniform ones name their size) and
   meshes a synthetic coastline (a ring at 70°S, 1000 km, 0.5 s).
 - **Reproducibility:** regenerating `uniform_120km` with the current code gives identical vertices and triangles.
-- **Known issues:**
-  - each extra field view is appended with the whole mesh again, so files hold the mesh twice;
-  - `read_mesh_data` swapped description and license until 30 Oct 2026, so models saved before then carry them
-    swapped;
-  - reading a second mesh in the same process fails with a `KeyError` (gmsh state is not cleared).
+- **Fixed on 30 Oct 2026:**
+  - `write_ocean_mesh` wrote the whole mesh with every view (`PostProcessing.SaveMesh = 1`); now only with the first.
+    Files written before then hold the mesh once per view (twice for the uniform meshes): they still read correctly.
+  - `read_mesh_data` swapped description and license, so models saved before then carry them swapped.
+  - `read_mesh` reused the views of meshes read before (`gmsh.open` keeps them), so reading a second mesh in the same
+    process failed with a `KeyError`; it calls `gmsh.clear()` first.
 - **Naming:** uniform meshes are named by their target size in km (`uniform_120km` was `uniform_coarse` until 30 Oct
   2026). `data/geometry/uniform_coarse.msh` is a symlink to `uniform_120km.msh` for the main checkout; remove it
   after the PR is merged. Each `.msh` stores the size field it was made with (views `MeshSize` and one per field) and
