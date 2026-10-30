@@ -704,3 +704,27 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - `push_checkpoint` converts the metrics with `.item()` every step, but Orbax uses them only on save steps.
   - `TensorboardLogger.log` converts them on every process, but only process 0 writes.
   - The other numpy conversions are needed (the Grain worker gather, `save_model`'s format).
+- **2026-10-31 00:32 Experiment:** loop variants (jobs 2603156/2603157, 1 node, two runs each on the same node).
+
+  **Throughput** (s per step after warm-up):
+
+  | Variant | 120 km × 8 | vs baseline | 50 km × 16 | vs baseline |
+  |---|---|---|---|---|
+  | `baseline` | 0.4487 / 0.4489 | — | 1.2680 / 1.2675 | — |
+  | `no_tb` | 0.4376 / 0.4527 | −0.8 % | 1.2612 / 1.2720 | −0.1 % |
+  | `no_sync` | 0.4430 / 0.4462 | −0.9 % | 1.2616 / 1.2659 | −0.3 % |
+  | `deferred` | 0.4374 / 0.4381 | −2.5 % | 1.2349 / 1.2332 | −2.7 % |
+
+  **Losses:** two runs of the same baseline agree exactly on only 63 % / 91 % of steps (relative difference up to
+  5e-3: GPU non-determinism of the step). The variants differ from the baseline by no more (at most 2.8e-3), so they
+  train equivalently.
+- **Insight:**
+  - **Logging and syncing alone are within run-to-run noise:** dropping TensorBoard logging, or the waits with
+    TensorBoard still logging each step, saves at most about 1 %.
+  - **The gain comes from overlap.** Deferring the logging of step n until step n+1 is dispatched lets the next batch
+    be fetched and copied to the GPUs while a step runs.
+  - **Per step** that saves 11 ms (120 km) and 34 ms (50 km), out of about 49 and 52 ms of host work. Part of it
+    stays exposed on the short 120 km step, probably the copy of the 5.7 GB batch competing with compute.
+  - **For the production run** (50 km × 16, 40,000 steps, about 15.6 h): about 25 minutes, or 3.4 node-hours on 8
+    nodes.
+  - **Cost:** the per-part timings (data, compute, checkpoint) can no longer be separated, and JUBE parses them.
