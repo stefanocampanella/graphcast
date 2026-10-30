@@ -35,8 +35,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   ...` (demo_5000 on 8 nodes per case and seed, validation loss on held-out windows; jobs use the checkout's `src`).
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run graphcast_training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
-  Everything runs at all 50 levels (`full.toml`); cases are `format:workers:threads:io_threads:nodes:cpus` (baseline
-  `zarr_v2:4:2:16:1:72`), sweeps `loader` (6 layouts × 0x4 to 8x2), `io_threads`, `cpus`, `scaling`, `memfit`; jobs
+  Everything runs at all 50 levels (`production_run.toml`, coarse mesh × 8 steps unless a tag says otherwise); cases
+  are `format:workers:threads:io_threads:nodes:cpus` (baseline `zarr_v2:4:2:16:1:72`), sweeps `loader` (6 layouts × 0x4 to 8x2), `io_threads`, `cpus`, `scaling`, `memfit`; jobs
   use the `src` of the checkout JUBE runs from. `run_final.sh` (loader, io_threads, cpus, scaling, `long`) /
   `run_memfit.sh` submit the standard experiments; `summarize.py RESULTS_DIR` writes the CSVs. Earlier results
   (10 levels, previous dataloader) are not comparable. Results of 29 Oct 2026 (`results/2026-10-29-alllevels`,
@@ -238,7 +238,7 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
 - Training check (28 Oct 2026, job 2568724, 60 steps, 1 node): residuals / tendency_std with per-variable loss masks
   train (loss 0.73 → 0.49, every target variable −30–40%); data wait 0.021 s, compute 0.385 s per step; XLA memory
   49.2 GiB per GPU (47.1 GiB with the single mask: per-variable masks are larger arrays).
-- Training check at 50 levels with the `full.toml` variables (29 Oct 2026, job 2576513, 60 steps, 1 node, 4 Grain
+- Training check at 50 levels with the `production_run.toml` (then `full.toml`) variables (29 Oct 2026, job 2576513, 60 steps, 1 node, 4 Grain
   workers x 2 threads): loss 0.259 → 0.146; volume variables report ~0.03 (level-weighted), surface ones 1.0–2.1, and
   with the 0.02 weights both groups contribute about equally (0.14 / 0.12). Data 0.041 s, compute 0.397 s per step
   (10 levels: 0.385 s); XLA memory 54.2 GiB per GPU; MaxRSS 18 GB per task.
@@ -295,7 +295,8 @@ Preliminary (27 Oct 2026, login node with a 20-core quota, short runs, throwaway
 
 ## Architecture
 
-**Configuration.** Training is driven by a TOML file (`configs/training/full.toml`; `demo_5000.toml` is a
+**Configuration.** Training is driven by a TOML file (`configs/training/production_run.toml`, the best configuration:
+50 km mesh × 16 message passing steps, 40,000 steps, validation; `demo_5000.toml` is a
 5000-step demo on 8 nodes) validated by pydantic models in `training_config.py` (`TrainingConfig` with sections
 task, model, mesh, mask, dataset, grain_dataset, normalization, policy, optimizer, checkpoints, …). Paths in the
 TOML are container paths (`/data/...`). Grain worker/buffer settings come from `GRAPHCAST_GRAIN_*` environment

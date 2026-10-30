@@ -19,7 +19,7 @@ from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_cont
 from graphcast.downloader import compute_tendency_std
 from graphcast.training_config import MaskConfig, SourceConfig, TrainingConfig
 
-FULL_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "full.toml"
+PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 # Task levels: zero-based depth positions in a non-sorted order, to check that the order is kept.
 LEVELS = [2, 0]
 
@@ -96,7 +96,7 @@ def test_pickled_source_reopens_the_store(source):
 @pytest.fixture
 def training_configs(standardized_path) -> TrainingConfig:
   """The full training config, with the synthetic store and its variables."""
-  configs = cli_utils.read_configs(FULL_CONFIG)
+  configs = cli_utils.read_configs(PRODUCTION_CONFIG)
   configs["dataset"] = {"path": standardized_path, "io_threads": 2}
   configs["task"].update(
     # Static fields are inputs, as in the shipped configs.
@@ -111,7 +111,7 @@ def training_configs(standardized_path) -> TrainingConfig:
 
 def test_shipped_training_configs_are_valid():
   """The training configs validate and read the store and mask bound by scripts/train.sh."""
-  for path in FULL_CONFIG.parent.glob("*.toml"):
+  for path in PRODUCTION_CONFIG.parent.glob("*.toml"):
     configs = cli_utils.read_configs(path, schema=TrainingConfig)
     assert configs.dataset.path == "/data/dataset"
     assert configs.mask.path == "/data/mask"
@@ -170,8 +170,9 @@ def test_validation_windows_are_held_out_and_evenly_spaced(
 def test_validation_needs_enough_held_out_windows(training_configs):
   """More validation windows than the held-out period has are an error, as is a missing [validation] section."""
   dataset = dataloader_utils.get_dataset(training_configs)
+  without = TrainingConfig.model_validate({**training_configs.model_dump(), "validation": None})
   with pytest.raises(ValueError, match="No \\[validation\\]"):
-    dataloader_utils.get_validation_dataset(training_configs, dataset)
+    dataloader_utils.get_validation_dataset(without, dataset)
   configs = TrainingConfig.model_validate({**training_configs.model_dump(), "validation": {"num_samples": 4}})
   with pytest.raises(ValueError, match="held-out period has 3"):
     dataloader_utils.get_validation_dataset(configs, dataset)

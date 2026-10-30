@@ -553,3 +553,17 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - storage layout and S3 access.
 
   It also lists the conventions adopted here.
+- **Request:** rename `configs/training/full.toml` to `production_run.toml`, set its defaults to the best
+  configuration, and update every reference.
+
+  **Change:**
+  - **Defaults:** `production_run.toml` uses the 50 km mesh with 16 message passing steps (the best value of the mesh
+    study; its comment names 40 km × 16 as the lower-loss alternative). It keeps 40,000 steps and validation.
+  - **`demo_5000.toml`:** stays coarse × 8, as the cheap baseline that `mesh_study.sh` varies.
+  - **JUBE:** it already substitutes mesh and message passing steps, so it still benchmarks coarse × 8. Only its
+    config source and comments changed.
+  - **References updated:** the test, CLAUDE.md, the JUBE README and scripts, the slides (recommended configuration
+    and material links, with `zarr_v3_lexi`), the 29 Oct report and the shareable page.
+  - **Unchanged:** the 25 Oct report and earlier logbook entries keep the old name, as records.
+  - **Test fix:** the `[validation]` test now removes the section explicitly, since the shipped configs have one
+    (132 tests pass).

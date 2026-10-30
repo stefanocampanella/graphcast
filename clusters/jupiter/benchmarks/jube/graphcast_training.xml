@@ -10,8 +10,8 @@
         <tag name="memfit">GPU memory fit: uniform meshes from coarse (120 km) to fine (704078 nodes) with 8 to 16 message passing steps, zarr_v2 2x2</tag>
         <tag name="one_worker">memfit with 1 Grain worker x 2 threads instead of 2 x 2 (less host memory)</tag>
         <tag name="no_workers">memfit with Grain threads only (0 workers x 4 threads, no worker processes)</tag>
-        <tag name="fine">Use the fine mesh (uniform_fine.msh) instead of the coarse one of full.toml</tag>
-        <tag name="msg12">12 message passing steps (gnn_msg_steps) instead of the 8 of full.toml</tag>
+        <tag name="fine">Use the fine mesh (uniform_fine.msh) instead of the coarse one (the benchmark default)</tag>
+        <tag name="msg12">12 message passing steps (gnn_msg_steps) instead of 8 (the benchmark default)</tag>
         <tag name="msg16">16 message passing steps, as the original GraphCast</tag>
         <tag name="quick">One repetition of 30 steps instead of two of 60</tag>
         <tag name="long">1024 steps instead of 60 (more statistics), with a 3 hour time limit</tag>
@@ -27,7 +27,7 @@
 
         <!-- One value per case: format:grain_workers:grain_threads:io_threads:nodes:cpus_per_task.
              Tagged values are concatenated; the sweeps other than loader vary one factor around the baseline
-             zarr_v2:4:2:16:1:72 (the defaults of .env and full.toml). -->
+             zarr_v2:4:2:16:1:72 (the loader defaults of .env and production_run.toml when it ran). -->
         <parameterset name="case_set" duplicate="concat">
             <parameter name="case" tag="loader" mode="python">",".join(f"{f}:{w}:16:1:72"
                 for f in ("zarr_v2", "zarr_v3_lexi", "zarr_v3_colexi", "squashfs_v2", "squashfs_v3_lexi",
@@ -127,7 +127,7 @@
             <copy>train_bench.sbatch.in</copy>
             <copy>usage_sampler.sh</copy>
             <copy>usage_summary.py</copy>
-            <copy>${project_dir}/configs/training/full.toml</copy>
+            <copy>${project_dir}/configs/training/production_run.toml</copy>
         </fileset>
 
         <substituteset name="job_sub">
@@ -154,9 +154,10 @@
             <sub source="#USAGE_INTERVAL#" dest="$usage_interval"/>
         </substituteset>
 
-        <!-- The training configuration is the project's full.toml with benchmark overrides. -->
+        <!-- The training configuration is the project's production_run.toml with benchmark overrides (coarse mesh and 8
+             message passing steps unless a tag says otherwise). -->
         <substituteset name="config_sub">
-            <iofile in="full.toml" out="bench.toml"/>
+            <iofile in="production_run.toml" out="bench.toml"/>
             <sub source="(?m)^training_steps = [\d_]+" dest="training_steps = $steps" mode="regex"/>
             <sub source="(?m)^seed = \d+" dest="seed = $seed" mode="regex"/>
             <sub source='(?m)^path = "/data/geometry/[^"]*"' dest='path = "/data/geometry/$mesh_file"' mode="regex"/>

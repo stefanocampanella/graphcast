@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Submit the final benchmark experiments (1024 steps per job, two repetitions) into results/<date>-<name>/.
-# Each experiment is one JUBE run directory, all at the 50 depth levels of configs/training/full.toml:
+# Each experiment is one JUBE run directory, all at the 50 depth levels of configs/training/production_run.toml:
 #   loader      store layouts and SquashFS images x Grain workers and threads
 #   io_threads  TensorStore I/O threads per reader, on the baseline zarr_v2 4x2
 #   cpus        8 and 72 CPUs per task
 #   scaling     1, 2 and 4 nodes
-# Settings of configs/training/full.toml: processor in a scan, nothing offloaded. GPU memory limits of larger meshes:
+# Coarse mesh and 8 message passing steps; otherwise the settings of production_run.toml: processor in a scan, nothing
+# offloaded. GPU memory limits of larger meshes:
 # run_memfit.sh.
 # Usage: ./run_final.sh [DATE [NAME]]   (run from this directory; DATE defaults to today, NAME to "final")
 set -euo pipefail

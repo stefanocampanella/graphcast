@@ -1,6 +1,6 @@
 # GraphCast training benchmark (JUBE)
 
-Benchmarks GraphCast training on JUPITER at all 50 depth levels (`configs/training/full.toml`) while varying how the
+Benchmarks GraphCast training on JUPITER at all 50 depth levels (`configs/training/production_run.toml`) while varying how the
 data is stored and read: layout of the standardized anomaly store (zarr v2, sharded zarr v3, SquashFS images of each),
 Grain workers and threads, TensorStore I/O threads, CPUs per task and node count, and the model size that fits in GPU
 memory. It follows the structure of the
@@ -29,7 +29,8 @@ uv run jube --version         # JUBE, version 2.7.1
 ## Running
 
 Every run needs at least one sweep tag. The baseline is zarr_v2 with 4 Grain workers x 2 threads, 16 TensorStore I/O
-threads, 1 node and 72 CPUs per task (the defaults of `.env` and `full.toml`):
+threads, 1 node and 72 CPUs per task (the loader defaults of `.env` and `production_run.toml`; the benchmark uses the coarse mesh with 8 message
+passing steps unless a tag says otherwise):
 
 | Tag          | Cases (format:workers:threads:io_threads:nodes:cpus)                                     | Jobs |
 |--------------|------------------------------------------------------------------------------------------|------|
@@ -133,7 +134,7 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
   `--cpus-per-task` is set, and `srun` needs `SRUN_CPUS_PER_TASK` to inherit it. The jobs here and
   `clusters/jupiter/slurm/train.slurm` use 72 cores per task; the `cpus` sweep compares 8 with 72.
 - **Checkpointing every step** (the Orbax default `save_interval_steps = 1`) would dominate step times, so the
-  benchmark config saves only step 0 (`full.toml` saves every 500 steps). The checkpoint time is still reported
+  benchmark config saves only step 0 (`production_run.toml` saves every 500 steps). The checkpoint time is still reported
   separately.
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
   runs. The jobs read the standardized anomaly stores written by `graphcast download`, all in
@@ -148,7 +149,8 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
   (e.g. the same case in two experiments) read the same samples in lockstep.
 - Profiling in the Grain workers is turned off, since its servers would perturb the measurement.
 
-The training configuration is `configs/training/full.toml` with `training_steps`, `seed` and
+The training configuration is `configs/training/production_run.toml` with the mesh, the message passing steps,
+`training_steps`, `seed` and
 `checkpoints.save_interval_steps` overridden, so the benchmark follows changes to the model configuration.
 Jobs run `scripts/train.sh` with `--config-dir`, `--output-dir`, `--train-dir` and `--tb-dir` in the
 workpackage directory. It binds SquashFS images and zarr directories

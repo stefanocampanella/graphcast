@@ -1,5 +1,6 @@
-# Short training run demonstrating that the model trains: configs/training/full.toml with 5000 steps and the
-# learning rate schedule scaled to them (500 warmup steps, cosine decay to step 5000).
+# Short training run demonstrating that the model trains: production_run.toml with 5000 steps, the learning rate
+# schedule scaled to them (500 warmup steps, cosine decay to step 5000), the coarse mesh and 8 message passing steps
+# (the baseline that clusters/jupiter/slurm/mesh_study.sh varies).
 description = """
   GraphCast model for the ocean at 0.25deg resolution, \
   50 depth levels and sea ice, forced by atmospheric variables and river discharge. \

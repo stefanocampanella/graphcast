@@ -964,7 +964,7 @@
           <div>
   <pre><code class="language-bash" data-trim>
   # clusters/jupiter/.env
-  DATASET=$FSCRATCH/graphcast/data/anomalies/zarr_v2  # or zarr_v3_lexi
+  DATASET=$FSCRATCH/graphcast/data/anomalies/zarr_v3_lexi
   MASK=$FSCRATCH/graphcast/data/anomalies/glorys_mask
   TENDENCY_STD=$FSCRATCH/graphcast/data/anomalies/tendency_std
   GRAPHCAST_GRAIN_NUM_WORKERS=1
@@ -980,15 +980,15 @@
           </div>
           <div>
   <pre><code class="language-toml" data-trim>
-  # configs/training/full.toml
+  # configs/training/production_run.toml
   [task]
   levels = "all"             # 50 levels, 9 targets with sea ice
   [model]
-  gnn_msg_steps = 8          # 16: GraphCast, +24 % compute
+  gnn_msg_steps = 16         # mesh study: best value with 50 km
   [model.per_variable_weights]
   zos = 0.02                 # surface: 1/50, volume: 1.0
   [mesh]
-  path = "/data/geometry/uniform_coarse.msh"
+  path = "/data/geometry/uniform_50km.msh"
   connected_grid_nodes = true  # ocean grid nodes only
   [policy]
   remat_loss = false         # true: offload, +20 % compute
@@ -1053,7 +1053,7 @@
             <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/clusters/jupiter/.env"><code>clusters/jupiter/.env</code></a>: datasets, Grain, zarr and XLA settings</li>
             <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/clusters/jupiter/slurm/train.slurm"><code>clusters/jupiter/slurm/train.slurm</code></a> and
               <a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/scripts/train.sh"><code>scripts/train.sh</code></a>: launcher and Apptainer runner</li>
-            <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/configs/training/full.toml"><code>configs/training/full.toml</code></a>,
+            <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/configs/training/production_run.toml"><code>configs/training/production_run.toml</code></a>,
               <a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/configs/training/demo_5000.toml"><code>demo_5000.toml</code></a>: training configurations</li>
             <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/spack/templates/container/graphcast.def"><code>spack/templates/container/graphcast.def</code></a>: Apptainer image (NVIDIA JAX)</li>
             <li>Demo run: <a href="results/demo_5000_32gpu_v3/scalars.csv"><code>scalars.csv</code></a> (all TensorBoard scalars, 5000 steps);

@@ -3,7 +3,7 @@ description = """
   50 depth levels and sea ice, forced by atmospheric variables and river discharge. \
   This model is trained on ARCO-OCEAN data from 01-01-1993 to 30-06-2019, \
   and can be causally evaluated on later years. \
-  It uses a global ocean mesh with uniform target mesh size of 120 km. \
+  It uses a global ocean mesh with uniform target mesh size of 50 km and 16 message passing steps. \
   GraphCast is described in the paper \
   `GraphCast: Learning skillful medium-range global weather forecasting`(https://arxiv.org/abs/2212.12794). \
   For a description of the ocean model, see README at \
@@ -76,7 +76,9 @@ input_duration = "1d"
 
 [model]
 latent_size = 512
-gnn_msg_steps = 8
+# Mesh x message passing study (docs/jupiter-hackathon/results/mesh_msg-2026-10-29): 50 km x 16 steps has the lowest
+# validation loss for its cost; 40 km x 16 is 1.4 % lower at 2.2x the step time and needs edge_chunk_size = 262144.
+gnn_msg_steps = 16
 hidden_layers = 1
 radius_query_fraction_edge_length = 0.6
 # Grid nodes only for grid points connected by an edge (encoder senders, decoder receivers): the others only cost memory.
@@ -96,7 +98,7 @@ uo = 1.0
 vo = 1.0
 
 [mesh]
-path = "/data/geometry/uniform_coarse.msh"
+path = "/data/geometry/uniform_50km.msh"
 mesh_size_tag_name = "MeshSize"
 step = 0
 

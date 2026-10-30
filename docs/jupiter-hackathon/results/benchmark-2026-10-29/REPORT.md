@@ -2,7 +2,7 @@
 
 Reference for designing the production training run. Code: branch `feature/anomaly-downloader` (PR #1), commits up to
 56e9d78. All measurements use 50 depth levels, the standardized anomaly stores, and the variables of
-`configs/training/full.toml`. Results directories (gitignored): `results/2026-10-29-alllevels` (loader, io_threads,
+`configs/training/production_run.toml` (then `full.toml`). Results directories (gitignored): `results/2026-10-29-alllevels` (loader, io_threads,
 cpus, scaling; 1024 steps, two repetitions per case) and `results/2026-10-29-memfit-alllevels` (GPU memory fit; 30
 steps, one repetition). Copies of the summaries: `docs/jupiter-hackathon/results/benchmark-2026-10-29/`.
 
@@ -17,7 +17,7 @@ steps, one repetition). Copies of the summaries: `docs/jupiter-hackathon/results
 | Model memory policy | scan, no offloading, no edge chunks (defaults) | Fits up to 50 km × 16 steps at full speed |
 | Mesh × message passing | 50 km × 16 (best value) or 40 km × 16 (lowest loss) | Mesh study: −9.8 % / −11.2 % validation loss |
 | Nodes | Any: step time is flat from 1 to 4 nodes | Throughput 7.8 → 15.9 → 31.6 samples/s |
-| Variables, loss | As in `full.toml`: surface weights 0.02, depth-linear level weights | Surface and volume variables contribute equally |
+| Variables, loss | As in `production_run.toml`: surface weights 0.02, depth-linear level weights | Surface and volume variables contribute equally |
 
 ## Task, normalization and loss
 
@@ -111,15 +111,15 @@ Step time in seconds (OOM: does not fit; the limit is about 80–85 GiB planned 
 
 ## Planning the production run
 
-40,000 steps (as `full.toml`), with step times from the tables. The step time does not depend on the node count
+40,000 steps (as `production_run.toml`), with step times from the tables. The step time does not depend on the node count
 (local batch 1 per GPU).
 
 | Model | Step | Wall time | Node-hours on 1 / 8 nodes |
 |---|---|---|---|
-| coarse × 8 (`full.toml`) | 0.50 s | 5.6 h | 6 / 44 |
+| coarse × 8 (the benchmark and demo baseline) | 0.50 s | 5.6 h | 6 / 44 |
 | coarse × 16 | 0.62 s | 6.9 h | 7 / 55 |
 | 60 km × 16 | 1.03 s | 11.4 h | 11 / 92 |
-| 50 km × 16 | 1.29 s | 14.3 h | 14 / 115 |
+| 50 km × 16 (`production_run.toml`) | 1.29 s | 14.3 h | 14 / 115 |
 | 40 km × 8 | 1.08 s | 12.0 h | 12 / 96 |
 | 40 km × 14, offloading | 1.99 s | 22.1 h | 22 / 177 |
 | 35 km × 12, edge chunks | 2.87 s | 31.9 h | 32 / 255 |

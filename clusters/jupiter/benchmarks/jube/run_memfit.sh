@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Submit the GPU memory fit experiments (memfit sweep at all 50 levels, 30 steps, one repetition) into
-# results/<date>-<name>/, for the settings that matter for GPU memory. The defaults of full.toml: processor in a
+# results/<date>-<name>/, for the settings that matter for GPU memory. The defaults of production_run.toml: processor in a
 # scan, grid nodes only for connected grid points, nothing offloaded, no edge chunks.
 #   scan                    the defaults
 #   scan-offload-0workers   offloading, with Grain threads only (less host memory for the loader)
