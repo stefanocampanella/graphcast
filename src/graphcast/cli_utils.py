@@ -12,6 +12,25 @@ import orbax.checkpoint.logging
 from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
+
+LOG_LEVEL_OPTION = click.option(
+  "--log-level",
+  default="info",
+  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
+  show_default=True,
+  help="Logging level.",
+)
+
+
+def configure_logging(log_level: str) -> None:
+  """Configure the root logger of a command: one format for all commands."""
+  # force=True: imported packages configure the root logger too, and would otherwise keep their handlers.
+  logging.basicConfig(
+    format="%(levelname)s - %(asctime)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    level=log_level.upper(),
+    force=True,
+  )
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 

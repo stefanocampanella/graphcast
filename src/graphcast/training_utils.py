@@ -12,7 +12,6 @@ import jax
 import numpy as np
 import optax
 import xarray as xr
-from grain.python import DatasetIterator
 from jax import checkpoint_policies as cp
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import sync_global_devices
@@ -20,7 +19,7 @@ from jax.experimental.shard_map import shard_map
 from jax.sharding import AxisType, Mesh
 from jax.sharding import PartitionSpec as P
 
-from graphcast import dataloader_utils, xarray_jax
+from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
 from graphcast.checkpoint import dump as ckpt_dump
 from graphcast.dataloader import InputsTargetsForcings
@@ -232,17 +231,15 @@ def get_optimizer(
 
 def get_params(
   init_fn: Callable[..., Params],
-  iterator: DatasetIterator[InputsTargetsForcings],
-    configs: TrainingConfig,
+  sample: InputsTargetsForcings,
+  configs: TrainingConfig,
   seed: int | None = None,
 ) -> Params:
+  """Initialize the parameters from a sample (dataloader_utils.get_init_sample): only its shapes matter."""
   seed = configs.seed if seed is None else seed
   rng_key = jax.random.key(seed)
-  sample_on_host = dataloader_utils.get_first_sample_and_reset(iterator)
-  # FIXME: avoid grain workers failing (harmless, but produce lousy logs)
-  sample = xarray_jax.device_put(sample_on_host)
   logger.info(f"Initializing parameters with {seed=}")
-  return init_fn(rng_key, sample)
+  return init_fn(rng_key, xarray_jax.device_put(sample))
 
 
 class TensorboardLogger:

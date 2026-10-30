@@ -86,6 +86,14 @@ class ModelConfig(ApplicationConfig):
     description="Grid nodes only for the grid points connected by an edge (encoder senders, decoder receivers): "
     "the others only cost memory.",
   )
+  level_weights_coord: str = Field(
+    default="depth",
+    description="Coordinate along the level dimension from which the loss weights of the levels are computed: linear "
+    "in it, summing to 1 (e.g. depth, or level for the positions of the selected levels).",
+  )
+  level_weights_decreasing: bool = Field(
+    default=True, description="Whether the level weights decrease as the coordinate grows (deeper levels weigh less)."
+  )
 
 
 class MeshConfig(ApplicationConfig):

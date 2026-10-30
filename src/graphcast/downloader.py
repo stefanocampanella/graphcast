@@ -392,11 +392,6 @@ _CONFIG_OPTION = click.option(
   help="TOML settings; defaults are used without it.",
 )
 _OVERWRITE_OPTION = click.option("--overwrite", is_flag=True, default=False, help="Overwrite OUTPUT if it exists.")
-_LOG_LEVEL_OPTION = click.option(
-  "--log-level",
-  default="info",
-  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
-)
 _OUTPUT_ARGUMENT = click.argument(
   "output_path",
   metavar="OUTPUT",
@@ -412,12 +407,7 @@ def _set_up[Config: (DownloadConfig, MaskDownloadConfig, TendencyStdConfig)](
   log_level: str,
 ) -> Config:
   """Configure logging, read the settings (defaults without a config file) and check the output path."""
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
+  cli_utils.configure_logging(log_level)
   configs = schema() if config_path is None else cli_utils.read_configs(config_path, schema=schema)
   if output_path.exists() and not overwrite:
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
@@ -436,7 +426,7 @@ def _input_context(io_threads: int, *paths: str) -> tensorstore.Context:
 @_OUTPUT_ARGUMENT
 @_CONFIG_OPTION
 @_OVERWRITE_OPTION
-@_LOG_LEVEL_OPTION
+@cli_utils.LOG_LEVEL_OPTION
 def download_mask(
   dataset_path: str,
   output_path: pathlib.Path,
@@ -461,7 +451,7 @@ def download_mask(
 @_OUTPUT_ARGUMENT
 @_CONFIG_OPTION
 @_OVERWRITE_OPTION
-@_LOG_LEVEL_OPTION
+@cli_utils.LOG_LEVEL_OPTION
 def compute_tendency_std(
   standardized_path: str,
   output_path: pathlib.Path,
@@ -509,7 +499,7 @@ def compute_tendency_std(
 @_OUTPUT_ARGUMENT
 @_CONFIG_OPTION
 @_OVERWRITE_OPTION
-@_LOG_LEVEL_OPTION
+@cli_utils.LOG_LEVEL_OPTION
 def download(
   dataset_path: str,
   climatology_path: str,

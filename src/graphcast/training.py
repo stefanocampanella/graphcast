@@ -92,13 +92,7 @@ def _shutdown_jax_distributed():
   default=cli_utils.get_cwd() / "tb_logdir",
   type=click.Path(path_type=pathlib.Path, resolve_path=True),
 )
-@click.option(
-  "--log-level",
-  default="info",
-  type=click.Choice(
-    ["debug", "info", "warning", "error", "critical"], case_sensitive=False
-  ),
-)
+@cli_utils.LOG_LEVEL_OPTION
 def train(
     config_path: pathlib.Path,
     output_path: pathlib.Path,
@@ -109,12 +103,7 @@ def train(
     log_level: str = "info",
 ):
   start_time = time.perf_counter()
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
+  cli_utils.configure_logging(log_level)
 
   configs = cli_utils.read_configs(config_path, schema=TrainingConfig)
   try:
@@ -206,7 +195,7 @@ def train(
   latest_step = 0
   params = trn_utils.get_params(
     lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
-    train_iterator,
+    dataloader_utils.get_init_sample(configs, dataset),
     configs,
   )
   device_mesh = trn_utils.make_batch_mesh()

@@ -99,7 +99,7 @@ uo = 1.0
 vo = 1.0
 
 [mesh]
-path = "/data/geometry/uniform_coarse.msh"
+path = "/data/geometry/uniform_120km.msh"
 mesh_size_tag_name = "MeshSize"
 step = 0
 

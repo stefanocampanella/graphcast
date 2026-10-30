@@ -307,6 +307,8 @@ dimension, as `land_sea_mask` in GraphCast); forcings the 8 ERA5 variables and `
 (for a later study), `thetao_bottom` and `so_bottom` are unused. Level weights sum to 1 (upstream GraphCast: mean 1),
 so a volume variable's loss is about 1/n_levels of a surface variable's: surface variables have
 `per_variable_weights` 0.02 = 1/50 to count as one volume variable each (change them with the number of levels).
+`model.level_weights_coord` (default `depth`) and `model.level_weights_decreasing` (default true) set the level
+weights: linear in that coordinate, summing to 1.
 
 **Training loop** (`training.py`, helpers in `training_utils.py`): builds the mesh (`get_mesh` →
 `mesh_graph.read_mesh_data`), the predictor, an optax optimizer from named transformations, Orbax checkpoints,
@@ -349,6 +351,17 @@ GPUs busy at 50 levels and 8 x 2 runs out of host memory; the `.env` default is 
 
 **Meshes**: `geospatial_mesh.py` (seamsh, coastline shapefiles) generates `.msh` files from `configs/mesh/*.toml`;
 generated meshes and geometry live in `data/geometry` (gitignored, bound as `/data/geometry`).
+- **Naming:** uniform meshes are named by their target size in km (`uniform_120km` was `uniform_coarse` until 30 Oct
+  2026). `data/geometry/uniform_coarse.msh` is a symlink to `uniform_120km.msh` for the main checkout; remove it
+  after the PR is merged. Each `.msh` stores the size field it was made with (views `MeshSize` and one per field) and
+  the config's description. Measured median edge lengths match the targets: 117.8 km for 120 km, 34.9 for 35, 30.0
+  for 30.
+- **The fine mesh** (`uniform_fine.msh`, 704,078 nodes, 31 Jan 2026):
+  - its stored size field is 25 km at every node, and its median edge is 25.0 km;
+  - it was made from a config that was never committed: `uniform_fine.toml` asked for 30 km then, and asks for 35 km
+    now, identical to `uniform_35km.toml` (its `domain.sampling` is ignored by the code);
+  - node counts scale as 1/size², so 363,900 × (35/25)² ≈ 713,000;
+  - its description (150 km), and that of the 120 km mesh, came from an outdated template.
 
 ## Repository notes
 

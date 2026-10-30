@@ -66,13 +66,14 @@
             <parameter name="ckpt_interval" type="int">1000000</parameter>
 
             <!-- Model size: mesh and message passing steps; later definitions replace earlier ones. -->
-            <parameter name="mesh_file" tag="!fine">uniform_coarse.msh</parameter>
+            <parameter name="mesh_file" tag="!fine">uniform_120km.msh</parameter>
             <parameter name="mesh_file" tag="fine">uniform_fine.msh</parameter>
-            <!-- Target mesh sizes 120 (coarse), 100, 85, 70, 60, 50, 40, 35 and 30 km: 34750, 48662, 65943, 95303, 127948,
+            <!-- Target mesh sizes 120, 100, 85, 70, 60, 50, 40, 35 and 30 km: 34750, 48662, 65943, 95303, 127948,
                  181980, 280245, 363900 and 491676 nodes (configs/mesh/uniform_*.toml), and the fine mesh: 704078 nodes,
-                 made in January 2026 for 35 km (about 25 km with the current mesh code). -->
+                 made in January 2026 with a 25 km uniform field from a config that was never committed
+                 (configs/mesh/uniform_fine.toml asks for 35 km, like uniform_35km.toml). -->
             <parameter name="mesh_file" tag="memfit">
-                uniform_coarse.msh,uniform_100km.msh,uniform_85km.msh,uniform_70km.msh,uniform_60km.msh,uniform_50km.msh,
+                uniform_120km.msh,uniform_100km.msh,uniform_85km.msh,uniform_70km.msh,uniform_60km.msh,uniform_50km.msh,
                 uniform_40km.msh,uniform_35km.msh,uniform_30km.msh,uniform_fine.msh
             </parameter>
             <parameter name="msg_steps" type="int">8</parameter>

@@ -11,7 +11,6 @@ import pandas as pd
 import xarray as xr
 from grain.experimental import pick_performance_config
 from grain.python import DatasetIterator, IterDataset
-from jax.experimental import multihost_utils
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec as P
 
@@ -19,11 +18,9 @@ from jax.sharding import PartitionSpec as P
 from graphcast import grain_utils, xarray_jax
 from graphcast.data_utils import _get_steps_per_window, extract_inputs_targets_forcings
 from graphcast.dataloader import (
-  FlatSource,
   InputsTargetsForcings,
   LevelSelection,
   StandardizedAnomalySource,
-  _unflatten_sample,
   open_standardized_anomalies,
   select_levels,
 )
@@ -157,10 +154,39 @@ def get_map_dataset(
 
   # Split the dataset "causally": train on dates up to split_date, later ones are held out for evaluation. The source
   # reopens the store in each Grain worker, with the same levels and split.
-  datasource = StandardizedAnomalySource(
+  datasource = _get_source(configs, dataset, task_config, end_date=configs.grain_dataset.split_date)
+
+  map_dataset = (
+    grain.MapDataset.source(_FlatSource(datasource))
+    .map(_unflatten_sample)
+    .repeat(num_epochs=None)
+    .shuffle(seed=seed)
+    .slice(slice(jax.process_index(), None, jax.process_count()))
+  )
+  return _batch_and_extract(map_dataset, configs, task_config)
+
+
+def get_init_sample(configs: TrainingConfig, dataset: xr.Dataset) -> InputsTargetsForcings:
+  """The first training window, with a batch of one: model parameters depend only on the shapes of the variables, not
+  on their values or the batch size."""
+  task_config = get_task_config(configs, dataset)
+  window = _get_source(configs, dataset, task_config, end_date=configs.grain_dataset.split_date)[0]
+  return _extract(window, configs, task_config)
+
+
+def _get_source(
+  configs: TrainingConfig,
+  dataset: xr.Dataset,
+  task_config: TaskConfig,
+  start_date: str | None = None,
+  end_date: str | None = None,
+) -> StandardizedAnomalySource:
+  """Windows of the store between start_date and end_date (included), as long as one input and target period."""
+  return StandardizedAnomalySource(
     configs.dataset.path,
     levels=_get_level_selection(configs.task.levels),
-    end_date=configs.grain_dataset.split_date,
+    start_date=start_date,
+    end_date=end_date,
     io_threads=configs.dataset.io_threads,
     window_size=_get_steps_per_window(
       dataset=dataset,
@@ -168,15 +194,6 @@ def get_map_dataset(
       target_lead_times=configs.grain_dataset.target_lead_times,
     ),
   )
-
-  map_dataset = (
-    grain.MapDataset.source(FlatSource(datasource))
-    .map(_unflatten_sample)
-    .repeat(num_epochs=None)
-    .shuffle(seed=seed)
-    .slice(slice(jax.process_index(), None, jax.process_count()))
-  )
-  return _batch_and_extract(map_dataset, configs, task_config)
 
 
 def get_validation_dataset(configs: TrainingConfig, dataset: xr.Dataset) -> grain.MapDataset:
@@ -193,28 +210,54 @@ def get_validation_dataset(configs: TrainingConfig, dataset: xr.Dataset) -> grai
   held_out = times[times > np.datetime64(pd.Timestamp(configs.grain_dataset.split_date))]
   if held_out.size == 0:
     raise ValueError(f"No timesteps after split_date {configs.grain_dataset.split_date}")
-  datasource = StandardizedAnomalySource(
-    configs.dataset.path,
-    levels=_get_level_selection(configs.task.levels),
-    start_date=str(held_out[0]),
-    io_threads=configs.dataset.io_threads,
-    window_size=_get_steps_per_window(
-      dataset=dataset,
-      input_duration=task_config.input_duration,
-      target_lead_times=configs.grain_dataset.target_lead_times,
-    ),
-  )
+  datasource = _get_source(configs, dataset, task_config, start_date=str(held_out[0]))
   global_batch_size = jax.process_count() * configs.grain_dataset.local_batch_size
   num_samples = -(-configs.validation.num_samples // global_batch_size) * global_batch_size
   if num_samples > len(datasource):
     raise ValueError(f"{num_samples} validation windows requested, the held-out period has {len(datasource)}")
   indices = np.linspace(0, len(datasource) - 1, num_samples).round().astype(int)
   map_dataset = (
-    grain.MapDataset.source(FlatSource(_Subset(datasource, indices.tolist())))
+    grain.MapDataset.source(_FlatSource(_Subset(datasource, indices.tolist())))
     .map(_unflatten_sample)
     .slice(slice(jax.process_index(), None, jax.process_count()))
   )
   return _batch_and_extract(map_dataset, configs, task_config)
+
+
+class _FlatSource(grain.RandomAccessDataSource):
+  """Expose xarray sample arrays to Grain's multiprocessing transport.
+
+  Grain's shared-memory handling does not use the custom JAX pytree
+  registrations for xarray objects. Passing datasets directly would therefore
+  hide their arrays from shared-memory transport and restoration. Flattening
+  with JAX exposes those arrays as ordinary list elements, while the tree
+  definition retains the structure and xarray metadata needed to rebuild them.
+
+  Pair this adapter with `_unflatten_sample` in the pipeline before applying
+  transformations that expect datasets. Random access and length are unchanged.
+  """
+
+  def __init__(self, source: grain.RandomAccessDataSource):
+    """Wrap a source whose samples are registered JAX pytrees."""
+    self._source = source
+
+  def __len__(self):
+    return len(self._source)
+
+  def __getitem__(self, record_key):
+    """Return array leaves and reconstruction metadata for one source sample."""
+    # Use JAX's registry to traverse xarray containers, not Grain's traversal.
+    return jax.tree_util.tree_flatten(self._source[record_key])
+
+  def __repr__(self) -> str:
+    return f"{self.__class__.__name__}(source={self._source!r})"
+
+
+def _unflatten_sample(flat_sample):
+  """Rebuild a sample flattened by `_FlatSource` using its JAX tree definition."""
+  leaves, treedef = flat_sample
+  # The tree definition restores dataset structure and coordinates around leaves.
+  return jax.tree_util.tree_unflatten(treedef, leaves)
 
 
 class _Subset(grain.RandomAccessDataSource):
@@ -243,17 +286,20 @@ def _batch_and_extract(map_dataset: grain.MapDataset, configs: TrainingConfig, t
     )
 
   # Extract once per batch, before prefetch/device transfer.
-  return map_dataset.map(
-    partial(
-      extract_inputs_targets_forcings,
-      input_variables=task_config.input_variables,
-      target_variables=task_config.target_variables,
-      forcing_variables=task_config.forcing_variables,
-      levels=None,
-      input_duration=task_config.input_duration,
-      target_lead_times=configs.grain_dataset.target_lead_times,
-      to_jax=False,
-    )
+  return map_dataset.map(partial(_extract, configs=configs, task_config=task_config))
+
+
+def _extract(window: xr.Dataset, configs: TrainingConfig, task_config: TaskConfig) -> InputsTargetsForcings:
+  """Split a window (or batch of windows) into inputs, targets and forcings of the task."""
+  return extract_inputs_targets_forcings(
+    window,
+    input_variables=task_config.input_variables,
+    target_variables=task_config.target_variables,
+    forcing_variables=task_config.forcing_variables,
+    levels=None,
+    input_duration=task_config.input_duration,
+    target_lead_times=configs.grain_dataset.target_lead_times,
+    to_jax=False,
   )
 
 
@@ -311,59 +357,15 @@ def to_dataset_iterator(
   return dataset_iterator
 
 
-def get_first_sample_and_reset(
-  dataset_iterator: DatasetIterator[InputsTargetsForcings],
-) -> InputsTargetsForcings:
-  state = dataset_iterator.get_state()
-  sample = next(dataset_iterator)
-  dataset_iterator.set_state(state)
-  return sample
-
-
 def next_batch_on_device(
   iterator: InputsTargetsForcingsIterator,
   device_mesh: Mesh,
   mp_prefetch: bool = False,
 ) -> InputsTargetsForcings:
+  batch_on_host = next(iterator)
+  batch = xarray_jax.make_array_from_process_local_data(batch_on_host, mesh=device_mesh, spec=P("batch"))
   if mp_prefetch:
-    try:
-      batch_on_host = next(iterator)
-      batch = xarray_jax.make_array_from_process_local_data(batch_on_host, mesh=device_mesh, spec=P("batch"))
-      batch = jax.block_until_ready(batch)
-    finally:
-      # Explicitly delete batch_on_host to trigger shared memory release in Grain.
-      # It must be done after checkpointing, otherwise current SharedMemoryArrays could be released.
-      del batch_on_host
-  else:
-    batch_on_host = next(iterator)
-    batch = xarray_jax.make_array_from_process_local_data(batch_on_host, mesh=device_mesh, spec=P("batch"))
-
+    # Release this process's references to Grain's shared-memory arrays now, rather than at the next batch. No wait for
+    # the transfer is needed: the device arrays keep the host arrays alive until it completes.
+    del batch_on_host
   return batch
-
-
-# As the Grain pipeline calls extract_inputs_targets_forcings, which removes the datetime coordinate, the following
-# isn't needed anymore.
-def reshard_data(dataset, sharding, datetime_coord_name="time"):
-  """Utility to reshard datasets with datetime coordinates."""
-  datetime_coord = dataset[datetime_coord_name]
-  datetime_coord.data = datetime_coord.data.astype("datetime64[s]").astype(np.int64)
-  dataset = dataset.drop(datetime_coord_name)
-  dataset = dataset.map(
-    lambda da: jax.tree_util.tree_map(
-      lambda xs: jax.make_array_from_process_local_data(sharding=sharding, local_data=xs),
-      da,
-    )
-  )
-  dataset = xarray_jax.Dataset(
-    data_vars={var: (data.dims, data.data) for var, data in dataset.data_vars.items()},
-    coords=dataset.coords,
-    jax_coords={datetime_coord_name: datetime_coord},
-    attrs=dataset.attrs,
-  )
-  datetime_coordinate = multihost_utils.process_allgather(datetime_coord)
-  # In the case of single-host setups it might happen that datetime is still a numpy array
-  datetime_coordinate = xarray_jax.unwrap_data(datetime_coordinate, require_jax=False)
-  datetime_coordinate = np.asarray(datetime_coordinate).astype("datetime64[s]")
-  dataset = dataset.drop(datetime_coord_name)
-  dataset = dataset.assign_coords({datetime_coord_name: (datetime_coord_name, datetime_coordinate)})
-  return dataset

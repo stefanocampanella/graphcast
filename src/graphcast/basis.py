@@ -5,6 +5,7 @@ import numpy as np
 from etils import epath
 from scipy import sparse
 
+from graphcast import cli_utils
 from graphcast.basis_utils import compute_basis, load_mask
 from graphcast.geospatial_mesh_utils import read_mesh_data
 
@@ -49,13 +50,7 @@ logger = logging.getLogger(__name__)
 @click.option(
   "--num-blocks", default=10, help="Number of blocks for the computation", show_default=True
 )
-@click.option(
-  "--log-level",
-  default="info",
-  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
-  show_default=True,
-  help="Logging level.",
-)
+@cli_utils.LOG_LEVEL_OPTION
 @click.option(
   "--progress/--no-progress", default=True, help="Whether to display a progress bar", is_flag=True
 )
@@ -73,12 +68,7 @@ def compute(
     log_level: str,
     progress: bool = False,
 ):
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
+  cli_utils.configure_logging(log_level)
 
   if output_path.exists() and not overwrite:
     raise ValueError(f"Output destination {output_path} already exists")

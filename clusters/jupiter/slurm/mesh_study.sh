@@ -5,7 +5,7 @@
 # size, which does not change results). The validation windows are the same in every run; the seed sets the initial
 # weights and the order of the training samples.
 # Usage: clusters/jupiter/slurm/mesh_study.sh [--account A] STUDY_NAME SEEDS MESH:MSG_STEPS[:EDGE_CHUNK_SIZE[:TIME]] ...
-#   e.g. clusters/jupiter/slurm/mesh_study.sh mesh_msg 42,43 coarse:8 50km:16::03:00:00 40km:16:262144:06:00:00
+#   e.g. clusters/jupiter/slurm/mesh_study.sh mesh_msg 42,43 120km:8 50km:16::03:00:00 40km:16:262144:06:00:00
 # Configs: runs/STUDY_NAME/configs/demo_5000_MESH_msgN_seedS.toml; TensorBoard: DATA_ROOT/tensorboard/STUDY_NAME/<case>.
 set -euo pipefail
 PROJECT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)

@@ -2,7 +2,6 @@ import operator
 from typing import SupportsIndex
 
 import grain.python as grain
-import jax
 import tensorstore
 import xarray as xr
 import xarray_tensorstore
@@ -110,39 +109,3 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
       f"end_date={self._end_date!r}, "
       f"window_size={self._window_size})"
     )
-
-
-class FlatSource(grain.RandomAccessDataSource):
-  """Expose xarray sample arrays to Grain's multiprocessing transport.
-
-  Grain's shared-memory handling does not use the custom JAX pytree
-  registrations for xarray objects. Passing datasets directly would therefore
-  hide their arrays from shared-memory transport and restoration. Flattening
-  with JAX exposes those arrays as ordinary list elements, while the tree
-  definition retains the structure and xarray metadata needed to rebuild them.
-
-  Pair this adapter with `_unflatten_sample` in the pipeline before applying
-  transformations that expect datasets. Random access and length are unchanged.
-  """
-
-  def __init__(self, source: grain.RandomAccessDataSource):
-    """Wrap a source whose samples are registered JAX pytrees."""
-    self._source = source
-
-  def __len__(self):
-    return len(self._source)
-
-  def __getitem__(self, record_key):
-    """Return array leaves and reconstruction metadata for one source sample."""
-    # Use JAX's registry to traverse xarray containers, not Grain's traversal.
-    return jax.tree_util.tree_flatten(self._source[record_key])
-
-  def __repr__(self) -> str:
-    return f"{self.__class__.__name__}(source={self._source!r})"
-
-
-def _unflatten_sample(flat_sample):
-  """Rebuild a sample exposed by `_FlatSource` using its JAX tree definition."""
-  leaves, treedef = flat_sample
-  # The tree definition restores dataset structure and coordinates around leaves.
-  return jax.tree_util.tree_unflatten(treedef, leaves)

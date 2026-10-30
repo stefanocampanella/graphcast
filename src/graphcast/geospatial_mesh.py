@@ -21,6 +21,7 @@ import click
 import gmsh
 import seamsh
 
+from graphcast import cli_utils
 from graphcast.cli_utils import Configs
 from graphcast.geospatial_mesh_utils import (
   CompositeMeshSizeField,
@@ -57,11 +58,7 @@ logger = logging.getLogger(__name__)
   default=False,
   is_flag=True,
 )
-@click.option(
-  "--log-level",
-  default="info",
-  type=click.Choice(["debug", "info", "warning", "error", "critical"], case_sensitive=False),
-)
+@cli_utils.LOG_LEVEL_OPTION
 def make_ocean_mesh(
   config_path: pathlib.Path,
   output_path: pathlib.Path,
@@ -69,12 +66,7 @@ def make_ocean_mesh(
   overwrite: bool = False,
   log_level: str = "info",
 ):
-  logging.basicConfig(
-    format="%(levelname)s - %(asctime)s: %(message)s",
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    level=log_level.upper(),
-    force=True,
-  )
+  cli_utils.configure_logging(log_level)
 
   if not gmsh.is_initialized():
     logger.info("Initialize gmsh.")

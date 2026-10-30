@@ -567,3 +567,39 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Unchanged:** the 25 Oct report and earlier logbook entries keep the old name, as records.
   - **Test fix:** the `[validation]` test now removes the section explicitly, since the shipped configs have one
     (132 tests pass).
+
+## 2026-10-30: second review of PR #1, meshes
+
+- **10:00 Review** (24 threads: 9 on code, 15 on `TODO.md`) and **Request** to address it.
+
+  Also: find out why the fine mesh has more nodes than the 35 km mesh with nearly the same config, and name the
+  coarse mesh by its size in km.
+- **Change:**
+  - **Grain helpers:** `_FlatSource` and `_unflatten_sample` moved to `dataloader_utils`, as private names.
+  - **Parameter initialization:** it uses `get_init_sample`, the first training window with a batch of one. The
+    iterator round trip `get_first_sample_and_reset` is removed.
+  - **Batch transfer:** no wait in `next_batch_on_device`.
+  - **Dead code:** `reshard_data` removed.
+  - **Logging:** one setup and one `--log-level` option, in `cli_utils`.
+  - **Rollout check:** restored as `_check_rollout_inputs`, which allows constant (static) inputs, with
+    `tests/test_model.py`.
+  - **Level weights:** `model.level_weights_coord` and `model.level_weights_decreasing` (defaults: depth,
+    decreasing).
+  - **`TODO.md`:** revised as the review asked, with a Done section and reference numbers for GPU memory.
+- **Experiment:** check job 2593156 reran job 2576513 (`smoke_50lev`, `zarr_v2`, 4 Grain workers) with these
+  changes.
+  - **Total loss:** identical at 59 of 60 steps; step 3 differs by one bfloat16 unit, and later steps are identical
+    again, so training is unchanged.
+  - **Data wait:** 0.019 s per step (0.041 s before).
+- **Insight** (meshes):
+  - **Origin of the fine mesh:** `uniform_fine.msh` (704,078 nodes, 31 Jan 2026) stores a 25 km size field, and its
+    median edge is 25.0 km. It was made from a config that was never committed: `uniform_fine.toml` asked for 30 km
+    then and asks for 35 km now, the same as `uniform_35km.toml`. The difference in that file, `domain.sampling`, is
+    ignored by the code.
+  - **Node count:** 363,900 × (35/25)² ≈ 713,000, close to 704,078.
+  - **Descriptions:** the fine and 120 km meshes store a stale description (150 km).
+  - **Other meshes:** median edges match their targets (117.8, 34.9 and 30.0 km).
+- **Change:**
+  - **120 km mesh renamed:** `uniform_coarse` is now `uniform_120km`, both the config (description fixed) and the
+    `.msh` file. A symlink `data/geometry/uniform_coarse.msh` is kept for the main checkout until the merge.
+  - **Paths updated:** `demo_5000.toml`, JUBE, the `mesh_study.sh` example and two notebooks.

@@ -189,6 +189,9 @@ class ModelConfig:
     connected_grid_nodes: Whether the grid nodes are only the grid points connected by an edge: the senders of
         grid2mesh edges and the receivers of mesh2grid edges (unmasked points only). Unconnected grid nodes only cost
         memory. Predictions are made for unmasked points only, zero elsewhere.
+    level_weights_coord: Coordinate along the level dimension from which the loss weights of the levels are computed
+        (losses.normalized_level_weights): linear in it, summing to 1.
+    level_weights_decreasing: Whether the level weights decrease as the coordinate grows (deeper levels weigh less).
   """
 
   latent_size: int
@@ -198,6 +201,8 @@ class ModelConfig:
   mesh2grid_edge_normalization_factor: float | None = None
   per_variable_weights: dict | None = None
   connected_grid_nodes: bool = False
+  level_weights_coord: str = "depth"
+  level_weights_decreasing: bool = True
 
 
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
@@ -650,6 +655,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     forcings: xarray.Dataset,
     is_training: bool = False,
   ) -> xarray.Dataset:
+    _check_rollout_inputs(inputs, self._task_config)
     # Convert all input data into flat vectors for each of the grid nodes.
     # xarray (batch, time, lat, lon, level, multiple vars, forcings)
     # -> [num_grid_nodes, batch, num_channels]
@@ -686,7 +692,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       predictions,
       targets,
       per_variable_weights=self._per_variable_weights,
-      weights_decreasing_with_level=True,
+      levels_normalization_coord=self._model_config.level_weights_coord,
+      weights_decreasing_with_level=self._model_config.level_weights_decreasing,
       **kwargs,
     )
     return loss, predictions  # pytype: disable=bad-return-type  # jax-ndarray
@@ -914,6 +921,14 @@ def _add_batch_second_axis(data, batch_size):
   ones = jnp.ones([batch_size, 1], dtype=data.dtype)
   return data[:, None] * ones  # [leading_dim, batch, trailing_dim]
 
+
+def _check_rollout_inputs(inputs: xarray.Dataset, task: TaskConfig) -> None:
+  """An autoregressive rollout feeds predictions back as inputs: every input must be predicted (a target), given (a
+  forcing), or constant (no time dimension, e.g. bathymetry or masks), which the rollout reuses at every step
+  (autoregressive.Predictor._get_and_validate_constant_inputs)."""
+  rolled = set(task.target_variables) | set(task.forcing_variables)
+  if varying := sorted(name for name in task.input_variables if name not in rolled and "time" in inputs[name].dims):
+    raise ValueError(f"Input variables {varying} are neither predicted, forced nor constant: they cannot be rolled out.")
 
 def _get_max_edge_distance(mesh: TriangleMesh | MeshGraph):
   if isinstance(mesh, TriangleMesh):

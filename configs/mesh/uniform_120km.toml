@@ -1,6 +1,6 @@
 description = """
   Global ocean triangular mesh, \
-  with a target mesh size set to a uniform field with a value of 150 km. \
+  with a target mesh size set to a uniform field with a value of 120 km. \
   All units are meters. \
   The code used the seamsh Python package by Jonathan Lambrechts \
   and a description of the algorithm can be found at \
