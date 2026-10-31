@@ -728,3 +728,24 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **For the production run** (50 km × 16, 40,000 steps, about 15.6 h): about 25 minutes, or 3.4 node-hours on 8
     nodes.
   - **Cost:** the per-part timings (data, compute, checkpoint) can no longer be separated, and JUBE parses them.
+- **Request:** is Orbax checkpointing preemptible in the current setup?
+
+  **Experiment** (1 node, 120 km × 8, 100,000 steps, checkpoints only at step 0, 5-minute limit; job 2606545):
+  - **The save:** at the time limit, JAX's notifier caught `SIGTERM`, all processes reached a preemption sync point
+    at step 381, and Orbax saved it "due to preemption". It blocked 0.56 s, and the commit completed.
+  - **After the save:** training continued a few steps, until the Grain workers, also hit by `SIGTERM`, died (exit
+    code -15). The job ended as TIMEOUT.
+  - **Restore** (job 2608100): `--continue` restored step 381. The 4 steps the preempted run made after its save are
+    equal bit for bit to the continued run's, one label lower (the restart off-by-one).
+- **Insight:** Orbax detects `SIGTERM` (`jax_enable_preemption_service` is on by default, and `scripts/train.sh`
+  `exec`s Apptainer), so the `TODO.md` item is outdated.
+
+  Gaps:
+  - the loop does not stop after the preemption save;
+  - Grain workers die on `SIGTERM`;
+  - the save time at production scale is untested;
+  - nothing resumes automatically.
+- **Request:** prepare a guide for a new PR covering the bugs, the blocking operations and preemption.
+
+  **Change:** `claude-work/5ec59923-bcb3-483e-a402-cd793d0e8df5/PR_GUIDE_training_loop.md` collects the findings,
+  the proposed changes, a validation plan and references.
