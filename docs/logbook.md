@@ -749,3 +749,18 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 
   **Change:** `claude-work/5ec59923-bcb3-483e-a402-cd793d0e8df5/PR_GUIDE_training_loop.md` collects the findings,
   the proposed changes, a validation plan and references.
+- **Request:** what is the impact of checkpointing every step, and what is common practice?
+
+  **Insight:**
+  - **Cost:** a save blocks for 0.4–0.6 s (222 MB, 51 files at 120 km × 8). Saving every step would make 120 km × 8
+    about 2× slower and 50 km × 16 about 35–40 % slower; 500 steps cost under 0.3 %.
+  - **Practice:** Young/Daly gives an interval of about √(2·C·MTBF), i.e. 5–13 min for 8-node failures every day to
+    every week, so 500 steps (4–11 min) is reasonable. Common practice adds preemption saves (already on) and a clean
+    exit.
+  - **Bug:** with `best_fn` set, Orbax 0.12.4 keeps only the `max_to_keep` best checkpoints by `metrics[0]`, a single
+    batch's training loss (`BestN`; `LatestN` is used only without `best_fn`). The latest checkpoint, including a
+    preemption save, can be deleted, `--continue` can resume from an older one, and the final model is chosen by a
+    noisy batch loss.
+
+  **Change:** section 5 of the PR guide covers the interval, the retention bug and the fix: `LatestN` plus `BestN` on
+  the validation loss.
