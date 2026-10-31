@@ -764,3 +764,16 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
 
   **Change:** section 5 of the PR guide covers the interval, the retention bug and the fix: `LatestN` plus `BestN` on
   the validation loss.
+- **Request:** held-out loss is costly and blocking: how can it score checkpoints?
+
+  **Insight:** validation costs about 1 % today (1.2–1.3 s per 250 steps at 120 km × 8), about 0.7 % estimated at
+  50 km × 16. The issues are the blocking, and that a score must exist at save time. Options:
+  1. validate at save steps only (no new sync point; about 0.35 % at 500 steps);
+  2. prefetch the validation windows in host memory, and dispatch the evaluation without waiting;
+  3. spread one window every few steps (cheap, but a mixed-parameter score);
+  4. a separate evaluator job on saved checkpoints (no training cost; allows rollout metrics);
+  5. cheaper stand-in scores: the averaged training loss, or fewer windows.
+
+  Recommended: 1 + 2 in the next PR, with `LatestN(2)` and `BestN(1)` on the validation loss; 4 later.
+
+  **Change:** section 5.5 of the PR guide.
