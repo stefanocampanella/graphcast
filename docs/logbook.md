@@ -777,3 +777,38 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   Recommended: 1 + 2 in the next PR, with `LatestN(2)` and `BestN(1)` on the validation loss; 4 later.
 
   **Change:** section 5.5 of the PR guide.
+
+## 2026-11-03: permanent data copies in $PROJECT
+
+- **Request:** fscratch is purged after a while, so keep one permanent copy in `$PROJECT` of:
+  - the raw ARCO-OCEAN dataset, its climatology and anomaly_std;
+  - the z-score store, in the fastest training layout (zarr v3 lexicographic).
+
+  Delete the outdated copies in `$PROJECT` and `$PROJECT/graphcast/data`, after checking space with `jutil`.
+
+  **Decisions (asked):** raw data in zarr v3 lexicographic; keep `tendency_std` and `glorys_mask`, but not the
+  arco-make tendency_std nor `graphcast_backup`; location `$PROJECT/data`.
+- **Insight:**
+  - **Quotas** (`jutil`, 09:24): project1 14.3 TB of 20 TB, 2.88 M of 4 M inodes. fscratch reports 0, although its
+    files exist.
+  - **Purge policy** (JUPITER user documentation): `$FSCRATCH` purges files not modified or accessed for 30 days.
+  - **Copies in `$PROJECT`:**
+    - `zarr_v2`: raw v2, 4851 GiB, 2.69 M files, with consolidated metadata identical to the fscratch inputs;
+    - `zarr_v3`: raw v3 lexicographic, 4841 GiB, 28 k files;
+    - `squashfs`: images of the raw data, 4798 GiB;
+    - `graphcast_backup`, and the 2025 `graphcast/data/{dataset,stats}`.
+- **Experiment** (login node `jpbl-s02-03`): raw zarr v3 compared with raw zarr v2, in full (5 GiB/s, about 70
+  min).
+  - **Values:** 0 differing blocks out of 38,238 (dataset) and 1,242 each (climatology, anomaly_std).
+  - **Structure:** the same, except `_FillValue` (an attribute in v2, array metadata in v3).
+- **Change:**
+  - **Deleted:**
+    - `squashfs`, `graphcast_backup` and `graphcast/data/stats`;
+    - `graphcast/data/dataset`, except `glorys12_static_res-0p0625_levels-10`, used by the `lambrechts*` mesh configs.
+  - **Moved:** `zarr_v3/{dataset,climatology,anomaly_std}` to `data/arco-ocean/`.
+  - **Copied:** `anomalies/{zarr_v3_lexi,tendency_std,glorys_mask}` from fscratch to `data/anomalies/`, with 8
+    parallel `rsync` in 57 min (2.6 GiB/s).
+    - **Check:** an empty dry run, the same 25,625 entries and 5,442,717,244,660 bytes, and identical windows.
+  - **Deleted after that:** `zarr_v2` (14 min) and `zarr_v3/tendency_std`.
+  - **End state:** `$PROJECT/data` holds 4840 + 5070 GiB, about 10.9 TB, and about 0.15 M inodes.
+  - **Docs:** `$PROJECT/data/README.md` (provenance, checks, restore); CLAUDE.md and a `.env` comment updated.
