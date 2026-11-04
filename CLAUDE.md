@@ -331,6 +331,43 @@ weights: linear in that coordinate, summing to 1.
 TensorBoard logging, and a data-parallel `fsdp_map` over the device mesh (`sharding.py`). The train step is
 lowered and compiled once; its XLA memory analysis (`cli_utils.run_analysis_and_report`, "Memory usage" in the
 log) predicts GPU OOM before training starts.
+- **Step order** (sequential on purpose; overlapping the next batch with the step gained only 2.5 %): batch to the
+  GPUs, step, wait, validation if due, checkpoint if due, TensorBoard, the step line `Step N timings: data D s, compute
+  C s, checkpoint K s, total T s, elapsed E s` (parsed by JUBE). Metrics become host values only when saved or logged,
+  and TensorBoard writes on process 0 only.
+- **Checkpoints** (`[checkpoints]`, `orbax_utils`): the loop decides the saves, after step n when `(n + 1) %
+  save_interval_steps == 0` (a multiple of `validation.interval_steps`, so every regular checkpoint has a
+  `valid_loss`), after the last step, and at a preemption. A checkpoint holds the state after its step, so
+  `--continue` resumes at latest + 1 (before Nov 2026 it resumed at latest, one step behind). Retention:
+  `LatestN(keep_latest)` for resuming, plus `BestN(keep_best)` by validation loss; the final model is the best
+  checkpoint, or the latest without validation. Orbax 0.12.4 with `best_fn` kept only the `max_to_keep` lowest
+  single-batch losses, so it could delete the latest checkpoint (fixed Nov 2026).
+- **Preemption:** Slurm sends SIGTERM 120 s before the limit (`train.slurm`, `--signal=TERM@120`; KillWait is 30 s).
+  JAX's preemption service catches it, all processes agree on a sync step (`reached_preemption`), the loop saves,
+  waits for the commit and exits with status 75 without saving the model: resume with `--continue` (same
+  `GRAPHCAST_GRAIN_NUM_WORKERS`). Grain workers ignore SIGTERM (`dataloader_utils.ignore_sigterm`), and the loop closes
+  the iterator in a `finally` to stop them (Python's exit would send them SIGTERM and wait forever).
+- **Orbax:** the per-process mesh workaround for Orbax issue 2545 was removed (fixed in the image's Orbax 0.12.4).
+  A save copies one replica of each replicated array to the host (split over the GPUs by replica-parallel saving),
+  inside the blocking part (0.4–0.6 s at 120 km × 8); the write runs in the background.
+- **Measurements (4 Nov 2026, `training2647`):**
+  - **Preemption at 50 km × 16 on 8 nodes** (jobs 2684368/2684369): all 32 processes reached the sync step within the
+    second after SIGTERM. The save blocked 0.76 s, 1.3–1.6 s with the commit; the checkpoint is 392 MB (120 km × 8:
+    222 MB, 0.42 s, 0.7 s). The continued run resumed at the next step.
+  - **Host time per step** (1 node, 120 km × 8, new loop vs old, same node): equal within run-to-run noise; compute
+    alternates between 0.40 and 0.42 s per step between runs. TensorBoard costs 7–8 ms per step on process 0: about
+    260 µs per `tf.summary.scalar` call (eager TensorFlow dispatch; the writes themselves are queued), not the
+    conversions. That is 0.6 % of a 50 km × 16 step, so it was left as is.
+  - **Host-to-device copy of a batch:** about 19 ms at 50 levels, partly overlapped with compute already (waiting for
+    it raises data time by 19 ms and lowers compute by 12 ms, at 120 km × 8 and 50 km × 16). Moving it into the
+    dataloader could save at most 20–30 ms per step: not worth the code (bar for speed-ups: 150 ms per step).
+  - **Non-determinism:** two identical runs give different parameters (median ‖a−b‖/‖a‖ per array 2.6e-4 after 60
+    steps on 2 nodes). The losses hide it: each GPU's loss is a bfloat16 value (`Bfloat16Cast`), so most steps agree
+    bit for bit and the others differ by one bfloat16 unit of one GPU (2^-12 of the 4-GPU mean). The source is XLA's
+    non-deterministic GPU operations (atomic scatter-adds and reductions): with `--xla_gpu_deterministic_ops=true`,
+    repeated runs and a restored run equal the uninterrupted run bit for bit (parameters and optimizer state), but a
+    step takes 8.2 s instead of 0.42 s at 120 km × 8, and 50 km × 16 needs 81.5 GiB (OOM). Use it only to debug or
+    to check restores (`APPTAINERENV_XLA_FLAGS`).
 
 **Predictor stack** (`training_utils.get_predictor`), outermost first:
 `Mask` (`mask.py`, per-variable loss masks) → `OutputNormalization` (`normalization.py`, residuals / tendency_std) →
@@ -400,7 +437,7 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 
 - Do not commit `graphcast.sif`, `graphcast.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
-- Development branch: `develop@esiwace3_hackathon`.
+- Development branch: `develop` (`develop@esiwace3_hackathon` until Nov 2026).
 - Slurm accounts (JUPITER booster): `training2647` for small runs (tests, short benchmarks) until it ends on
   31 Dec 2026 or its budget is exhausted; `e-dev-2026d09-119` for large runs (and the downloader), until 28 Feb 2027.
   Both have 1,008,000 core-h on `JUPITER_BOOSTER`; a booster node costs 288 core-h per hour whatever is used (whole
@@ -426,7 +463,7 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   instead; delete a session's directory once its PR is merged.
 - Logbook: `docs/logbook.md` records, with date and time (CET), the maintainer's requests, code changes,
   experiments and insights; append entries as work proceeds (CLAUDE.md keeps what stays valid).
-- Workflow: one feature branch and PR per task into `develop@esiwace3_hackathon`; the maintainer reviews on GitHub
+- Workflow: one feature branch and PR per task into `develop`; the maintainer reviews on GitHub
   or asks for changes directly. Reply to each review comment once addressed. Keep PR descriptions short (purpose,
   usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by Claude
   (`git commit --author="Claude <noreply@anthropic.com>"`) with the maintainer as

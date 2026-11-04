@@ -812,3 +812,81 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Deleted after that:** `zarr_v2` (14 min) and `zarr_v3/tendency_std`.
   - **End state:** `$PROJECT/data` holds 4840 + 5070 GiB, about 10.9 TB, and about 0.15 M inodes.
   - **Docs:** `$PROJECT/data/README.md` (provenance, checks, restore); CLAUDE.md and a `.env` comment updated.
+
+## 2026-11-04: training loop PR (restart, checkpoints, preemption, determinism)
+
+Session directory: `claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`. All jobs on `training2647`.
+
+- **Request (12:00):** plan the training-loop PR from the guide of 31 Oct (`claude-work/5ec59923-.../PR_GUIDE_training_loop.md`).
+
+  **Decisions (asked):**
+  - keep the sequential loop and drop the `deferred` variant (2.5 % gain, harder logging, more code);
+  - a speed-up must save at least 150 ms per step (36 ms, 30 min per 50,000 steps, is a bare minimum), and options
+    that raise peak GPU memory stay opt-in;
+  - investigate copying batches to the GPU inside the dataloader, and the source of non-determinism;
+  - no separate evaluator job;
+  - Grain workers stop gracefully, SIGTERM comes earlier, test on 8 nodes, no automatic resubmission;
+  - branch from and PR into `develop` (not `develop@esiwace3_hackathon`).
+- **Change:**
+  - **Restart:** `--continue` resumes at latest + 1 (`training.first_step`).
+  - **Output path:** `OUTPUT_PATH` is a file argument (`dir_okay=False`), so an existing model can be overwritten.
+  - **Checkpoints:** the loop decides the saves, after step n when `(n + 1) % save_interval_steps == 0`, after the
+    last step and at a preemption. Validation runs before the save, and its loss is the checkpoint's metric.
+  - **Retention:** `[checkpoints]` has `keep_latest` (2) and `keep_best` (1), replacing `max_to_keep`. The
+    `save_interval_steps` default is now 500, and it must be a multiple of `validation.interval_steps`. The final
+    model is the best checkpoint by validation loss.
+  - **Preemption:** the loop waits for the save and exits with status 75. Grain workers ignore SIGTERM, and the loop
+    closes the iterator. `train.slurm` has `--signal=TERM@120`.
+  - **Host values:** metrics are converted only when saved or logged (one `device_get`), and TensorBoard writes on
+    process 0 only.
+  - **Orbax:** the per-process meshes (Orbax issue 2545 workaround) are gone.
+  - **Tests:** `tests/test_training.py` and a Grain SIGTERM test (180 tests pass).
+- **Insight:** the Orbax 0.12.4 source answers three questions.
+  - **Ranking:** `BestN` keeps the last n checkpoints of its sort, so losses need `reverse=True`.
+  - **Unscored checkpoints:** it keeps checkpoints without metrics unless `keep_checkpoints_without_metrics=False`.
+  - **Data movement:** a save copies one replica of each replicated array to the host (replica-parallel unless
+    `JAX_PLATFORMS` names the GPU), inside the blocking part.
+- **Insight:** in Grain 0.2.18, workers are stopped by `close()` (an event, a join, then SIGKILL). Without `close()`,
+  Python's exit sends SIGTERM to daemon processes and joins without a timeout, so workers that ignore SIGTERM need the
+  explicit `close()`.
+- **Experiment B** (`exp_b`, jobs 2682860/2682861, 1 node, current code). Each variant ran twice: the baseline, a wait
+  for the batch's host-to-device copy before the step (B1), and `--xla_gpu_deterministic_ops=true` (B2).
+  - **B1:** waiting for the copy raises data time by 19 ms and lowers compute by 12–13 ms (120 km × 8: 0.443 →
+    0.448 s, 50 km × 16: 1.277 → 1.283 s per step). The copy is about 19 ms and already partly overlapped, so moving
+    it into the dataloader saves at most 20–30 ms. **No prototype** (bar: 150 ms).
+  - **B2:** deterministic ops make a step take 8.2 s instead of 0.42 s at 120 km × 8 (68.2 GiB planned). At 50 km ×
+    16 they need 81.5 GiB, and the run fails with OOM.
+  - **Losses of repeated runs:** they differ at 7–10 of 150–200 steps, each time by exactly 2^-12. Each GPU's loss is
+    a bfloat16 value (`Bfloat16Cast`), and one GPU's loss rounds to the neighbouring bfloat16 value.
+- **Experiment** (`loop_tests/throughput.sbatch`, job 2683293, 1 node, 120 km × 8): new and old loop, alternating,
+  twice each.
+  - **Throughput:** the same within noise. The new loop took 0.444 and 0.422 s per step, the old one 0.427 and
+    0.444 s; compute alternates between 0.40 and 0.42 s between runs.
+  - **Checkpoint call:** 2 ms → 0 on steps that do not save.
+  - **TensorBoard:** still 7–8 ms. A CPU microbenchmark gives 263 µs per `tf.summary.scalar` call (eager dispatch;
+    the writes are queued), so the conversions were not the cost. Left as is (0.6 % at 50 km × 16).
+- **Experiment** (`loop_tests/preempt.sbatch`, jobs 2683295 and 2683296, 1 node, 120 km × 8, 6-minute limit,
+  `--signal=TERM@120`):
+  - **First job:** SIGTERM arrived 120 s before the limit, and step 250 was saved (0.42 s blocking, 0.7 s with the
+    commit). The run exited with status 75, without Grain tracebacks.
+  - **Continuation:** it restored step 250, started at step 251, was preempted at step 489 and saved it. The latest
+    two checkpoints were kept.
+- **Experiment** (`loop_tests/preempt.sbatch`, jobs 2684368 and 2684369, 8 nodes, 50 km × 16, 8-minute limit):
+  - **Save:** all 32 processes synced on step 150 within the second after SIGTERM. The save blocked 0.76 s (1.3 s with
+    the commit); the checkpoint is 392 MB.
+  - **Continuation:** it restored step 150, started at step 151, and saved step 314 at the next preemption (1.6 s).
+- **Experiment** (`loop_tests/rc.sbatch`, job 2683621, 2 nodes, 120 km × 8, saves and validation every 20 steps):
+  - **Runs:** two fresh 80-step runs, and a 60-step run continued to 80. Restore, `check_writable_paths` and
+    `save_model` all ran without the per-process meshes, and the final model came from step 79.
+  - **Checkpoints differ** (`compare_ckpt.py`): 220 of 226 parameter arrays differ between the two fresh runs (median
+    ‖a−b‖/‖a‖ 2.6e-4), and the continued run differs from them by as much.
+  - **Correction of 30 Oct:** bit-identical losses do not show that parameters restore exactly, since the losses are
+    bfloat16 values.
+- **Experiment** (`loop_tests/rc_det.sbatch`, job 2684366, 1 node, 120 km × 8, deterministic ops): two fresh 20-step
+  runs, and a 10-step run continued to 20.
+  - **Result:** all checkpoints (steps 9 and 19) are bit-identical, parameters and optimizer state.
+  - **Insight:** the non-determinism comes from XLA's non-deterministic GPU operations (atomic scatter-adds and
+    reductions). The restore is exact, and the continued run's steps line up with the uninterrupted run's.
+- **Change:** CLAUDE.md (training loop, checkpoints, preemption, Orbax, measurements, development branch), the JUBE
+  README (saves only after the last step), and `TODO.md` (three items closed). A JUBE `loader` dry run generates
+  configs that validate.
