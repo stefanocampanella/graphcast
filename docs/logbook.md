@@ -656,3 +656,159 @@ and come from the Claude Code session transcripts, git commits and `sacct`. Each
   - **Tests:** two new tests (one `$Nodes` section with every view readable; three meshes read in sequence). Both
     fail on the previous code. 173 tests pass.
   - **Real data:** the existing two-copy files (120 km, 50 km, 120 km again) read correctly in one process.
+
+## 2026-10-30: blocking operations, Orbax issue 2545
+
+- **Request:** are logger calls blocking in the training loop, and with what effect?
+
+  **Insight** (rank 0 of the 30 mesh study runs):
+  - **TensorBoard logging** blocks: `.item()` of each metric, plus `tf.summary` on rank 0. It takes 8 ms per step
+    (median, p99 13 ms), 0.3–1.7 % of a step.
+  - **The loop is fully serial:** `block_until_ready`, then `push_checkpoint` (3–4 ms, including `.item()` of the
+    metrics every step), TensorBoard and the log line. Then the next batch is fetched (37–39 ms).
+  - **Host share** of a step: 9.9 % (120 km × 8), 3.7 % (50 km × 16), 1.6 % (40 km × 16).
+- **Request:** exploratory analysis of disabling blocking operations.
+
+  **Experiment** (`claude-work/.../exp_loop`, jobs 2603156/2603157, 1 node): four loop variants, each run twice on
+  the same node.
+  - **Variants:**
+    - `baseline`: the current loop;
+    - `no_tb`: without TensorBoard;
+    - `no_sync`: no wait, and `push_checkpoint` only on save steps;
+    - `deferred`: no wait, and the metrics of step n logged after step n+1 is dispatched, so the next batch is
+      fetched while a step runs.
+  - **Models:** 120 km × 8 (400 steps) and 50 km × 16 (300 steps).
+  - **Measure:** throughput from step 50.
+- **Request:** take into account that Orbax issue 2545 (saving under a global mesh) is fixed.
+
+  **Insight:** the fix (Orbax commit 5a0bd47) was verified upstream with JAX 0.11.1 and Orbax 0.12.4, the versions in
+  the image. Our workaround creates the `CheckpointManager` under a per-process mesh. It is also in
+  `check_writable_paths` and `save_model`, and FIXMEs point to it in `push_checkpoint` and `pull_checkpoint`.
+- **Experiment:**
+  - **Single process:** in the image, the issue's reproduction and a `CheckpointManager` save/restore under a global
+    mesh both work.
+  - **2 nodes** (8 processes; `claude-work/.../orbax_check`, jobs 2603190 and 2603287): without the workaround, and
+    with the batch mesh set globally for the whole run.
+    - **Saving:** 60 steps saving every 20, about 0.4 s blocking per save.
+    - **Restoring:** the best checkpoint was restored at the end. A second run restored step 40 and continued to 80.
+    - **Result:** its losses equal the first run's bit for bit, shifted by one step (19 of 19), so parameters,
+      optimizer state and the Grain iterator restore exactly.
+- **Insight** (two existing bugs found):
+  - **Restart off by one:** `train` resumes at `latest_step`, but the checkpoint of step N is saved after step N, so
+    the first resumed step is labelled N while it is really step N+1. Step numbers in logs, TensorBoard and
+    checkpoints are one behind after a restart, and the run makes one extra update. The learning-rate schedule
+    follows the optimizer's count and is not shifted.
+  - **Output path:** `graphcast train` declares `OUTPUT_PATH` as `click.Path(file_okay=False)`, but the model is
+    written as a file there. Rerunning into an existing output fails even with `--overwrite`.
+- **Insight** (conversions to host values):
+  - `push_checkpoint` converts the metrics with `.item()` every step, but Orbax uses them only on save steps.
+  - `TensorboardLogger.log` converts them on every process, but only process 0 writes.
+  - The other numpy conversions are needed (the Grain worker gather, `save_model`'s format).
+- **2026-10-31 00:32 Experiment:** loop variants (jobs 2603156/2603157, 1 node, two runs each on the same node).
+
+  **Throughput** (s per step after warm-up):
+
+  | Variant | 120 km × 8 | vs baseline | 50 km × 16 | vs baseline |
+  |---|---|---|---|---|
+  | `baseline` | 0.4487 / 0.4489 | — | 1.2680 / 1.2675 | — |
+  | `no_tb` | 0.4376 / 0.4527 | −0.8 % | 1.2612 / 1.2720 | −0.1 % |
+  | `no_sync` | 0.4430 / 0.4462 | −0.9 % | 1.2616 / 1.2659 | −0.3 % |
+  | `deferred` | 0.4374 / 0.4381 | −2.5 % | 1.2349 / 1.2332 | −2.7 % |
+
+  **Losses:** two runs of the same baseline agree exactly on only 63 % / 91 % of steps (relative difference up to
+  5e-3: GPU non-determinism of the step). The variants differ from the baseline by no more (at most 2.8e-3), so they
+  train equivalently.
+- **Insight:**
+  - **Logging and syncing alone are within run-to-run noise:** dropping TensorBoard logging, or the waits with
+    TensorBoard still logging each step, saves at most about 1 %.
+  - **The gain comes from overlap.** Deferring the logging of step n until step n+1 is dispatched lets the next batch
+    be fetched and copied to the GPUs while a step runs.
+  - **Per step** that saves 11 ms (120 km) and 34 ms (50 km), out of about 49 and 52 ms of host work. Part of it
+    stays exposed on the short 120 km step, probably the copy of the 5.7 GB batch competing with compute.
+  - **For the production run** (50 km × 16, 40,000 steps, about 15.6 h): about 25 minutes, or 3.4 node-hours on 8
+    nodes.
+  - **Cost:** the per-part timings (data, compute, checkpoint) can no longer be separated, and JUBE parses them.
+- **Request:** is Orbax checkpointing preemptible in the current setup?
+
+  **Experiment** (1 node, 120 km × 8, 100,000 steps, checkpoints only at step 0, 5-minute limit; job 2606545):
+  - **The save:** at the time limit, JAX's notifier caught `SIGTERM`, all processes reached a preemption sync point
+    at step 381, and Orbax saved it "due to preemption". It blocked 0.56 s, and the commit completed.
+  - **After the save:** training continued a few steps, until the Grain workers, also hit by `SIGTERM`, died (exit
+    code -15). The job ended as TIMEOUT.
+  - **Restore** (job 2608100): `--continue` restored step 381. The 4 steps the preempted run made after its save are
+    equal bit for bit to the continued run's, one label lower (the restart off-by-one).
+- **Insight:** Orbax detects `SIGTERM` (`jax_enable_preemption_service` is on by default, and `scripts/train.sh`
+  `exec`s Apptainer), so the `TODO.md` item is outdated.
+
+  Gaps:
+  - the loop does not stop after the preemption save;
+  - Grain workers die on `SIGTERM`;
+  - the save time at production scale is untested;
+  - nothing resumes automatically.
+- **Request:** prepare a guide for a new PR covering the bugs, the blocking operations and preemption.
+
+  **Change:** `claude-work/5ec59923-bcb3-483e-a402-cd793d0e8df5/PR_GUIDE_training_loop.md` collects the findings,
+  the proposed changes, a validation plan and references.
+- **Request:** what is the impact of checkpointing every step, and what is common practice?
+
+  **Insight:**
+  - **Cost:** a save blocks for 0.4–0.6 s (222 MB, 51 files at 120 km × 8). Saving every step would make 120 km × 8
+    about 2× slower and 50 km × 16 about 35–40 % slower; 500 steps cost under 0.3 %.
+  - **Practice:** Young/Daly gives an interval of about √(2·C·MTBF), i.e. 5–13 min for 8-node failures every day to
+    every week, so 500 steps (4–11 min) is reasonable. Common practice adds preemption saves (already on) and a clean
+    exit.
+  - **Bug:** with `best_fn` set, Orbax 0.12.4 keeps only the `max_to_keep` best checkpoints by `metrics[0]`, a single
+    batch's training loss (`BestN`; `LatestN` is used only without `best_fn`). The latest checkpoint, including a
+    preemption save, can be deleted, `--continue` can resume from an older one, and the final model is chosen by a
+    noisy batch loss.
+
+  **Change:** section 5 of the PR guide covers the interval, the retention bug and the fix: `LatestN` plus `BestN` on
+  the validation loss.
+- **Request:** held-out loss is costly and blocking: how can it score checkpoints?
+
+  **Insight:** validation costs about 1 % today (1.2–1.3 s per 250 steps at 120 km × 8), about 0.7 % estimated at
+  50 km × 16. The issues are the blocking, and that a score must exist at save time. Options:
+  1. validate at save steps only (no new sync point; about 0.35 % at 500 steps);
+  2. prefetch the validation windows in host memory, and dispatch the evaluation without waiting;
+  3. spread one window every few steps (cheap, but a mixed-parameter score);
+  4. a separate evaluator job on saved checkpoints (no training cost; allows rollout metrics);
+  5. cheaper stand-in scores: the averaged training loss, or fewer windows.
+
+  Recommended: 1 + 2 in the next PR, with `LatestN(2)` and `BestN(1)` on the validation loss; 4 later.
+
+  **Change:** section 5.5 of the PR guide.
+
+## 2026-11-03: permanent data copies in $PROJECT
+
+- **Request:** fscratch is purged after a while, so keep one permanent copy in `$PROJECT` of:
+  - the raw ARCO-OCEAN dataset, its climatology and anomaly_std;
+  - the z-score store, in the fastest training layout (zarr v3 lexicographic).
+
+  Delete the outdated copies in `$PROJECT` and `$PROJECT/graphcast/data`, after checking space with `jutil`.
+
+  **Decisions (asked):** raw data in zarr v3 lexicographic; keep `tendency_std` and `glorys_mask`, but not the
+  arco-make tendency_std nor `graphcast_backup`; location `$PROJECT/data`.
+- **Insight:**
+  - **Quotas** (`jutil`, 09:24): project1 14.3 TB of 20 TB, 2.88 M of 4 M inodes. fscratch reports 0, although its
+    files exist.
+  - **Purge policy** (JUPITER user documentation): `$FSCRATCH` purges files not modified or accessed for 30 days.
+  - **Copies in `$PROJECT`:**
+    - `zarr_v2`: raw v2, 4851 GiB, 2.69 M files, with consolidated metadata identical to the fscratch inputs;
+    - `zarr_v3`: raw v3 lexicographic, 4841 GiB, 28 k files;
+    - `squashfs`: images of the raw data, 4798 GiB;
+    - `graphcast_backup`, and the 2025 `graphcast/data/{dataset,stats}`.
+- **Experiment** (login node `jpbl-s02-03`): raw zarr v3 compared with raw zarr v2, in full (5 GiB/s, about 70
+  min).
+  - **Values:** 0 differing blocks out of 38,238 (dataset) and 1,242 each (climatology, anomaly_std).
+  - **Structure:** the same, except `_FillValue` (an attribute in v2, array metadata in v3).
+- **Change:**
+  - **Deleted:**
+    - `squashfs`, `graphcast_backup` and `graphcast/data/stats`;
+    - `graphcast/data/dataset`, except `glorys12_static_res-0p0625_levels-10`, used by the `lambrechts*` mesh configs.
+  - **Moved:** `zarr_v3/{dataset,climatology,anomaly_std}` to `data/arco-ocean/`.
+  - **Copied:** `anomalies/{zarr_v3_lexi,tendency_std,glorys_mask}` from fscratch to `data/anomalies/`, with 8
+    parallel `rsync` in 57 min (2.6 GiB/s).
+    - **Check:** an empty dry run, the same 25,625 entries and 5,442,717,244,660 bytes, and identical windows.
+  - **Deleted after that:** `zarr_v2` (14 min) and `zarr_v3/tendency_std`.
+  - **End state:** `$PROJECT/data` holds 4840 + 5070 GiB, about 10.9 TB, and about 0.15 M inodes.
+  - **Docs:** `$PROJECT/data/README.md` (provenance, checks, restore); CLAUDE.md and a `.env` comment updated.

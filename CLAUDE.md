@@ -196,6 +196,22 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   `PROJECT_DIR/graphcast.sif`); `clusters/jupiter/slurm/download.slurm` sources `clusters/jupiter/.env` (or
   `--env-file`) and runs it. Paths are CLI arguments; the TOML holds settings only (Zarr format, v3 shard sizes,
   order of chunks within shards, Blosc, `num_workers` Dask threads, `io_threads` TensorStore concurrency).
+- **Permanent copies** (3 Nov 2026), in `$PROJECT/data` (`/e/project1/e-dev-2026d09-119/data`; provenance and
+  restore commands in its `README.md`):
+  - `arco-ocean/{dataset,climatology,anomaly_std}`: raw ARCO-OCEAN as zarr v3, shards of 8 days × 50 levels,
+    lexicographic. Converted from the zarr v2 copies on 21 Oct, and verified equal to them array by array on 3 Nov.
+  - `anomalies/{zarr_v3_lexi,tendency_std,glorys_mask}`: copied from fscratch and verified (empty `rsync` dry run,
+    identical windows).
+  - **Working copies** for training and benchmarks stay on fscratch. `$FSCRATCH` purges files not modified or
+    accessed for 30 days (and empty directories after 3 days; JUPITER user documentation): restore them from
+    `$PROJECT/data` with `rsync` (8 parallel `rsync` on a login node: about 2.6 GiB/s).
+  - The other copies in `$PROJECT` were deleted on 3 Nov 2026:
+    - `zarr_v2` (raw zarr v2 plus the arco-make tendency_std);
+    - `zarr_v3/tendency_std`;
+    - `squashfs` (images of the raw data);
+    - `graphcast_backup`;
+    - `graphcast/data/dataset` (except `glorys12_static_res-0p0625_levels-10`, the bathymetry of the `lambrechts*`
+      mesh configs) and `graphcast/data/stats` (2025, 10 levels).
 - Inputs: local copies in `/e/fscratch/e-dev-2026d09-119/ogs-arco-ocean-50{,_climatology,_anomaly_std}`, or
   `s3://ogs-arco-ocean/{datasets,climatology,anomaly_std}/res=0p25`.
 - Reading: all arrays with xarray-tensorstore (`open_zarr(..., context=, mask_and_scale=False, consolidated=True)`):
@@ -255,7 +271,7 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   - **Next:** 20–24 steps on 50 km and 35 km × 12.
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
-  by `mksquashfs.sh` there, with the settings of the earlier images in `/e/project1/e-dev-2026d09-119/squashfs` (from
+  by `mksquashfs.sh` there, with the settings of the earlier raw-data images (deleted on 3 Nov 2026) (from
   `~/.bash_eternal_history`): `mksquashfs SRC DST.sqsh -noappend -no-xattrs -noI -noD -noF -b 1M -comp lz4 -progress`
   (uncompressed, as chunks are already Blosc-compressed; 1 MB blocks, the first tries used 4 KB), plus `-mem 32G` on
   login nodes: the default working memory (25% of RAM) equals the 143 GiB per-user limit, and a first run writing
