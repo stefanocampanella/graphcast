@@ -332,7 +332,7 @@ TensorBoard logging, and a data-parallel `fsdp_map` over the device mesh (`shard
 lowered and compiled once; its XLA memory analysis (`cli_utils.run_analysis_and_report`, "Memory usage" in the
 log) predicts GPU OOM before training starts.
 - **Step order** (sequential on purpose; overlapping the next batch with the step gained only 2.5 %): batch to the
-  GPUs, step, wait, validation if due, checkpoint if due, TensorBoard, the step line `Step N timings: data D s, compute
+  GPUs, step, wait, validation if due, preemption check, checkpoint if due, TensorBoard, the step line `Step N timings: data D s, compute
   C s, checkpoint K s, total T s, elapsed E s` (parsed by JUBE). Metrics become host values only when saved or logged,
   and TensorBoard writes on process 0 only.
 - **Checkpoints** (`[checkpoints]`, `orbax_utils`): the loop decides the saves, after step n when `(n + 1) %
@@ -341,7 +341,8 @@ log) predicts GPU OOM before training starts.
   `--continue` resumes at latest + 1 (before Nov 2026 it resumed at latest, one step behind). Retention:
   `LatestN(keep_latest)` for resuming, plus `BestN(keep_best)` by validation loss; the final model is the best
   checkpoint, or the latest without validation. Orbax 0.12.4 with `best_fn` kept only the `max_to_keep` lowest
-  single-batch losses, so it could delete the latest checkpoint (fixed Nov 2026).
+  single-batch losses, so it could delete the latest checkpoint (fixed Nov 2026). Checkpoint directories written
+  before then store the metrics as a `(loss, diagnostics)` list and cannot be continued.
 - **Preemption:** Slurm sends SIGTERM 120 s before the limit (`train.slurm`, `--signal=TERM@120`; KillWait is 30 s).
   JAX's preemption service catches it, all processes agree on a sync step (`reached_preemption`), the loop saves,
   waits for the commit and exits with status 75 without saving the model: resume with `--continue` (same

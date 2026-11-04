@@ -890,3 +890,21 @@ Session directory: `claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`. All jobs 
 - **Change:** CLAUDE.md (training loop, checkpoints, preemption, Orbax, measurements, development branch), the JUBE
   README (saves only after the last step), and `TODO.md` (three items closed). A JUBE `loader` dry run generates
   configs that validate.
+
+## 2026-11-04 18:00: training loop PR, code review fixes
+
+Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
+
+- **Request:** the maintainer ran `/code-review` on the PR and asked to fix five of its findings.
+- **Change:**
+  - The loop checks for preemption after validation, so a SIGTERM during validation is acted on at that step, and a
+    save step keeps its validation loss (before, a preemption on a validation step skipped validation).
+  - The `try`/`finally` that closes the Grain iterator starts right after the iterator is created, so a failed restore
+    does not leave workers that ignore SIGTERM.
+  - A stale comment in `check_grain_num_workers`; the SIGTERM test signals only the iterator's own workers.
+  - CLAUDE.md: checkpoint directories written before this PR (metrics as a list) cannot be continued.
+- **Not changed:** exit status 75 under `srun --kill-on-bad-exit` (the checkpoint is committed on all processes before
+  any exits), and the step line's checkpoint time (validation has its own line; the JUBE format stays).
+- **Experiment** (`loop_tests/preempt.sbatch`, jobs 2688168 and 2688169, 1 node, 120 km × 8, validation every step,
+  6-minute limit): the preemption saved step 85 with its validation loss (0.8 s) and exited with status 75; the
+  continuation started at step 86 and saved step 167 at the next preemption, also with its validation loss.
