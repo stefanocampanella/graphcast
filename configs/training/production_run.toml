@@ -165,9 +165,11 @@ b2 = 0.95
 weight_decay = 0.1
 
 [checkpoints]
-max_to_keep=3
-# Saving every step (the default) costs time; save every 500 steps.
+# Also saved after the last step and at a preemption. A multiple of validation.interval_steps.
 save_interval_steps = 500
+# The latest checkpoints are kept for resuming, the best by validation loss for the final model.
+keep_latest = 2
+keep_best = 1
 
 # Validation loss on held-out windows after grain_dataset.split_date, the same windows in every run.
 [validation]

@@ -133,8 +133,8 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
 - **CPUs per task**: with JUPITER's `CR_CORE` and `task/cgroup` settings, a task gets one core unless
   `--cpus-per-task` is set, and `srun` needs `SRUN_CPUS_PER_TASK` to inherit it. The jobs here and
   `clusters/jupiter/slurm/train.slurm` use 72 cores per task; the `cpus` sweep compares 8 with 72.
-- **Checkpointing every step** (the Orbax default `save_interval_steps = 1`) would dominate step times, so the
-  benchmark config saves only step 0 (`production_run.toml` saves every 500 steps). The checkpoint time is still reported
+- **Checkpointing every step** would dominate step times, so the benchmark config saves only after the last step
+  (`save_interval_steps = 1000000`; `production_run.toml` saves every 500 steps). The checkpoint time is still reported
   separately.
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
   runs. The jobs read the standardized anomaly stores written by `graphcast download`, all in

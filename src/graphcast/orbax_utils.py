@@ -18,38 +18,49 @@ from graphcast.dataloader_utils import (
   DatasetStream,
   InputsTargetsForcingsIterator,
 )
-from graphcast.training_config import TrainingConfig
-from graphcast.training_utils import (
-  JAXLossAndDiagnostics,
-  Params,
-  make_process_mesh,
-)
+from graphcast.training_config import CheckpointConfig
+from graphcast.training_utils import Params
 
 logger = logging.getLogger(__name__)
 
 
+# Checkpoint metric used to rank checkpoints (lower is better).
+VALID_LOSS = "valid_loss"
+
+
+def _valid_loss(metrics: Mapping[str, float]) -> float:
+  return metrics[VALID_LOSS]
+
+
 def get_checkpoint_manager(
-    ckpt_path: pathlib.Path,
-    configs: TrainingConfig,
+  ckpt_path: pathlib.Path,
+  checkpoints: CheckpointConfig,
+  scored: bool,
 ) -> ocp.CheckpointManager:
+  """A manager that keeps the latest checkpoints, and if scored (by validation) also the best by validation loss.
+
+  The training loop decides when to save (push_checkpoint saves unconditionally). Checkpoints without a validation
+  loss (preemption saves) are kept only while they are among the latest.
+  """
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
-  ckpt_mngr_options = ocp.CheckpointManagerOptions(
-    best_fn=lambda metrics: metrics[0],
-    best_mode="min",
-    **configs.checkpoints.model_dump(exclude_unset=True),
-  )
-  # `jax.multihost_utils.sync_global_devices` implements the barrier by calling
-  # `jax.multihost_utils.broadcast_on_to_all`, which inside uses jax.sharding.Mesh declared for the purpose and
-  # generally different from the context mesh, causing an error.
-  # For this reason, orbax CheckpointManager (which uses such a barrier) needs to be called using `null_mesh`, or before
-  # `jax.sharding.set_mesh()` is called. The same goes for save and restore operations.
-  #  See: https://github.com/google/orbax/issues/2545
-  mesh = make_process_mesh()
-  with jax.sharding.set_mesh(mesh):
-    ckpt_mngr = ocp.CheckpointManager(
-      ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger()
+  policies: list[ocp.checkpoint_managers.PreservationPolicy] = [
+    ocp.checkpoint_managers.LatestN(n=checkpoints.keep_latest)
+  ]
+  if scored and checkpoints.keep_best > 0:
+    # BestN keeps the last n checkpoints in sorted order: sort in descending order to keep the lowest losses.
+    policies.append(
+      ocp.checkpoint_managers.BestN(
+        get_metric_fn=_valid_loss, reverse=True, n=checkpoints.keep_best, keep_checkpoints_without_metrics=False
+      )
     )
-  return ckpt_mngr
+  ckpt_mngr_options = ocp.CheckpointManagerOptions(
+    preservation_policy=ocp.checkpoint_managers.AnyPreservationPolicy(policies),
+    # best_fn only ranks checkpoints for best_step(); retention is the preservation policy's.
+    best_fn=_valid_loss if scored else None,
+    best_mode="min",
+    enable_async_checkpointing=checkpoints.enable_async_checkpointing,
+  )
+  return ocp.CheckpointManager(ckpt_path, options=ckpt_mngr_options, logger=OrbaxLogger())
 
 
 GRAIN_NUM_WORKERS_ITEM = "grain_num_workers"
@@ -60,29 +71,23 @@ GrainNumWorkers = Mapping[str, list[int]]
 def gather_grain_num_workers(train_stream: DatasetStream) -> GrainNumWorkers:
   """Gather the Grain num_workers of the training stream from all processes, which may autotune it independently."""
   local = np.array([train_stream.options.num_workers])
-  gathered = (
-    multihost_utils.process_allgather(local) if jax.process_count() > 1 else local[None]
-  )
+  gathered = multihost_utils.process_allgather(local) if jax.process_count() > 1 else local[None]
   return {"train_iterator": gathered[:, 0].tolist()}
 
 
 def check_grain_num_workers(
-    ckpt_mngr: ocp.CheckpointManager,
-    step: int,
-    grain_num_workers: GrainNumWorkers,
-    items: typing.Iterable[str],
+  ckpt_mngr: ocp.CheckpointManager,
+  step: int,
+  grain_num_workers: GrainNumWorkers,
+  items: typing.Iterable[str],
 ) -> None:
   """Raise if the given iterator items of a checkpoint were saved with a different Grain num_workers."""
   # CheckpointManager.item_metadata fails on our checkpoints, whose metrics are a (loss, diagnostics) list rather than
   # a dict, so look for the item directory instead.
   if not (ckpt_mngr.directory / str(step) / GRAIN_NUM_WORKERS_ITEM).exists():
-    logger.warning(
-      f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run."
-    )
+    logger.warning(f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run.")
     return
-  saved = ckpt_mngr.restore(
-    step, args=ocp.args.Composite(**{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonRestore()})
-  )
+  saved = ckpt_mngr.restore(step, args=ocp.args.Composite(**{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonRestore()}))
   saved = saved[GRAIN_NUM_WORKERS_ITEM]
   for item in items:
     if saved.get(item) != grain_num_workers[item]:
@@ -95,16 +100,15 @@ def check_grain_num_workers(
 
 
 def push_checkpoint(
-    ckpt_mngr: ocp.CheckpointManager,
-    step: int,
-    metrics: JAXLossAndDiagnostics,
-    train_iterator: InputsTargetsForcingsIterator,
-    params: Params,
-    opt_state: Params,
-    grain_num_workers: GrainNumWorkers,
+  ckpt_mngr: ocp.CheckpointManager,
+  step: int,
+  train_iterator: InputsTargetsForcingsIterator,
+  params: Params,
+  opt_state: Params,
+  grain_num_workers: GrainNumWorkers,
+  metrics: Mapping[str, float] | None = None,
 ) -> None:
-  metrics = jax.tree_util.tree_map(lambda x: x.item(), metrics)
-  # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
+  """Save a checkpoint of the state after the given step; the caller decides when. Metrics are host values."""
   ckpt_mngr.save(
     step,
     args=ocp.args.Composite(
@@ -113,17 +117,18 @@ def push_checkpoint(
       opt_state=PyTreeSave(opt_state),
       **{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonSave(dict(grain_num_workers))},
     ),
-    metrics=metrics,
+    metrics=None if metrics is None else dict(metrics),
+    force=True,
   )
 
 
 def pull_checkpoint(
-    ckpt_mngr: ocp.CheckpointManager,
-    step: int,
-    train_iterator: InputsTargetsForcingsIterator | None = None,
-    params: Params | None = None,
-    opt_state: Params | None = None,
-    grain_num_workers: GrainNumWorkers | None = None,
+  ckpt_mngr: ocp.CheckpointManager,
+  step: int,
+  train_iterator: InputsTargetsForcingsIterator | None = None,
+  params: Params | None = None,
+  opt_state: Params | None = None,
+  grain_num_workers: GrainNumWorkers | None = None,
 ) -> Mapping[str, Any]:
   """Restore the given items; the iterator requires grain_num_workers, which must match the saved value.
 
@@ -134,8 +139,6 @@ def pull_checkpoint(
     if grain_num_workers is None:
       raise ValueError("grain_num_workers is required to restore the dataset iterator.")
     check_grain_num_workers(ckpt_mngr, step, grain_num_workers, ["train_iterator"])
-  # TODO: check restore and save args options related to sharding and layout
-  # FIXME: Orbax messes up with global mesh, see comment in get_checkpoint_manager. Check if new versions of Orbax fix the issue.
   composite_args = {}
   if train_iterator is not None:
     composite_args["train_iterator"] = IterDatasetRestore(train_iterator)

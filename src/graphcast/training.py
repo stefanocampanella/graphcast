@@ -15,6 +15,7 @@ import atexit
 import logging
 import os
 import pathlib
+import sys
 import time
 from functools import partial
 
@@ -41,6 +42,14 @@ from graphcast.training_utils import (
 
 logger = logging.getLogger(__name__)
 
+# Exit status of a run stopped after a preemption checkpoint (EX_TEMPFAIL): resume it with --continue.
+PREEMPTED_EXIT_STATUS = 75
+
+
+def first_step(restored_step: int | None) -> int:
+  """The first step to run: a checkpoint holds the state after its step, so a restored run continues after it."""
+  return 0 if restored_step is None else restored_step + 1
+
 
 @atexit.register
 def _shutdown_jax_distributed():
@@ -62,9 +71,7 @@ def _shutdown_jax_distributed():
 @click.argument(
   "output_path",
   required=True,
-  type=click.Path(
-    path_type=pathlib.Path, file_okay=False, writable=True, resolve_path=True
-  ),
+  type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True, resolve_path=True),
 )
 @click.argument(
   "train_path",
@@ -192,7 +199,6 @@ def train(
   grain_num_workers = orbax_utils.gather_grain_num_workers(train_stream)
   train_iterator = iter(train_stream.dataset)
 
-  latest_step = 0
   params = trn_utils.get_params(
     lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
     dataloader_utils.get_init_sample(configs, dataset),
@@ -205,19 +211,22 @@ def train(
     opt_state, device=NamedSharding(mesh=device_mesh, spec=P())
   )
 
-  ckpt_mngr = orbax_utils.get_checkpoint_manager(train_path, configs)
+  ckpt_mngr = orbax_utils.get_checkpoint_manager(
+    train_path, configs.checkpoints, scored=configs.validation is not None
+  )
+  restored_step = None
   if restart_from_previous_checkpoint:
-    if not ckpt_mngr.all_steps(read=True):
+    restored_step = ckpt_mngr.latest_step()
+    if restored_step is None:
       raise ValueError("Found no checkpoint to restore while restarting training.")
     restored = orbax_utils.pull_checkpoint(
       ckpt_mngr=ckpt_mngr,
-      step=ckpt_mngr.latest_step(),
+      step=restored_step,
       train_iterator=train_iterator,
       params=params,
       opt_state=opt_state,
       grain_num_workers=grain_num_workers,
     )
-    latest_step = ckpt_mngr.latest_step()
     train_iterator: dataloader_utils.InputsTargetsForcingsIterator = restored[
       "train_iterator"
     ]
@@ -225,10 +234,9 @@ def train(
     opt_state: trn_utils.Params = restored["opt_state"]
 
   training_steps = configs.training_steps
-  logger.info(f"Training for {training_steps=} starting at {latest_step=}.")
+  start_step = first_step(restored_step)
+  logger.info(f"Training for {training_steps=} starting at step {start_step}.")
   tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
-
-  # TODO: are those device_put needed also when pulling checkpoints saved from JAX arrays (instead of numpy arrays)
 
   # The policy names the outputs of rematerialized blocks: only a checkpoint around them can offload those.
   local_loss_fn = loss_fn.apply
@@ -287,56 +295,86 @@ def train(
       iterator.close()
     return jax.tree_util.tree_map(lambda *values: jax.numpy.mean(jax.numpy.stack(values)), *metrics)
 
+  validation_interval = None if configs.validation is None else configs.validation.interval_steps
+
+  def validation_due(step: int) -> bool:
+    return validation_interval is not None and ((step + 1) % validation_interval == 0 or step + 1 == training_steps)
+
+  def save_due(step: int) -> bool:
+    return (step + 1) % configs.checkpoints.save_interval_steps == 0 or step + 1 == training_steps
+
   mp_prefetch = train_stream.options.multiprocessing_options is not None
   compiled_train_step = None
-  for current_step in range(latest_step, training_steps):
-    step_start = time.perf_counter()
-    batch = dataloader_utils.next_batch_on_device(
-      train_iterator,
-      device_mesh=device_mesh,
-      mp_prefetch=mp_prefetch,
-    )
-    data_end = time.perf_counter()
-    with jax.sharding.set_mesh(device_mesh):
-      if compiled_train_step is None:
-        # Compile once explicitly to log the memory XLA plans for a step (device and host), then reuse it.
-        compiled_train_step = train_step.lower(params, opt_state, batch, static_data).compile()
-        cli_utils.run_analysis_and_report(compiled_train_step)
-      params, opt_state, train_metrics = compiled_train_step(params, opt_state, batch, static_data)
-    # Wait for the step, so that checkpoint time does not include it (push_checkpoint would wait anyway).
-    jax.block_until_ready(train_metrics)
-    compute_end = time.perf_counter()
-    orbax_utils.push_checkpoint(
-      ckpt_mngr=ckpt_mngr,
-      step=current_step,
-      metrics=train_metrics,
-      train_iterator=train_iterator,
-      params=params,
-      opt_state=opt_state,
-      grain_num_workers=grain_num_workers,
-    )
-    checkpoint_end = time.perf_counter()
-    tb_logger.log(current_step, train_metrics, lr=schedule(current_step))
-    if validation_dataset is not None and (
-      (current_step + 1) % configs.validation.interval_steps == 0 or current_step + 1 == training_steps
-    ):
-      validation_start = time.perf_counter()
-      validation_metrics = jax.block_until_ready(validate(params))
-      tb_logger.log(current_step, validation_metrics, prefix="valid")
-      logger.info(
-        f"Step {current_step} validation: loss {validation_metrics[0].item():.5f}, "
-        f"{time.perf_counter() - validation_start:.1f} s"
+  try:
+    for current_step in range(start_step, training_steps):
+      step_start = time.perf_counter()
+      batch = dataloader_utils.next_batch_on_device(
+        train_iterator,
+        device_mesh=device_mesh,
+        mp_prefetch=mp_prefetch,
       )
-    # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
-    step_end = time.perf_counter()
-    logger.info(
-      f"Step {current_step} timings: data {data_end - step_start:.3f} s, "
-      f"compute {compute_end - data_end:.3f} s, checkpoint {checkpoint_end - compute_end:.3f} s, "
-      f"total {step_end - step_start:.3f} s, elapsed {step_end - start_time:.1f} s"
-    )
-  logger.info(f"Training finished, best checkpoint {ckpt_mngr.best_step()}.")
+      data_end = time.perf_counter()
+      with jax.sharding.set_mesh(device_mesh):
+        if compiled_train_step is None:
+          # Compile once explicitly to log the memory XLA plans for a step (device and host), then reuse it.
+          compiled_train_step = train_step.lower(params, opt_state, batch, static_data).compile()
+          cli_utils.run_analysis_and_report(compiled_train_step)
+        params, opt_state, train_metrics = compiled_train_step(params, opt_state, batch, static_data)
+      # Wait for the step, so that the timings below separate compute from checkpointing and logging.
+      jax.block_until_ready(train_metrics)
+      compute_end = time.perf_counter()
+      # All processes agree on the step at which to save after a SIGTERM (JAX's preemption sync point).
+      preempted = ckpt_mngr.reached_preemption(current_step)
+      validation_metrics = None
+      if validation_due(current_step) and not preempted:
+        validation_metrics = jax.device_get(validate(params))
+        logger.info(
+          f"Step {current_step} validation: loss {validation_metrics[0]:.5f}, "
+          f"{time.perf_counter() - compute_end:.1f} s"
+        )
+      checkpoint_start = time.perf_counter()
+      if preempted or save_due(current_step):
+        # Regular saves coincide with validation steps (checked by TrainingConfig), so they carry its loss.
+        orbax_utils.push_checkpoint(
+          ckpt_mngr=ckpt_mngr,
+          step=current_step,
+          train_iterator=train_iterator,
+          params=params,
+          opt_state=opt_state,
+          grain_num_workers=grain_num_workers,
+          metrics=None if validation_metrics is None else {orbax_utils.VALID_LOSS: float(validation_metrics[0])},
+        )
+      checkpoint_end = time.perf_counter()
+      tb_logger.log(current_step, train_metrics, lr=schedule(current_step))
+      if validation_metrics is not None:
+        tb_logger.log(current_step, validation_metrics, prefix="valid")
+      # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
+      step_end = time.perf_counter()
+      logger.info(
+        f"Step {current_step} timings: data {data_end - step_start:.3f} s, "
+        f"compute {compute_end - data_end:.3f} s, checkpoint {checkpoint_end - checkpoint_start:.3f} s, "
+        f"total {step_end - step_start:.3f} s, elapsed {step_end - start_time:.1f} s"
+      )
+      if preempted:
+        ckpt_mngr.wait_until_finished()
+        logger.warning(
+          f"Preempted: saved step {current_step} ({time.perf_counter() - checkpoint_start:.1f} s), stopping without "
+          f"saving the model. Resume with --continue (exit status {PREEMPTED_EXIT_STATUS})."
+        )
+        sys.exit(PREEMPTED_EXIT_STATUS)
+  finally:
+    # Stops the Grain workers, which ignore SIGTERM (dataloader_utils.ignore_sigterm).
+    train_iterator.close()
+
+  ckpt_mngr.wait_until_finished()
+  final_step = ckpt_mngr.best_step()
+  if final_step is None:
+    final_step = ckpt_mngr.latest_step()
+  if final_step is None:
+    raise RuntimeError(f"No checkpoint in {train_path} to save the model from.")
+  logger.info(f"Training finished, final model from step {final_step}.")
   restored = orbax_utils.pull_checkpoint(
-    ckpt_mngr=ckpt_mngr, step=ckpt_mngr.best_step(), params=params
+    ckpt_mngr=ckpt_mngr, step=final_step, params=params
   )
   trn_utils.save_model(
     output_path=output_path,

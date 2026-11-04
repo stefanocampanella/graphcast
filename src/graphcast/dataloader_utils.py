@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import signal
 from collections.abc import Iterable
 from functools import partial
 from typing import NamedTuple
@@ -334,6 +335,17 @@ def get_grain_options(
     return options
 
 
+def ignore_sigterm(worker_index: int, num_workers: int) -> None:
+  """Grain worker initializer: ignore SIGTERM, so that workers keep serving batches until the main process stops them.
+
+  A job scheduler sends SIGTERM to every process before a time limit; the main process then saves a checkpoint and
+  closes the iterator, which stops the workers (closing is required: interpreter exit stops daemon processes with
+  SIGTERM).
+  """
+  del worker_index, num_workers
+  signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+
 def to_dataset_iterator(
   grain_dataset: grain.MapDataset,
   options: grain_utils.GrainOptions,
@@ -350,7 +362,7 @@ def to_dataset_iterator(
       grain_dataset.map(lambda value: xarray_jax.wrap_data(value, to_jax=False, np_contiguous=True))
       .map(jax.tree_util.tree_flatten)
       .to_iter_dataset(read_options=read_options)
-      .mp_prefetch(options=mp_options)
+      .mp_prefetch(options=mp_options, worker_init_fn=ignore_sigterm)
       .map(_unflatten_sample)
     )
 

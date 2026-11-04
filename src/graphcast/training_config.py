@@ -190,10 +190,18 @@ class OptimizerConfig(ApplicationConfig):
   gradient_transformation: Annotated[list[NamedOptaxConfig], Field(min_length=1)]
 
 
-class CheckpointConfig(BaseModel):
-  model_config = ConfigDict(extra="allow")
-  max_to_keep: PositiveInt | None = None
-  save_interval_steps: PositiveInt = 1
+class CheckpointConfig(ApplicationConfig):
+  save_interval_steps: PositiveInt = Field(
+    default=500,
+    description="Save after every this many steps, after the last one, and at a preemption (SIGTERM). With "
+    "[validation], a multiple of validation.interval_steps, so that every regular checkpoint has a validation loss.",
+  )
+  keep_latest: PositiveInt = Field(default=2, description="Keep the latest checkpoints, for resuming.")
+  keep_best: NonNegativeInt = Field(
+    default=1,
+    description="Also keep the checkpoints with the lowest validation loss (with [validation]); the best one becomes "
+    "the final model. Without validation, the final model is the latest checkpoint.",
+  )
   enable_async_checkpointing: bool = True
 
 
@@ -229,6 +237,15 @@ class TrainingConfig(ApplicationConfig):
   optimizer: OptimizerConfig
   checkpoints: CheckpointConfig = Field(default_factory=CheckpointConfig)
   validation: ValidationConfig | None = None
+
+  @model_validator(mode="after")
+  def check_save_interval(self) -> "TrainingConfig":
+    if self.validation is not None and self.checkpoints.save_interval_steps % self.validation.interval_steps != 0:
+      raise ValueError(
+        f"checkpoints.save_interval_steps ({self.checkpoints.save_interval_steps}) must be a multiple of "
+        f"validation.interval_steps ({self.validation.interval_steps}): checkpoints are ranked by validation loss."
+      )
+    return self
 
   @field_validator("tendency_std")
   @classmethod

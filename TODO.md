@@ -1,7 +1,6 @@
 # TODO list
 
 ## Core
-* Make the training preemptible (e.g., check why Orbax is not detecting SIGTERM). **HIGH PRIORITY**
 * Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
@@ -16,13 +15,11 @@
   add it to the benchmark reports. The loader no longer limits training, so this is for comparison, not tuning.
   (Low priority)
 * Simplify SLURM scripts by forwarding arguments to Python CLI, without building flags using getopt. (Medium priority)
-* Change implementation to directly save JAX arrays instead of converting them to numpy arrays before passing them to the Orbax checkpointing API. **HIGH PRIORITY**
 * Check if checkpointing rng data, and not rng JAX array, remove some of the warnings from Orbax. **HIGH PRIORITY**
 * Check if and why mesh and grid nodes must have the same number of features before applying the encoder graph (as it is currently implemented). **HIGH PRIORITY**
 * Investigate bug resulting in the release of SharedMemoryArrays when using multiple workers in Grain and checkpointing parameters as pytree in Orbax. **HIGH PRIORITY**
 * Investigate training using large batch sizes, determine new learning rate. **HIGH PRIORITY**
 * Investigate why the compilation time increase with the number of JAX processes. **HIGH PRIORITY**
-* Check that tensorboard is logging asynchornously. **HIGH PRIORITY**
 * Break down GPU memory by component (encoder, processor, decoder), e.g. with the xprof memory profile, and record
   reference numbers. Indirect numbers from the memfit sweep (XLA plan against message passing steps, 50 levels,
   `results/2026-10-29-memfit-alllevels`): up to 70 km the plan is flat at 50-57 GiB whatever the steps; edge chunks
@@ -60,6 +57,10 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
+* Preemption: Orbax saves at a sync point after SIGTERM (sent 2 minutes before the time limit by `train.slurm`),
+  Grain workers ignore SIGTERM, and the run exits with status 75; resume with `--continue` (Nov 2026).
+* Checkpoints: parameters and optimizer state reach Orbax as JAX arrays (no numpy conversion); metrics are converted
+  only when saved or logged, and TensorBoard writes on process 0 only (Nov 2026).
 * Number of training steps: estimated from GraphCast's schedule and the dataset (about 100-200 epochs), see
   `configs/training/production_run.toml` and the 29 Oct report (30 Oct 2026).
 * Shape mismatch on retrieval and recompilation: not reproduced with the current code and tests (30 Oct 2026).

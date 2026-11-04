@@ -62,15 +62,6 @@ def make_batch_mesh() -> Mesh:
   )
 
 
-def make_process_mesh() -> Mesh:
-  """A mesh with axes ("process", "local_device"), for Orbax and multihost barriers (see get_checkpoint_manager)."""
-  return _make_hybrid_mesh(
-    ("process", "local_device"),
-    (1, jax.local_device_count()),
-    (jax.process_count(), 1),
-  )
-
-
 def check_writable_paths(
     output: pathlib.Path,
     train: pathlib.Path,
@@ -93,41 +84,39 @@ def check_writable_paths(
       path.mkdir(parents=True, exist_ok=True)
     sync_global_devices(f"empty_{path}")
 
-  mesh = make_process_mesh()
-  with jax.sharding.set_mesh(mesh):
-    # output is where the final checkpoint will be saved.
-    # We ensure that output' parent directory exists (with write permission if created). Also:
-    #   1. If overwrite=True, and output points to an existing file, then it should be writable
-    #   2. If overwrite=True, and output doesn't point to an existing file, then the parent directory should be writable.
-    #   3. If overwrite=False, then output should not point to an existing file.
-    ensure_directory_exists(output.parent)
-    if overwrite:
-      if output.exists():
-        if not os.access(output, os.W_OK):
-          raise PermissionError(f"{output} is not writable.")
-      else:
-        if not os.access(output.parent, os.W_OK):
-          raise PermissionError(f"{output.parent} is not writable.")
+  # output is where the final checkpoint will be saved.
+  # We ensure that output' parent directory exists (with write permission if created). Also:
+  #   1. If overwrite=True, and output points to an existing file, then it should be writable
+  #   2. If overwrite=True, and output doesn't point to an existing file, then the parent directory should be writable.
+  #   3. If overwrite=False, then output should not point to an existing file.
+  ensure_directory_exists(output.parent)
+  if overwrite:
+    if output.exists():
+      if not os.access(output, os.W_OK):
+        raise PermissionError(f"{output} is not writable.")
     else:
-      if output.exists():
-        raise FileExistsError(f"{output} already exists.")
+      if not os.access(output.parent, os.W_OK):
+        raise PermissionError(f"{output.parent} is not writable.")
+  else:
+    if output.exists():
+      raise FileExistsError(f"{output} already exists.")
 
-    # train is the directory where checkpoints will be saved during training.
-    # We ensure that the directory exists (with write permission if created) and is empty if start_fresh=True, also:
-    #   1. It should be readable and writable.
-    ensure_directory_exists(train)
-    if start_fresh and any(train.iterdir()):
-      empty_directory(train)
-    if not os.access(train, os.R_OK | os.W_OK):
-      raise PermissionError(f"{train} is not readable and/or writable.")
+  # train is the directory where checkpoints will be saved during training.
+  # We ensure that the directory exists (with write permission if created) and is empty if start_fresh=True, also:
+  #   1. It should be readable and writable.
+  ensure_directory_exists(train)
+  if start_fresh and any(train.iterdir()):
+    empty_directory(train)
+  if not os.access(train, os.R_OK | os.W_OK):
+    raise PermissionError(f"{train} is not readable and/or writable.")
 
-    # tb is where the summarywriter will write the logs during training:
-    # We ensure that the directory exists (with write permission if created).
-    #   1. It should be writable.
-    if tb is not None:
-      ensure_directory_exists(tb)
-      if not os.access(tb, os.W_OK):
-        raise PermissionError(f"{tb} is not writable.")
+  # tb is where the summarywriter will write the logs during training:
+  # We ensure that the directory exists (with write permission if created).
+  #   1. It should be writable.
+  if tb is not None:
+    ensure_directory_exists(tb)
+    if not os.access(tb, os.W_OK):
+      raise PermissionError(f"{tb} is not writable.")
 
 
 def get_mesh(configs: TrainingConfig) -> MeshData:
@@ -268,19 +257,16 @@ class TensorboardLogger:
     lr: float | None = None,
     prefix: str = "train",
   ) -> None:
+    """Write the metrics of a step on process 0 (other processes do nothing, and wait for nothing)."""
+    if jax.process_index() != 0:
+      return
+    loss, diagnostics = jax.device_get(train_metrics)
     with self._summary_writer.as_default():
-
-      def _log(key, value):
-        if jax.process_index() == 0:
-          self._summary.scalar(key, value, step=current_step)
-
-      loss, diagnostics = jax.tree_util.tree_map(lambda x: x.item(), train_metrics)
-      _log(f"{prefix}/loss", loss)
+      self._summary.scalar(f"{prefix}/loss", loss, step=current_step)
       for key, value in diagnostics.items():
-        _log(f"{prefix}/{key}", value)
-
+        self._summary.scalar(f"{prefix}/{key}", value, step=current_step)
       if lr is not None:
-        _log("learning_rate", lr)
+        self._summary.scalar("learning_rate", lr, step=current_step)
 
 
 def save_model(
@@ -306,14 +292,12 @@ def save_model(
     params=params,
   )
 
-  device_mesh = make_process_mesh()
-  with jax.sharding.set_mesh(device_mesh):
-    if jax.process_index() == 0:
-      logger.info(f"Saving checkpoint to {output_path}")
-      with output_path.open("wb") as file:
-        file = typing.cast(typing.BinaryIO, file)
-        ckpt_dump(file, graphcast_ckpt)
-    sync_global_devices("save_checkpoint")
+  if jax.process_index() == 0:
+    logger.info(f"Saving the model to {output_path}")
+    with output_path.open("wb") as file:
+      file = typing.cast(typing.BinaryIO, file)
+      ckpt_dump(file, graphcast_ckpt)
+  sync_global_devices("save_model")
 
 
 # get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
