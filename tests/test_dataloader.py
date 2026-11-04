@@ -269,9 +269,10 @@ def test_grain_workers_survive_sigterm(training_configs):
   dataset = dataloader_utils.get_dataset(training_configs)
   grain_runtime = grain_utils.GrainRuntimeConfig(num_workers=1, num_threads=1, prefetch_buffer_size=1)
   stream = dataloader_utils.get_dataset_stream(training_configs, dataset, seed=0, grain_runtime=grain_runtime)
+  others = set(multiprocessing.active_children())
   iterator = iter(stream.dataset)
   next(iterator)
-  workers = multiprocessing.active_children()
+  workers = [child for child in multiprocessing.active_children() if child not in others]
   assert workers
   for worker in workers:
     os.kill(worker.pid, signal.SIGTERM)

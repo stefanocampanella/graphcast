@@ -82,8 +82,7 @@ def check_grain_num_workers(
   items: typing.Iterable[str],
 ) -> None:
   """Raise if the given iterator items of a checkpoint were saved with a different Grain num_workers."""
-  # CheckpointManager.item_metadata fails on our checkpoints, whose metrics are a (loss, diagnostics) list rather than
-  # a dict, so look for the item directory instead.
+  # Checkpoints saved before Grain num_workers was recorded have no such item.
   if not (ckpt_mngr.directory / str(step) / GRAIN_NUM_WORKERS_ITEM).exists():
     logger.warning(f"Checkpoint {step=} does not record Grain num_workers; cannot check it matches the current run.")
     return
