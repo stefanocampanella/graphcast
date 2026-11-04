@@ -5,8 +5,11 @@ The synthetic store is written by graphcast download from the inputs of conftest
 standardized anomalies computed directly.
 """
 
+import multiprocessing
+import os
 import pathlib
 import pickle
+import signal
 
 import numpy as np
 import pytest
@@ -257,3 +260,25 @@ def test_loss_masks(training_configs, tendency_std_path, mask_path):
     dataloader_utils.get_loss_masks(tendency_std, grid, ["thetao", "so"])
   with pytest.raises(ValueError, match="lat coordinates"):
     dataloader_utils.get_loss_masks(tendency_std, grid._replace(lat=grid.lat + 1), ["thetao"])
+
+
+def test_grain_workers_survive_sigterm(training_configs):
+  """Grain workers ignore SIGTERM, which a scheduler sends to all processes before a time limit, and still stop when
+  the iterator is closed."""
+  flags.FLAGS.mark_as_parsed()
+  dataset = dataloader_utils.get_dataset(training_configs)
+  grain_runtime = grain_utils.GrainRuntimeConfig(num_workers=1, num_threads=1, prefetch_buffer_size=1)
+  stream = dataloader_utils.get_dataset_stream(training_configs, dataset, seed=0, grain_runtime=grain_runtime)
+  iterator = iter(stream.dataset)
+  next(iterator)
+  workers = multiprocessing.active_children()
+  assert workers
+  for worker in workers:
+    os.kill(worker.pid, signal.SIGTERM)
+  for _ in range(2):
+    next(iterator)
+  assert all(worker.is_alive() for worker in workers)
+  iterator.close()
+  for worker in workers:
+    worker.join(timeout=30)
+    assert not worker.is_alive()

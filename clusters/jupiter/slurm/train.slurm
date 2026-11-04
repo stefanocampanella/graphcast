@@ -8,6 +8,9 @@
 #SBATCH --cpus-per-task=72
 #SBATCH --gres=gpu:4
 #SBATCH --gpu-bind=single:1
+# SIGTERM to the training processes 2 minutes before the time limit (instead of KillWait = 30 s): they save a checkpoint
+# at the next step all agree on and exit with status 75; resume with --continue.
+#SBATCH --signal=TERM@120
 
 set -euo pipefail
 
@@ -25,6 +28,7 @@ Execution options are forwarded to scripts/train.sh; see scripts/train.sh --help
 Relative environment/log paths use PROJECT_DIR. SBATCH directives are literal;
 use sbatch options before the script path to override resource allocations.
 No reservation by default; for short tests on up to 2 nodes, add --reservation=develbooster.
+Two minutes before the time limit the run saves a checkpoint and exits with status 75 (resume with --continue).
 EOF
 }
 
