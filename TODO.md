@@ -29,6 +29,12 @@
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
 * Add routines to check graph statistics (number of nodes, edges, degree, etc.). In particular, one should check that all grid nodes are connected to the processor. **HIGH PRIORITY** 
 * Check that accumulated variables in ARCO-OCEAN are consistent (e.g. they use the (t-24h, t) convention). **HIGH PRIORITY**
+* Simplify `xarray_jax.py` with the Python array API standard: JAX arrays implement it, so xarray can hold them
+  directly, without `JaxArrayWrapper`, `wrap`/`unwrap` or the wrapping in `apply_ufunc` (the custom constructors would
+  remain only for dynamic coordinates). Xarray-JAX, a standalone package derived from GraphCast's `xarray_jax`, did
+  this: https://github.com/mishasinitcyn/Xarray-JAX/pull/4 (closes issue #1 there). Inside `jax.jit`, numpy functions
+  are then no longer redirected to `jax.numpy` (e.g. `np.abs` on a traced array fails): use operators, built-ins or
+  `xarray_jax.apply_ufunc` with the `jax.numpy` function, and check every caller.
 * Add logging settings to training toml config file. (Medium priority)
 * Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
 * Investigate why JAX initialization gets logged twice, on stdout and stderr, in training.py. (Low priority)
