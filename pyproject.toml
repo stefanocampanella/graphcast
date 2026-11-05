@@ -73,7 +73,16 @@ graphcast = "graphcast:cli"
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [dependency-groups]
-dev = ["pytest >= 9"]
+dev = [
+    "coverage[toml] >= 7.17",
+    "pre-commit >= 4.7",
+    "pytest >= 9",
+    "pytest-cov >= 7.1",
+    # Pinned: the rules enabled by default and the formatter's output change between versions; keep in sync with
+    # .pre-commit-config.yaml.
+    "ruff == 0.17.3",
+    "ty == 0.0.97",
+]
 
 [build-system]
 requires = ["setuptools (>= 67.0)"]
@@ -91,9 +100,22 @@ filterwarnings = [
     "ignore:Combining a `sharding_indexed` codec disables partial reads",
 ]
 
+[tool.coverage.run]
+source = ["src/graphcast"]
+branch = true
+omit = ["src/graphcast/__main__.py", "src/graphcast/notebooks_utils.py"]
+
+[tool.coverage.report]
+show_missing = true
+
 [tool.ruff]
 indent-width = 2
 line-length = 120
 
 [tool.ruff.format]
 indent-style = "space"
+quote-style = "double"
+
+[tool.ty.environment]
+python-version = "3.12"
+extra-paths = ["src"]
