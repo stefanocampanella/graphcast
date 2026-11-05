@@ -490,9 +490,9 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   experiments and insights; append entries as work proceeds (CLAUDE.md keeps what stays valid).
 - Workflow: one feature branch and PR per task into `develop`; the maintainer reviews on GitHub
   or asks for changes directly. Reply to each review comment once addressed. Keep PR descriptions short (purpose,
-  usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by Claude
-  (`git commit --author="Claude <noreply@anthropic.com>"`) with the maintainer as
-  `Co-Authored-By: Stefano Campanella <15182642+stefanocampanella@users.noreply.github.com>`.
+  usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by the
+  maintainer (the git user, no `--author`), with Claude as co-author through the single `Co-Authored-By: Claude …
+  <noreply@anthropic.com>` trailer that Claude Code adds.
 - Conventions from reviews: no data paths, URLs, hardware or cluster references (JUPITER, ARCO-OCEAN) in code
   comments, docstrings, config comments or `scripts/` (fine as default values and in CLAUDE.md); `scripts/` must be
   portable, cluster-specific settings live under `clusters/<name>/`; user-specific settings (e.g. AWS profiles) come
