@@ -957,3 +957,20 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   radius-query smoke test passes with 0 edges (unit-sphere mesh, grid in metres). Latent bugs: `basis.py` calls an
   undefined `cli`; `mesh2grid_edge_normalization_factor` is a float but unpacked as a pair. Coverage 53 %, lowest on
   the model and training path (8–29 %). ty cannot resolve the image's editable jax install.
+
+## 2026-11-05 18:30: plan for fixes and tests, legacy tests updated
+
+- **Decisions** (maintainer, on the report): delete `climatology`; fix `sharding` to fit the current code (drop it if
+  that needs large untested changes); keep and test `autoregressive`, `validation_utils`, `graph_pruning`,
+  `plot_utils`; make ty see the image's jax through extra search paths in the pre-commit hook, not an image change; fix
+  the `basis` draft; coverage gate 80 %; one PR, reviewed after each group of commits.
+- **Insights:** `sharding.FullyShardedDataParallel` called the lifted `init` inside `shard_map` (leaking tracers) and
+  asked for an rng in `apply`; lifting the shard-mapped `init` instead works (toy predictor on 4 simulated CPU devices:
+  same loss, gradients equal). ty with `--extra-search-path` for `/opt/jax`, `/opt/jaxlibs/jaxlib` and `/opt/flax`
+  resolves every import (170 → 128 diagnostics). `basis` interpolates a dense identity matrix (2 TB for the 25 km
+  mesh). Edge direction features take `sin`/`cos` of azimuths converted to degrees twice (`pyproj.Geod.inv` already
+  returns degrees), so they are meaningless for every model trained so far.
+- **Changes (group 1):** legacy tests updated to the fork: `merge_meshes`/`faces_to_edges` tests moved to
+  `tests/test_mesh_graph.py` with the current semantics; `mesh_connectivity` tests on an Earth-sized mesh against the
+  WGS84 formulas, with brute-force checks of the radius query and containing faces, with and without a mask; the
+  missing-coordinate test of `data_utils` names the missing coordinate.
