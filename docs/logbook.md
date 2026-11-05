@@ -941,3 +941,19 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   last saves of a 40,000-step run.
 - **Change:** `production_run.toml` sets `keep_best = 5` (the default stays 1). This resolves the open item of the
   previous entry; periodic snapshots are not added.
+
+## 2026-11-05 16:00: tests for the whole codebase, legacy port and report
+
+- **Request:** port the inherited absltest modules to pytest without reading the implementation, find what breaks
+  and why, report; then test the whole codebase, with coverage, ruff and ty as pre-commit hooks and a GitHub workflow
+  (branch `feature/tests-and-code-quality`, session dir `claude-work/b0a574fd-35c0-4f21-bc1c-92264af27375`).
+- **Changes:** commits authored by the maintainer with Claude as co-author (CLAUDE.md); dev group with pytest-cov,
+  coverage, pre-commit, ruff 0.17.3 and ty 0.0.97 (pinned), coverage and ty settings in `pyproject.toml`; image
+  rebuilt from the branch as `graphcast-new.sif` (not yet replacing `graphcast.sif`); the seven `*_test.py` modules
+  ported to `tests/` (67 functions, 85 cases).
+- **Findings** (`test_report.md` there): 76 pass, 8 fail, 1 error, none from the port. `merge_meshes` and
+  `faces_to_edges` moved to `mesh_graph`; grid coordinates are WGS84 ECEF in metres and `get_mesh_to_grid_edges` takes
+  a mask; jax 0.11 dropped `jax_pmap_shmap_merge`, and `xarray_jax.pmap`'s own dimension check is never reached. The
+  radius-query smoke test passes with 0 edges (unit-sphere mesh, grid in metres). Latent bugs: `basis.py` calls an
+  undefined `cli`; `mesh2grid_edge_normalization_factor` is a float but unpacked as a pair. Coverage 53 %, lowest on
+  the model and training path (8–29 %). ty cannot resolve the image's editable jax install.

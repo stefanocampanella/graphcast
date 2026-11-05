@@ -18,3 +18,11 @@ scratch
 logs
 runs
 build
+
+# Apptainer images and the generated recipe
+*.sif
+/graphcast.def
+# Coverage data
+.coverage
+.coverage.*
+coverage.xml
