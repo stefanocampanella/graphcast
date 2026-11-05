@@ -196,7 +196,10 @@ class CheckpointConfig(ApplicationConfig):
     description="Save after every this many steps, after the last one, and at a preemption (SIGTERM). With "
     "[validation], a multiple of validation.interval_steps, so that every regular checkpoint has a validation loss.",
   )
-  keep_latest: PositiveInt = Field(default=2, description="Keep the latest checkpoints, for resuming.")
+  keep_latest: PositiveInt = Field(
+    default=1,
+    description="Keep the latest checkpoints, for resuming (Orbax deletes older ones only after a save is committed).",
+  )
   keep_best: NonNegativeInt = Field(
     default=1,
     description="Also keep the checkpoints with the lowest validation loss (with [validation]); the best one becomes "
