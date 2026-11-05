@@ -26,6 +26,7 @@ from graphcast import xarray_jax
 
 
 def test_jax_array_wrapper_with_numpy_api():
+  """numpy operations on a `JaxArrayWrapper` stay in JAX (the result is still wrapped); `np.asarray` leaves it."""
   # This is just a side benefit of making things work with xarray, but the
   # JaxArrayWrapper does allow you to manipulate JAX arrays using the
   # standard numpy API, without converting them to numpy in the process:
@@ -43,6 +44,8 @@ def test_jax_array_wrapper_with_numpy_api():
 
 
 def test_jax_xarray_variable():
+  """A chain of xarray operations on a JAX-backed `Variable` keeps JAX data, also under `jit` and `grad`."""
+
   def ops_via_xarray(inputs):
     x = xarray_jax.Variable(("lat", "lon"), inputs)
     # We'll apply a sequence of operations just to test that the end result is
@@ -67,6 +70,9 @@ def test_jax_xarray_variable():
 
 
 def test_jax_xarray_data_array():
+  """A chain of xarray operations (selection, concat, stack) on a JAX-backed `DataArray` keeps JAX data, also under
+  `jit` and `grad`."""
+
   def ops_via_xarray(inputs):
     x = xarray_jax.DataArray(
       dims=("lat", "lon"),
@@ -96,6 +102,8 @@ def test_jax_xarray_data_array():
 
 
 def test_jax_xarray_dataset():
+  """A chain of xarray operations on a JAX-backed `Dataset` keeps JAX data, also under `jit` and `grad`."""
+
   def ops_via_xarray(foo, bar):
     x = xarray_jax.Dataset(
       data_vars={"foo": (("lat", "lon"), foo), "bar": (("time", "lat", "lon"), bar)},
@@ -127,6 +135,8 @@ def test_jax_xarray_dataset():
 
 
 def test_jit_function_with_xarray_variable_arguments_and_return(subtests):
+  """Jitted functions take and return `Variable`s (JAX- or numpy-backed) and can be called twice without retracing
+  problems (the pytree aux data is comparable)."""
   function = jax.jit(lambda v: v + 1)
   with subtests.test("jax input"):
     inputs = xarray_jax.Variable(("lat", "lon"), jnp.ones((3, 4), dtype=np.float32))
@@ -147,6 +157,7 @@ def test_jit_function_with_xarray_variable_arguments_and_return(subtests):
 
 
 def test_jit_ahead_of_time_compile_with_xarray():
+  """Ahead-of-time compilation (`lower(...).compile()`) works with xarray arguments."""
   # This needs jax.stages.ArgInfo to be wrapped, since .lower maps the xarray
   # to a pytree of ArgInfo under the hood.
   function = jax.jit(lambda v: v + 1)
@@ -157,6 +168,7 @@ def test_jit_ahead_of_time_compile_with_xarray():
 
 
 def test_jit_problem_if_convert_to_plain_numpy_array():
+  """`.values` inside `jit` converts to numpy and fails with a tracer conversion error."""
   inputs = xarray_jax.DataArray(data=jnp.ones((2,), dtype=np.float32), dims=("foo",))
   with pytest.raises(jax.errors.TracerArrayConversionError):
     # Calling .values on a DataArray converts its values to numpy:
@@ -164,12 +176,14 @@ def test_jit_problem_if_convert_to_plain_numpy_array():
 
 
 def test_grad_function_with_xarray_variable_arguments():
+  """`grad` differentiates through a `Variable` argument."""
   x = xarray_jax.Variable(("lat", "lon"), jnp.ones((3, 4), dtype=np.float32))
   # For grad we still need a JAX scalar as the output:
   jax.grad(lambda v: xarray_jax.jax_data(v.sum()))(x)
 
 
 def test_jit_function_with_xarray_data_array_arguments_and_return():
+  """Jitted functions take and return `DataArray`s, keeping dimensions and coordinates."""
   inputs = xarray_jax.DataArray(
     data=jnp.ones((3, 4), dtype=np.float32),
     dims=("lat", "lon"),
@@ -183,6 +197,8 @@ def test_jit_function_with_xarray_data_array_arguments_and_return():
 
 
 def test_jit_function_with_data_array_and_jax_coords():
+  """JAX coordinates of a `DataArray` stay JAX arrays without an index, inside and out of `jit`, and can be used and
+  updated in the computation; numpy coordinates keep their index."""
   inputs = xarray_jax.DataArray(
     data=jnp.ones((3, 4), dtype=np.float32),
     dims=("lat", "lon"),
@@ -225,6 +241,7 @@ def test_jit_function_with_data_array_and_jax_coords():
 
 
 def test_jit_function_with_xarray_dataset_arguments_and_return():
+  """Jitted functions take and return `Dataset`s, keeping variables, dimensions and coordinates."""
   foo = jnp.ones((3, 4), dtype=np.float32)
   bar = jnp.ones((2, 3, 4), dtype=np.float32)
   inputs = xarray_jax.Dataset(
@@ -241,6 +258,7 @@ def test_jit_function_with_xarray_dataset_arguments_and_return():
 
 
 def test_jit_function_with_xarray_datatree_arguments_and_return():
+  """Jitted functions take and return `DataTree`s, with JAX coordinates inherited from the parent."""
   parent_dataset = xarray_jax.Dataset(
     jax_coords={"time": xarray_jax.Variable(("time",), np.arange(2))},
     coords={"lon": xarray.Variable(("lon",), np.arange(4) * 10)},
@@ -267,6 +285,8 @@ def test_jit_function_with_xarray_datatree_arguments_and_return():
 
 
 def test_jit_function_with_dataset_and_jax_coords():
+  """JAX coordinates of a `Dataset` stay JAX arrays without an index, inside and out of `jit`, and can be used and
+  updated in the computation."""
   foo = jnp.ones((3, 4), dtype=np.float32)
   bar = jnp.ones((2, 3, 4), dtype=np.float32)
   inputs = xarray_jax.Dataset(
@@ -320,6 +340,7 @@ def test_jit_function_with_dataset_and_jax_coords():
 
 
 def test_flatten_unflatten_variable():
+  """A `Variable` round-trips through flatten/unflatten, with hashable, comparable aux data (for `jit`'s cache)."""
   variable = xarray_jax.Variable(("lat", "lon"), jnp.ones((3, 4), dtype=np.float32))
   children, aux = xarray_jax._flatten_variable(variable)
   # Check auxiliary info is hashable/comparable (important for jax.jit):
@@ -330,6 +351,7 @@ def test_flatten_unflatten_variable():
 
 
 def test_flatten_unflatten_data_array():
+  """A `DataArray` with numpy and JAX coordinates round-trips through flatten/unflatten, with hashable aux data."""
   data_array = xarray_jax.DataArray(
     data=jnp.ones((3, 4), dtype=np.float32),
     dims=("lat", "lon"),
@@ -345,6 +367,7 @@ def test_flatten_unflatten_data_array():
 
 
 def test_flatten_unflatten_dataset():
+  """A `Dataset` with numpy and JAX coordinates round-trips through flatten/unflatten, with hashable aux data."""
   foo = jnp.ones((3, 4), dtype=np.float32)
   bar = jnp.ones((2, 3, 4), dtype=np.float32)
   dataset = xarray_jax.Dataset(
@@ -361,6 +384,7 @@ def test_flatten_unflatten_dataset():
 
 
 def test_flatten_unflatten_datatree():
+  """A `DataTree` with inherited numpy and JAX coordinates round-trips through flatten/unflatten."""
   # Coords to be inherited from the parent dataset, we include one jax
   # coord and one not to check both code paths
   parent_dataset = xarray_jax.Dataset(
@@ -382,6 +406,7 @@ def test_flatten_unflatten_datatree():
 
 
 def test_flatten_unflatten_added_dim():
+  """`dims_change_on_unflatten` names a leading dimension added to the leaves between flatten and unflatten."""
   data_array = xarray_jax.DataArray(
     data=jnp.ones((3, 4), dtype=np.float32),
     dims=("lat", "lon"),
@@ -396,6 +421,7 @@ def test_flatten_unflatten_added_dim():
 
 
 def test_map_added_dim():
+  """`tree_map` adding a leading axis gives a `DataArray` with the new dimension named by `dims_change_on_unflatten`."""
   data_array = xarray_jax.DataArray(
     data=jnp.ones((3, 4), dtype=np.float32),
     dims=("lat", "lon"),
@@ -408,6 +434,7 @@ def test_map_added_dim():
 
 
 def test_map_remove_dim():
+  """`tree_map` removing a leading axis gives a `Dataset` without that dimension and its coordinate."""
   foo = jnp.ones((1, 3, 4), dtype=np.float32)
   bar = jnp.ones((1, 2, 3, 4), dtype=np.float32)
   dataset = xarray_jax.Dataset(
@@ -432,6 +459,8 @@ def test_map_remove_dim():
 
 
 def test_pmap():
+  """`xarray_jax.pmap` maps over a named leading dimension of a `Dataset`, and can be called again with a different
+  structure."""
   devices = jax.local_device_count()
   foo = jnp.zeros((devices, 3, 4), dtype=np.float32)
   bar = jnp.zeros((devices, 2, 3, 4), dtype=np.float32)
@@ -454,6 +483,8 @@ def test_pmap():
 
 
 def test_pmap_with_jax_coords():
+  """JAX coordinates with the device dimension are split across devices too, and stay JAX arrays without an index inside
+  the mapped function."""
   devices = jax.local_device_count()
   foo = jnp.zeros((devices, 3, 4), dtype=np.float32)
   bar = jnp.zeros((devices, 2, 3, 4), dtype=np.float32)
@@ -500,6 +531,7 @@ def test_pmap_with_jax_coords():
 
 
 def test_pmap_with_tree_mix_of_xarray_and_jax_array():
+  """`pmap` accepts trees mixing `DataArray`s and plain JAX arrays."""
   devices = jax.local_device_count()
   data_array = xarray_jax.DataArray(data=jnp.ones((devices, 3, 4), dtype=np.float32), dims=("device", "lat", "lon"))
   plain_array = jnp.ones((devices, 2), dtype=np.float32)
@@ -528,6 +560,7 @@ def _check_pmap_complains_when_dim_not_first():
 
 
 def test_pmap_complains_when_dim_not_first():
+  """`pmap` rejects a mapped dimension that is not the leading one."""
   _check_pmap_complains_when_dim_not_first()
 
 
@@ -541,10 +574,12 @@ def pmap_shmap_merge():
 
 
 def test_pmap_complains_when_dim_not_first_pmap_shmap_merge(pmap_shmap_merge):
+  """Same as `test_pmap_complains_when_dim_not_first`, with `pmap` implemented through `shard_map`."""
   _check_pmap_complains_when_dim_not_first()
 
 
 def test_apply_ufunc():
+  """`apply_ufunc` applies a JAX function over a core dimension and returns a `DataArray`."""
   inputs = xarray_jax.DataArray(data=jnp.asarray([[1, 2], [3, 4]]), dims=("x", "y"), coords={"x": [0, 1], "y": [2, 3]})
   result = xarray_jax.apply_ufunc(lambda x: jnp.sum(x, axis=-1), inputs, input_core_dims=[["x"]])
   expected_result = xarray_jax.DataArray(data=[4, 6], dims=("y",), coords={"y": [2, 3]})
@@ -552,6 +587,8 @@ def test_apply_ufunc():
 
 
 def test_apply_ufunc_multiple_return_values():
+  """`apply_ufunc` with a function returning a tuple gives a tuple of `DataArray`s."""
+
   def ufunc(array):
     return jnp.min(array, axis=-1), jnp.max(array, axis=-1)
 
@@ -568,6 +605,7 @@ def test_apply_ufunc_multiple_return_values():
 
 
 def test_eval_shape_with_xarray():
+  """`jax.eval_shape` on a function of xarray returns xarray objects holding shapes and dtypes."""
   # This needs jax.ShapeDtypeStruct to be wrappable inside xarray types.
   function = jax.jit(lambda v: v + 1)
   inputs = xarray_jax.Variable(("lat", "lon"), jnp.ones((3, 4), dtype=np.float32))
@@ -578,6 +616,9 @@ def test_eval_shape_with_xarray():
 
 
 def test_scan():
+  """`xarray_jax.scan` scans over a named dimension in any position, with mixed xarray and JAX inputs; numpy coordinates
+  along it are dropped, JAX coordinates kept."""
+
   def f(carry, x):
     dataset_input, plain_jax_input = x
     assert plain_jax_input.shape == ()
@@ -618,6 +659,8 @@ def test_scan():
 
 
 def test_scan_no_inputs():
+  """`scan` without inputs runs `length` steps and stacks the outputs, including JAX coordinates set in the step."""
+
   def f(carry, x):
     assert x is None
     carry = carry + 1
@@ -635,6 +678,8 @@ def test_scan_no_inputs():
 
 
 def test_assign_coords_arg_types():
+  """JAX coordinates can be given in every shorthand xarray accepts (arrays, lists, scalars, Variables, DataArrays,
+  tuples)."""
   # Check we can assign coords with a variety of shorthands mirroring those
   # supported by xarray's own APIs:
   result = xarray_jax.assign_coords(

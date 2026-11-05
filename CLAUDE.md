@@ -64,7 +64,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
   "pytest >= 9" pytest`. Tests use synthetic data (small Zarr stores in `tmp_path`)
   or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be assumed.
-  The abseil `absltest` modules inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are
+  Every test has a docstring saying what it checks and why (the behaviour or the bug it guards against), not just
+  restating its name. The abseil `absltest` modules inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are
   probably broken; they will be ported to pytest later. There is no CI.
 - Lint/format: `ruff` with **2-space indentation** and 120-column lines (`pyproject.toml`); run `ruff format` and
   `ruff check --fix` only on new or refactored modules (the rest is unformatted, to keep diffs reviewable). Type

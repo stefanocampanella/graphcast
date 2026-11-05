@@ -37,12 +37,15 @@ def _get_mesh_spec(splits: int):
 
 
 def test_icosahedron():
+  """The base icosahedron has 12 unit vertices and 20 outward-oriented faces."""
   mesh = icosahedral_mesh.get_icosahedron()
   _assert_valid_mesh(mesh, num_expected_vertices=12, num_expected_faces=20)
 
 
 @pytest.mark.parametrize("splits", list(range(5)))
 def test_get_hierarchy_of_triangular_meshes_for_sphere(splits):
+  """Each refinement has the expected numbers of vertices and faces, stays on the unit sphere with outward faces, and
+  starts with the vertices of the coarser level (nesting, which multi-meshes rely on)."""
   meshes = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits=splits)
   prev_vertices = None
   for mesh_i, mesh in enumerate(meshes):

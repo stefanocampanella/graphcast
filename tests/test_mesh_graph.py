@@ -25,6 +25,8 @@ from graphcast import icosahedral_mesh, mesh_graph
 
 @pytest.mark.parametrize("splits", list(range(4)))
 def test_merge_meshes(splits):
+  """The merged multi-mesh keeps the finest level's vertices and faces, with the edges of the faces of all levels
+  (upstream GraphCast kept the faces of all levels)."""
   mesh_hierarchy = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits=splits)
   mesh = mesh_graph.merge_meshes(mesh_hierarchy)
 
@@ -39,6 +41,7 @@ def test_merge_meshes(splits):
 
 
 def test_merge_meshes_rejects_non_nested_vertices():
+  """Levels must be nested: a finer level whose leading vertices are not the coarser level's is rejected."""
   coarse, fine = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits=1)
   shuffled = mesh_graph.TriangleMesh(vertices=fine.vertices[::-1], faces=fine.faces)
   with pytest.raises(AssertionError):
@@ -46,6 +49,7 @@ def test_merge_meshes_rejects_non_nested_vertices():
 
 
 def test_faces_to_edges():
+  """Each face gives its three directed edges, in the documented order: first edges of all faces, then second, …"""
   faces = np.array([[0, 1, 2], [3, 4, 5]])
 
   # This also documents the order of the edges returned by the method.

@@ -50,6 +50,7 @@ def _seed():
 
 
 def test_missing_dim_raises_value_error():
+  """Inputs without the lat or lon dimensions are rejected."""
   data = xa.DataArray(
     np.random.randn(2, 2),
     coords=[np.array([0.1, 0.2]), np.array([0.0, 0.5])],
@@ -60,6 +61,7 @@ def test_missing_dim_raises_value_error():
 
 
 def test_missing_coordinate_raises_value_error():
+  """Inputs without the `datetime` coordinate are rejected."""
   data = xa.Dataset(
     data_vars={"var1": (["x", "lat", "lon"], np.random.randn(2, 3, 2))},
     coords={
@@ -72,6 +74,7 @@ def test_missing_coordinate_raises_value_error():
 
 
 def test_shape_multiple_timestamps():
+  """With a time dimension, the radiation has the dimensions and shape of the input's (time, lat, lon)."""
   data = xa.Dataset(
     data_vars={"var1": (["time", "lat", "lon"], np.random.randn(2, 4, 2))},
     coords={
@@ -91,6 +94,7 @@ def test_shape_multiple_timestamps():
 
 
 def test_shape_single_timestamp():
+  """With a scalar `datetime`, the radiation has the input's (lat, lon) dimensions and shape."""
   data = xa.Dataset(
     data_vars={"var1": (["lat", "lon"], np.random.randn(4, 2))},
     coords={
@@ -117,6 +121,7 @@ def test_shape_single_timestamp():
   ],
 )
 def test_full_spatial_resolution(periods: int, repeats: int, use_jit: bool):
+  """Benchmark at 0.25° resolution, jitted or not: the computation runs and its times are logged (not asserted)."""
   timestamps = pd.date_range(start="2023-09-25", periods=periods, freq="6h")
   # Generate a linear grid with 0.25 degrees resolution similar to ERA5.
   lat, lon = _get_grid_lat_lon_coords(num_lat=721, num_lon=1440)
@@ -154,6 +159,7 @@ def test_full_spatial_resolution(periods: int, repeats: int, use_jit: bool):
   ],
 )
 def test_mid_2020_lookup(loader: solar_radiation.TsiDataLoader, expected_tsi: np.ndarray):
+  """The bundled total solar irradiance tables give their tabulated value in mid-2020 (ERA5's is scaled by 0.9965)."""
   tsi_data = loader()
 
   tsi = solar_radiation.get_tsi([np.datetime64("2020-07-02T00:00:00")], tsi_data)
@@ -174,6 +180,8 @@ def test_mid_2020_lookup(loader: solar_radiation.TsiDataLoader, expected_tsi: np
   ],
 )
 def test_interpolation(timestamps: Sequence[np.datetime64], expected_tsi: np.ndarray):
+  """Total solar irradiance is interpolated linearly between yearly values centred mid-year, and held constant before
+  the first and after the last."""
   tsi_data = xa.DataArray(
     np.array([1000.0, 1300.0, 1200.0]),
     dims=["time"],

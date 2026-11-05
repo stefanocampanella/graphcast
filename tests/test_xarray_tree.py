@@ -34,6 +34,9 @@ TEST_DATASET = xarray.Dataset(
 
 
 def test_map_structure_maps_over_leaves_but_preserves_dataset_type():
+  """Mapping over a `Dataset` visits each variable and returns a `Dataset`, restoring the names even if the function
+  drops them."""
+
   def fn(leaf):
     assert isinstance(leaf, xarray.DataArray)
     result = leaf + 1
@@ -48,6 +51,7 @@ def test_map_structure_maps_over_leaves_but_preserves_dataset_type():
 
 
 def test_map_structure_on_data_arrays():
+  """Mapping over a dict of `DataArray`s returns a dict."""
   data_arrays = dict(TEST_DATASET)
   result = xarray_tree.map_structure(lambda x: x + 1, data_arrays)
   assert isinstance(result, dict)
@@ -55,6 +59,8 @@ def test_map_structure_on_data_arrays():
 
 
 def test_map_structure_on_dataset_plain_dict_when_coords_incompatible():
+  """If the results cannot be merged back into a `Dataset` (conflicting coordinates), a dict is returned."""
+
   def fn(leaf):
     # Returns DataArrays that can't be exactly merged back into a Dataset
     # due to the coordinates not matching:
@@ -69,6 +75,8 @@ def test_map_structure_on_dataset_plain_dict_when_coords_incompatible():
 
 
 def test_map_structure_on_dataset_drops_vars_with_none_return_values():
+  """Variables for which the function returns `None` are dropped from the resulting `Dataset`."""
+
   def fn(leaf):
     return leaf if leaf.name == "foo" else None
 
@@ -78,6 +86,8 @@ def test_map_structure_on_dataset_drops_vars_with_none_return_values():
 
 
 def test_map_structure_on_dataset_returns_plain_dict_other_return_types():
+  """If the function returns something other than `DataArray`s, a dict of the results is returned."""
+
   def fn(leaf):
     assert isinstance(leaf, xarray.DataArray)
     return "not a DataArray"
@@ -87,6 +97,7 @@ def test_map_structure_on_dataset_returns_plain_dict_other_return_types():
 
 
 def test_map_structure_two_args_different_variable_orders():
+  """With two `Dataset`s, variables are matched by name, whatever their order."""
   dataset_different_order = TEST_DATASET[["bar", "foo"]]
 
   def fn(arg1, arg2):
