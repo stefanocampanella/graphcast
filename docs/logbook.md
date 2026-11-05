@@ -933,3 +933,11 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   JUPITER.
 - **Open:** whether to keep periodic snapshots (`EveryNSteps`, e.g. every 5000 steps) for evaluation beyond the held-out
   loss; the top-k by validation loss would be the last k saves, since the minimum has always been at the last step.
+
+## 2026-11-05 12:30: training loop PR, keep_best in the production run
+
+- **Request:** keep 5 best checkpoints in the production run, to compare per-variable losses (one checkpoint may do
+  better on `thetao`, another on `so`); the 5000-step mesh study is too short to say that the best ones will be the
+  last saves of a 40,000-step run.
+- **Change:** `production_run.toml` sets `keep_best = 5` (the default stays 1). This resolves the open item of the
+  previous entry; periodic snapshots are not added.
