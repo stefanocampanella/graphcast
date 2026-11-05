@@ -908,3 +908,17 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Experiment** (`loop_tests/preempt.sbatch`, jobs 2688168 and 2688169, 1 node, 120 km × 8, validation every step,
   6-minute limit): the preemption saved step 85 with its validation loss (0.8 s) and exited with status 75; the
   continuation started at step 86 and saved step 167 at the next preemption, also with its validation loss.
+
+## 2026-11-05 09:00: apptainer run vs exec, CUDA forward compatibility
+
+- **Request:** the maintainer asked why tests ran with `apptainer exec` instead of `run` (which runs NVIDIA's init
+  scripts), to repeat them, to explain CUDA forward compatibility in the image, and the `rm: cannot remove
+  '/usr/local/cuda/compat/lib'` messages of training jobs.
+- **Finding:** CLAUDE.md gave `exec`; `run` differs only by NVIDIA's entrypoint (banners and checks; on a node
+  without GPUs it sets `NVIDIA_CPU_ONLY=1`). The tests pass with `run` on a login node and with `run --nv` on a GPU
+  node (180 each).
+- **Experiment** (job 2698725, `compat/compat.sbatch`, 1 node): kernel driver 610.57.04 (CUDA 13.3). `run --nv` loads
+  the image's compat `libcuda.so.615.71.09` (13.4); `exec --nv` loads the host's `libcuda` (13.3); both run JAX. The
+  `rm` messages come from `/etc/shinit_v2`, which cannot persist its once-per-host marker in the read-only image;
+  harmless. Details in CLAUDE.md ("CUDA forward compatibility").
+- **Change:** CLAUDE.md test command uses `run`.

@@ -58,8 +58,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer exec graphcast.sif python -m pytest` from the repository root (`tests/` takes ~40 s, CPU only, also on
-  compute nodes). With an older image, layer pytest on its venv with uv (login nodes only, needs internet):
+  `apptainer run graphcast.sif python -m pytest` from the repository root (`tests/` takes ~40 s, CPU only, also on
+  compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward compatibility"). With an older image, layer pytest on its venv with uv (login nodes only, needs internet):
   `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
   "pytest >= 9" pytest`. Tests use synthetic data (small Zarr stores in `tmp_path`)
   or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be assumed.
@@ -77,6 +77,26 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   whose `pyproject.toml` and `src/` the image should contain (a worktree works with
   `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`); the build takes ~6 min on a login node. Previous
   images are kept as `graphcast-YYYY-MM-DD.sif`. Past commands are in `~/.bash_eternal_history`.
+
+### CUDA forward compatibility
+
+The image's CUDA 13.4 user-mode driver (`libcuda.so.615.71.09`, in `/usr/local/cuda/compat/lib.real`) is newer than
+the GH200 nodes' kernel driver (610.57.04, CUDA 13.3), checked on 5 Nov 2026 (job 2698725, claude-work
+`875379cd-19a4-4f43-a956-bd19e2b1b6a6/compat`):
+- `apptainer run --nv` (training, `scripts/train.sh`) runs NVIDIA's entrypoint. Its bash sources `/etc/shinit_v2`
+  (through `BASH_ENV`), which checks the compat library with `cudaCheck` and puts `lib.real` first in
+  `LD_LIBRARY_PATH`: JAX loads the 615 library (`cuDriverGetVersion` 13040, "CUDA Forward Compatibility mode
+  ENABLED" in the job output).
+- `apptainer exec --nv … python` starts no shell: JAX loads the host's `libcuda` from `/.singularity.d/libs`
+  (13030, minor version compatibility). Both work. The spack part of the image sets
+  `LD_LIBRARY_PATH=/opt/views/view/lib:.:/.singularity.d/libs`, replacing NVIDIA's default (which listed
+  `/usr/local/cuda/compat/lib`); the `.` comes from the generated recipe.
+- `rm: cannot remove '/usr/local/cuda/compat/lib': Read-only file system` (once or twice per task, from every bash
+  that sources `shinit_v2`, also bash children of Python) is harmless: the script removes and recreates the link to
+  `lib.real` and touches a per-host marker so that the check runs once, which a read-only image cannot persist, so
+  the check (about 1 s) repeats in each container. The link itself was made when the image was built.
+- After a kernel driver upgrade to 615 or later, `cudaCheck` decides whether `lib.real` is used, and `exec` uses the
+  host driver anyway: no rebuild needed for that.
 
 ## Standardized anomaly stores
 
