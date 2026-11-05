@@ -197,24 +197,20 @@ def test_add_derived_vars_existing_vars_not_overridden(subtests):
     np.testing.assert_allclose(data[data_utils.DAY_PROGRESS], 0.222)
 
 
-# The ids are those of the legacy test (they name the coordinate that is missing).
 @pytest.mark.parametrize(
-  "coord_name",
+  ("coord_name", "missing"),
   [
-    pytest.param("lon", id="missing_datetime"),
-    pytest.param("datetime", id="missing_lon"),
+    pytest.param("lon", "datetime", id="missing_datetime"),
+    pytest.param("datetime", "lon", id="missing_lon"),
   ],
 )
-def test_add_derived_vars_missing_coordinate_raises_value_error(subtests, coord_name):
-  with subtests.test(f"Missing {coord_name} coordinate"):
-    data = xa.Dataset(
-      data_vars={"var1": (["x", coord_name], 8 * np.random.randn(2, 2))},
-      coords={
-        coord_name: np.array([0.0, 0.5]),
-      },
-    )
-    with pytest.raises(ValueError):
-      data_utils.add_derived_vars(data)
+def test_add_derived_vars_missing_coordinate_raises_value_error(coord_name, missing):
+  data = xa.Dataset(
+    data_vars={"var1": (["x", coord_name], 8 * np.random.randn(2, 2))},
+    coords={coord_name: np.array([0.0, 0.5])},
+  )
+  with pytest.raises(ValueError, match=missing):
+    data_utils.add_derived_vars(data)
 
 
 def test_add_tisr_var_variable_added():

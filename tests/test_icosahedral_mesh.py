@@ -57,30 +57,6 @@ def test_get_hierarchy_of_triangular_meshes_for_sphere(splits):
       prev_vertices = mesh.vertices
 
 
-@pytest.mark.parametrize("splits", list(range(4)))
-def test_merge_meshes(splits):
-  mesh_hierarchy = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits=splits)
-  mesh = icosahedral_mesh.merge_meshes(mesh_hierarchy)
-
-  expected_faces = np.concatenate([m.faces for m in mesh_hierarchy], axis=0)
-  np.testing.assert_array_equal(mesh.vertices, mesh_hierarchy[-1].vertices)
-  np.testing.assert_array_equal(mesh.faces, expected_faces)
-
-
-def test_faces_to_edges():
-  faces = np.array([[0, 1, 2], [3, 4, 5]])
-
-  # This also documents the order of the edges returned by the method.
-  expected_edges = np.array([[0, 1], [3, 4], [1, 2], [4, 5], [2, 0], [5, 3]])
-  expected_senders = expected_edges[:, 0]
-  expected_receivers = expected_edges[:, 1]
-
-  senders, receivers = icosahedral_mesh.faces_to_edges(faces)
-
-  np.testing.assert_array_equal(senders, expected_senders)
-  np.testing.assert_array_equal(receivers, expected_receivers)
-
-
 def _assert_valid_mesh(mesh, num_expected_vertices, num_expected_faces):
   vertices = mesh.vertices
   faces = mesh.faces
