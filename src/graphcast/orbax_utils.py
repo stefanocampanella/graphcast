@@ -39,7 +39,7 @@ def get_checkpoint_manager(
 ) -> ocp.CheckpointManager:
   """A manager that keeps the latest checkpoints, and if scored (by validation) also the best by validation loss.
 
-  The training loop decides when to save (push_checkpoint saves unconditionally). Checkpoints without a validation
+  The training loop decides when to save (save_checkpoint saves unconditionally). Checkpoints without a validation
   loss (preemption saves) are kept only while they are among the latest.
   """
   logger.info(f"Reading from and saving checkpoints to {ckpt_path}")
@@ -98,7 +98,7 @@ def check_grain_num_workers(
       )
 
 
-def push_checkpoint(
+def save_checkpoint(
   ckpt_mngr: ocp.CheckpointManager,
   step: int,
   train_iterator: InputsTargetsForcingsIterator,
@@ -117,11 +117,12 @@ def push_checkpoint(
       **{GRAIN_NUM_WORKERS_ITEM: ocp.args.JsonSave(dict(grain_num_workers))},
     ),
     metrics=None if metrics is None else dict(metrics),
+    # Bypass Orbax's own save decision (should_save): the loop decides.
     force=True,
   )
 
 
-def pull_checkpoint(
+def restore_checkpoint(
   ckpt_mngr: ocp.CheckpointManager,
   step: int,
   train_iterator: InputsTargetsForcingsIterator | None = None,

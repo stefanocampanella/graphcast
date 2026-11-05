@@ -59,7 +59,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
   `apptainer run graphcast.sif python -m pytest` from the repository root (`tests/` takes ~40 s, CPU only, also on
-  compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward compatibility"). With an older image, layer pytest on its venv with uv (login nodes only, needs internet):
+  compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward compatibility on
+  JUPITER"). With an older image, layer pytest on its venv with uv (login nodes only, needs internet):
   `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
   "pytest >= 9" pytest`. Tests use synthetic data (small Zarr stores in `tmp_path`)
   or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be assumed.
@@ -78,10 +79,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`); the build takes ~6 min on a login node. Previous
   images are kept as `graphcast-YYYY-MM-DD.sif`. Past commands are in `~/.bash_eternal_history`.
 
-### CUDA forward compatibility
+### CUDA forward compatibility on JUPITER
 
-The image's CUDA 13.4 user-mode driver (`libcuda.so.615.71.09`, in `/usr/local/cuda/compat/lib.real`) is newer than
-the GH200 nodes' kernel driver (610.57.04, CUDA 13.3), checked on 5 Nov 2026 (job 2698725, claude-work
+These findings hold for JUPITER's booster nodes and the current image; on other clusters (other kernel drivers, GPUs
+or container runtimes) the outcome differs and has to be checked again. The image's CUDA 13.4 user-mode driver
+(`libcuda.so.615.71.09`, in `/usr/local/cuda/compat/lib.real`) is newer than the GH200 nodes' kernel driver
+(610.57.04, CUDA 13.3), checked on 5 Nov 2026 (job 2698725, claude-work
 `875379cd-19a4-4f43-a956-bd19e2b1b6a6/compat`):
 - `apptainer run --nv` (training, `scripts/train.sh`) runs NVIDIA's entrypoint. Its bash sources `/etc/shinit_v2`
   (through `BASH_ENV`), which checks the compat library with `cudaCheck` and puts `lib.real` first in
@@ -352,17 +355,18 @@ TensorBoard logging, and a data-parallel `fsdp_map` over the device mesh (`shard
 lowered and compiled once; its XLA memory analysis (`cli_utils.run_analysis_and_report`, "Memory usage" in the
 log) predicts GPU OOM before training starts.
 - **Step order** (sequential on purpose; overlapping the next batch with the step gained only 2.5 %): batch to the
-  GPUs, step, wait, validation if due, preemption check, checkpoint if due, TensorBoard, the step line `Step N timings: data D s, compute
-  C s, checkpoint K s, total T s, elapsed E s` (parsed by JUBE). Metrics become host values only when saved or logged,
-  and TensorBoard writes on process 0 only.
+  GPUs, step, wait, validation if due, preemption check, checkpoint if due, TensorBoard, the step line `Step N
+  timings: data D s, compute C s, checkpoint K s, total T s, elapsed E s` (parsed by JUBE). Metrics become host
+  values only when saved or logged, and TensorBoard writes on process 0 only.
 - **Checkpoints** (`[checkpoints]`, `orbax_utils`): the loop decides the saves, after step n when `(n + 1) %
   save_interval_steps == 0` (a multiple of `validation.interval_steps`, so every regular checkpoint has a
   `valid_loss`), after the last step, and at a preemption. A checkpoint holds the state after its step, so
   `--continue` resumes at latest + 1 (before Nov 2026 it resumed at latest, one step behind). Retention:
-  `LatestN(keep_latest)` for resuming, plus `BestN(keep_best)` by validation loss; the final model is the best
-  checkpoint, or the latest without validation. Orbax 0.12.4 with `best_fn` kept only the `max_to_keep` lowest
-  single-batch losses, so it could delete the latest checkpoint (fixed Nov 2026). Checkpoint directories written
-  before then store the metrics as a `(loss, diagnostics)` list and cannot be continued.
+  `LatestN(keep_latest)` for resuming (1 is enough: Orbax deletes older checkpoints only after the new one is
+  committed, and an interrupted save leaves no committed step), plus `BestN(keep_best)` by validation loss; the
+  final model is the best checkpoint, or the latest without validation. Orbax 0.12.4 with `best_fn` kept only the
+  `max_to_keep` lowest single-batch losses, so it could delete the latest checkpoint (fixed Nov 2026). Checkpoint
+  directories written before then store the metrics as a `(loss, diagnostics)` list and cannot be continued.
 - **Preemption:** Slurm sends SIGTERM 120 s before the limit (`train.slurm`, `--signal=TERM@120`; KillWait is 30 s).
   JAX's preemption service catches it, all processes agree on a sync step (`reached_preemption`), the loop saves,
   waits for the commit and exits with status 75 without saving the model: resume with `--continue` (same

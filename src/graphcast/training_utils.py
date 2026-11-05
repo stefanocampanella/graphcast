@@ -63,60 +63,54 @@ def make_batch_mesh() -> Mesh:
 
 
 def check_writable_paths(
-    output: pathlib.Path,
-    train: pathlib.Path,
-    tb: pathlib.Path | None,
+  output_path: pathlib.Path,
+  checkpoint_dir: pathlib.Path,
+  tensorboard_dir: pathlib.Path | None,
   start_fresh: bool = False,
   overwrite: bool = False,
 ) -> None:
-  """Check preconditions for path-arguments to write to, safely creating and deleting directories if necessary."""
+  """Check that the model file, the checkpoint directory and the TensorBoard directory can be written.
 
-  def ensure_directory_exists(path: pathlib.Path):
-    if jax.process_index() == 0 and not path.exists():
-      path.mkdir(parents=True, exist_ok=True)
-    sync_global_devices(f"ensure_{path}_exists")
+  Creates missing directories, and empties the checkpoint directory if start_fresh.
+  """
 
-  def empty_directory(path: pathlib.Path):
-    logger.info(f"Emptying {path}")
+  def ensure_directory_exists(directory: pathlib.Path):
+    if jax.process_index() == 0 and not directory.exists():
+      directory.mkdir(parents=True, exist_ok=True)
+    sync_global_devices(f"ensure_{directory}_exists")
+
+  def empty_directory(directory: pathlib.Path):
+    logger.info(f"Emptying {directory}")
     if jax.process_index() == 0:
-      if path.exists():
-        shutil.rmtree(path)
-      path.mkdir(parents=True, exist_ok=True)
-    sync_global_devices(f"empty_{path}")
+      if directory.exists():
+        shutil.rmtree(directory)
+      directory.mkdir(parents=True, exist_ok=True)
+    sync_global_devices(f"empty_{directory}")
 
-  # output is where the final checkpoint will be saved.
-  # We ensure that output' parent directory exists (with write permission if created). Also:
-  #   1. If overwrite=True, and output points to an existing file, then it should be writable
-  #   2. If overwrite=True, and output doesn't point to an existing file, then the parent directory should be writable.
-  #   3. If overwrite=False, then output should not point to an existing file.
-  ensure_directory_exists(output.parent)
+  # The final model is written to output_path. Its parent directory is created if missing. With overwrite, an
+  # existing file must be writable, otherwise the parent directory must be; without overwrite, it must not exist.
+  ensure_directory_exists(output_path.parent)
   if overwrite:
-    if output.exists():
-      if not os.access(output, os.W_OK):
-        raise PermissionError(f"{output} is not writable.")
-    else:
-      if not os.access(output.parent, os.W_OK):
-        raise PermissionError(f"{output.parent} is not writable.")
-  else:
-    if output.exists():
-      raise FileExistsError(f"{output} already exists.")
+    if output_path.exists():
+      if not os.access(output_path, os.W_OK):
+        raise PermissionError(f"{output_path} is not writable.")
+    elif not os.access(output_path.parent, os.W_OK):
+      raise PermissionError(f"{output_path.parent} is not writable.")
+  elif output_path.exists():
+    raise FileExistsError(f"{output_path} already exists.")
 
-  # train is the directory where checkpoints will be saved during training.
-  # We ensure that the directory exists (with write permission if created) and is empty if start_fresh=True, also:
-  #   1. It should be readable and writable.
-  ensure_directory_exists(train)
-  if start_fresh and any(train.iterdir()):
-    empty_directory(train)
-  if not os.access(train, os.R_OK | os.W_OK):
-    raise PermissionError(f"{train} is not readable and/or writable.")
+  # Checkpoints are saved to and restored from checkpoint_dir, which must be readable and writable.
+  ensure_directory_exists(checkpoint_dir)
+  if start_fresh and any(checkpoint_dir.iterdir()):
+    empty_directory(checkpoint_dir)
+  if not os.access(checkpoint_dir, os.R_OK | os.W_OK):
+    raise PermissionError(f"{checkpoint_dir} is not readable and/or writable.")
 
-  # tb is where the summarywriter will write the logs during training:
-  # We ensure that the directory exists (with write permission if created).
-  #   1. It should be writable.
-  if tb is not None:
-    ensure_directory_exists(tb)
-    if not os.access(tb, os.W_OK):
-      raise PermissionError(f"{tb} is not writable.")
+  # TensorBoard logs go to tensorboard_dir, which must be writable.
+  if tensorboard_dir is not None:
+    ensure_directory_exists(tensorboard_dir)
+    if not os.access(tensorboard_dir, os.W_OK):
+      raise PermissionError(f"{tensorboard_dir} is not writable.")
 
 
 def get_mesh(configs: TrainingConfig) -> MeshData:

@@ -221,7 +221,7 @@ def train(
       restored_step = ckpt_mngr.latest_step()
       if restored_step is None:
         raise ValueError("Found no checkpoint to restore while restarting training.")
-      restored = orbax_utils.pull_checkpoint(
+      restored = orbax_utils.restore_checkpoint(
         ckpt_mngr=ckpt_mngr,
         step=restored_step,
         train_iterator=train_iterator,
@@ -337,7 +337,7 @@ def train(
       checkpoint_start = time.perf_counter()
       if preempted or save_due(current_step):
         # Regular saves coincide with validation steps (checked by TrainingConfig), so they carry its loss.
-        orbax_utils.push_checkpoint(
+        orbax_utils.save_checkpoint(
           ckpt_mngr=ckpt_mngr,
           step=current_step,
           train_iterator=train_iterator,
@@ -375,7 +375,7 @@ def train(
   if final_step is None:
     raise RuntimeError(f"No checkpoint in {train_path} to save the model from.")
   logger.info(f"Training finished, final model from step {final_step}.")
-  restored = orbax_utils.pull_checkpoint(
+  restored = orbax_utils.restore_checkpoint(
     ckpt_mngr=ckpt_mngr, step=final_step, params=params
   )
   trn_utils.save_model(
