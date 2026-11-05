@@ -922,3 +922,14 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `rm` messages come from `/etc/shinit_v2`, which cannot persist its once-per-host marker in the read-only image;
   harmless. Details in CLAUDE.md ("CUDA forward compatibility").
 - **Change:** CLAUDE.md test command uses `run`.
+
+## 2026-11-05 10:30: training loop PR, review comments
+
+- **Request:** address the maintainer's five review comments on PR #2.
+- **Change** (350b0c0): `keep_latest` defaults to 1 (Orbax 0.12.4 deletes older checkpoints only after the new one is
+  committed, so one suffices to resume); `push_checkpoint`/`pull_checkpoint` renamed `save_checkpoint`/
+  `restore_checkpoint`, `force=True` commented (it bypasses Orbax's `should_save`, not strictly needed with the
+  default interval of 1); `check_writable_paths` parameters renamed; CLAUDE.md forward-compatibility notes scoped to
+  JUPITER.
+- **Open:** whether to keep periodic snapshots (`EveryNSteps`, e.g. every 5000 steps) for evaluation beyond the held-out
+  loss; the top-k by validation loss would be the last k saves, since the minimum has always been at the last step.
