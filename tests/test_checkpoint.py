@@ -66,6 +66,8 @@ class Checkpoint:
 
 
 def test_serialize_dataclass():
+  """A dataclass of arrays and nested configs (optionals, lists, tuples, dicts, dataclasses) survives dump and load:
+  arrays and config are equal after the round trip."""
   ckpt = Checkpoint(
     params={
       "layer1": {

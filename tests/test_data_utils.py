@@ -32,6 +32,7 @@ def _seed():
 
 
 def test_year_progress_is_zero_at_year_start_or_end():
+  """Year progress is 0 at the epoch and at whole multiples of the average year length."""
   year_progress = data_utils.get_year_progress(
     np.array(
       [
@@ -45,6 +46,7 @@ def test_year_progress_is_zero_at_year_start_or_end():
 
 
 def test_year_progress_is_almost_one_before_year_ends(subtests):
+  """One second before a year ends, year progress is just below 1 (it wraps to 0, never reaching 1)."""
   year_progress = data_utils.get_year_progress(
     np.array(
       [
@@ -60,6 +62,7 @@ def test_year_progress_is_almost_one_before_year_ends(subtests):
 
 
 def test_day_progress_computes_for_all_times_and_longitudes(subtests):
+  """Day progress has one value per time and longitude (shape `[time, lon]`)."""
   times = np.random.randint(low=0, high=1e10, size=10)
   longitudes = np.arange(0, 360.0, 1.0)
   day_progress = data_utils.get_day_progress(times, longitudes)
@@ -75,6 +78,7 @@ def test_day_progress_computes_for_all_times_and_longitudes(subtests):
   ],
 )
 def test_day_progress_is_in_between_zero_and_one(subtests, year, month, day, hour, minute, second):
+  """Day progress at any date and longitude lies in [0, 1)."""
   # Datetime from a timestamp.
   dt = datetime.datetime(year, month, day, hour, minute, second)
   # Epoch time.
@@ -93,6 +97,7 @@ def test_day_progress_is_in_between_zero_and_one(subtests, year, month, day, hou
 
 
 def test_day_progress_is_zero_at_day_start_or_end():
+  """At longitude 0, day progress is 0 at midnight UTC of any day."""
   day_progress = data_utils.get_day_progress(
     seconds_since_epoch=np.array(
       [
@@ -107,6 +112,7 @@ def test_day_progress_is_zero_at_day_start_or_end():
 
 
 def test_day_progress_specific_value():
+  """Day progress at longitude 0 is the elapsed fraction of the day (123 s / 86400 s)."""
   day_progress = data_utils.get_day_progress(
     seconds_since_epoch=np.array([123]),
     longitude=np.array([0.0]),
@@ -115,6 +121,7 @@ def test_day_progress_specific_value():
 
 
 def test_featurize_progress_valid_values_and_dimensions(subtests):
+  """Progress features are the progress and its sine and cosine (of 2π × progress), with the requested dimensions."""
   day_progress = np.array([0.0, 0.45, 0.213])
   feature_dimensions = ("time",)
   progress_features = data_utils.featurize_progress(name="day_progress", dims=feature_dimensions, progress=day_progress)
@@ -141,6 +148,7 @@ def test_featurize_progress_valid_values_and_dimensions(subtests):
 
 
 def test_featurize_progress_invalid_dimensions():
+  """Dimensions that do not match the shape of the progress array are rejected."""
   year_progress = np.array([0.0, 0.45, 0.213])
   feature_dimensions = ("time", "longitude")
   with pytest.raises(ValueError):
@@ -148,6 +156,7 @@ def test_featurize_progress_invalid_dimensions():
 
 
 def test_add_derived_vars_variables_added(subtests):
+  """Year and day progress are added next to the existing variables."""
   data = xa.Dataset(
     data_vars={"var1": (["x", "lon", "datetime"], 8 * np.random.randn(2, 2, 3))},
     coords={
@@ -173,6 +182,7 @@ def test_add_derived_vars_variables_added(subtests):
 
 
 def test_add_derived_vars_existing_vars_not_overridden(subtests):
+  """Progress variables already in the dataset are kept, not recomputed."""
   dims = ["x", "lon", "datetime"]
   data = xa.Dataset(
     data_vars={
@@ -208,6 +218,7 @@ def test_add_derived_vars_existing_vars_not_overridden(subtests):
   ],
 )
 def test_add_derived_vars_missing_coordinate_raises_value_error(coord_name, missing):
+  """Without the `datetime` or `lon` coordinate the progress cannot be computed: the error names the missing one."""
   data = xa.Dataset(
     data_vars={"var1": (["x", coord_name], 8 * np.random.randn(2, 2))},
     coords={coord_name: np.array([0.0, 0.5])},
@@ -217,6 +228,7 @@ def test_add_derived_vars_missing_coordinate_raises_value_error(coord_name, miss
 
 
 def test_add_tisr_var_variable_added():
+  """Top-of-atmosphere solar radiation is added for a dataset with lat, lon and a datetime per time."""
   data = xa.Dataset(
     data_vars={"var1": (["time", "lat", "lon"], np.full((2, 2, 2), 8.0))},
     coords={
@@ -233,6 +245,7 @@ def test_add_tisr_var_variable_added():
 
 
 def test_add_tisr_var_existing_var_not_overridden():
+  """Solar radiation already in the dataset is kept, not recomputed."""
   dims = ["time", "lat", "lon"]
   data = xa.Dataset(
     data_vars={
@@ -253,6 +266,7 @@ def test_add_tisr_var_existing_var_not_overridden():
 
 
 def test_add_tisr_var_works_with_batch_dim_size_one():
+  """A batch dimension of size 1 is accepted."""
   data = xa.Dataset(
     data_vars={
       "var1": (
@@ -274,6 +288,7 @@ def test_add_tisr_var_works_with_batch_dim_size_one():
 
 
 def test_add_tisr_var_fails_with_batch_dim_size_greater_than_one():
+  """Batches larger than 1 are not supported (the datetimes may differ per batch element) and fail."""
   data = xa.Dataset(
     data_vars={
       "var1": (

@@ -62,6 +62,8 @@ def partial_mask() -> np.ndarray:
 
 
 def test_grid_lat_lon_to_coordinates():
+  """Grid points map to WGS84 Earth-centred coordinates in metres, as the meshes are written, with longitudes beyond
+  180° wrapped (millimetre agreement with the closed-form formulas)."""
   grid_latitude = np.array([-45.0, 0.0, 45.0, 90.0])
   # Longitudes beyond 180 degrees are wrapped.
   grid_longitude = np.array([0.0, 90.0, 180.0, 270.0, 359.5])
@@ -81,6 +83,9 @@ def _grid_positions(grid_latitude, grid_longitude) -> np.ndarray:
 
 @pytest.mark.parametrize("masked", [False, True], ids=["no_mask", "partial_mask"])
 def test_radius_query_indices(grid, partial_mask, masked):
+  """Encoder edges are exactly the (grid point, mesh vertex) pairs within the radius, as a brute-force search finds
+  them, and every valid grid point is reached; masked points are left out. With the unit-sphere mesh of the legacy test
+  the query found no edges at all."""
   grid_latitude, grid_longitude = grid
   mesh = _earth_mesh()
   radius = 0.2 * EARTH_RADIUS
@@ -109,6 +114,8 @@ def test_radius_query_indices(grid, partial_mask, masked):
 
 @pytest.mark.parametrize("masked", [False, True], ids=["full_mask", "partial_mask"])
 def test_get_mesh_to_grid_edges(grid, partial_mask, masked):
+  """Decoder edges: each valid grid point receives 3 edges from the vertices of a mesh face containing it (seen from the
+  Earth's centre); masked points receive none."""
   grid_latitude, grid_longitude = grid
   mesh = _earth_mesh()
   mask = partial_mask if masked else np.ones_like(partial_mask)
