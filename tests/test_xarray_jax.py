@@ -1,4 +1,5 @@
 # Copyright 2023 DeepMind Technologies Limited.
+# Copyright 2026 Stefano Campanella.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Ported from the absltest tests of the original GraphCast code to pytest and updated for this fork.
 
 import chex
 import jax
