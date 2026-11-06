@@ -472,6 +472,11 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 
 ## Repository notes
 
+- License: Apache-2.0 everywhere (`LICENSE`, `pyproject.toml`). Every Python file starts with `# Copyright YEAR Stefano
+  Campanella.`, `# SPDX-License-Identifier: Apache-2.0` and the Apache license text. Files with code from GraphCast
+  also keep `# Copyright 2023 DeepMind Technologies Limited.` and a sentence saying they were modified (Apache §4(b)),
+  and are listed in `NOTICE` (§4(d)): update it when code from GraphCast is copied into another file. The license grants
+  no rights to DeepMind's, Google's or GraphCast's names (§6); the project will be renamed.
 - Do not commit `graphcast.sif`, `graphcast.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
 - Development branch: `develop` (`develop@esiwace3_hackathon` until Nov 2026).
