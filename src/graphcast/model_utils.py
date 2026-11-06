@@ -103,7 +103,8 @@ def get_graph_spatial_features(
   edge_azimuths, _, edge_lengths = geoid.inv(
     node_lon[senders], node_lat[senders], node_lon[receivers], node_lat[receivers]
   )
-  edge_azimuths = np.rad2deg(edge_azimuths)
+  # pyproj returns azimuths in degrees.
+  edge_azimuths = np.deg2rad(edge_azimuths)
   if edge_normalization is None:
     # Normalize to the maximum edge length.
     edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
@@ -265,7 +266,8 @@ def get_bipartite_graph_spatial_features(
     receivers_node_lon[receivers],
     receivers_node_lat[receivers],
   )
-  edge_azimuths = np.rad2deg(edge_azimuths)
+  # pyproj returns azimuths in degrees.
+  edge_azimuths = np.deg2rad(edge_azimuths)
   if edge_normalization is None:
     # Normalize to the maximum edge length.
     edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
