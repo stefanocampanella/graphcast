@@ -13,9 +13,10 @@ NODES = np.array([[1.0], [2.0], [4.0]])
 SENDERS, RECEIVERS = np.array([0, 1, 2, 0]), np.array([1, 2, 0, 2])
 EDGES = np.array([[10.0], [20.0], [30.0], [40.0]])
 KEY = typed_graph.EdgeSetKey("e", ("n", "n"))
+CONTEXT = np.array([[100.0]])
 
 
-def _graph(nodes=NODES, edges=EDGES, senders=SENDERS, receivers=RECEIVERS, context=np.array([[100.0]])):
+def _graph(nodes=NODES, edges=EDGES, senders=SENDERS, receivers=RECEIVERS, context=CONTEXT):
   return typed_graph.TypedGraph(
     context=typed_graph.Context(n_graph=np.array([1]), features=context),
     nodes={"n": typed_graph.NodeSet(n_node=np.array([len(nodes)]), features=nodes)},
