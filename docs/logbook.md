@@ -1052,3 +1052,23 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   0.44 / 0.46 s per step. The fix does not hurt; no measurable gain at 500 steps.
 - **Insight:** jitting the shard-mapped init matters: outside jit, shard_map ran the init of a tiny GraphCast
   operation by operation (46 s instead of 3 s). Coverage 69 % (53 % before group 1).
+
+## 2026-11-06 15:30: review of group 2
+
+- **Review:** rename `graphcast compute`; other configs to update for "1D"; basis at arbitrary points (planned
+  interpolating decoder, hierarchical meshes); why `check_vma=True` broke training, and whether it is faster; how to
+  pass rng keys to predictors and losses in data-parallel shard_map (a probabilistic variant is planned).
+- **Changes:** `graphcast compute-basis`; `basis_utils.compute_basis(mesh, points)` and `compute_grid_basis`;
+  `training_utils.data_parallel` (key per device by fold-in, the key an argument of shard_map) used by the train and
+  eval steps (keys from the seed and the step, validation by batch), and by `FullyShardedDataParallel`; the scanned
+  processor's carry is cast to the axes it varies along, so it works with `check_vma=True`. JUBE and the mesh study
+  derive their configs from the shipped ones; 12 generated configs in `runs/` still say "1d" (left as is).
+- **Insights** (`claude-work/…/rng_shard_map.py`, `check_vma.py`): closing over a key computed outside shard_map
+  reproduces the error of the deleted comment on Explicit axes; passing it as an argument and folding inside works
+  (split keys too, after `jax.reshard`). `check_vma=True` failed only with scan: the carry starts with mesh edge
+  features equal on every device and returns varying along the batch axis.
+- **Experiment** (jobs 2720430/2720432, 1 node, `training2647`, the B1 check settings: 120 km × 8, 500 steps):
+  `check_vma` off 0.441 s per step, on 0.516 s (+17 %), XLA memory 54.0 GiB both, validation loss 0.12803 / 0.12805
+  (B1 check before the rng change: 0.12815). Kept off: the gradient of the cast to varying is an all-reduce of the mesh
+  edge features' cotangents, which the unchecked version does not do. (A first submission failed in 90 s: the copied
+  config still said "1d", which the new validation rejected.)
