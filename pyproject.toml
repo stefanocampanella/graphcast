@@ -82,6 +82,13 @@ dev = [
     # .pre-commit-config.yaml.
     "ruff == 0.17.3",
     "ty == 0.0.97",
+    # Type stubs for ty. scipy-stubs and pandas-stubs track their library's version: keep them compatible with the
+    # image's scipy (1.18.1) and pandas (3.0.5), and update them when the base image updates these.
+    "botocore-stubs",
+    "pandas-stubs ~= 3.0.5",
+    "scipy-stubs ~= 1.18.1",
+    "types-networkx",
+    "types-tqdm",
 ]
 
 [build-system]
@@ -116,6 +123,8 @@ show_missing = true
 [tool.ruff]
 indent-width = 2
 line-length = 120
+# The notebooks are not maintained with the code (some cells are not valid Python).
+extend-exclude = ["notebooks"]
 
 [tool.ruff.format]
 indent-style = "space"
