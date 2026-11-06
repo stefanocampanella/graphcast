@@ -73,9 +73,7 @@ def plot_data(
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(title)
-    im = ax.imshow(
-      plot_data.isel(time=0, missing_dims="ignore"), norm=norm, origin="lower", cmap=cmap
-    )
+    im = ax.imshow(plot_data.isel(time=0, missing_dims="ignore"), norm=norm, origin="lower", cmap=cmap)
     plt.colorbar(
       mappable=im,
       ax=ax,
@@ -113,10 +111,7 @@ def get_points_and_lines(wgs_graph: EquirectangularGraph) -> tuple[Points, Lines
   latitudes, longitudes = wgs_graph.vertices
   # points use (longitude, latitude) ordering to comply with other plot utils and notebooks.
   points = [(lon, lat) for lon, lat in zip(longitudes, latitudes, strict=False)]
-  lines = [
-    [points[n1], points[n2]]
-    for (n1, n2) in zip(wgs_graph.edges[0], wgs_graph.edges[1], strict=False)
-  ]
+  lines = [[points[n1], points[n2]] for (n1, n2) in zip(wgs_graph.edges[0], wgs_graph.edges[1], strict=False)]
 
   return points, lines
 

@@ -37,9 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO: update usage in notebooks (e.g. mesh_comparison.ipynb): coordinates are on the Earth, no longer the unit sphere.
-def _grid_lat_lon_to_coordinates(
-  grid_latitude: np.ndarray, grid_longitude: np.ndarray
-) -> np.ndarray:
+def _grid_lat_lon_to_coordinates(grid_latitude: np.ndarray, grid_longitude: np.ndarray) -> np.ndarray:
   """Lat [num_lat] lon [num_lon] to WGS84 Earth-centred coordinates in metres [num_lat, num_lon, 3] (`cartesian_crs`,
   the coordinates of the meshes)."""
   num_lat = len(grid_latitude)
@@ -104,9 +102,7 @@ def radius_query_indices(
   kd_tree = scipy.spatial.cKDTree(valid_grid_positions)
   # [num_grid_points, num_mesh_points_per_grid_point (variable)]
   # noinspection PyTypeChecker
-  query_indices: npt.NDArray[list[int]] = kd_tree.query_ball_point(
-    x=mesh_positions, r=radius, workers=workers
-  )
+  query_indices: npt.NDArray[list[int]] = kd_tree.query_ball_point(x=mesh_positions, r=radius, workers=workers)
   _, masked_to_unmasked_fn = get_masking_indices_fns(mask)
   # noinspection PyTypeChecker
   grid_senders = np.concatenate(list(map(masked_to_unmasked_fn, query_indices)), axis=0).astype(int)
@@ -154,9 +150,7 @@ def get_mesh_to_grid_edges(
 
 # TODO: some notebooks might have used `get_mesh_to_mesh_edges` instead of `get_mesh_to_points_edges`,
 #  both the signature and direction of edges have to be refactore.
-def get_mesh_to_points_edges(
-  *, senders_mesh: Mesh, receivers_position: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
+def get_mesh_to_points_edges(*, senders_mesh: Mesh, receivers_position: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   """Returns edges connecting each point in `receivers_potition` to the vertices of the `senders_mesh`
   whose face is closest to.
 
@@ -175,9 +169,7 @@ def get_mesh_to_points_edges(
   # [3 * num_senders_mesh_vertices]
   senders = senders_mesh.faces[query_face_indices].reshape([-1])
   # [3 * num_senders_mesh_vertices]
-  receivers = np.tile(
-    np.arange(len(receivers_position), dtype=int).reshape([-1, 1]), [1, 3]
-  ).reshape([-1])
+  receivers = np.tile(np.arange(len(receivers_position), dtype=int).reshape([-1, 1]), [1, 3]).reshape([-1])
 
   return senders, receivers
 
@@ -204,9 +196,7 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
   # Indices of a masked array
   masked_array_indices = np.arange(num_valid_indices, dtype=int)
   # Mapping from unmasked indices to masked indices
-  valid_indices_inverse_map = {
-    v: i for (i, v) in zip(masked_array_indices, valid_indices, strict=False)
-  }
+  valid_indices_inverse_map = {v: i for (i, v) in zip(masked_array_indices, valid_indices, strict=False)}
 
   @partial(np.vectorize, otypes=[int])
   def masked_to_unmasked_fn(n: int) -> int:
@@ -214,9 +204,7 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
       return valid_indices[n]
     else:
       if raise_error:
-        raise ValueError(
-          f"There is no index of unmasked array corresponding to index {n} in masked array."
-        )
+        raise ValueError(f"There is no index of unmasked array corresponding to index {n} in masked array.")
       else:
         return default_value
 
@@ -227,9 +215,7 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
       return index
     else:
       if raise_error:
-        raise ValueError(
-          f"There is no index of masked array corresponding to index {n} in unmasked array."
-        )
+        raise ValueError(f"There is no index of masked array corresponding to index {n} in unmasked array.")
       else:
         return default_value
 
@@ -268,9 +254,7 @@ def get_dummy_xscaling_graph(
   def _get_mesh_to_mesh_edge_set(senders_mesh: Mesh, receivers_mesh: Mesh):
     # The edge orientation goes from the nodes of the senders mesh to vertices of the receivers mesh contained into
     # triangles of the sender mesh
-    senders, receivers = get_mesh_to_points_edges(
-      senders_mesh=senders_mesh, receivers_position=receivers_mesh.vertices
-    )
+    senders, receivers = get_mesh_to_points_edges(senders_mesh=senders_mesh, receivers_position=receivers_mesh.vertices)
     edge_set = EdgeSet(
       n_edge=senders.shape[0],
       indices=EdgesIndices(senders=senders, receivers=receivers),
@@ -281,12 +265,8 @@ def get_dummy_xscaling_graph(
   edges = {
     EdgeSetKey(name_a, (name_a, name_a)): _get_mesh_edge_set(mesh_a),
     EdgeSetKey(name_b, (name_b, name_b)): _get_mesh_edge_set(mesh_b),
-    EdgeSetKey(name_a + "_to_" + name_b, (name_a, name_b)): _get_mesh_to_mesh_edge_set(
-      mesh_a, mesh_b
-    ),
-    EdgeSetKey(name_b + "_to_" + name_a, (name_b, name_a)): _get_mesh_to_mesh_edge_set(
-      mesh_b, mesh_a
-    ),
+    EdgeSetKey(name_a + "_to_" + name_b, (name_a, name_b)): _get_mesh_to_mesh_edge_set(mesh_a, mesh_b),
+    EdgeSetKey(name_b + "_to_" + name_a, (name_b, name_a)): _get_mesh_to_mesh_edge_set(mesh_b, mesh_a),
   }
 
   graph = TypedGraph(context=Context(n_graph=np.array([1]), features=()), nodes=nodes, edges=edges)

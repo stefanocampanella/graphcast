@@ -329,9 +329,7 @@ def _get_solar_sin_altitude(
   # https://en.wikipedia.org/wiki/Hour_angle#Solar_hour_angle
   hour_angle = 2.0 * jnp.pi * solar_time + longitude
   # https://en.wikipedia.org/wiki/Solar_zenith_angle
-  sin_altitude = (
-    cos_latitude * op.cos_declination * jnp.cos(hour_angle) + sin_latitude * op.sin_declination
-  )
+  sin_altitude = cos_latitude * op.cos_declination * jnp.cos(hour_angle) + sin_latitude * op.sin_declination
   return sin_altitude
 
 
@@ -524,9 +522,7 @@ def get_toa_incident_solar_radiation(
     results.append(
       fn(
         j2000_days=jnp.array(
-          _get_j2000_days(
-            pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp)
-          )
+          _get_j2000_days(pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp))
         ),
         sin_latitude=sin_lat,
         cos_latitude=cos_lat,

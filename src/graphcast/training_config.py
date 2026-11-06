@@ -127,9 +127,7 @@ class SourceConfig(ApplicationConfig):
   @classmethod
   def read_defaults(cls, values):
     if isinstance(values, dict) and isinstance(values.get("read"), dict):
-      defaults = (
-        cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
-      )
+      defaults = cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
       return {**values, "read": {**defaults, **values["read"]}}
     return values
 
@@ -160,9 +158,7 @@ class PerformanceConfig(ApplicationConfig):
 class GrainDatasetConfig(ApplicationConfig):
   target_lead_times: Duration
   split_date: str
-  local_batch_size: PositiveInt = Field(
-    default=1, description="Samples per local device"
-  )
+  local_batch_size: PositiveInt = Field(default=1, description="Samples per local device")
   pick_performance_config: PerformanceConfig | None = None
 
 

@@ -18,12 +18,31 @@ import statistics
 import sys
 
 METRICS = [
-  "total_avg[s]", "total_std[s]", "total_min[s]", "data_avg[s]", "compute_avg[s]", "compute_min[s]",
-  "first_step_elapsed[s]", "train_samples_per_s", "node_mem_peak[GB]", "node_mem_avail_min[GB]",
-  "node_shm_peak[GB]", "gpu_mem_peak[GB]", "gpu_util[%]", "gpu_power[W]",
+  "total_avg[s]",
+  "total_std[s]",
+  "total_min[s]",
+  "data_avg[s]",
+  "compute_avg[s]",
+  "compute_min[s]",
+  "first_step_elapsed[s]",
+  "train_samples_per_s",
+  "node_mem_peak[GB]",
+  "node_mem_avail_min[GB]",
+  "node_shm_peak[GB]",
+  "gpu_mem_peak[GB]",
+  "gpu_util[%]",
+  "gpu_power[W]",
 ]
 CASE_KEYS = [
-  "experiment", "format", "workers", "threads", "io_threads", "nodes", "cpus", "mesh", "msg_steps",
+  "experiment",
+  "format",
+  "workers",
+  "threads",
+  "io_threads",
+  "nodes",
+  "cpus",
+  "mesh",
+  "msg_steps",
 ]
 
 
@@ -81,14 +100,33 @@ def job_rows(root):
         mesh = re.search(r'(?m)^path = "/data/geometry/uniform_(\w+)\.msh"', bench)
         msg_steps = re.search(r"(?m)^gnn_msg_steps = (\d+)", bench)
         out = {
-          "experiment": experiment, "wp": row["jube_wp_id"], "slurm_job": row["slurm_job"],
-          "outcome": "ok" if finished and steps >= target - 1 else "gpu_oom" if gpu_alloc else "host_oom" if host_alloc
-          else "oom" if oom
-          else "stopped" if steps >= 100 else "timeout" if row["status"] == "143" else "failed",
-          "status": row["status"], "format": row["format"], "workers": row["num_workers"],
-          "threads": row["num_threads"], "io_threads": row["io_threads"], "nodes": row["nodes"],
-          "cpus": row["cpus_per_task"], "mesh": mesh.group(1) if mesh else "",
-          "msg_steps": msg_steps.group(1) if msg_steps else "", "rep": row["rep"], "steps": row["step_last"],
+          "experiment": experiment,
+          "wp": row["jube_wp_id"],
+          "slurm_job": row["slurm_job"],
+          "outcome": "ok"
+          if finished and steps >= target - 1
+          else "gpu_oom"
+          if gpu_alloc
+          else "host_oom"
+          if host_alloc
+          else "oom"
+          if oom
+          else "stopped"
+          if steps >= 100
+          else "timeout"
+          if row["status"] == "143"
+          else "failed",
+          "status": row["status"],
+          "format": row["format"],
+          "workers": row["num_workers"],
+          "threads": row["num_threads"],
+          "io_threads": row["io_threads"],
+          "nodes": row["nodes"],
+          "cpus": row["cpus_per_task"],
+          "mesh": mesh.group(1) if mesh else "",
+          "msg_steps": msg_steps.group(1) if msg_steps else "",
+          "rep": row["rep"],
+          "steps": row["step_last"],
           "gpu_alloc_GiB": f"{gpu_alloc:g}" if gpu_alloc else "",
           "host_alloc_GiB": f"{host_alloc:g}" if host_alloc else "",
         }
@@ -110,7 +148,9 @@ def main(root):
   for key, group in groups.items():
     ok = [job for job in group if job["outcome"] in ("ok", "stopped")]
     case = dict(zip(CASE_KEYS, key))
-    case.update(runs=len(group), ok=len(ok), outcomes="/".join(job["outcome"] for job in sorted(group, key=lambda j: j["rep"])))
+    case.update(
+      runs=len(group), ok=len(ok), outcomes="/".join(job["outcome"] for job in sorted(group, key=lambda j: j["rep"]))
+    )
     for metric in METRICS + ["data_stall_avg[s]", "compute_median[s]"]:
       values = [to_float(job[metric]) for job in ok if to_float(job[metric]) is not None]
       case[metric] = f"{statistics.mean(values):.4g}" if values else ""
@@ -125,8 +165,10 @@ def main(root):
   print(f"{len(jobs)} jobs {outcomes}, {len(cases)} cases")
   for job in jobs:
     if job["outcome"] not in ("ok", "stopped", "gpu_oom", "host_oom", "oom", "timeout"):
-      print(f"  check: {job['experiment']} wp {job['wp']} {job['format']} {job['workers']}x{job['threads']} "
-            f"io {job['io_threads']}: {job['outcome']} status {job['status']} steps {job['steps']}")
+      print(
+        f"  check: {job['experiment']} wp {job['wp']} {job['format']} {job['workers']}x{job['threads']} "
+        f"io {job['io_threads']}: {job['outcome']} status {job['status']} steps {job['steps']}"
+      )
 
 
 if __name__ == "__main__":

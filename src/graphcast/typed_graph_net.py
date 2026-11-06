@@ -34,9 +34,7 @@ GNUpdateNodeFn = Callable[
   NodeFeatures,
 ]
 
-GNUpdateGlobalFn = Callable[
-  [Mapping[str, NodeFeatures], Mapping[str, EdgeFeatures], Globals], Globals
-]
+GNUpdateGlobalFn = Callable[[Mapping[str, NodeFeatures], Mapping[str, EdgeFeatures], Globals], Globals]
 
 
 def GraphNetwork(  # pylint: disable=invalid-name
@@ -111,9 +109,7 @@ def GraphNetwork(  # pylint: disable=invalid-name
     # Node update.
     updated_nodes = dict(updated_graph.nodes)
     for node_set_key, node_fn in update_node_fn.items():
-      updated_nodes[node_set_key] = _node_update(
-        updated_graph, node_fn, node_set_key, aggregate_edges_for_nodes_fn
-      )
+      updated_nodes[node_set_key] = _node_update(updated_graph, node_fn, node_set_key, aggregate_edges_for_nodes_fn)
     updated_graph = updated_graph._replace(nodes=updated_nodes)
 
     # Global update.
@@ -159,6 +155,7 @@ def _edge_update(graph, edge_fn, edge_set_key, chunk_size=0):
   # Chunks of `chunk_size` edges, the last one padded (with edges from node 0 to node 0, dropped afterwards).
   num_chunks = -(-sum_n_edge // chunk_size)
   padding = num_chunks * chunk_size - sum_n_edge
+
   def pad(x):
     return jnp.pad(jnp.asarray(x), [(0, padding)] + [(0, 0)] * (jnp.ndim(x) - 1))
 
@@ -245,9 +242,7 @@ InteractionUpdateNodeFn = Callable[
 ]
 
 
-InteractionUpdateNodeFnNoSentEdges = Callable[
-  [jraph.NodeFeatures, Mapping[str, ReceiverFeatures]], jraph.NodeFeatures
-]
+InteractionUpdateNodeFnNoSentEdges = Callable[[jraph.NodeFeatures, Mapping[str, ReceiverFeatures]], jraph.NodeFeatures]
 
 
 def InteractionNetwork(  # pylint: disable=invalid-name
@@ -289,9 +284,7 @@ def InteractionNetwork(  # pylint: disable=invalid-name
   # Similarly, we wrap the update_node_fn to ensure only the expected
   # arguments are passed to the Interaction net.
   if include_sent_messages_in_node_update:
-    wrapped_update_node_fn = tree.tree_map(
-      lambda fn: lambda n, s, r, g: fn(n, s, r), update_node_fn
-    )
+    wrapped_update_node_fn = tree.tree_map(lambda fn: lambda n, s, r, g: fn(n, s, r), update_node_fn)
   else:
     wrapped_update_node_fn = tree.tree_map(lambda fn: lambda n, s, r, g: fn(n, r), update_node_fn)
   return GraphNetwork(

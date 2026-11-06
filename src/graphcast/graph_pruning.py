@@ -112,9 +112,7 @@ def get_connected_mesh_nodes(
 
   grid2mesh_connected_mesh_vertices = set(mesh_receivers)
   mesh2grid_connected_mesh_vertices = set(mesh_senders)
-  connected_mesh_vertices = set.intersection(
-    grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices
-  )
+  connected_mesh_vertices = set.intersection(grid2mesh_connected_mesh_vertices, mesh2grid_connected_mesh_vertices)
 
   return connected_mesh_vertices
 
@@ -173,23 +171,15 @@ def prune_mesh_from_mask(
   num_boundary_nodes = boundary_nodes.shape[0]
   num_vertices = mesh.vertices.shape[0]
   num_faces = mesh.faces.shape[0]
-  logger.info(
-    f"Read mesh with {num_vertices} vertices, "
-    f"{num_boundary_nodes} boundary nodes, "
-    f"and {num_faces} faces"
-  )
+  logger.info(f"Read mesh with {num_vertices} vertices, {num_boundary_nodes} boundary nodes, and {num_faces} faces")
   if isinstance(query_radius, np.ndarray):
     # TODO: add min and max radius to logger
     mean_radius = query_radius.mean()
     logger.info(
-      "Looking for mesh vertices connected to the grid "
-      f"with an average search radius of {(mean_radius / 1e3):.2f} km."
+      f"Looking for mesh vertices connected to the grid with an average search radius of {(mean_radius / 1e3):.2f} km."
     )
   else:
-    logger.info(
-      "Looking for mesh vertices connected to the grid "
-      f"within a radius of {(query_radius / 1e3):.2f} km."
-    )
+    logger.info(f"Looking for mesh vertices connected to the grid within a radius of {(query_radius / 1e3):.2f} km.")
   connected_mesh_vertices = get_connected_mesh_nodes(
     grid_lat=mask[latitude_dim_name].to_numpy(),
     grid_lon=mask[longitude_dim_name].to_numpy(),
@@ -200,9 +190,7 @@ def prune_mesh_from_mask(
   )
   logger.info(f"Extracted {len(connected_mesh_vertices)} mesh vertices connected to the grid.")
   mesh_mskd, valid_vertices_map = prune_mesh(connected_mesh_vertices, mesh, mode=mode)
-  boundary_nodes_mskd = np.vectorize(lambda n: valid_vertices_map.get(n, -1), otypes=[np.int32])(
-    boundary_nodes
-  )
+  boundary_nodes_mskd = np.vectorize(lambda n: valid_vertices_map.get(n, -1), otypes=[np.int32])(boundary_nodes)
   boundary_nodes_mskd = boundary_nodes_mskd[boundary_nodes_mskd >= 0]
   num_boundary_nodes_mskd = boundary_nodes_mskd.shape[0]
   num_vertices_mskd = mesh_mskd.vertices.shape[0]

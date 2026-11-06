@@ -130,9 +130,7 @@ class TypedGraph(NamedTuple):
     found_key = [k for k in self.edges.keys() if k.name == name]
     if len(found_key) != 1:
       raise KeyError(
-        "invalid edge key '{}'. Available edges: [{}]".format(
-          name, ", ".join(x.name for x in self.edges.keys())
-        )
+        "invalid edge key '{}'. Available edges: [{}]".format(name, ", ".join(x.name for x in self.edges.keys()))
       )
     return found_key[0]
 

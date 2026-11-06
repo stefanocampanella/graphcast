@@ -45,9 +45,7 @@ def spatial_average(
   preserved_dims = preserved_dims or ["batch", "time"]
   dummy_da = xr.DataArray(coords=dataset.coords)
   weights = normalized_latitude_weights(dummy_da)
-  return dataset.weighted(weights).mean(
-    [dim for dim in dataset.dims if dim not in preserved_dims], skipna=skipna
-  )
+  return dataset.weighted(weights).mean([dim for dim in dataset.dims if dim not in preserved_dims], skipna=skipna)
 
 
 def get_acc(
@@ -58,9 +56,7 @@ def get_acc(
 ) -> xr.Dataset:
   forecast_anom = forecast - climatology_ref
   truth_anom = truth - climatology_ref
-  norm_sq = spatial_average(forecast_anom**2, skipna=skipna) * spatial_average(
-    truth_anom**2, skipna=skipna
-  )
+  norm_sq = spatial_average(forecast_anom**2, skipna=skipna) * spatial_average(truth_anom**2, skipna=skipna)
   norm = xr.apply_ufunc(np.sqrt, norm_sq)
   return spatial_average(forecast_anom * truth_anom, skipna=skipna) / norm
 

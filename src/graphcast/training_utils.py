@@ -41,24 +41,20 @@ JAXLossAndDiagnostics = tuple[jax.Array, Mapping[str, jax.Array]]
 
 
 def _make_hybrid_mesh(
-    axis_names: tuple[str, ...],
-    local_shape: tuple[int, ...],
-    process_shape: tuple[int, ...],
+  axis_names: tuple[str, ...],
+  local_shape: tuple[int, ...],
+  process_shape: tuple[int, ...],
 ) -> Mesh:
   # `jax.make_mesh` rejects meshes spanning several GPU nodes, which JAX treats as separate slices. Lay out each
   # process's devices by local_shape and the processes by process_shape instead, so that axis i has size
   # local_shape[i] * process_shape[i].
-  devices = mesh_utils.create_hybrid_device_mesh(
-    local_shape, process_shape, process_is_granule=True
-  )
+  devices = mesh_utils.create_hybrid_device_mesh(local_shape, process_shape, process_is_granule=True)
   return Mesh(devices, axis_names, axis_types=(AxisType.Explicit,) * len(axis_names))
 
 
 def make_batch_mesh() -> Mesh:
   """A one-dimensional mesh over all devices, with axis "batch"."""
-  return _make_hybrid_mesh(
-    ("batch",), (jax.local_device_count(),), (jax.process_count(),)
-  )
+  return _make_hybrid_mesh(("batch",), (jax.local_device_count(),), (jax.process_count(),))
 
 
 def check_writable_paths(
@@ -128,21 +124,23 @@ def get_model_config(configs: TrainingConfig) -> ModelConfig:
 
 
 def get_policy(configs: TrainingConfig) -> Callable:
-  return cp.save_and_offload_only_these_names(**configs.policy.model_dump(exclude={"remat_loss", "prevent_cse", "scan", "edge_chunk_size"}))
+  return cp.save_and_offload_only_these_names(
+    **configs.policy.model_dump(exclude={"remat_loss", "prevent_cse", "scan", "edge_chunk_size"})
+  )
 
 
 def get_predictor(
-    configs: TrainingConfig,
-    model_config: ModelConfig,
-    task_config: TaskConfig,
+  configs: TrainingConfig,
+  model_config: ModelConfig,
+  task_config: TaskConfig,
   mesh_data: MeshData,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,
-    mean_by_level: xr.Dataset | None,
-    stddev_by_level: xr.Dataset | None,
+  mean_by_level: xr.Dataset | None,
+  stddev_by_level: xr.Dataset | None,
   loss_masks: xr.Dataset,
-    diffs_stddev_by_level: xr.Dataset | None = None,
+  diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
   """Wrap GraphCast, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
   diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) -> Bfloat16Cast."""
@@ -181,15 +179,13 @@ def get_predictor(
 
 
 def get_optimizer(
-    configs: TrainingConfig,
+  configs: TrainingConfig,
 ) -> tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
   logger.info(f"Optimizing with {configs.optimizer}")
   schedule_config = configs.optimizer.schedule
   try:
     scheduler_init = getattr(optax.schedules, schedule_config.name)
-    scheduler = scheduler_init(
-      **schedule_config.model_dump(exclude={"name"}, exclude_unset=True)
-    )
+    scheduler = scheduler_init(**schedule_config.model_dump(exclude={"name"}, exclude_unset=True))
   except (AttributeError, TypeError, ValueError) as error:
     raise ValueError(f"optimizer.schedule ({schedule_config.name}): {error}") from error
 
@@ -202,9 +198,7 @@ def get_optimizer(
         kwargs["learning_rate"] = scheduler
       gradient_transformation = gradient_transformation_init(**kwargs)
     except (AttributeError, TypeError, ValueError) as error:
-      raise ValueError(
-        f"optimizer.gradient_transformation.{index} ({config.name}): {error}"
-      ) from error
+      raise ValueError(f"optimizer.gradient_transformation.{index} ({config.name}): {error}") from error
     gradient_transformations.append(gradient_transformation)
   optimizer = optax.chain(*gradient_transformations)
 
@@ -229,8 +223,7 @@ class TensorboardLogger:
     # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
     if not jax.distributed.is_initialized():
       raise ValueError(
-        "JAX distributed should be initialized beforehand, "
-        "see: https://github.com/google/flax/issues/4942."
+        "JAX distributed should be initialized beforehand, see: https://github.com/google/flax/issues/4942."
       )
     else:
       _ = jax.devices()
@@ -263,10 +256,10 @@ class TensorboardLogger:
 
 
 def save_model(
-    output_path: pathlib.Path,
-    configs: TrainingConfig,
-    model_config: ModelConfig,
-    task_config: TaskConfig,
+  output_path: pathlib.Path,
+  configs: TrainingConfig,
+  model_config: ModelConfig,
+  task_config: TaskConfig,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,

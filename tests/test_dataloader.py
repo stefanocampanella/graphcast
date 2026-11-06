@@ -148,11 +148,11 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert len(map_dataset) > 0
 
 
-@pytest.mark.parametrize(("num_samples", "first_input_days"), [(3, ["2020-03-02", "2020-03-03", "2020-03-04"]),
-                                                               (2, ["2020-03-02", "2020-03-04"])])
-def test_validation_windows_are_held_out_and_evenly_spaced(
-  training_configs, reference, num_samples, first_input_days
-):
+@pytest.mark.parametrize(
+  ("num_samples", "first_input_days"),
+  [(3, ["2020-03-02", "2020-03-03", "2020-03-04"]), (2, ["2020-03-02", "2020-03-04"])],
+)
+def test_validation_windows_are_held_out_and_evenly_spaced(training_configs, reference, num_samples, first_input_days):
   """Validation windows start after split_date, spread evenly over the held-out days, and are the same every time."""
   configs = TrainingConfig.model_validate({**training_configs.model_dump(), "validation": {"num_samples": num_samples}})
   dataset = dataloader_utils.get_dataset(configs)

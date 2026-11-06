@@ -149,25 +149,19 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
   if base_type is list:
     assert len(typ.__args__) == 1
     value_type = typ.__args__[0]
-    return [
-      _convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))
-    ]
+    return [_convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))]
 
   if base_type is tuple:
     if len(typ.__args__) == 2 and typ.__args__[1] == ...:
       # An arbitrary length tuple of a single type, eg: tuple[int, ...]
       value_type = typ.__args__[0]
-      return tuple(
-        _convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))
-      )
+      return tuple(_convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0])))
     else:
       # A fixed length tuple of arbitrary types, eg: tuple[int, str, float]
       assert len(typ.__args__) == len(value)
       return tuple(
         _convert_types(t, v)
-        for t, (_, v) in zip(
-          typ.__args__, sorted(value.items(), key=lambda x: int(x[0])), strict=False
-        )
+        for t, (_, v) in zip(typ.__args__, sorted(value.items(), key=lambda x: int(x[0])), strict=False)
       )
 
   # This is probably unreachable with reasonable serializable inputs.

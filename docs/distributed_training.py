@@ -52,14 +52,10 @@ def predict(inputs: xr.Dataset, targets_template: xr.Dataset) -> xr.Dataset:
   outputs_stacked_data = xarray_jax.wrap(outputs_stacked_data)
 
   # Get back a DataArray
-  outputs_stacked = xarray_jax.DataArray(
-    data=outputs_stacked_data, dims=("batch", "lat", "channels")
-  )
+  outputs_stacked = xarray_jax.DataArray(data=outputs_stacked_data, dims=("batch", "lat", "channels"))
 
   # Unstack predictions
-  outputs = model_utils.stacked_to_dataset(
-    outputs_stacked.variable, targets_template, preserved_dims=("batch", "lat")
-  )
+  outputs = model_utils.stacked_to_dataset(outputs_stacked.variable, targets_template, preserved_dims=("batch", "lat"))
 
   return outputs
 
@@ -79,9 +75,7 @@ def loss(inputs: xr.Dataset, template: xr.Dataset) -> tuple[xr.DataArray, Mappin
 
 
 @hk.transform
-def loss_fn(
-    inputs: xr.Dataset, template: xr.Dataset
-) -> tuple[chex.Array, Mapping[str, chex.Array]]:
+def loss_fn(inputs: xr.Dataset, template: xr.Dataset) -> tuple[chex.Array, Mapping[str, chex.Array]]:
   # Compute the losses per batch element
   loss_and_diagnostics_with_batch_dim = loss(inputs, template)
 
@@ -130,7 +124,6 @@ with jax.sharding.set_mesh(mesh):
   sharding_along_batch = NamedSharding(mesh, PartitionSpec("batch"))
   sharding_replicated = NamedSharding(mesh, PartitionSpec())
 
-
   # rng_key = jax.random.key(0)
 
   def device_put_dataset(dataset: xr.Dataset) -> xr.Dataset:
@@ -139,17 +132,17 @@ with jax.sharding.set_mesh(mesh):
       dataset,
     )
 
-
   def device_put_params(params):
     return jax.reshard(params, out_shardings=sharding_replicated)
-
 
   params = device_put_params(params)
   inputs = device_put_dataset(inputs)
   target = device_put_dataset(target)
 
-  print(f"Gradient computed from {jax.process_index()} (local devices {jax.local_devices()}): ",
-        grad_fn(params, default_rng_key, inputs, target))
+  print(
+    f"Gradient computed from {jax.process_index()} (local devices {jax.local_devices()}): ",
+    grad_fn(params, default_rng_key, inputs, target),
+  )
 
 if jax.distributed.is_initialized():
   jax.distributed.shutdown()
