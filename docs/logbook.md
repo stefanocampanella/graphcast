@@ -1136,3 +1136,20 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
     two profiling steps of ~2 s, a 12.5 s recompilation at step 3).
   - **Decision:** no gain, so the training loop is unchanged (it keeps the ahead-of-time compile); `.env` and `TODO.md`
     record why.
+
+## 2026-11-06 18:15: group 4 of the tests and code-quality PR (format, lint, stubs, licenses, ty)
+
+- **Commits:** `ruff format` of the whole codebase (5176406, listed in `.git-blame-ignore-revs`); ruff lint fixes
+  (literals, PEP 695 generics, `TypeError` for wrong argument types in `gis_utils.get_transform` and `xarray_jax`);
+  type stubs in the dev group (`scipy-stubs ~= 1.18.1`, `pandas-stubs ~= 3.0.5`, `types-networkx`, `types-tqdm`,
+  `botocore-stubs`, image `graphcast-g4.sif` built from the branch); ruff skips `notebooks/`.
+- **Licenses (maintainer: Apache-2.0 everywhere):** every Python file has the maintainer's copyright, an SPDX line and
+  the Apache header; the 28 files derived from GraphCast keep DeepMind's line and say they were modified (§4(b)); the
+  four MIT headers became Apache. `NOTICE` names the fork's origin and lists the derived files (§4(d)) and says the
+  license grants no rights to DeepMind's, Google's or GraphCast's names (§6): the project will be renamed in a
+  follow-up PR (candidates Moby-Dick, Moby-Dix).
+- **ty:** 139 diagnostics with the stubs and the image's jax, jaxlib and flax as extra search paths, now 0. Fixes where
+  annotations or code were wrong (Optional narrowing, Hashable keys, `get_transform`'s return type, `plot_utils` on
+  DataArrays, explicit `TaskConfig` fields, AWS credentials without keys); targeted `# ty: ignore[rule]` with a reason
+  where ty or the stubs cannot follow the code (Grain and Predictor overrides, jraph defaults, constrained type
+  variables, chex.Array). 437 tests pass.
