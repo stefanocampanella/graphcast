@@ -162,7 +162,7 @@ DEFAULT_TASK = TaskConfig(
   target_variables=TARGET_VARS,
   forcing_variables=FORCING_VARS,
   levels=LEVELS_10,
-  input_duration="2d",
+  input_duration="2D",
 )
 
 

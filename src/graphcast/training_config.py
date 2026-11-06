@@ -3,7 +3,9 @@
 import warnings
 from typing import Annotated, Any, Literal
 
+import pandas as pd
 from pydantic import (
+  AfterValidator,
   BaseModel,
   ConfigDict,
   Field,
@@ -17,6 +19,21 @@ from pydantic import (
 
 class ApplicationConfig(BaseModel):
   model_config = ConfigDict(extra="forbid")
+
+
+def _check_duration(value: str) -> str:
+  # Deprecated units (e.g. "d" for days, an error in pandas 4) are rejected now rather than when the first sample is read.
+  with warnings.catch_warnings():
+    warnings.simplefilter("error")
+    try:
+      pd.Timedelta(value)
+    except (ValueError, Warning) as error:
+      raise ValueError(f"{value!r} is not a valid duration (e.g. '1D', '24h'): {error}") from error
+  return value
+
+
+# A pandas duration, e.g. "1D" or "24h".
+Duration = Annotated[str, AfterValidator(_check_duration)]
 
 
 class ReadConfig(BaseModel):
@@ -71,7 +88,7 @@ class TaskConfig(ApplicationConfig):
   target_variables: tuple[str, ...]
   forcing_variables: tuple[str, ...]
   levels: Levels
-  input_duration: str
+  input_duration: Duration
 
 
 class ModelConfig(ApplicationConfig):
@@ -141,7 +158,7 @@ class PerformanceConfig(ApplicationConfig):
 
 
 class GrainDatasetConfig(ApplicationConfig):
-  target_lead_times: str
+  target_lead_times: Duration
   split_date: str
   local_batch_size: PositiveInt = Field(
     default=1, description="Samples per local device"

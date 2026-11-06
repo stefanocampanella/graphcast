@@ -384,7 +384,7 @@ def extract_inputs_targets_forcings(
   input_duration: TimedeltaLike,
   target_lead_times: TargetLeadTimes,
   tisr_name: str = _DEFAULT_TISR_NAME,
-  integration_period: TimedeltaLike = "1d",
+  integration_period: TimedeltaLike = "1D",
   forward: bool = False,
   to_jax=False,
   derived_vars_device=None,
