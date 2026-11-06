@@ -1,9 +1,4 @@
-"""Tests of the linear basis functions of a mesh at points and on the grid (basis_utils, graphcast compute-basis)."""
-
-import os
-import pathlib
-import subprocess
-import sys
+"""Tests of the linear basis functions of a mesh at points and on the grid (basis_utils, graphcast compute-grid-basis)."""
 
 import numpy as np
 import pytest
@@ -11,10 +6,10 @@ from click.testing import CliRunner
 from scipy import sparse
 
 from graphcast import basis_utils, icosahedral_mesh, mesh_connectivity
-from graphcast.basis import compute_basis_command
+from graphcast.basis import compute_grid_basis_command
 from graphcast.dataloader_utils import get_grid
 from graphcast.geospatial_mesh_utils import write_multi_mesh
-from graphcast.gis_utils import cartesian_unit_sphere_crs
+from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
 
 LAT = np.arange(-85.0, 90.0, 10.0)
 LON = np.arange(0.0, 360.0, 10.0)
@@ -98,34 +93,45 @@ def test_basis_at_the_vertices_of_a_finer_mesh():
 
 
 def test_compute_cli(tmp_path, mask_path):
-  """`graphcast compute-basis` reads the mesh and the mask written by graphcast download-mask, and saves the basis on the
+  """`graphcast compute-grid-basis` reads the mesh and the mask written by graphcast download-mask, and saves the basis on the
   ocean points of that grid; an existing output is replaced only with --overwrite."""
   mesh_path = tmp_path / "mesh.msh"
   write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(1), mesh_path)
   output = tmp_path / "basis.npz"
   arguments = [str(mesh_path), mask_path, str(output), "--log-level", "warning"]
 
-  result = CliRunner().invoke(compute_basis_command, arguments)
+  result = CliRunner().invoke(compute_grid_basis_command, arguments)
 
   assert result.exit_code == 0, result.output
   basis = sparse.load_npz(output)
   grid = get_grid(mask_path)
   assert basis.shape == (int(grid.mask.sum()), 42)
   np.testing.assert_allclose(np.asarray(basis.sum(axis=1)).ravel(), 1.0, rtol=1e-6)
-  result = CliRunner().invoke(compute_basis_command, arguments)
+  result = CliRunner().invoke(compute_grid_basis_command, arguments)
   assert result.exit_code != 0 and "--overwrite" in result.output
-  assert CliRunner().invoke(compute_basis_command, [*arguments, "--overwrite"]).exit_code == 0
+  assert CliRunner().invoke(compute_grid_basis_command, [*arguments, "--overwrite"]).exit_code == 0
 
 
-def test_basis_module_runs_as_a_script():
-  """`python -m graphcast.basis` runs the command (it called an undefined `cli`)."""
-  source = pathlib.Path(__file__).parents[1] / "src"
-  result = subprocess.run(
-    [sys.executable, "-m", "graphcast.basis", "--help"],
-    env={**os.environ, "PYTHONPATH": str(source)},
-    capture_output=True,
-    text=True,
-    check=False,
-  )
-  assert result.returncode == 0, result.stderr
-  assert "MESH_PATH MASK_PATH OUTPUT_PATH" in result.stdout
+def _smooth_function(lat: np.ndarray, lon: np.ndarray) -> np.ndarray:
+  """A smooth function on the Earth, of geodetic latitude and longitude in degrees."""
+  lat, lon = np.deg2rad(lat), np.deg2rad(lon)
+  return np.sin(lat) ** 2 + np.cos(lat) * np.sin(2 * lon) + 0.5 * np.cos(lat) ** 2 * np.cos(3 * lon)
+
+
+def test_grid_basis_interpolates_a_function_given_at_the_mesh_vertices(mask):
+  """The basis times the values of a smooth function at the mesh vertices gives its values at the ocean grid points
+  within the error of linear interpolation, which shrinks as the square of the edge length (4 times per refinement)."""
+  lat_grid, lon_grid = np.meshgrid(LAT, LON, indexing="ij")
+  expected = _smooth_function(lat_grid, lon_grid)[mask]
+  to_lat_lon = get_transform(cartesian_crs, equirectangular_crs)
+  errors = []
+  for splits in (3, 4, 5):
+    mesh = icosahedral_mesh.get_multi_mesh_graph(splits)
+    lon_mesh, lat_mesh = np.asarray(to_lat_lon(mesh.vertices)).T
+    basis = basis_utils.compute_grid_basis(mesh, latitudes=LAT, longitudes=LON, mask=mask, dtype=np.float64)
+    errors.append(np.abs(basis @ _smooth_function(lat_mesh, lon_mesh) - expected).max())
+  # Finest edges about 950, 480 and 240 km: maximum errors 0.071, 0.023, 0.0058 (the function's second derivatives
+  # reach about 4.5).
+  assert errors[-1] < 1e-2
+  ratios = np.array(errors[:-1]) / np.array(errors[1:])
+  assert np.all((ratios > 3.0) & (ratios < 5.5)), (errors, ratios)

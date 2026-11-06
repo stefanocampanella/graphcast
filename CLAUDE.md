@@ -16,10 +16,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 `APPTAINERENV_PYTHONPATH` to `src/`, so source edits take effect without rebuilding the image. Python is 3.12.
 
 - CLI (`src/graphcast/__init__.py`, click): `graphcast train CONFIG.toml OUTPUT TRAIN_CKPT`,
-  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute-basis MESH MASK OUTPUT.npz` (draft:
-  linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the decoder
-  faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of another mesh
-  for the planned interpolating decoder and hierarchical meshes),
+  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute-grid-basis MESH MASK OUTPUT.npz`
+  (draft: linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the
+  decoder faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of
+  another mesh for the planned interpolating decoder and hierarchical meshes),
   `graphcast make-icosahedral-mesh CONFIG.toml OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
   ellipsoid, for comparison with the ocean meshes; settings `splits`, `description`, `license` in
   `configs/mesh/icosahedral_*.toml`, `IcosahedralMeshConfig`; `mesh.path` of a training config can point to the
