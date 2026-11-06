@@ -21,6 +21,7 @@ import io
 from typing import Any
 
 import numpy as np
+import pytest
 
 from graphcast import checkpoint
 
@@ -118,3 +119,29 @@ def test_serialize_dataclass():
   np.testing.assert_array_equal(ckpt.params["layer2"]["b"], ckpt2.params["layer2"]["b"])
   np.testing.assert_array_equal(ckpt.params["blah"], ckpt2.params["blah"])
   assert ckpt.config == ckpt2.config
+
+
+@dataclasses.dataclass
+class Empty:
+  names: list[str]
+  table: dict[str, int]
+  values: tuple[float, ...]
+  number: int
+
+
+def test_empty_containers_round_trip():
+  """Empty lists, dicts and variable-length tuples are stored as no keys at all: they load back empty (a model trained
+  on a mesh without description could not be loaded: "Missing value: description")."""
+  buffer = io.BytesIO()
+  checkpoint.dump(buffer, Empty(names=[], table={}, values=(), number=3))
+  buffer.seek(0)
+  assert checkpoint.load(buffer, Empty) == Empty(names=[], table={}, values=(), number=3)
+
+
+def test_missing_scalars_are_still_errors():
+  """Fields that are not containers must be in the file."""
+  buffer = io.BytesIO()
+  checkpoint.dump(buffer, SubConfig(a=1, b="x"))
+  buffer.seek(0)
+  with pytest.raises(ValueError, match="Missing value: number"):
+    checkpoint.load(buffer, Empty)

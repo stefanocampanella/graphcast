@@ -94,6 +94,12 @@ def _unflatten(flat: dict[str, Any]) -> dict[str, Any]:
   return tree
 
 
+def _is_variable_length_container(typ: Any) -> bool:
+  """Lists, dicts and variable-length tuples (`tuple[T, ...]`), which may be empty."""
+  base_type = getattr(typ, "__origin__", None)
+  return base_type in (list, dict) or (base_type is tuple and len(typ.__args__) == 2 and typ.__args__[1] == ...)
+
+
 def _convert_types(typ: type[_T], value: Any) -> _T:
   """Convert some structure into the given type. The structures must match."""
   if typ in (Any, ...):
@@ -126,6 +132,9 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
 
       if f.name in value:
         kwargs[f.name] = _convert_types(constructor, value[f.name])
+      elif _is_variable_length_container(constructor):
+        # Empty containers flatten to no keys at all.
+        kwargs[f.name] = _convert_types(constructor, {})
       else:
         raise ValueError(f"Missing value: {f.name}")
     return typ(**kwargs)
