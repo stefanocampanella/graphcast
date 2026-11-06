@@ -505,8 +505,9 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by the
   maintainer (the git user, no `--author`), with Claude as co-author through the single `Co-Authored-By: Claude …
   <noreply@anthropic.com>` trailer that Claude Code adds.
-- Conventions from reviews: no data paths, URLs, hardware or cluster references (JUPITER, ARCO-OCEAN) in code
-  comments, docstrings, config comments or `scripts/` (fine as default values and in CLAUDE.md); `scripts/` must be
+- Conventions from reviews: no data paths, dataset URLs (e.g. of the ARCO-OCEAN stores), hardware or cluster
+  references (JUPITER, ARCO-OCEAN) in code comments, docstrings, config comments or `scripts/` (fine as default values
+  and in CLAUDE.md); links to references (papers, documentation, issues) are welcome in comments; `scripts/` must be
   portable, cluster-specific settings live under `clusters/<name>/`; user-specific settings (e.g. AWS profiles) come
   from environment variables, not configs; no backward-compatibility code for formats nobody uses; one library per job
   (e.g. TensorStore for all arrays); prefer simple implementations (no resume or blocking machinery unless failures
