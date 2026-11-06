@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# TODO: move tests from icosahedral_mesh and add tests for new functions
+# TODO: add tests for the conversions to latitude and longitude and to networkx
 # TODO: switch from np.ndarray to chex.Array in type hints
 # TODO: MeshGraph and TriangleMesh share most of the code, refactor
 # TODO: TriangleMesh could easily hold possibly square meshes, not just triangular ones.
