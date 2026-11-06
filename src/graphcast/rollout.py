@@ -111,9 +111,10 @@ def chunked_prediction_generator(
   """
 
   # Create copies to avoid mutating inputs.
-  inputs = xarray.Dataset(inputs)
-  targets_template = xarray.Dataset(targets_template)
-  forcings = xarray.Dataset(forcings)
+  # Shallow copies: the datetime coordinates are deleted from them below.
+  inputs = inputs.copy()
+  targets_template = targets_template.copy()
+  forcings = forcings.copy()
 
   if "datetime" in inputs.coords:
     del inputs.coords["datetime"]
@@ -205,7 +206,7 @@ def _get_next_inputs(
 
   # Apply concatenate next frame with inputs, crop what we don't need.
   num_inputs = prev_inputs.sizes["time"]
-  return xarray.concat([prev_inputs, next_inputs], dim="time", data_vars="different").tail(
+  return xarray.concat([prev_inputs, next_inputs], dim="time", data_vars="different", compat="equals").tail(
     time=num_inputs
   )
 
