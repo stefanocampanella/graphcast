@@ -20,7 +20,7 @@
 import functools
 import math
 from collections.abc import Callable, Hashable, Mapping
-from typing import Protocol
+from typing import Any, Protocol
 
 import jax.numpy as jnp
 import numpy as np
@@ -196,7 +196,7 @@ def _masked_mean_preserving_batch(
 
 def sum_per_variable_losses(
   per_variable_losses: Mapping[Hashable, xr.DataArray],
-  weights: Mapping[Hashable, np.floating | float] | None = None,
+  weights: Mapping[Any, np.floating | float] | None = None,
 ) -> LossAndDiagnostics:
   """Weighted sum of per-variable losses."""
   weights = weights or {}

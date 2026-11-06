@@ -289,7 +289,7 @@ def save_model(
     grid_mask=grid_mask,
     description=configs.description,
     license=configs.license,
-    params=params,
+    params=params,  # ty: ignore[invalid-argument-type]  # nested mappings of arrays
   )
 
   if jax.process_index() == 0:

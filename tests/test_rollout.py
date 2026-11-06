@@ -27,7 +27,7 @@ BATCH, LON, STEPS = 2, 3, 6
 DAY = np.timedelta64(1, "D")
 
 
-def _predictor_fn(rng, inputs, targets_template, forcings):
+def _predictor_fn(rng, inputs, targets_template, forcings, **optional_kwargs):
   """Each step adds that step's forcing to the last x (several steps per call in a chunk)."""
   del rng
   x = inputs["x"].isel(time=-1).values
@@ -82,7 +82,7 @@ def test_chunks_get_the_relative_times_of_the_first_chunk_and_their_own_rng():
   inputs, targets, forcings = _data(with_datetime=True)
   calls = []
 
-  def recording_fn(rng, inputs, targets_template, forcings):
+  def recording_fn(rng, inputs, targets_template, forcings, **optional_kwargs):
     calls.append((rng, targets_template["time"].values, forcings["time"].values, inputs["time"].values))
     assert "datetime" not in inputs.coords and "datetime" not in forcings.coords
     return _predictor_fn(rng, inputs, targets_template, forcings)

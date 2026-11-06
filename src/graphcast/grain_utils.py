@@ -118,7 +118,7 @@ def _spec_like(structure):
 
 
 _original_spec_like = tree_lib.spec_like
-tree_lib.spec_like = _spec_like
+tree_lib.spec_like = _spec_like  # ty: ignore[invalid-assignment]  # intentional patch, see above
 
 
 def format_execution_summary(iterator: DatasetIterator) -> str:

@@ -122,5 +122,5 @@ def test_infer_floating_dtype():
 def test_tree_map_cast():
   """Only the leaves of the input dtype are cast."""
   tree = {"a": np.zeros(2, np.float32), "b": np.zeros(2, np.float64)}
-  cast = casting.tree_map_cast(tree, input_dtype=np.float32, output_dtype=jnp.bfloat16)
+  cast = casting.tree_map_cast(tree, input_dtype=np.dtype(np.float32), output_dtype=jnp.dtype(jnp.bfloat16))
   assert cast["a"].dtype == jnp.bfloat16 and cast["b"].dtype == np.float64

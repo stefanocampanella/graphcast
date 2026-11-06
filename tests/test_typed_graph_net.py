@@ -58,7 +58,7 @@ def test_graph_network_by_hand():
   network = typed_graph_net.GraphNetwork(
     update_edge_fn={"e": _edge_fn},
     update_node_fn={"n": _node_fn},
-    update_global_fn=lambda nodes, edges, globals_: globals_ + nodes["n"] + edges["e"],
+    update_global_fn=lambda nodes, edges, globals_: globals_ + nodes["n"] + edges["e"],  # ty: ignore[unsupported-operator]  # arrays in the test
   )
   updated = network(_graph())
 
@@ -75,7 +75,7 @@ def test_graph_network_by_hand():
 def test_interaction_network(include_sent):
   """An interaction network has no globals; the node update sees the received (and optionally the sent) edges."""
   network = typed_graph_net.InteractionNetwork(
-    update_edge_fn={"e": lambda e, s, r: e + s - r},
+    update_edge_fn={"e": lambda e, s, r: e + s - r},  # ty: ignore[unsupported-operator]  # arrays in the test
     update_node_fn={"n": (lambda n, s, r: n + s["e"] + r["e"]) if include_sent else (lambda n, r: n + r["e"])},
     include_sent_messages_in_node_update=include_sent,
   )
@@ -91,7 +91,9 @@ def test_interaction_network(include_sent):
 def test_graph_map_features():
   """Nodes, edges and globals are embedded independently."""
   updated = typed_graph_net.GraphMapFeatures(
-    embed_edge_fn={"e": lambda e: 2 * e}, embed_node_fn={"n": lambda n: n + 1}, embed_global_fn=lambda g: -g
+    embed_edge_fn={"e": lambda e: 2 * e},  # ty: ignore[unsupported-operator]  # arrays in the test
+    embed_node_fn={"n": lambda n: n + 1},  # ty: ignore[unsupported-operator]  # arrays in the test
+    embed_global_fn=lambda g: -g,  # ty: ignore[unsupported-operator]  # arrays in the test
   )(_graph())
   np.testing.assert_allclose(updated.edges[KEY].features, 2 * EDGES)
   np.testing.assert_allclose(updated.nodes["n"].features, NODES + 1)

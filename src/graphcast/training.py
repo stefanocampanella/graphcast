@@ -165,7 +165,9 @@ def train(
     loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
     assert loss.dims == ("batch",) and all(scalar.dims == ("batch",) for scalar in diagnostics.values())
     # Wait to reduce the batch dimension until shard_map is called.
-    return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(diagnostics)
+    loss_array = xarray_jax.unwrap_data(loss, require_jax=True)
+    assert isinstance(loss_array, jax.Array)
+    return loss_array, xarray_jax.jax_vars(diagnostics)
 
   optimizer, schedule = trn_utils.get_optimizer(configs)
 
@@ -220,6 +222,7 @@ def train(
     training_steps = configs.training_steps
     start_step = first_step(restored_step)
     logger.info(f"Training for {training_steps=} starting at step {start_step}.")
+    assert tensorboard_logdir is not None  # the option has a default
     tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
 
     # The policy names the outputs of rematerialized blocks: only a checkpoint around them can offload those.
@@ -257,6 +260,7 @@ def train(
       """Mean loss and diagnostics over the validation batches (all of the same size)."""
       # A thread pool and buffer of its own, in this process: read_threads windows are read ahead (Grain submits at most
       # prefetch_buffer_size reads at a time), and the pool is shut down after the last batch.
+      assert configs.validation is not None and validation_dataset is not None
       threads = configs.validation.read_threads
       read_options = grain.ReadOptions(num_threads=threads, prefetch_buffer_size=threads)
       iterator = iter(validation_dataset.to_iter_dataset(read_options=read_options))
@@ -324,7 +328,7 @@ def train(
           metrics=None if validation_metrics is None else {orbax_utils.VALID_LOSS: float(validation_metrics[0])},
         )
       checkpoint_end = time.perf_counter()
-      tb_logger.log(current_step, train_metrics, lr=schedule(current_step))
+      tb_logger.log(current_step, train_metrics, lr=float(schedule(current_step)))  # ty: ignore[invalid-argument-type]  # a scalar
       if validation_metrics is not None:
         tb_logger.log(current_step, validation_metrics, prefix="valid")
       # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.

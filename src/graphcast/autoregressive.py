@@ -232,10 +232,10 @@ class Predictor(predictor_base.Predictor):
     # After the above checks, the remaining inputs must be time-dependent:
     inputs = inputs.drop_vars(constant_inputs.keys())
 
-    if self._noise_level:
+    if noise_level := self._noise_level:
 
       def add_noise(x):
-        return x + self._noise_level * jax.random.normal(hk.next_rng_key(), shape=x.shape)
+        return x + noise_level * jax.random.normal(hk.next_rng_key(), shape=x.shape)
 
       # Add noise to time-dependent variables of the inputs.
       inputs = jax.tree_util.tree_map(add_noise, inputs)

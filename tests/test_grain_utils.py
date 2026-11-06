@@ -48,6 +48,7 @@ def test_options(num_workers):
   assert options.read_options.num_threads == 3
   assert options.num_workers == num_workers
   if num_workers:
+    assert options.multiprocessing_options is not None
     assert options.multiprocessing_options.per_worker_buffer_size == 4
   else:
     assert options.multiprocessing_options is None

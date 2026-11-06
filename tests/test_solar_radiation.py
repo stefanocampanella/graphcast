@@ -128,7 +128,7 @@ def test_full_spatial_resolution(periods: int, repeats: int, use_jit: bool):
   lat, lon = _get_grid_lat_lon_coords(num_lat=721, num_lon=1440)
 
   def benchmark() -> None:
-    solar_radiation.get_toa_incident_solar_radiation(
+    solar_radiation.get_toa_incident_solar_radiation(  # ty: ignore[unresolved-attribute]
       timestamps,
       lat,
       lon,

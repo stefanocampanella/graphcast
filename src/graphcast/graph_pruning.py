@@ -146,9 +146,8 @@ def prune_mesh(
     Tuple containint a masked multimesh graph, and a mapping from the old vertex indices to the new vertex indices.
   """
   predicate = np.any if mode == "any" else np.all
-  if isinstance(marked_vertices, set):
-    marked_vertices = list(marked_vertices)
-  valid_faces_mask = predicate(np.isin(mesh.faces, marked_vertices), axis=1)
+  marked = np.fromiter(marked_vertices, dtype=int)
+  valid_faces_mask = predicate(np.isin(mesh.faces, marked), axis=1)
   valid_faces = mesh.faces[valid_faces_mask, :]
   if len(valid_faces) > 0:
     valid_vertices = np.unique(np.concatenate(valid_faces))

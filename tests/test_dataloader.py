@@ -289,6 +289,7 @@ def test_grain_workers_survive_sigterm(training_configs):
   workers = [child for child in multiprocessing.active_children() if child not in others]
   assert workers
   for worker in workers:
+    assert worker.pid is not None
     os.kill(worker.pid, signal.SIGTERM)
   for _ in range(2):
     next(iterator)

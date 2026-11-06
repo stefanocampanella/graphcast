@@ -73,7 +73,7 @@ class ReadConfig(BaseModel):
 
   @model_validator(mode="after")
   def reject_path(self):
-    if "filename_or_obj" in self.model_extra:
+    if "filename_or_obj" in (self.model_extra or {}):
       raise ValueError("filename_or_obj must be specified using the source's path")
     return self
 

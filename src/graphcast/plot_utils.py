@@ -26,6 +26,7 @@ import matplotlib.collections as mc
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray
+from matplotlib.figure import Figure
 
 from graphcast.data_utils import fix_longitude as _fix_longitude
 from graphcast.mesh_graph import EquirectangularGraph
@@ -39,23 +40,23 @@ Lines = Sequence[Line]
 def select(
   data: xarray.Dataset, variable: str, level: int | None = None, max_steps: int | None = None
 ) -> xarray.DataArray:
-  data = data[variable]
-  if "batch" in data.dims:
-    data = data.isel(batch=0)
-  if max_steps is not None and "time" in data.sizes and max_steps < data.sizes["time"]:
-    data = data.isel(time=range(max_steps))
-  if level is not None and "level" in data.coords:
-    data = data.sel(level=level)
-  return data
+  field = data[variable]
+  if "batch" in field.dims:
+    field = field.isel(batch=0)
+  if max_steps is not None and "time" in field.sizes and max_steps < field.sizes["time"]:
+    field = field.isel(time=range(max_steps))
+  if level is not None and "level" in field.coords:
+    field = field.sel(level=level)
+  return field
 
 
 def scale(
-  data: xarray.Dataset,
+  data: xarray.DataArray,
   center: float | None = None,
   robust: bool = False,
-) -> tuple[xarray.Dataset, matplotlib.colors.Normalize, str]:
-  vmin = np.nanpercentile(data, (2 if robust else 0))
-  vmax = np.nanpercentile(data, (98 if robust else 100))
+) -> tuple[xarray.DataArray, matplotlib.colors.Normalize, str]:
+  vmin = float(np.nanpercentile(data.values, (2 if robust else 0)))
+  vmax = float(np.nanpercentile(data.values, (98 if robust else 100)))
   if center is not None:
     diff = max(vmax - center, center - vmin)
     vmin = center - diff
@@ -68,12 +69,12 @@ def scale(
 
 
 def plot_data(
-  data: dict[str, xarray.Dataset],
+  data: dict[str, tuple[xarray.DataArray, matplotlib.colors.Normalize, str]],
   fig_title: str,
   plot_size: float = 5,
   robust: bool = False,
   cols: int = 4,
-) -> tuple[matplotlib.figure, Callable, int]:
+) -> tuple[Figure, Callable, int]:
   first_data = next(iter(data.values()))[0]
   max_steps = first_data.sizes.get("time", 1)
   assert all(max_steps == d.sizes.get("time", 1) for d, _, _ in data.values())
@@ -145,7 +146,6 @@ def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) -> mc.LineCol
 
   """
   _, line_segments = get_points_and_lines(wgs_graph)
-  line_segments = np.array(line_segments)
   line_collection = mc.LineCollection(line_segments, **kwargs)
   return line_collection
 

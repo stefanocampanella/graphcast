@@ -84,7 +84,7 @@ class Configs(dict):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
-  def get(
+  def get(  # ty: ignore[invalid-method-override]  # dotted keys, see the class docstring
     self,
     maybe_dot_key: str,
     default: Any | None = None,

@@ -94,8 +94,7 @@ def test_bfloat16_losses():
 
   predictions, targets = _data()
   mask = xr.DataArray(np.ones((LAT.size, 2), dtype=bool), dims=("lat", "lon"))
-  as_bf16 = [data.astype(ml_dtypes.bfloat16) for data in (predictions, targets)]
-  loss, _ = losses.weighted_mse(*as_bf16, mask=mask)
+  loss, _ = losses.weighted_mse(predictions.astype(ml_dtypes.bfloat16), targets.astype(ml_dtypes.bfloat16), mask=mask)
   assert loss.dtype == ml_dtypes.bfloat16
   assert float(loss.values[0]) == pytest.approx(_loss(predictions, targets)[0], rel=1e-2)
 

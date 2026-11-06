@@ -56,7 +56,7 @@ def test_scale(center, robust, limits, cmap):
   """Color limits from the data range (2-98 percentiles if robust), symmetric around the center if given."""
   values = xr.DataArray(np.linspace(0.0, 100.0, 101))
   _, norm, colormap = plot_utils.scale(values, center=center, robust=robust)
-  np.testing.assert_allclose((norm.vmin, norm.vmax), limits)
+  np.testing.assert_allclose([norm.vmin, norm.vmax], limits)
   assert colormap == cmap
 
 
@@ -71,7 +71,7 @@ def test_plot_data_animates_the_time_steps(data):
   panels = [axis for axis in figure.axes if axis.get_title() in fields]
   assert [axis.get_title() for axis in panels] == ["a", "b"]
   np.testing.assert_array_equal(panels[1].images[0].get_array(), fields["b"][0].isel(time=2).values)
-  assert "3 days" in figure._suptitle.get_text()
+  assert "3 days" in figure.get_suptitle()
   plt.close(figure)
 
 

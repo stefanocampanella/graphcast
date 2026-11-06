@@ -107,7 +107,7 @@ class StandardizedAnomalySource(grain.RandomAccessDataSource):
   def __len__(self):
     return self.dataset.sizes["time"] - self._window_size + 1
 
-  def __getitem__(self, record_key: SupportsIndex) -> xr.Dataset:
+  def __getitem__(self, record_key: SupportsIndex) -> xr.Dataset:  # ty: ignore[invalid-method-override]
     """Return the window of `_window_size` timesteps starting at `record_key`."""
     idx = record_key.__index__()
     window = self.dataset.isel(time=slice(idx, idx + self._window_size))

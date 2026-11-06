@@ -24,6 +24,7 @@ import pathlib
 import re
 import subprocess
 import sys
+from typing import Any
 
 import numpy as np
 import pytest
@@ -66,7 +67,7 @@ def _set(text: str, pattern: str, replacement: str) -> str:
 
 
 @pytest.fixture(scope="module")
-def setup(standardized_path, mask_path, tmp_path_factory) -> dict[str, pathlib.Path]:
+def setup(standardized_path, mask_path, tmp_path_factory) -> dict[str, Any]:
   """The tiny training config (synthetic store, mask, tendency_std, icosahedral mesh) and the output paths."""
   root = tmp_path_factory.mktemp("training")
   tendency_std = root / "tendency_std"

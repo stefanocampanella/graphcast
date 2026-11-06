@@ -60,7 +60,7 @@
 # these CRS objects from short strings in config files.
 import warnings
 from collections.abc import Callable
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -224,7 +224,7 @@ def get_transform(
   destination: CoordinateReferenceSystem,
   pack_back=True,
   **kwargs,
-) -> Callable[[Coordinates], Coordinates]:
+) -> Callable[[Coordinates], Any]:  # an array, or a tuple of arrays without pack_back
   """Gets a function that transforms coordinates from one projection to another."""
   transformer = Transformer.from_crs(source, destination)
   assert transformer.source_crs is not None and transformer.target_crs is not None
@@ -239,10 +239,10 @@ def get_transform(
     if isinstance(coordinates, tuple):
       assert len(coordinates) == num_coords_in, f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
       if len(coordinates) == 2:
-        xx, yy = coordinates  # type: ignore
+        xx, yy = coordinates
         zz = np.zeros_like(xx)
       else:
-        xx, yy, zz = coordinates  # type: ignore
+        xx, yy, zz = coordinates
     elif isinstance(coordinates, np.ndarray):
       assert coordinates.shape[-1] == num_coords_in, (
         f"Expected {num_coords_in} coordinates, got {coordinates.shape[-1]}"

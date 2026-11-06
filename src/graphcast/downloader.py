@@ -75,6 +75,8 @@ def get_aws_credentials() -> dict:
     logger.info("Reading S3 anonymously")
     return {"type": "anonymous"}
   credentials = credentials.get_frozen_credentials()
+  if credentials.access_key is None or credentials.secret_key is None:
+    raise ValueError("The resolved AWS credentials have no access key or secret key")
   os.environ["AWS_ACCESS_KEY_ID"] = credentials.access_key
   os.environ["AWS_SECRET_ACCESS_KEY"] = credentials.secret_key
   if credentials.token:
