@@ -52,7 +52,12 @@ def inputs() -> tuple[xr.Dataset, xr.Dataset, xr.Dataset]:
   """
   rng = np.random.default_rng(0)
   time = pd.date_range("2020-02-20", "2020-03-05", freq="D")
-  coords = {"depth": np.array([0.5, 10.0, 100.0]), "lat": np.linspace(-60, 60, LAT), "lon": np.linspace(0, 288, LON)}
+  # A regular global grid (latitudes from -90 + 45/2 to 90 - 45/2), as the loss latitude weights expect.
+  coords = {
+    "depth": np.array([0.5, 10.0, 100.0]),
+    "lat": np.linspace(-67.5, 67.5, LAT),
+    "lon": np.linspace(0, 288, LON),
+  }
   land = np.zeros((DEPTH, LAT, LON), dtype=bool)
   land[1:, 0, 0] = True
   land[:, LAND_COLUMN[0], LAND_COLUMN[1]] = True
