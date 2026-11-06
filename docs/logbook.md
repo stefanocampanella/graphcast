@@ -1072,3 +1072,36 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   (B1 check before the rng change: 0.12815). Kept off: the gradient of the cast to varying is an all-reduce of the mesh
   edge features' cotangents, which the unchecked version does not do. (A first submission failed in 90 s: the copied
   config still said "1d", which the new validation rejected.)
+
+## 2026-11-06 18:30: group 3, tests for the whole codebase
+
+- **Request:** update the old run configs ("1d" → "1D", 12 files in `runs/`, not versioned: done), then group 3.
+- **Changes** (tests, 26 modules in `tests/`):
+  - **End-to-end training on CPU** (`test_training_run.py`): `graphcast train` of a tiny model on the icosahedral
+    multi-mesh and the synthetic store, 4 CPU devices, validation, checkpoints, TensorBoard, model saved; then
+    `--continue`. A subprocess, as `jax.distributed` must be initialized first (one-process cluster on localhost);
+    coverage measures it (`patch = ["subprocess"]`, pytest-cov 7 no longer does). The synthetic grid is now global
+    (-67.5° to 67.5°), as the loss latitude weights require.
+  - New test modules: autoregressive, rollout, validation_utils, graph_pruning, plot_utils, casting, cli_utils,
+    grain_utils, typed_graph_net, deep_typed_graph_net, mesh size fields; more in model (scan vs unrolled with the same
+    parameters, connected grid nodes), mesh_graph, mesh_connectivity, gis_utils, data_utils, checkpoint.
+  - `conftest.py`: `JAX_PLATFORMS=cpu` (in a shell of the image on a node without GPUs, NVIDIA's environment made the
+    CUDA plugin fail instead of falling back to the CPU, so `apptainer run … pytest` failed a test), `MPLBACKEND=Agg`,
+    a shared tiny GraphCast fixture.
+- **Bugs found by the tests, fixed** (each its own commit, the test failed before):
+  - `GraphCast`: forcings without grid dimensions (only year progress) failed with a KeyError (`lat`).
+  - `checkpoint`: empty lists/dicts/tuples did not load ("Missing value"): a model trained on a mesh without
+    description could be saved but not loaded.
+  - `rollout`: every rollout failed (`xarray.Dataset(dataset)` rejected by current xarray); a concat relied on a
+    changing xarray default.
+  - `validation_utils`: deprecated `Dataset.drop`.
+  - `plot_utils.plot_data`: animation titles assumed nanosecond timedeltas.
+  - `data_utils.fix_longitude`, `gis_utils.wrap_longitude` (and so `xarray_to_gdal_raster`): IndexError on data already
+    in [-180, 180].
+  - `casting.tree_map_cast`: leaves of other dtypes became None.
+  - `mesh_graph.latlon_to_nx`: latitude and longitude swapped in the node attributes.
+  - `mesh_connectivity.get_masking_indices_fns`: the first unmasked point (index 0) was taken as missing;
+    `get_dummy_xscaling_graph`: each mesh's edges built from the other mesh's faces.
+- **Result:** 446 tests, 3 min 54 s with coverage through `apptainer run` (login node); coverage 94 % (53 % before
+  group 1); every module above 80 % except `predictor_base` (abstract) and the CLI group `__init__`.
+- **Candidate for deletion:** `cli_utils.DictParamType` is unused (tested meanwhile); `Configs` is used by notebooks.
