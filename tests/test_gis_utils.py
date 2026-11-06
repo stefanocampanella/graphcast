@@ -1,11 +1,13 @@
-"""Tests of the coordinate transforms in gis_utils."""
+"""Tests of the coordinate transforms and grid helpers in gis_utils."""
 
 import warnings
 
 import numpy as np
 import pytest
+import xarray as xr
+from osgeo import gdal
 
-from graphcast import icosahedral_mesh
+from graphcast import gis_utils, icosahedral_mesh
 from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
 
 
@@ -30,3 +32,71 @@ def test_points_off_the_surface_warn(crs, scale):
   vertices = icosahedral_mesh.get_multi_mesh_graph(1, crs=crs).vertices * scale
   with pytest.warns(UserWarning, match="elevation"):
     get_transform(crs, equirectangular_crs)(vertices)
+
+
+def test_transform_round_trip_of_tuples_and_arrays():
+  """Longitude-latitude pairs go to Earth-centred coordinates and back, given as tuples or as arrays (the coordinate
+  axis last); packed back into an array only for arrays and when asked."""
+  lon, lat = np.array([0.0, 90.0, -45.0]), np.array([0.0, 45.0, -30.0])
+  to_cartesian = get_transform(equirectangular_crs, cartesian_crs)
+  to_lat_lon = get_transform(cartesian_crs, equirectangular_crs, pack_back=False)
+
+  xyz = to_cartesian(np.stack([lon, lat], axis=-1))
+  assert isinstance(xyz, np.ndarray) and xyz.shape == (3, 3)
+  np.testing.assert_allclose(xyz[0], [6_378_137.0, 0.0, 0.0], atol=1e-6)
+  back = to_lat_lon(tuple(xyz.T))
+  assert isinstance(back, tuple)
+  np.testing.assert_allclose(back, (lon, lat), atol=1e-9)
+  np.testing.assert_allclose(to_cartesian((lon, lat)), tuple(xyz.T))
+
+
+def test_transform_rejects_wrong_coordinates():
+  to_cartesian = get_transform(equirectangular_crs, cartesian_crs)
+  with pytest.raises(AssertionError, match="Expected 2 coordinates"):
+    to_cartesian(np.zeros((4, 3)))
+  with pytest.raises(ValueError, match="tuple or a numpy array"):
+    to_cartesian([[0.0, 0.0]])
+
+
+def test_map_on_grid():
+  """A function of (longitude, latitude) points is evaluated on a grid and returned as a (lat, lon) DataArray."""
+  lat = xr.DataArray(np.array([-30.0, 0.0, 30.0]), dims="lat", name="lat")
+  lon = xr.DataArray(np.array([0.0, 120.0, 240.0, 300.0]), dims="lon", name="lon")
+
+  def func(coordinates, crs):
+    assert crs is equirectangular_crs
+    return coordinates[..., 0] + 1000.0 * coordinates[..., 1]
+
+  values = gis_utils.map_on_grid(func, lat, lon)
+  assert values.dims == ("lat", "lon")
+  np.testing.assert_array_equal(values.values, lon.values[None, :] + 1000.0 * lat.values[:, None])
+
+
+@pytest.mark.parametrize(
+  ("lon", "centres"),
+  [
+    (np.arange(0.0, 360.0, 90.0), [-90.0, 0.0, 90.0, 180.0]),
+    (np.arange(-180.0, 180.0, 90.0), [-180.0, -90.0, 0.0, 90.0]),
+  ],
+  ids=["0_360", "wrapped"],
+)
+def test_xarray_to_gdal_raster(lon, centres):
+  """A (lat, lon) field becomes a north-up raster in longitudes wrapped to [-180, 180] and latitudes, with pixel
+  centres on the grid points and NaN as no-data; already wrapped longitudes work too (wrapping raised an
+  IndexError)."""
+  lat = np.array([-45.0, 0.0, 45.0])
+  field = xr.DataArray(
+    lat[:, None] * 1000.0 + np.where(lon > 180.0, lon - 360.0, lon)[None, :],
+    dims=("lat", "lon"),
+    coords={"lat": lat, "lon": lon},
+  )
+
+  raster = gis_utils.xarray_to_gdal_raster(field)
+
+  x_min, x_res, _, y_max, _, y_res = raster.GetGeoTransform()
+  assert (x_min, x_res, y_max, y_res) == (centres[0] - 45.0, 90.0, 67.5, -45.0)
+  band = raster.GetRasterBand(1)
+  assert np.isnan(band.GetNoDataValue())
+  expected = np.array([45.0, 0.0, -45.0])[:, None] * 1000.0 + np.array(centres)[None, :]
+  np.testing.assert_array_equal(band.ReadAsArray(), expected)
+  assert raster.GetDriver().ShortName == "MEM" and band.DataType == gdal.GDT_Float32
