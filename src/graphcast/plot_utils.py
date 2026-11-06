@@ -134,7 +134,7 @@ def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) -> mc.LineCol
 
 def fix_longitude(plot_f):
   def new_plot_f(*args, **kwargs):
-    args = map(lambda da: _fix_longitude(da) if isinstance(da, xarray.DataArray) else da, args)
+    args = (_fix_longitude(da) if isinstance(da, xarray.DataArray) else da for da in args)
     return plot_f(*args, **kwargs)
 
   return new_plot_f

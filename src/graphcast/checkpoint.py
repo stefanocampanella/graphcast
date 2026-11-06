@@ -16,11 +16,9 @@
 import dataclasses
 import io
 import types
-from typing import Any, BinaryIO, Optional, TypeVar
+from typing import Any, BinaryIO, Optional
 
 import numpy as np
-
-_T = TypeVar("_T")
 
 
 def dump(dest: BinaryIO, value: Any) -> None:
@@ -39,7 +37,7 @@ def dump(dest: BinaryIO, value: Any) -> None:
   dest.write(buffer.getvalue())
 
 
-def load(source: BinaryIO, typ: type[_T]) -> _T:
+def load[T](source: BinaryIO, typ: type[T]) -> T:
   """Load from a file object and convert it to the specified type.
 
   Args:
@@ -100,7 +98,7 @@ def _is_variable_length_container(typ: Any) -> bool:
   return base_type in (list, dict) or (base_type is tuple and len(typ.__args__) == 2 and typ.__args__[1] == ...)
 
 
-def _convert_types(typ: type[_T], value: Any) -> _T:
+def _convert_types[T](typ: type[T], value: Any) -> T:
   """Convert some structure into the given type. The structures must match."""
   if typ in (Any, ...):
     return value

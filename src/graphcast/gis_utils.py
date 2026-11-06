@@ -255,7 +255,7 @@ def get_transform(
         yy = coordinates[..., 1]
         zz = coordinates[..., 2]
     else:
-      raise ValueError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
+      raise TypeError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
     result = transformer.transform(xx=xx, yy=yy, zz=zz, inplace=False, **kwargs)
     assert len(result) >= num_coords_out, f"Expected {num_coords_out} coordinates, got {len(result)}"
     # We don't use elevation, in case of conversion to equirectangular projection drop it.

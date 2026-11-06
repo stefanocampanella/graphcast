@@ -37,7 +37,9 @@ ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 @overload
-def read_configs(path: str | pathlib.Path, schema: type[ModelT], inject: dict[str, Any] | None = None) -> ModelT: ...
+def read_configs[ModelT: BaseModel](
+  path: str | pathlib.Path, schema: type[ModelT], inject: dict[str, Any] | None = None
+) -> ModelT: ...
 
 
 @overload
@@ -46,7 +48,7 @@ def read_configs(
 ) -> dict[str, Any]: ...
 
 
-def read_configs(
+def read_configs[ModelT: BaseModel](
   path: str | pathlib.Path, schema: type[ModelT] | None = None, inject: dict[str, Any] | None = None
 ) -> ModelT | dict[str, Any]:
   """Read local TOML, apply shallow overrides, and optionally validate a schema."""

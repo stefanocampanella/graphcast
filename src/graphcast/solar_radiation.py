@@ -590,11 +590,11 @@ def get_toa_incident_solar_radiation_for_xarray(
   Raises:
     ValueError: If there are missing coordinates or dimensions.
   """
-  missing_dims = set(["lat", "lon"]) - set(data_array_like.dims)
+  missing_dims = {"lat", "lon"} - set(data_array_like.dims)
   if missing_dims:
     raise ValueError(f"'{missing_dims}' dimensions are missing in `data_array_like`.")
 
-  missing_coords = set(["datetime", "lat", "lon"]) - set(data_array_like.coords)
+  missing_coords = {"datetime", "lat", "lon"} - set(data_array_like.coords)
   if missing_coords:
     raise ValueError(f"'{missing_coords}' coordinates are missing in `data_array_like`.")
 

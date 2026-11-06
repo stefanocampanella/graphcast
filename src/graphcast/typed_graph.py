@@ -127,11 +127,9 @@ class TypedGraph(NamedTuple):
   edges: Mapping[EdgeSetKey, EdgeSet]
 
   def edge_key_by_name(self, name: str) -> EdgeSetKey:
-    found_key = [k for k in self.edges.keys() if k.name == name]
+    found_key = [k for k in self.edges if k.name == name]
     if len(found_key) != 1:
-      raise KeyError(
-        "invalid edge key '{}'. Available edges: [{}]".format(name, ", ".join(x.name for x in self.edges.keys()))
-      )
+      raise KeyError("invalid edge key '{}'. Available edges: [{}]".format(name, ", ".join(x.name for x in self.edges)))
     return found_key[0]
 
   def edge_by_name(self, name: str) -> EdgeSet:

@@ -127,7 +127,7 @@ def infer_floating_dtype(data_vars: Mapping[str, chex.Array]) -> np.dtype:
   if len(dtypes) != 1:
     dtypes_and_shapes = {k: (v.dtype, v.shape) for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)}
     raise ValueError(f"Did not found exactly one floating dtype {dtypes} in input variables:{dtypes_and_shapes}")
-  return list(dtypes)[0]
+  return next(iter(dtypes))
 
 
 def _all_inputs_to_bfloat16(

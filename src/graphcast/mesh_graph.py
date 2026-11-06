@@ -185,7 +185,7 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 
   """
   senders, receivers = edges
-  undirected_edges = set((s, r) if s <= r else (r, s) for (s, r) in zip(senders, receivers, strict=False))
+  undirected_edges = {(s, r) if s <= r else (r, s) for (s, r) in zip(senders, receivers, strict=False)}
   senders = np.array([edge[0] for edge in undirected_edges])
   receivers = np.array([edge[1] for edge in undirected_edges])
   return senders, receivers

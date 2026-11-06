@@ -54,7 +54,7 @@ def map_structure(func: Callable[..., Any], *structures: Any) -> Any:
 
   first = structures[0]
   if isinstance(first, xarray.Dataset):
-    data = {k: func(*[s[k] for s in structures]) for k in first.keys()}
+    data = {k: func(*[s[k] for s in structures]) for k in first}
     if all(isinstance(a, (type(None), xarray.DataArray)) for a in data.values()):
       data_arrays = [v.rename(k) for k, v in data.items() if v is not None]
       try:
@@ -63,7 +63,7 @@ def map_structure(func: Callable[..., Any], *structures: Any) -> Any:
         pass
     return data
   if isinstance(first, dict):
-    return {k: map_structure(func, *[s[k] for s in structures]) for k in first.keys()}
+    return {k: map_structure(func, *[s[k] for s in structures]) for k in first}
   if isinstance(first, (list, tuple, set)):
     return type(first)(map_structure(func, *s) for s in zip(*structures, strict=False))
   return func(*structures)
