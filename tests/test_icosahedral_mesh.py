@@ -19,9 +19,15 @@
 
 import chex
 import numpy as np
+import pyproj
 import pytest
 
-from graphcast import icosahedral_mesh
+from graphcast import icosahedral_mesh, mesh_graph
+from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs
+
+# WGS84 ellipsoid.
+SEMI_MAJOR_AXIS = 6_378_137.0
+SEMI_MINOR_AXIS = SEMI_MAJOR_AXIS * (1 - 1 / 298.257223563)
 
 
 def _get_mesh_spec(splits: int):
@@ -64,15 +70,69 @@ def test_get_hierarchy_of_triangular_meshes_for_sphere(splits):
       prev_vertices = mesh.vertices
 
 
+def _same_crs(wkt: str, crs) -> bool:
+  return pyproj.CRS(wkt) == pyproj.CRS(crs.to_wkt())
+
+
+def _spherical_lat_lon(vertices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+  """Latitude and longitude (degrees) of points on the unit sphere."""
+  vertices = vertices.astype(np.float64)
+  lat = np.rad2deg(np.arcsin(vertices[:, 2] / np.linalg.norm(vertices, axis=-1)))
+  lon = np.rad2deg(np.arctan2(vertices[:, 1], vertices[:, 0]))
+  return lat, lon
+
+
+@pytest.mark.parametrize("splits", [0, 2])
+def test_get_multi_mesh_graph(splits):
+  """The multi-mesh is the merged hierarchy with its vertices moved onto the WGS84 ellipsoid (Earth-centred, in
+  metres), keeping each vertex's latitude and longitude, and says so in its spatial reference system; it has no
+  boundary and no seamsh node tags."""
+  hierarchy = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits)
+  merged = mesh_graph.merge_meshes(hierarchy)
+
+  mesh = icosahedral_mesh.get_multi_mesh_graph(splits)
+
+  assert isinstance(mesh, mesh_graph.MeshGraph)
+  np.testing.assert_array_equal(mesh.faces, merged.faces)
+  np.testing.assert_array_equal(mesh.edges[0], merged.edges[0])
+  np.testing.assert_array_equal(mesh.edges[1], merged.edges[1])
+  assert mesh.boundary is None
+  assert mesh.node_tags is None
+  assert _same_crs(mesh.spatial_reference_system, cartesian_crs)
+  # On the ellipsoid: (x² + y²) / a² + z² / b² = 1.
+  x, y, z = mesh.vertices.T
+  np.testing.assert_allclose((x**2 + y**2) / SEMI_MAJOR_AXIS**2 + z**2 / SEMI_MINOR_AXIS**2, 1.0, rtol=0, atol=1e-12)
+  # At the geodetic latitude and longitude equal to the spherical ones of the unit-sphere vertices (millimetres).
+  lat, lon = np.deg2rad(_spherical_lat_lon(merged.vertices))
+  eccentricity_squared = 1 - (SEMI_MINOR_AXIS / SEMI_MAJOR_AXIS) ** 2
+  n = SEMI_MAJOR_AXIS / np.sqrt(1 - eccentricity_squared * np.sin(lat) ** 2)
+  expected = np.stack(
+    [n * np.cos(lat) * np.cos(lon), n * np.cos(lat) * np.sin(lon), n * (1 - eccentricity_squared) * np.sin(lat)],
+    axis=-1,
+  )
+  np.testing.assert_allclose(mesh.vertices, expected, rtol=0, atol=1e-3)
+
+
+def test_get_multi_mesh_graph_on_the_unit_sphere():
+  """Asked for the unit sphere, the multi-mesh keeps the vertices of the hierarchy."""
+  merged = mesh_graph.merge_meshes(icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(2))
+
+  mesh = icosahedral_mesh.get_multi_mesh_graph(2, crs=cartesian_unit_sphere_crs)
+
+  np.testing.assert_allclose(mesh.vertices, merged.vertices, rtol=0, atol=1e-7)
+  assert _same_crs(mesh.spatial_reference_system, cartesian_unit_sphere_crs)
+
+
 def _assert_valid_mesh(mesh, num_expected_vertices, num_expected_faces):
   vertices = mesh.vertices
   faces = mesh.faces
   chex.assert_shape(vertices, [num_expected_vertices, 3])
   chex.assert_shape(faces, [num_expected_faces, 3])
 
-  # Vertices norm should be 1.
+  # Vertices norm should be 1, and the mesh says so.
   vertices_norm = np.linalg.norm(vertices, axis=-1)
   np.testing.assert_allclose(vertices_norm, 1.0, rtol=1e-6)
+  assert _same_crs(mesh.spatial_reference_system, cartesian_unit_sphere_crs)
 
   _assert_positive_face_orientation(vertices, faces)
 

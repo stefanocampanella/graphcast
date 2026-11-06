@@ -21,13 +21,13 @@ import numpy as np
 import pytest
 
 from graphcast import icosahedral_mesh, mesh_connectivity
-from graphcast.mesh_graph import TriangleMesh
+from graphcast.mesh_graph import MeshGraph
 
 # WGS84 ellipsoid.
 SEMI_MAJOR_AXIS = 6_378_137.0
 FLATTENING = 1 / 298.257223563
 ECCENTRICITY_SQUARED = FLATTENING * (2 - FLATTENING)
-# Radius of the sphere the test meshes are scaled to.
+# Mean Earth radius, the scale of the query radius.
 EARTH_RADIUS = 6_371_000.0
 
 
@@ -42,10 +42,9 @@ def _wgs84_to_ecef(latitude: np.ndarray, longitude: np.ndarray) -> np.ndarray:
   )
 
 
-def _earth_mesh(splits: int = 3) -> TriangleMesh:
-  """The icosahedral mesh scaled from the unit sphere to the Earth's radius."""
-  mesh = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits=splits)[-1]
-  return TriangleMesh(vertices=mesh.vertices * EARTH_RADIUS, faces=mesh.faces)
+def _earth_mesh(splits: int = 3) -> MeshGraph:
+  """The icosahedral multi-mesh with its vertices on the WGS84 ellipsoid, in the coordinates of the grid."""
+  return icosahedral_mesh.get_multi_mesh_graph(splits)
 
 
 @pytest.fixture

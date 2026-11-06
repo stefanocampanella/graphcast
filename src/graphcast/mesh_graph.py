@@ -46,7 +46,7 @@ class Graph:
 
   vertices: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
-  spatial_reference_system: str = "cartesian"
+  spatial_reference_system: str = _cartesian_wkt
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -130,18 +130,25 @@ def merge_meshes(mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
   Returns:
      `MultiMeshGraph` for which the vertices and faces correspond to the highest
      resolution mesh in the hierarchy, and the edges are computed from the join set of the
-     faces at all levels of the hierarchy.
+     faces at all levels of the hierarchy. All levels must share their spatial reference system,
+     which the result keeps.
   """
   for mesh_i, mesh_ip1 in itertools.pairwise(mesh_list):
     num_nodes_mesh_i = mesh_i.vertices.shape[0]
     assert np.allclose(mesh_i.vertices, mesh_ip1.vertices[:num_nodes_mesh_i])
+    assert mesh_i.spatial_reference_system == mesh_ip1.spatial_reference_system
 
   all_faces = np.concatenate([mesh.faces for mesh in mesh_list], axis=0)
   all_edges = faces_to_edges(all_faces)
   finest_mesh_vertices = mesh_list[-1].vertices
   finest_mesh_faces = mesh_list[-1].faces
 
-  return MeshGraph(vertices=finest_mesh_vertices, edges=all_edges, faces=finest_mesh_faces)
+  return MeshGraph(
+    vertices=finest_mesh_vertices,
+    edges=all_edges,
+    faces=finest_mesh_faces,
+    spatial_reference_system=mesh_list[-1].spatial_reference_system,
+  )
 
 
 def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
