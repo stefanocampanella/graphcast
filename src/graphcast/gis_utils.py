@@ -229,6 +229,9 @@ def get_transform(
   assert transformer.source_crs is not None and transformer.target_crs is not None
   num_coords_in = len(transformer.source_crs.axis_info)
   num_coords_out = len(transformer.target_crs.axis_info)
+  # Elevations below this are rounding errors of points on the surface (float32 coordinates: about 6e-8 relative).
+  ellipsoid = transformer.source_crs.ellipsoid
+  elevation_tolerance = 1e-6 * (ellipsoid.semi_major_metre if ellipsoid is not None else 1.0)
 
   def wrapped(coordinates: Coordinates) -> Coordinates:
     # We assume that the coordinate dimension is the last one.
@@ -261,7 +264,7 @@ def get_transform(
     )
     # We don't use elevation, in case of conversion to equirectangular projection drop it.
     if len(result) == 3 and num_coords_out == 2:
-      if not np.allclose(result[2], 0.0):
+      if not np.allclose(result[2], 0.0, rtol=0.0, atol=elevation_tolerance):
         warnings.warn(f"Expected elevation to be zero, got {result[2]}")
       result = result[0], result[1]
     if isinstance(coordinates, np.ndarray) and pack_back:
