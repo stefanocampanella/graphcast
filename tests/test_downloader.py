@@ -19,7 +19,6 @@ from click.testing import CliRunner
 from graphcast import dataloader_utils, downloader
 from graphcast.dataloader import get_tensorstore_context
 from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
-from graphcast.training_config import MaskConfig
 
 V2 = {"zarr_format": 2}
 V3_LEXI = {"zarr_format": 3, "time_shard": 4, "depth_time_shard": 2}
@@ -392,7 +391,7 @@ class TestMask:
 
   def test_cli_writes_the_mask_read_by_training(self, mask_path, opened_inputs):
     """The store holds one boolean DataArray, which training reads as its grid (dataloader_utils.get_grid)."""
-    grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+    grid = dataloader_utils.get_grid(mask_path)
     expected = downloader.get_mask(opened_inputs[0], MaskDownloadConfig())
     np.testing.assert_array_equal(grid.mask, expected.transpose("lat", "lon").values)
     np.testing.assert_array_equal(grid.lat, expected["lat"].values)

@@ -1,5 +1,6 @@
 import dataclasses
 import logging
+import os
 import signal
 from collections.abc import Iterable
 from functools import partial
@@ -26,7 +27,7 @@ from graphcast.dataloader import (
   select_levels,
 )
 from graphcast.model import TaskConfig
-from graphcast.training_config import Levels, LevelSliceConfig, MaskConfig, TrainingConfig
+from graphcast.training_config import Levels, LevelSliceConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,13 +95,13 @@ def get_loss_masks(tendency_std: xr.Dataset, grid: Grid, target_variables: Itera
   return xr.Dataset({name: (tendency_std[name] > 0) & grid_mask for name in target_variables})
 
 
-def get_grid(configs: MaskConfig) -> Grid:
+def get_grid(path: str | os.PathLike) -> Grid:
   """Load the grid from the boolean (lat, lon) mask written by graphcast download-mask."""
-  logger.info(f"Loading the grid mask from {configs.path}")
-  mask = xr.open_dataarray(configs.path, engine="zarr", chunks=None).load()
+  logger.info(f"Loading the grid mask from {path}")
+  mask = xr.open_dataarray(path, engine="zarr", chunks=None).load()
   if mask.dtype != bool or set(mask.dims) != {"lat", "lon"}:
     raise ValueError(
-      f"Expected a boolean (lat, lon) mask in {configs.path}, found {mask.dtype} {mask.dims}: "
+      f"Expected a boolean (lat, lon) mask in {path}, found {mask.dtype} {mask.dims}: "
       "write it with graphcast download-mask"
     )
   return Grid(lat=mask["lat"].to_numpy(), lon=mask["lon"].to_numpy(), mask=mask.transpose("lat", "lon").to_numpy())
