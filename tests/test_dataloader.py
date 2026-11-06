@@ -139,7 +139,7 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert set(inputs.data_vars) == set(task.input_variables)
   assert set(targets.data_vars) == set(task.target_variables)
   assert set(forcings.data_vars) == set(task.forcing_variables)
-  # One input day and one target day, as input_duration and target_lead_times in the config are "1d".
+  # One input day and one target day, as input_duration and target_lead_times in the config are "1D".
   assert inputs.sizes["time"] == 1 and targets.sizes["time"] == 1
   # Static inputs have no time dimension.
   assert "time" not in inputs["deptho"].dims and "time" not in inputs["lsm"].dims

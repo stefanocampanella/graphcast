@@ -79,3 +79,20 @@ def test_without_validation_the_latest_checkpoints_are_kept(tmp_path):
   assert ckpt_mngr.all_steps() == [19, 29]
   assert ckpt_mngr.best_step() == 29
   ckpt_mngr.close()
+
+
+@pytest.mark.parametrize("path", sorted(PRODUCTION_CONFIG.parent.glob("*.toml")), ids=lambda path: path.name)
+def test_shipped_training_configs_are_valid(path):
+  """Every shipped training config validates (including its durations)."""
+  TrainingConfig.model_validate(cli_utils.read_configs(path))
+
+
+@pytest.mark.parametrize(("section", "key"), [("task", "input_duration"), ("grain_dataset", "target_lead_times")])
+@pytest.mark.parametrize("duration", ["1d", "one day"])
+def test_durations_must_parse_without_deprecated_units(section, key, duration):
+  """Durations are checked when the config is read: lowercase "d" for days is deprecated by pandas (an error in pandas
+  4, so a run would fail when it reads the first sample), and the config shipped it."""
+  configs = cli_utils.read_configs(PRODUCTION_CONFIG)
+  configs[section][key] = duration
+  with pytest.raises(ValueError, match="duration"):
+    TrainingConfig.model_validate(configs)
