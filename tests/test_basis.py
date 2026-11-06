@@ -1,6 +1,8 @@
 """Tests of the linear basis functions of a mesh on the grid (basis_utils.py, graphcast compute)."""
 
-import runpy
+import os
+import pathlib
+import subprocess
 import sys
 
 import numpy as np
@@ -87,9 +89,15 @@ def test_compute_cli(tmp_path, mask_path):
   assert CliRunner().invoke(compute, [*arguments, "--overwrite"]).exit_code == 0
 
 
-def test_basis_module_runs_as_a_script(monkeypatch):
+def test_basis_module_runs_as_a_script():
   """`python -m graphcast.basis` runs the command (it called an undefined `cli`)."""
-  monkeypatch.setattr(sys, "argv", ["graphcast.basis", "--help"])
-  with pytest.raises(SystemExit) as exit_info:
-    runpy.run_module("graphcast.basis", run_name="__main__")
-  assert exit_info.value.code == 0
+  source = pathlib.Path(__file__).parents[1] / "src"
+  result = subprocess.run(
+    [sys.executable, "-m", "graphcast.basis", "--help"],
+    env={**os.environ, "PYTHONPATH": str(source)},
+    capture_output=True,
+    text=True,
+    check=False,
+  )
+  assert result.returncode == 0, result.stderr
+  assert "MESH_PATH MASK_PATH OUTPUT_PATH" in result.stdout

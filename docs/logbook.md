@@ -1021,3 +1021,34 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   (GraphCast's 6 refinements, licensed CC BY-NC-SA 4.0 like the ocean meshes): 40,962 vertices, 327,660 directed
   edges, finest edges 110–132 km, mesh size 132 km, 11.6 MB, reads back without boundary. The `license_` option is
   gone with the config (the underscore avoided shadowing the built-in `license`, which ruff does not check here).
+
+## 2026-11-06 13:30: group 2, fixes
+
+- **Request:** stubs for ty as proposed (group 4), then group 2 (the fixes of the stage 3 plan).
+- **Changes** (one commit each, each with a test that failed before):
+  - `climatology.py` deleted.
+  - `xarray_jax.pmap` checks the leading dimension before `jax.pmap` (the check ran after jax had failed).
+  - Edge direction features: `np.deg2rad` of pyproj's degrees (since 15e0389, 6 Feb 2026, `np.rad2deg`: sin/cos of
+    meaningless angles on all three edge sets; the forward azimuth feature, off, was not in turns).
+  - `edge_normalization` is a length, as `model.mesh2grid_edge_normalization_factor` (was unpacked as a pair).
+  - Missing mesh size: `read_mesh` names the missing view (was a KeyError) and returns None without a name;
+    `GraphCast` rejects a mesh without mesh size.
+  - `get_transform`: elevation tolerance 1e-6 of the ellipsoid's semi-major axis (was 1e-8 absolute, below float32
+    rounding; the icosahedral multi-mesh warned at every model construction).
+  - `training_utils.fsdp_map` deleted (unused).
+  - Durations in days as "1D" in the training configs (pandas deprecates "d"), validated when the config is read.
+  - `jax.shard_map` in `training.py`; JAX coordinates assigned as `xarray.Coordinates` without indexes (the rename
+    trick warned); DeprecationWarning and FutureWarning from `graphcast` modules are test errors (62 warnings → 1).
+  - `sharding.FullyShardedDataParallel` works: shard-mapped pure init/apply, init lifted outside `shard_map`, both
+    compiled, a predictor factory (Haiku modules made outside a lifted transform cannot be used in it). Tests on 4
+    simulated CPU devices (conftest appends the XLA flag): a tiny GraphCast behind `Mask`, unrolled and scanned, has
+    the same parameters, losses, gradients and predictions with and without it. Parameters replicated, not sharded.
+  - `graphcast compute MESH MASK OUTPUT`: barycentric weights of each ocean grid point in its decoder face (sparse,
+    3 per row); reads the download-mask output like training (`get_grid` takes a path); `python -m graphcast.basis`.
+  - `mesh_connectivity` docstrings match the code.
+- **Experiment** (B1 check, `claude-work/…/b1_check`, jobs 2718140/2718141, 1 node each, `training2647`):
+  `production_run.toml` on 120 km × 8, 500 steps, validation at 250 and 500, code before and after the azimuth fix.
+  Validation loss 0.13241 → 0.12827 before, 0.13227 → 0.12815 after (−0.1 %, within seed noise of 0.6 %); compute
+  0.44 / 0.46 s per step. The fix does not hurt; no measurable gain at 500 steps.
+- **Insight:** jitting the shard-mapped init matters: outside jit, shard_map ran the init of a tiny GraphCast
+  operation by operation (46 s instead of 3 s). Coverage 69 % (53 % before group 1).
