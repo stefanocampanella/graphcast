@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from graphcast import icosahedral_mesh
 from graphcast.geospatial_mesh import make_icosahedral_mesh
-from graphcast.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh_data, write_multi_mesh
+from graphcast.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh, read_mesh_data, write_multi_mesh
 
 SPLITS = 2
 
@@ -122,3 +122,24 @@ def test_read_mesh_data_with_unsorted_node_tags(tmp_path):
     np.testing.assert_allclose(vertices[read_indices], graph.vertices[indices], rtol=0, atol=1e-6)
   nearest = np.argmin(np.linalg.norm(vertices[:, None] - graph.vertices[None], axis=-1), axis=1)
   np.testing.assert_array_equal(read.mesh_size, mesh_size[nearest])
+
+
+@pytest.fixture
+def icosahedral_file(tmp_path) -> pathlib.Path:
+  path = tmp_path / "icosahedral.msh"
+  write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(1), path)
+  return path
+
+
+def test_read_mesh_data_names_a_missing_mesh_size_view(icosahedral_file):
+  """A mesh size view that is not in the file is reported by name, with the views that are there (it was a KeyError
+  on the first node)."""
+  with pytest.raises(ValueError, match=r"No view 'Missing'.*MeshSize"):
+    read_mesh_data(icosahedral_file, gmsh_verbosity=0, mesh_size_tag_name="Missing")
+
+
+def test_read_mesh_without_mesh_size(icosahedral_file):
+  """Without a view name, the mesh is read without mesh size, as documented."""
+  mesh, mesh_size = read_mesh(icosahedral_file, mesh_size_tag_name=None)
+  assert mesh_size is None
+  assert len(mesh.vertices) == 42

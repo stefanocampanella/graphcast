@@ -267,6 +267,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
   def __post_init__(self):
     super().__post_init__(name=self._name or "graphcast")
 
+    if self._mesh_data.mesh_size is None:
+      raise ValueError("The mesh has no mesh size: the query radius of the encoder is a fraction of it")
     self._query_radius = (
       self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
     )
