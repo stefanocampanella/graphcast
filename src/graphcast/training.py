@@ -138,7 +138,7 @@ def train(
 
   model_config = trn_utils.get_model_config(configs)
   mesh_data = trn_utils.get_mesh(configs)
-  grid = dataloader_utils.get_grid(configs.mask)
+  grid = dataloader_utils.get_grid(configs.mask.path)
   grid_lat, grid_lon, grid_mask = grid
   dataset = dataloader_utils.get_dataset(configs)
   task_config = dataloader_utils.get_task_config(configs, dataset)

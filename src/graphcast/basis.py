@@ -1,99 +1,56 @@
+"""graphcast compute: the linear basis functions of a mesh on the ocean points of the training grid (draft feature)."""
+
 import logging
+import pathlib
 
 import click
-import numpy as np
-from etils import epath
+import gmsh
 from scipy import sparse
 
 from graphcast import cli_utils
-from graphcast.basis_utils import compute_basis, load_mask
-from graphcast.geospatial_mesh_utils import read_mesh_data
+from graphcast.basis_utils import compute_basis
+from graphcast.dataloader_utils import get_grid
+from graphcast.geospatial_mesh_utils import read_mesh
 
 logger = logging.getLogger(__name__)
 
 
 @click.command()
-@click.argument(
-  "mesh_path", required=True, type=click.Path(path_type=epath.Path, file_okay=True, readable=True)
-)
-@click.argument(
-  "dataset_path",
-  required=True,
-  type=click.Path(path_type=epath.Path, file_okay=True, readable=True),
-)
-@click.argument(
-  "output_path",
-  required=True,
-  type=click.Path(path_type=epath.Path, dir_okay=True, writable=True),
-)
-@click.option(
-  "--mesh-size-tag-name",
-  default="MeshSize",
-  help="Name of the tag containing the mesh size",
-  show_default=True,
-)
-@click.option(
-  "--mesh-size-tag-step",
-  default=0,
-  help="Step of the tag containing the mesh size",
-  show_default=True,
-)
-@click.option("--mask-name", default="glorys_mask", help="Name of the mask variable")
-@click.option("--longitude-dim", default="lon", help="Name of the longitude variable")
-@click.option("--latitude-dim", default="lat", help="Name of the longitude variable")
+@click.argument("mesh_path", type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False))
+@click.argument("mask_path", type=click.Path(path_type=pathlib.Path, exists=True))
+@click.argument("output_path", type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True))
 @click.option(
   "--overwrite/--no-overwrite",
   default=False,
   help="Whether to overwrite existing outputs",
   is_flag=True,
 )
-@click.option(
-  "--num-blocks", default=10, help="Number of blocks for the computation", show_default=True
-)
 @cli_utils.LOG_LEVEL_OPTION
-@click.option(
-  "--progress/--no-progress", default=True, help="Whether to display a progress bar", is_flag=True
-)
 def compute(
-    mesh_path: epath.Path,
-    dataset_path: epath.Path,
-    output_path: epath.Path,
-    mesh_size_tag_name: str,
-    mesh_size_tag_step: int,
-    mask_name: str,
-    longitude_dim: str,
-    latitude_dim: str,
-    overwrite: bool,
-    num_blocks: int,
-    log_level: str,
-    progress: bool = False,
+  mesh_path: pathlib.Path,
+  mask_path: pathlib.Path,
+  output_path: pathlib.Path,
+  overwrite: bool = False,
+  log_level: str = "info",
 ):
+  """Evaluate the linear basis functions of the mesh at MESH_PATH on the ocean points of the mask at MASK_PATH
+  (written by graphcast download-mask) and save them to OUTPUT_PATH, a sparse [ocean points, mesh vertices] matrix
+  (scipy .npz)."""
   cli_utils.configure_logging(log_level)
-
   if output_path.exists() and not overwrite:
-    raise ValueError(f"Output destination {output_path} already exists")
-
-  mesh_data = read_mesh_data(
-    mesh_path, mesh_size_tag_name=mesh_size_tag_name, mesh_size_tag_step=mesh_size_tag_step
-  )
-
-  mask = load_mask(dataset_path, mask_name, longitude_dim=longitude_dim)
-
-  basis_values_on_grid = compute_basis(
-    nodes=mesh_data.mesh_graph.vertices,
-    mask=mask.to_numpy(),
-    latitudes=mask[latitude_dim].to_numpy(),
-    longitudes=mask[longitude_dim].to_numpy(),
-    num_blocks=num_blocks,
-    format="coo",
-    dtype=np.float32,
-    disable_progress=not progress,
-  )
-
-  logger.info(f"Computed {basis_values_on_grid.shape[1]} basis values, saving to {output_path}")
-  # noinspection PyTypeChecker
-  sparse.save_npz(output_path, basis_values_on_grid)
+    raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
+  grid = get_grid(mask_path)
+  if not gmsh.is_initialized():
+    gmsh.initialize()
+  gmsh.option.set_number("General.Verbosity", 2)
+  mesh, _ = read_mesh(mesh_path, mesh_size_tag_name=None)
+  basis = compute_basis(mesh, latitudes=grid.lat, longitudes=grid.lon, mask=grid.mask)
+  logger.info(f"Saving the basis ({basis.shape[0]} points, {basis.shape[1]} vertices) to {output_path}")
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  # Written to the path as given (save_npz would append .npz to a path without it).
+  with output_path.open("wb") as file:
+    sparse.save_npz(file, basis)
 
 
 if __name__ == "__main__":
-  cli()
+  compute()

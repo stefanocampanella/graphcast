@@ -20,7 +20,7 @@ from click.testing import CliRunner
 from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
 from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
 from graphcast.downloader import compute_tendency_std
-from graphcast.training_config import MaskConfig, SourceConfig, TrainingConfig
+from graphcast.training_config import SourceConfig, TrainingConfig
 
 PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 # Task levels: zero-based depth positions in a non-sorted order, to check that the order is kept.
@@ -235,7 +235,7 @@ def test_tendency_std_with_missing_values_fails(training_configs, tendency_std_p
 
 def test_grid(mask_path, inputs):
   """get_grid returns the latitudes, longitudes and boolean (lat, lon) mask of the mask store, as numpy arrays."""
-  grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+  grid = dataloader_utils.get_grid(mask_path)
   np.testing.assert_array_equal(grid.lat, inputs[0]["lat"].values)
   np.testing.assert_array_equal(grid.lon, inputs[0]["lon"].values)
   np.testing.assert_array_equal(grid.mask, inputs[0]["glorys_mask"].isel(depth=0).values.astype(bool))
@@ -245,7 +245,7 @@ def test_loss_masks(training_configs, tendency_std_path, mask_path):
   """Per target variable and level: grid points with a non-constant series."""
   configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=tendency_std_path)})
   tendency_std = dataloader_utils.get_tendency_std(configs)
-  grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+  grid = dataloader_utils.get_grid(mask_path)
   masks = dataloader_utils.get_loss_masks(tendency_std, grid, ["thetao", "zos"])
   # Volume variables get one mask per level, surface variables a (lat, lon) one.
   assert masks["thetao"].dtype == bool and masks["thetao"].dims == ("level", "lat", "lon")
