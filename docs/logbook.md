@@ -993,3 +993,21 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   (longest finest-mesh edge at the vertex: the multi-mesh has none). Gaps for experiments: training reads meshes only
   from `.msh` files (`MeshConfig.path`), which store triangles, not the multi-mesh's coarser edges; and `get_transform`
   warns about non-zero elevations of 1e-8–1e-7 m (absolute tolerance 1e-8, below float32 rounding).
+
+## 2026-11-06 11:00: icosahedral multi-mesh file (experimental), GraphCast's mesh size and radius
+
+- **Review:** use GraphCast's mesh size; fix the elevation warning as proposed (group 2); add a CLI command, like
+  `make-ocean-mesh`, writing the multi-mesh to a `.msh` file usable in a training config, if gmsh can hold multi-mesh
+  edges that are not edges of the finest mesh; is the test's search radius GraphCast's?
+- **Changes:** `icosahedral_mesh.get_multi_mesh_data` (mesh size = longest finest edge, 1,054 km at 3 splits, at
+  every vertex); `geospatial_mesh_utils.write_multi_mesh` and `graphcast make-icosahedral-mesh SPLITS OUTPUT`;
+  `read_mesh` leaves the `multi_mesh_edges` physical group out of the boundary and `read_mesh_data` takes the edges
+  from it; `read_mesh` stores the node tags aligned with the vertices (they were the sorted unique tags, equal only
+  because seamsh writes sorted tags) and handles meshes without boundary lines (`np.vectorize` on an empty array).
+  The radius-query test uses GraphCast's radius (0.6 × mesh size) and a radius per vertex.
+- **Insights:** gmsh holds them: discrete entities have no topology, so the directed multi-mesh edges are line
+  elements of a discrete curve, kept in order (5,100 at 3 splits), coordinates within 1e-9 m. Once a physical group
+  exists gmsh saves only elements in physical groups, so the triangles need one too. seamsh meshes call their boundary
+  group `Coastline`. CLI → `.msh` → `read_mesh_data` → tiny GraphCast forward works, with and without scan. The legacy
+  test's radius 0.2 (unit sphere, 3 splits) came from the original GraphCast test, about twice GraphCast's 0.6 × longest
+  finest edge (0.099); 0.6 exceeds a face's circumradius (L/√3 ≈ 0.577 L), so every grid point is connected.

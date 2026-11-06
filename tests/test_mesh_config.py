@@ -13,6 +13,7 @@ from graphcast import cli_utils
 from graphcast.geospatial_mesh import make_ocean_mesh
 from graphcast.geospatial_mesh_utils import read_mesh_data
 from graphcast.mesh_config import MeshGenerationConfig, ShoreProximityFieldConfig, field_arguments
+from graphcast.mesh_graph import faces_to_edges
 
 MESH_CONFIGS = pathlib.Path(__file__).parents[1] / "configs" / "mesh"
 COAST_LATITUDE = -70.0
@@ -154,6 +155,12 @@ def test_make_ocean_mesh(coastline):
   assert mesh_data.mesh_size is not None
   np.testing.assert_allclose(mesh_data.mesh_size, 1_000_000.0)
   assert " ".join(mesh_data.description) == "A test mesh" and " ".join(mesh_data.license) == "A test license"
+  # The coastline lines are the boundary (not multi-mesh edges): the edges are those of the triangles.
+  graph = mesh_data.mesh_graph
+  assert graph.boundary is not None and graph.boundary.any() and not graph.boundary.all()
+  senders, receivers = faces_to_edges(graph.faces)
+  np.testing.assert_array_equal(graph.edges[0], senders)
+  np.testing.assert_array_equal(graph.edges[1], receivers)
 
 
 def test_make_ocean_mesh_refuses_existing_output(coastline):

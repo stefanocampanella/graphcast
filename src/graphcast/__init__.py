@@ -5,7 +5,7 @@ from absl import flags
 
 from graphcast.basis import compute
 from graphcast.downloader import compute_tendency_std, download, download_mask
-from graphcast.geospatial_mesh import make_ocean_mesh
+from graphcast.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
 from graphcast.training import train
 
 
@@ -42,6 +42,7 @@ def cli(
 
 cli.add_command(train)
 cli.add_command(make_ocean_mesh)
+cli.add_command(make_icosahedral_mesh)
 cli.add_command(compute)
 cli.add_command(download)
 cli.add_command(download_mask)
