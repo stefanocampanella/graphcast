@@ -63,3 +63,19 @@ def test_edge_forward_azimuth_is_in_turns(features):
   edge_features = features(add_edge_fwd_azimuth=True, add_edge_direction=False)
 
   np.testing.assert_allclose(edge_features[:, 0], AZIMUTHS_DEG / 360.0, rtol=0, atol=1e-9)
+
+
+@pytest.mark.parametrize("features", [_graph_edge_features, _bipartite_edge_features], ids=["graph", "bipartite"])
+@pytest.mark.parametrize("normalization", [None, 50_000.0], ids=["longest_edge", "given_scale"])
+def test_edge_length_is_divided_by_the_normalization_scale(features, normalization):
+  """Edge lengths are divided by `edge_normalization`, a length (`model.mesh2grid_edge_normalization_factor` in the
+  config is one number), or by the longest edge without it. The code unpacked it as a (location, scale) pair, so
+  setting the option failed."""
+  edge_features = features(
+    add_edge_fwd_azimuth=False, add_edge_direction=False, add_edge_length=True, edge_normalization=normalization
+  )
+
+  # Geodesic lengths of one degree along the equator and along the meridian (WGS84).
+  lengths = np.array([111_319.49, 110_574.39, 111_319.49, 110_574.39])
+  expected = lengths / (lengths.max() if normalization is None else normalization)
+  np.testing.assert_allclose(edge_features[:, 0], expected, rtol=1e-6)

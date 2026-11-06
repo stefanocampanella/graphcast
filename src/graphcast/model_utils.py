@@ -47,7 +47,7 @@ def get_graph_spatial_features(
   add_edge_direction: bool,
   add_edge_length: bool,
   add_edge_receiver_coordinates: bool,
-  edge_normalization: tuple[float, float] | None = None,
+  edge_normalization: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -63,9 +63,9 @@ def get_graph_spatial_features(
         ((x, y) with respectively x easting and y northing directions).
     add_edge_receiver_coordinates: Add receiver longitude and latitude in turns (1 / 2pi radians) to edge features.
     add_edge_length: Add geodetic length to edge features.
-    edge_normalization: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length, otherwise specify location and scale as a pair.
-        This supports using pre-trained model weights with a different graph structure to what it was trained.
+    edge_normalization: Length (same units as the edge lengths) by which edge lengths are divided. If None, the
+        longest edge. This supports using pre-trained model weights with a different graph structure to what it was
+        trained.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
@@ -105,13 +105,8 @@ def get_graph_spatial_features(
   )
   # pyproj returns azimuths in degrees.
   edge_azimuths = np.deg2rad(edge_azimuths)
-  if edge_normalization is None:
-    # Normalize to the maximum edge length.
-    edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
-    edge_normalization_scale = edge_lengths.max()
-  else:
-    edge_normalization_location, edge_normalization_scale = edge_normalization
-  edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+  # Normalize to the given length, or to the maximum edge length.
+  edge_lengths = edge_lengths / (edge_lengths.max() if edge_normalization is None else edge_normalization)
 
   if add_edge_fwd_azimuth:
     edge_features.append(edge_azimuths / (2 * np.pi))
@@ -183,7 +178,7 @@ def get_bipartite_graph_spatial_features(
   add_edge_direction: bool,
   add_edge_length: bool,
   add_edge_receiver_coordinates: bool,
-  edge_normalization: tuple[float, float] | None = None,
+  edge_normalization: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -211,9 +206,9 @@ def get_bipartite_graph_spatial_features(
         ((x, y) with respectively x easting and y northing directions).
     add_edge_receiver_coordinates: Add receiver longitude and latitude in turns (1 / 2pi radians) to edge features.
     add_edge_length: Add geodetic length to edge features.
-    edge_normalization: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length, otherwise specify location and scale as a pair.
-        This supports using pre-trained model weights with a different graph structure to what it was trained.
+    edge_normalization: Length (same units as the edge lengths) by which edge lengths are divided. If None, the
+        longest edge. This supports using pre-trained model weights with a different graph structure to what it was
+        trained.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
@@ -268,13 +263,8 @@ def get_bipartite_graph_spatial_features(
   )
   # pyproj returns azimuths in degrees.
   edge_azimuths = np.deg2rad(edge_azimuths)
-  if edge_normalization is None:
-    # Normalize to the maximum edge length.
-    edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
-    edge_normalization_scale = edge_lengths.max()
-  else:
-    edge_normalization_location, edge_normalization_scale = edge_normalization
-  edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+  # Normalize to the given length, or to the maximum edge length.
+  edge_lengths = edge_lengths / (edge_lengths.max() if edge_normalization is None else edge_normalization)
   if add_edge_fwd_azimuth:
     edge_features.append(edge_azimuths / (2 * np.pi))
   if add_edge_direction:
