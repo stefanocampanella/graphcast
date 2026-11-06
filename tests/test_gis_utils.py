@@ -54,7 +54,7 @@ def test_transform_rejects_wrong_coordinates():
   to_cartesian = get_transform(equirectangular_crs, cartesian_crs)
   with pytest.raises(AssertionError, match="Expected 2 coordinates"):
     to_cartesian(np.zeros((4, 3)))
-  with pytest.raises(ValueError, match="tuple or a numpy array"):
+  with pytest.raises(TypeError, match="tuple or a numpy array"):
     to_cartesian([[0.0, 0.0]])
 
 

@@ -249,7 +249,7 @@ def Dataset(  # pylint:disable=invalid-name
 DatasetOrDataArray = TypeVar("DatasetOrDataArray", xarray.Dataset, xarray.DataArray)
 
 
-def assign_coords(
+def assign_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
   x: DatasetOrDataArray,
   *,
   coords: Mapping[Hashable, Any] | None = None,
@@ -336,7 +336,9 @@ def assign_coords(
   return x.assign_coords(xarray.Coordinates(jax_coord_vars, indexes={}))
 
 
-def get_jax_coords(x: DatasetOrDataArray) -> Mapping[Hashable, Any]:
+def get_jax_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
+  x: DatasetOrDataArray,
+) -> Mapping[Hashable, Any]:
   return {
     name: coord_var
     for name, coord_var in x.coords.variables.items()
@@ -344,7 +346,7 @@ def get_jax_coords(x: DatasetOrDataArray) -> Mapping[Hashable, Any]:
   }
 
 
-def assign_jax_coords(
+def assign_jax_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
   x: DatasetOrDataArray, jax_coords: Mapping[Hashable, Any] | None = None, **jax_coords_kwargs
 ) -> DatasetOrDataArray:
   """Assigns only jax_coords, with same API as xarray's assign_coords."""
@@ -389,7 +391,7 @@ def wrap_data(value, to_jax=False, np_contiguous=True):
         attrs=ds_or_da.attrs,
       )
     else:
-      raise ValueError(f"Unsupported type: {type(ds_or_da)}")
+      raise TypeError(f"Unsupported type: {type(ds_or_da)}")
 
   return jax.tree_util.tree_map(_wrap_data, value, is_leaf=lambda x: isinstance(x, (xarray.Dataset, xarray.DataArray)))
 
@@ -703,10 +705,7 @@ def pmap(
   return result_fn
 
 
-_PyTree = TypeVar("_PyTree")
-
-
-def tree_map_variables(func: Callable[[xarray.Variable], xarray.Variable], tree_data: _PyTree) -> _PyTree:
+def tree_map_variables[PyTree](func: Callable[[xarray.Variable], xarray.Variable], tree_data: PyTree) -> PyTree:
   """Like jax.tree.map but operates with Variables as leaves.
 
   This will work with any jax.tree_util-registered PyTree containing xarray
@@ -736,10 +735,10 @@ def tree_map_variables(func: Callable[[xarray.Variable], xarray.Variable], tree_
   )
 
 
-def tree_map_with_dims(
+def tree_map_with_dims[PyTree](
   func: Callable[[jax.typing.ArrayLike, tuple[str, ...] | None], jax.typing.ArrayLike],
-  data: _PyTree,
-) -> _PyTree:
+  data: PyTree,
+) -> PyTree:
   """Like jax.tree.map but also passes in xarray dimensions where known.
 
   This is convenient when applying logic to every jax array in some xarray data
@@ -793,20 +792,15 @@ def tree_map_with_dims(
   return jax.tree_util.tree_map(wrapped_func, data, is_leaf=is_leaf)
 
 
-_Carry = TypeVar("_Carry")
-_X = TypeVar("_X")
-_Y = TypeVar("_Y")
-
-
-def scan(
-  f: Callable[[_Carry, _X], tuple[_Carry, _Y]],
-  init: _Carry,
+def scan[Carry, X, Y](
+  f: Callable[[Carry, X], tuple[Carry, Y]],
+  init: Carry,
   dim: str,
-  xs: _X | None = None,
+  xs: X | None = None,
   length: int | None = None,
   reverse: bool = False,
   unroll: int | bool = 1,
-) -> tuple[_Carry, _Y]:
+) -> tuple[Carry, Y]:
   """Like jax.lax.scan but supports xarray data.
 
   This can handle a jax.tree containing any mix of xarray and plain jax data.

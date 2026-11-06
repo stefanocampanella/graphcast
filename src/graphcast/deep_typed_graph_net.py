@@ -244,10 +244,10 @@ class DeepTypedGraphNet(hk.Module):
       )
     else:
       embed_node_fn = None
-    embedder_kwargs = dict(
-      embed_edge_fn=embed_edge_fn,
-      embed_node_fn=embed_node_fn,
-    )
+    embedder_kwargs = {
+      "embed_edge_fn": embed_edge_fn,
+      "embed_node_fn": embed_node_fn,
+    }
 
     def _embedder_network(graph):
       graph = typed_graph_net.GraphMapFeatures(**embedder_kwargs)(graph)
@@ -306,18 +306,18 @@ class DeepTypedGraphNet(hk.Module):
     self._processor_network = _processor_network
 
     # The output MLPs converts edge/node latent features into the output sizes.
-    output_kwargs = dict(
-      embed_edge_fn=_build_update_fns_for_edge_types(
+    output_kwargs = {
+      "embed_edge_fn": _build_update_fns_for_edge_types(
         build_mlp, graph_template, "decoder_edges_", self._edge_output_size
       )
       if self._edge_output_size
       else None,
-      embed_node_fn=_build_update_fns_for_node_types(
+      "embed_node_fn": _build_update_fns_for_node_types(
         build_mlp, graph_template, "decoder_nodes_", self._node_output_size
       )
       if self._node_output_size
       else None,
-    )
+    }
 
     def _output_network(graph):
       graph = typed_graph_net.GraphMapFeatures(**output_kwargs)(graph)
@@ -428,7 +428,7 @@ def _build_update_fns_for_node_types(builder_fn, graph_template, prefix, output_
   """Builds an update function for all node types or a subset of them."""
 
   output_fns = {}
-  for node_set_name in graph_template.nodes.keys():
+  for node_set_name in graph_template.nodes:
     if output_sizes is None:
       # Use the default output size for all types.
       output_size = None
@@ -445,7 +445,7 @@ def _build_update_fns_for_node_types(builder_fn, graph_template, prefix, output_
 def _build_update_fns_for_edge_types(builder_fn, graph_template, prefix, output_sizes=None):
   """Builds an edge function for all node types or a subset of them."""
   output_fns = {}
-  for edge_set_key in graph_template.edges.keys():
+  for edge_set_key in graph_template.edges:
     edge_set_name = edge_set_key.name
     if output_sizes is None:
       # Use the default output size for all types.

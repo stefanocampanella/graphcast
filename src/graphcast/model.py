@@ -272,24 +272,24 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     self._query_radius = self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
     self._mesh2grid_edge_normalization_factor = self._model_config.mesh2grid_edge_normalization_factor
     self._per_variable_weights = self._model_config.per_variable_weights
-    self._spatial_features_kwargs = dict(
-      add_node_position=False,
-      add_node_coordinates=True,
-      add_edge_fwd_azimuth=False,
-      add_edge_direction=True,
-      add_edge_length=True,
-      add_edge_receiver_coordinates=False,
-    )
+    self._spatial_features_kwargs = {
+      "add_node_position": False,
+      "add_node_coordinates": True,
+      "add_edge_fwd_azimuth": False,
+      "add_edge_direction": True,
+      "add_edge_length": True,
+      "add_edge_receiver_coordinates": False,
+    }
 
     # Grid/mesh nodes and {grid2mesh,mesh,mesh2grid} edges embedder.
-    self._embedder_kwargs = dict(
-      mlp_hidden_dim=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      output_dim=self._model_config.latent_size,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-    )
+    self._embedder_kwargs = {
+      "mlp_hidden_dim": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "output_dim": self._model_config.latent_size,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+    }
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
     #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
@@ -306,51 +306,51 @@ class GraphCast(hk.Module, predictor_base.Predictor):
 
     # Encoder, which moves data from the grid to the mesh with a single message
     # passing step. `_run_grid2mesh_gnn` takes care of embedding grid and mesh nodes, and grid2mesh edges as well.
-    self._grid2mesh_gnn_kwargs = dict(
-      embed_nodes=False,
-      embed_edges=False,
-      edge_latent_size=dict(grid2mesh=self._model_config.latent_size),
-      node_latent_size=dict(mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size),
-      mlp_hidden_size=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      num_message_passing_steps=1,
-      use_layer_norm=True,
-      use_concat_trick=True,
-      include_sent_messages_in_node_update=False,
-      activation="swish",
-      f32_aggregation=True,
-      aggregate_normalization=None,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      scan=False,
-      edge_chunk_size=self._edge_chunk_size,
-      name="grid2mesh_gnn",
-    )
+    self._grid2mesh_gnn_kwargs = {
+      "embed_nodes": False,
+      "embed_edges": False,
+      "edge_latent_size": {"grid2mesh": self._model_config.latent_size},
+      "node_latent_size": {"mesh_nodes": self._model_config.latent_size, "grid_nodes": self._model_config.latent_size},
+      "mlp_hidden_size": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "num_message_passing_steps": 1,
+      "use_layer_norm": True,
+      "use_concat_trick": True,
+      "include_sent_messages_in_node_update": False,
+      "activation": "swish",
+      "f32_aggregation": True,
+      "aggregate_normalization": None,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+      "scan": False,
+      "edge_chunk_size": self._edge_chunk_size,
+      "name": "grid2mesh_gnn",
+    }
 
     # Processor, which performs message passing on the multi-mesh.
     # Mesh node latent representations have been computed by previous layers (encoder).
     # Processor edges are embedded using the same network as for the grid2mesh.
-    self._mesh_gnn_kwargs = dict(
-      embed_nodes=False,
-      embed_edges=False,
-      node_latent_size=dict(mesh_nodes=self._model_config.latent_size),
-      edge_latent_size=dict(mesh=self._model_config.latent_size),
-      mlp_hidden_size=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      num_message_passing_steps=self._model_config.gnn_msg_steps,
-      use_layer_norm=True,
-      use_concat_trick=True,
-      include_sent_messages_in_node_update=False,
-      activation="swish",
-      f32_aggregation=False,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      scan=self._scan,
-      edge_chunk_size=self._edge_chunk_size,
-      name="mesh_gnn",
-    )
+    self._mesh_gnn_kwargs = {
+      "embed_nodes": False,
+      "embed_edges": False,
+      "node_latent_size": {"mesh_nodes": self._model_config.latent_size},
+      "edge_latent_size": {"mesh": self._model_config.latent_size},
+      "mlp_hidden_size": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "num_message_passing_steps": self._model_config.gnn_msg_steps,
+      "use_layer_norm": True,
+      "use_concat_trick": True,
+      "include_sent_messages_in_node_update": False,
+      "activation": "swish",
+      "f32_aggregation": False,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+      "scan": self._scan,
+      "edge_chunk_size": self._edge_chunk_size,
+      "name": "mesh_gnn",
+    }
 
     num_surface_vars = len(set(self._task_config.target_variables) & set(ALL_SURFACE_VARS))
     assert num_surface_vars == len(set(self._task_config.target_variables) - set(ALL_VOLUME_VARS))
@@ -362,28 +362,28 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # message passing step.
     # Grid node latent representations have been computed by previous layers (encoder).
     # mesh2grid edges are embedded using the same network as for the grid2mesh.
-    self._mesh2grid_gnn_kwargs = dict(
+    self._mesh2grid_gnn_kwargs = {
       # Require a specific node dimensionaly for the grid node outputs.
-      node_output_size=dict(grid_nodes=num_outputs),
-      embed_nodes=False,
-      embed_edges=False,
-      edge_latent_size=dict(mesh2grid=self._model_config.latent_size),
-      node_latent_size=dict(mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size),
-      mlp_hidden_size=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      num_message_passing_steps=1,
-      use_layer_norm=True,
-      use_concat_trick=True,
-      include_sent_messages_in_node_update=False,
-      activation="swish",
-      f32_aggregation=False,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      scan=False,
-      edge_chunk_size=self._edge_chunk_size,
-      name="mesh2grid_gnn",
-    )
+      "node_output_size": {"grid_nodes": num_outputs},
+      "embed_nodes": False,
+      "embed_edges": False,
+      "edge_latent_size": {"mesh2grid": self._model_config.latent_size},
+      "node_latent_size": {"mesh_nodes": self._model_config.latent_size, "grid_nodes": self._model_config.latent_size},
+      "mlp_hidden_size": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "num_message_passing_steps": 1,
+      "use_layer_norm": True,
+      "use_concat_trick": True,
+      "include_sent_messages_in_node_update": False,
+      "activation": "swish",
+      "f32_aggregation": False,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+      "scan": False,
+      "edge_chunk_size": self._edge_chunk_size,
+      "name": "mesh2grid_gnn",
+    }
 
     # The `_init_*_properties` methods initialize remaining properties, that is:
     # within `_init_mesh_properties`

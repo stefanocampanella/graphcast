@@ -143,7 +143,7 @@ def prune_mesh(
     valid_vertices_map_f = np.vectorize(valid_vertices_map.get)
     faces = valid_vertices_map_f(valid_faces)
   else:
-    valid_vertices_map = dict()
+    valid_vertices_map = {}
     faces = np.empty((0, 3), dtype=int)
     vertices = np.empty((0, 3), dtype=float)
 
