@@ -90,7 +90,8 @@ def plot_data(
 
   def update(frame):
     if "time" in first_data.dims:
-      td = datetime.timedelta(microseconds=first_data["time"][frame].item() / 1000)
+      # Any resolution: xarray keeps non-nanosecond timedeltas.
+      td = datetime.timedelta(seconds=float(first_data["time"].values[frame] / np.timedelta64(1, "s")))
       figure.suptitle(f"{fig_title}, {td}", fontsize=16)
     else:
       figure.suptitle(fig_title, fontsize=16)
