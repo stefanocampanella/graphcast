@@ -289,6 +289,9 @@ def wrap_longitude(da: xr.DataArray, longitude_dim: str = "lon"):
     ].to_numpy()
     return wrapped
 
+  if not np.any(da[longitude_dim].to_numpy() > 180.0):
+    # Already wrapped.
+    return da
   da_wrapped = _wrap(da)
   longitude_orig = da[longitude_dim].to_numpy()
   longitude_orig = xr.DataArray(
