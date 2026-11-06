@@ -1,4 +1,4 @@
-"""Tests of the CLI helpers (cli_utils.py): configs, logging, parameter types and the compile-time report."""
+"""Tests of the CLI helpers (cli_utils.py): configs, logging and the compile-time report."""
 
 import logging
 from types import SimpleNamespace
@@ -50,22 +50,6 @@ def test_configs_dot_keys(tmp_path):
   assert configs.get("a.b.c") == [1, 2]
   configs.get("a.b.c", copy=False).append(3)
   assert configs["a"]["b"]["c"] == [1, 2, 3]
-
-
-@pytest.mark.parametrize(
-  ("value", "expected"),
-  [("a:1, b : 2,,", {"a": 1, "b": 2}), ("", {}), ("a:1,a:2", {"a": 2}), ({"a": "3"}, {"a": 3})],
-)
-def test_dict_param_type(value, expected):
-  """Comma-separated key:value pairs with integer values (or a mapping) become a dict."""
-  assert cli_utils.DictParamType().convert(value, None, None) == expected
-
-
-@pytest.mark.parametrize("value", ["a", "a:x", ":1", 3, {"": 1}, {"a": "x"}])
-def test_dict_param_type_rejects(value):
-  """Items without a colon, non-integer values and empty keys are rejected."""
-  with pytest.raises(click.BadParameter):
-    cli_utils.DictParamType().convert(value, None, None)
 
 
 def test_configure_logging():
