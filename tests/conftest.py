@@ -9,6 +9,9 @@ import pandas as pd
 import pytest
 import xarray as xr
 
+# The tests run on CPU: without this, in a shell of the image (e.g. apptainer run) on a node without GPUs, the CUDA
+# plugin fails to initialize ("No visible GPU devices") instead of falling back to the CPU.
+os.environ.setdefault("JAX_PLATFORMS", "cpu")
 # Four CPU devices, for the tests of data parallelism (pmap, shard_map). Set before jax is imported (none of the
 # imports above does); the image sets XLA_FLAGS itself, so the flag is appended.
 if "--xla_force_host_platform_device_count" not in os.environ.get("XLA_FLAGS", ""):
