@@ -31,7 +31,7 @@ def get_climatology_ref(
   time_selection = {day_of_year_dim: targets_sample[time_dim].dt.dayofyear}
   climatology_chunk = climatology_chunk.sel(time_selection)
   climatology_chunk = climatology_chunk.assign_coords({time_dim: targets_sample[time_dim]})
-  climatology_chunk = climatology_chunk.drop(day_of_year_dim)
+  climatology_chunk = climatology_chunk.drop_vars(day_of_year_dim)
   return climatology_chunk
 
 
