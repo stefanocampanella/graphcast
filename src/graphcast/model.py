@@ -1,4 +1,6 @@
 # Copyright 2023 DeepMind Technologies Limited.
+# Copyright 2024 Stefano Campanella.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """A predictor that runs multiple graph neural networks on mesh data.
 
 It learns to interpolate between the grid and the mesh nodes, with the loss
