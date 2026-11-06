@@ -98,6 +98,9 @@ filterwarnings = [
     "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification",
     # zarr-python reads and writes whole shards of colexicographic arrays (transpose codec before sharding).
     "ignore:Combining a `sharding_indexed` codec disables partial reads",
+    # Deprecations raised in our own code fail the tests, so they are fixed before the libraries remove the APIs.
+    "error::DeprecationWarning:graphcast",
+    "error::FutureWarning:graphcast",
 ]
 
 [tool.coverage.run]

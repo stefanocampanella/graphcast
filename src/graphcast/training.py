@@ -25,7 +25,6 @@ import haiku as hk
 import jax
 import optax
 import xarray as xr
-from jax.experimental.shard_map import shard_map
 from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from pydantic import ValidationError
@@ -250,12 +249,12 @@ def train(
       def fsdp_loss_fn(
           params, data: Datasets, static_data: DatasetsOrDataArrays
       ) -> JAXLossAndDiagnostics:
-        _fsdp_loss_fn = shard_map(
+        _fsdp_loss_fn = jax.shard_map(
           local_loss_fn,
           mesh=device_mesh,
           in_specs=(P(), P("batch"), None),
           out_specs=P("batch"),
-          check_rep=False,
+          check_vma=False,
         )
         loss, diagnostics = _fsdp_loss_fn(params, data, static_data)
         return jax.tree_util.tree_map(jax.numpy.mean, (loss, diagnostics))
@@ -271,12 +270,12 @@ def train(
 
     @jax.jit
     def eval_step(params, data, static_data):
-      loss_and_diagnostics = shard_map(
+      loss_and_diagnostics = jax.shard_map(
         loss_fn.apply,
         mesh=device_mesh,
         in_specs=(P(), P("batch"), None),
         out_specs=P("batch"),
-        check_rep=False,
+        check_vma=False,
       )(params, data, static_data)
       return jax.tree_util.tree_map(jax.numpy.mean, loss_and_diagnostics)
 
