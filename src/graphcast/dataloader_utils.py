@@ -131,7 +131,14 @@ def get_task_config(
     levels = configs.task.levels
   else:
     raise ValueError("A selected dataset is required to resolve task.levels")
-  return TaskConfig(**{**configs.task.model_dump(), "levels": levels})
+  task = configs.task
+  return TaskConfig(
+    input_variables=task.input_variables,
+    target_variables=task.target_variables,
+    forcing_variables=task.forcing_variables,
+    levels=levels,
+    input_duration=task.input_duration,
+  )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -260,7 +267,7 @@ class _FlatSource(grain.RandomAccessDataSource):
   def __len__(self):
     return len(self._source)
 
-  def __getitem__(self, record_key):
+  def __getitem__(self, record_key):  # ty: ignore[invalid-method-override]
     """Return array leaves and reconstruction metadata for one source sample."""
     # Use JAX's registry to traverse xarray containers, not Grain's traversal.
     return jax.tree_util.tree_flatten(self._source[record_key])
@@ -286,7 +293,7 @@ class _Subset(grain.RandomAccessDataSource):
   def __len__(self) -> int:
     return len(self._indices)
 
-  def __getitem__(self, record_key):
+  def __getitem__(self, record_key):  # ty: ignore[invalid-method-override]
     return self._source[self._indices[record_key.__index__()]]
 
 
@@ -340,6 +347,7 @@ def get_grain_options(
       ds=flatten_dataset_iterator,
       **pick_config.model_dump(),
     )
+    assert performance_config.read_options is not None
     options = grain_utils.GrainOptions(performance_config.read_options, performance_config.multiprocessing_options)
     logger.warning(
       f"pick_performance_config chose num_workers={options.num_workers} at runtime. Grain's iterator state depends "

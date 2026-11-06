@@ -296,7 +296,7 @@ def assign_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
   # it tries to recreate the indexes again for the existing coordinates.
   # Can remove if/when https://github.com/pydata/xarray/issues/7885 fixed.
   existing_jax_coords = get_jax_coords(x)
-  jax_coords = existing_jax_coords | jax_coords
+  jax_coords = {**existing_jax_coords, **jax_coords}
   x = x.drop_vars(existing_jax_coords.keys())
 
   # xarray must not create an index for coordinates with the same name as a
@@ -354,7 +354,7 @@ def assign_jax_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
   x: DatasetOrDataArray, jax_coords: Mapping[Hashable, Any] | None = None, **jax_coords_kwargs
 ) -> DatasetOrDataArray:
   """Assigns only jax_coords, with same API as xarray's assign_coords."""
-  return assign_coords(x, jax_coords=jax_coords or jax_coords_kwargs)
+  return assign_coords(x, jax_coords={**(jax_coords or {}), **jax_coords_kwargs})
 
 
 def wrap(value):
@@ -374,20 +374,19 @@ def wrap_data(value, to_jax=False, np_contiguous=True):
   def _as_something(x: np.ndarray) -> np.ndarray | jax.Array:
     if np_contiguous:
       x = np.ascontiguousarray(x)
-    if to_jax:
-      x = jax.numpy.asarray(x)
-    return x
+    return jax.numpy.asarray(x) if to_jax else x
 
   def _wrap_data(ds_or_da: DatasetOrDataArray) -> DatasetOrDataArray:
+    # ty does not narrow constrained type variables with isinstance.
     if isinstance(ds_or_da, xarray.Dataset):
-      return Dataset(
+      return Dataset(  # ty: ignore[invalid-return-type]
         data_vars={var: (data.dims, _as_something(data.data)) for var, data in ds_or_da.data_vars.items()},
         coords=ds_or_da.coords,
         jax_coords={},
         attrs=ds_or_da.attrs,
       )
     elif isinstance(ds_or_da, xarray.DataArray):
-      return DataArray(
+      return DataArray(  # ty: ignore[invalid-return-type]
         data=_as_something(ds_or_da.data),
         coords=ds_or_da.coords,
         jax_coords={},
@@ -636,8 +635,8 @@ def pmap(
   fn: Callable[..., Any],
   dim: str,
   axis_name: str | None = None,
-  devices: ... = None,
-  backend: ... = None,
+  devices: Any = None,
+  backend: Any = None,
 ) -> Callable[..., Any]:
   """Wraps a subset of jax.pmap functionality to handle xarray input/output.
 
@@ -861,7 +860,7 @@ def scan[Carry, X, Y](
     else:
       with dims_change_on_unflatten(lambda dims: dims[1:]):
         x = jax.tree.unflatten(xs_treedef, x_leaves)
-    carry, y = f(carry, x)
+    carry, y = f(carry, x)  # ty: ignore[invalid-argument-type]  # x is None only when xs is None
 
     nonlocal y_treedef
     y_leaves, y_treedef = jax.tree.flatten(y)
@@ -942,7 +941,7 @@ def _unflatten_variable(aux: tuple[Hashable, ...], children: tuple[jax.typing.Ar
 
 
 def _split_static_and_jax_coords(
-  coords: xarray.core.coordinates.Coordinates,
+  coords: xarray.Coordinates,
 ) -> tuple[Mapping[Hashable, xarray.Variable], Mapping[Hashable, xarray.Variable]]:
   static_coord_vars = {}
   jax_coord_vars = {}
@@ -1066,7 +1065,7 @@ def _unflatten_dataset(
   if _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None):
     # Drop static coords which have dims not present in any of the data_vars.
     # See corresponding comment in _unflatten_data_array.
-    static_coord_vars = _drop_with_none_of_dims(static_coord_vars, dataset.dims)  # pytype: disable=wrong-arg-types
+    static_coord_vars = _drop_with_none_of_dims(static_coord_vars, tuple(dataset.dims))
   return assign_coords(dataset, coords=static_coord_vars, jax_coords=jax_coord_vars)
 
 

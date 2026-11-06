@@ -52,7 +52,7 @@ def test_jax_xarray_variable():
     # We'll apply a sequence of operations just to test that the end result is
     # still a JAX array, i.e. we haven't converted to numpy at any point.
     x = np.abs((x + 2) * (x - 3))
-    x = x.isel({"lat": slice(0, -1), "lon": slice(1, 3)})
+    x = x.isel({"lat": slice(0, -1), "lon": slice(1, 3)})  # ty: ignore[unresolved-attribute]  # np.abs of xarray
     x = xarray.Variable.concat([x, x + 1], dim="lat")
     x = x.transpose("lon", "lat")
     x = x.stack(channels=("lon", "lat"))
@@ -81,7 +81,7 @@ def test_jax_xarray_data_array():
       coords={"lat": np.arange(3) * 10, "lon": np.arange(4) * 10},
     )
     x = np.abs((x + 2) * (x - 3))
-    x = x.sel({"lat": slice(0, 20)})
+    x = x.sel({"lat": slice(0, 20)})  # ty: ignore[unresolved-attribute]  # np.abs of xarray
     y = xarray_jax.DataArray(
       dims=("lat", "lon"),
       data=ones,
@@ -471,7 +471,7 @@ def test_pmap():
     assert "device" not in d.dims
     return d + 1
 
-  func = xarray_jax.pmap(func, dim="device")
+  func = xarray_jax.pmap(func, dim="device")  # ty: ignore[invalid-assignment]
 
   result = func(dataset)
   xarray.testing.assert_identical(jax.device_get(dataset + 1), jax.device_get(result))
@@ -519,7 +519,7 @@ def test_pmap_with_jax_coords():
 
     return d + 1
 
-  func = xarray_jax.pmap(func, dim="device")
+  func = xarray_jax.pmap(func, dim="device")  # ty: ignore[invalid-assignment]
 
   result = func(dataset)
   xarray.testing.assert_identical(jax.device_get(dataset + 1), jax.device_get(result))
@@ -541,7 +541,7 @@ def test_pmap_with_tree_mix_of_xarray_and_jax_array():
   def func(x):
     return x["foo"] + 1, x["bar"] + 1
 
-  func = xarray_jax.pmap(func, dim="device")
+  func = xarray_jax.pmap(func, dim="device")  # ty: ignore[invalid-assignment]
   result_foo, result_bar = func(inputs)
   xarray.testing.assert_identical(jax.device_get(inputs["foo"] + 1), jax.device_get(result_foo))
   np.testing.assert_array_equal(jax.device_get(inputs["bar"] + 1), jax.device_get(result_bar))

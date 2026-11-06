@@ -37,7 +37,6 @@ from scipy.ndimage import gaussian_filter
 
 from graphcast.gis_utils import (
   CoordinateReferenceSystem,
-  Coordinates,
   CRSName,
   CRSRegistry,
   cartesian_crs,
@@ -93,7 +92,7 @@ class StereoMeshSizeField(abc.ABC):
     projection_crs = CoordinateReferenceSystem.from_osr(projection)
     if not stereographic_crs.IsSame(projection_crs):
       transform = get_transform(projection_crs, stereographic_crs)
-      x = transform(x)  # type: ignore
+      x = transform(x)
     assert isinstance(x, np.ndarray) and x.shape[1] == 2
     earth_radius_squared = stereographic_crs.GetSemiMajor() * stereographic_crs.GetSemiMinor()
     stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
@@ -332,7 +331,7 @@ class CompositeMeshSizeField(StereoMeshSizeField):
       fields[config.name] = FieldsRegistry[config.name](**arguments)
     self.fields = fields
 
-  def mesh_size_3d(self, x: Coordinates, projection: osr.SpatialReference) -> np.ndarray:
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
 
 

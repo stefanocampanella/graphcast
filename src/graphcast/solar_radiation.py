@@ -147,7 +147,7 @@ def era5_tsi_data() -> xa.DataArray:
 _DEFAULT_TSI_DATA_LOADER: TsiDataLoader = era5_tsi_data
 
 
-def get_tsi(timestamps: Sequence[_TimestampLike], tsi_data: xa.DataArray) -> chex.Array:
+def get_tsi(timestamps: Sequence[_TimestampLike] | pd.DatetimeIndex, tsi_data: xa.DataArray) -> chex.Array:
   """Returns TSI values for the given timestamps.
 
   TSI values are interpolated from the provided yearly TSI data.
@@ -161,12 +161,12 @@ def get_tsi(timestamps: Sequence[_TimestampLike], tsi_data: xa.DataArray) -> che
   Returns:
     An Array containing interpolated TSI data.
   """
-  timestamps = pd.DatetimeIndex(timestamps)
-  timestamps_date = pd.DatetimeIndex(timestamps.date)
-  day_fraction = (timestamps - timestamps_date) / pd.Timedelta(days=1)
-  year_length = 365 + timestamps.is_leap_year
-  year_fraction = (timestamps.dayofyear - 1 + day_fraction) / year_length
-  fractional_year = timestamps.year + year_fraction
+  index = pd.DatetimeIndex(timestamps)  # ty: ignore[invalid-argument-type]  # pandas-stubs omit sequences
+  index_date = pd.DatetimeIndex(index.date)
+  day_fraction = (index - index_date) / pd.Timedelta(days=1)
+  year_length = 365 + index.is_leap_year
+  year_fraction = (index.dayofyear - 1 + day_fraction) / year_length
+  fractional_year = index.year + year_fraction
   return np.interp(fractional_year, tsi_data.coords["time"].data, tsi_data.data)
 
 
@@ -239,7 +239,7 @@ def _get_orbital_parameters(j2000_days: chex.Array) -> _OrbitalParameters:
   theta = j2000_days / _JULIAN_YEAR_LENGTH_IN_DAYS
   # The phase of the Earth's rotation along its axis as a ratio. 0 represents
   # Julian epoch J2000.0 at exactly 12:00 Terrestrial Time (TT).
-  rotational_phase = j2000_days % 1.0
+  rotational_phase = j2000_days % 1.0  # ty: ignore[unsupported-operator]  # chex.Array includes numpy scalars
 
   # REL(PTETA).
   rel = 1.7535 + 6.283076 * theta
@@ -451,7 +451,7 @@ _get_integrated_radiation_jitted = jax.jit(
 
 
 def get_toa_incident_solar_radiation(
-  timestamps: Sequence[_TimestampLike],
+  timestamps: Sequence[_TimestampLike] | pd.DatetimeIndex,
   latitude: chex.Array,
   longitude: chex.Array,
   tsi_data: xa.DataArray | None = None,
@@ -531,7 +531,7 @@ def get_toa_incident_solar_radiation(
         sin_latitude=sin_lat,
         cos_latitude=cos_lat,
         longitude=lon,
-        tsi=tsi[idx],
+        tsi=tsi[idx],  # ty: ignore[invalid-argument-type]  # chex.Array includes numpy scalars
         integration_period=integration_period,
         num_integration_bins=num_integration_bins,
       )

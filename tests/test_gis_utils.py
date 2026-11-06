@@ -69,7 +69,7 @@ def test_transform_rejects_wrong_coordinates():
   with pytest.raises(AssertionError, match="Expected 2 coordinates"):
     to_cartesian(np.zeros((4, 3)))
   with pytest.raises(TypeError, match="tuple or a numpy array"):
-    to_cartesian([[0.0, 0.0]])
+    to_cartesian([[0.0, 0.0]])  # ty: ignore[invalid-argument-type]  # the wrong type under test
 
 
 def test_map_on_grid():

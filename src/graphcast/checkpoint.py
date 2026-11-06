@@ -102,7 +102,7 @@ def _is_variable_length_container(typ: Any) -> bool:
   return base_type in (list, dict) or (base_type is tuple and len(typ.__args__) == 2 and typ.__args__[1] == ...)
 
 
-def _convert_types[T](typ: type[T], value: Any) -> T:
+def _convert_types(typ: Any, value: Any) -> Any:
   """Convert some structure into the given type. The structures must match."""
   if typ in (Any, ...):
     return value

@@ -45,9 +45,9 @@ def GraphNetwork(  # pylint: disable=invalid-name
   update_edge_fn: Mapping[str, jraph.GNUpdateEdgeFn],
   update_node_fn: Mapping[str, GNUpdateNodeFn],
   update_global_fn: GNUpdateGlobalFn | None = None,
-  aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph.segment_sum,
-  aggregate_nodes_for_globals_fn: jraph.AggregateNodesToGlobalsFn = jraph.segment_sum,
-  aggregate_edges_for_globals_fn: jraph.AggregateEdgesToGlobalsFn = jraph.segment_sum,
+  aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph.segment_sum,  # ty: ignore[invalid-parameter-default]
+  aggregate_nodes_for_globals_fn: jraph.AggregateNodesToGlobalsFn = jraph.segment_sum,  # ty: ignore[invalid-parameter-default]
+  aggregate_edges_for_globals_fn: jraph.AggregateEdgesToGlobalsFn = jraph.segment_sum,  # ty: ignore[invalid-parameter-default]
   edge_chunk_size: int = 0,
 ):
   """Returns a method that applies a configured GraphNetwork.
@@ -252,7 +252,7 @@ InteractionUpdateNodeFnNoSentEdges = Callable[[jraph.NodeFeatures, Mapping[str, 
 def InteractionNetwork(  # pylint: disable=invalid-name
   update_edge_fn: Mapping[str, jraph.InteractionUpdateEdgeFn],
   update_node_fn: Mapping[str, InteractionUpdateNodeFn | InteractionUpdateNodeFnNoSentEdges],
-  aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph.segment_sum,
+  aggregate_edges_for_nodes_fn: jraph.AggregateEdgesToNodesFn = jraph.segment_sum,  # ty: ignore[invalid-parameter-default]
   include_sent_messages_in_node_update: bool = False,
   edge_chunk_size: int = 0,
 ):

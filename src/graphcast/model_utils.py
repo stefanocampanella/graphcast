@@ -18,7 +18,7 @@
 """Utilities for building models."""
 
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Hashable, Mapping
 from typing import Any
 
 import haiku as hk
@@ -291,7 +291,7 @@ def get_bipartite_graph_spatial_features(
 
 def variable_to_stacked(
   variable: xarray.Variable,
-  sizes: Mapping[str, int],
+  sizes: Mapping[Hashable, int],
   preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
 ) -> xarray.Variable:
   """Converts an xarray.Variable to preserved_dims + ("channels",).
@@ -322,7 +322,7 @@ def variable_to_stacked(
 
 def dataset_to_stacked(
   dataset: xarray.Dataset,
-  sizes: Mapping[str, int] | None = None,
+  sizes: Mapping[Hashable, int] | None = None,
   preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
 ) -> xarray.DataArray:
   """Converts an xarray.Dataset to a single stacked array.
@@ -344,7 +344,7 @@ def dataset_to_stacked(
   """
   data_vars = [
     variable_to_stacked(dataset.variables[name], sizes or dataset.sizes, preserved_dims)
-    for name in sorted(dataset.data_vars.keys())
+    for name in sorted(dataset.data_vars.keys(), key=str)
   ]
   coords = {dim: coord for dim, coord in dataset.coords.items() if dim in preserved_dims}
   return xarray.DataArray(data=xarray.Variable.concat(data_vars, dim="channels"), coords=coords)
@@ -377,7 +377,7 @@ def stacked_to_dataset(
   """
   unstack_from_channels_sizes = {}
   # noinspection PyTypeChecker
-  var_names = sorted(template_dataset.keys())
+  var_names = sorted(template_dataset.keys(), key=str)
   for name in var_names:
     template_var = template_dataset[name]
     if not all(dim in template_var.dims for dim in preserved_dims):
@@ -448,9 +448,9 @@ class Embedder(hk.Module):
       [self.mlp_hidden_dim] * self.mlp_num_hidden_layers + [self.output_dim],
       activation=jax.nn.swish,
       activate_final=False,
-      name=self.name + "_mlp",
+      name=f"{self.name}_mlp",
     )
-    layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=self.name + "_layer_norm")
+    layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=f"{self.name}_layer_norm")
     network = hk.Sequential([network, layer_norm])
 
     # Name the output inside the remat, as DeepTypedGraphNet does, so that the remat policy can save or offload it.

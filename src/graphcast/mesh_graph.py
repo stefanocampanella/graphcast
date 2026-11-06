@@ -256,8 +256,7 @@ def typed_to_latlon(graph: typed_graph.TypedGraph, edge_set_name: str) -> Equire
   else:
     vertices = senders_nodes.features
     edges = graph.edges[edge_set_key].indices
-  graph = Graph(vertices=vertices, edges=edges)
-  wgs_graph = graph_to_latlon(graph)
+  wgs_graph = graph_to_latlon(Graph(vertices=vertices, edges=edges))
 
   return wgs_graph
 

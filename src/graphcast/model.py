@@ -640,7 +640,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     )
     return mesh2grid_graph
 
-  def __call__(
+  def __call__(  # ty: ignore[invalid-method-override]  # optional keyword arguments of the base class
     self,
     inputs: xarray.Dataset,
     targets_template: xarray.Dataset,
@@ -872,7 +872,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # to xarray `DataArray` (batch, lat, lon, channels)
     assert self._grid_lat is not None and self._grid_lon is not None
     grid_shape = (self._grid_lat.shape[0], self._grid_lon.shape[0])
-    grid_node_outputs = grid_node_outputs[: self._num_grid_nodes, ...]
+    grid_node_outputs = grid_node_outputs[: self._num_grid_nodes, ...]  # ty: ignore[invalid-argument-type]
     if self._grid_node_indices is not None:
       # Back to all grid points: the nodes of unmasked points only, other points predict zero.
       num_grid_points = grid_shape[0] * grid_shape[1]

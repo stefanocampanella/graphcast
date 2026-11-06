@@ -106,13 +106,13 @@ def radius_query_indices(
   kd_tree = scipy.spatial.cKDTree(valid_grid_positions)
   # [num_grid_points, num_mesh_points_per_grid_point (variable)]
   # noinspection PyTypeChecker
-  query_indices: npt.NDArray[list[int]] = kd_tree.query_ball_point(x=mesh_positions, r=radius, workers=workers)
+  query_indices = kd_tree.query_ball_point(x=mesh_positions, r=radius, workers=workers)
   _, masked_to_unmasked_fn = get_masking_indices_fns(mask)
   # noinspection PyTypeChecker
   grid_senders = np.concatenate(list(map(masked_to_unmasked_fn, query_indices)), axis=0).astype(int)
   mesh_receivers = np.repeat(
     np.arange(mesh_positions.shape[0], dtype=int),
-    np.fromiter(map(len, query_indices), dtype=int),
+    np.fromiter(map(len, query_indices), dtype=int),  # ty: ignore[invalid-argument-type]  # an array of lists
   )
   return grid_senders, mesh_receivers
 
@@ -147,7 +147,7 @@ def get_mesh_to_grid_edges(
   )
   _, masked_to_unmasked_fn = get_masking_indices_fns(grid_mask)
   # noinspection PyTypeChecker
-  grid_receivers: npt.NDArray[int] = masked_to_unmasked_fn(valid_grid_receivers)
+  grid_receivers: np.ndarray = masked_to_unmasked_fn(valid_grid_receivers)
 
   return mesh_senders, grid_receivers
 
@@ -216,7 +216,7 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
   def unmasked_to_masked_fn(n: int) -> int:
     # Not a truth test: the first unmasked point has index 0.
     if (index := valid_indices_inverse_map.get(n)) is not None:
-      return index
+      return int(index)
     else:
       if raise_error:
         raise ValueError(f"There is no index of masked array corresponding to index {n} in unmasked array.")

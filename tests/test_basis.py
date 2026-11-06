@@ -56,7 +56,7 @@ def test_basis_is_the_linear_interpolation_in_the_decoder_face(mesh, mask):
   assert isinstance(basis, sparse.csr_matrix)
   np.testing.assert_array_equal(np.diff(basis.indptr), 3)
   assert basis.data.min() >= 0.0
-  np.testing.assert_allclose(np.asarray(basis.sum(axis=1)).ravel(), 1.0, rtol=1e-6)
+  np.testing.assert_allclose(basis @ np.ones(basis.shape[1]), 1.0, rtol=1e-6)
   # The same faces as the decoder edges.
   senders, receivers = mesh_connectivity.get_mesh_to_grid_edges(
     grid_latitude=LAT, grid_longitude=LON, mesh=mesh, mask=mask
@@ -120,7 +120,7 @@ def test_compute_cli(tmp_path, mask_path):
   basis = sparse.load_npz(output)
   grid = get_grid(mask_path)
   assert basis.shape == (int(grid.mask.sum()), 42)
-  np.testing.assert_allclose(np.asarray(basis.sum(axis=1)).ravel(), 1.0, rtol=1e-6)
+  np.testing.assert_allclose(basis @ np.ones(basis.shape[1]), 1.0, rtol=1e-6)  # ty: ignore[no-matching-overload]
   result = CliRunner().invoke(compute_grid_basis_command, arguments)
   assert result.exit_code != 0 and "--overwrite" in result.output
   assert CliRunner().invoke(compute_grid_basis_command, [*arguments, "--overwrite"]).exit_code == 0

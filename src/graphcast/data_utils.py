@@ -18,7 +18,7 @@
 """Dataset utilities for extracting inputs, targets, and forcings."""
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Hashable, Mapping, Sequence
 from typing import Any
 
 import chex
@@ -102,7 +102,7 @@ def get_day_progress(
   return day_progress.astype(np.float32)
 
 
-def featurize_progress(name: str, dims: Sequence[str], progress: chex.Array) -> Mapping[str, xarray.Variable]:
+def featurize_progress(name: str, dims: Sequence[Hashable], progress: chex.Array) -> Mapping[str, xarray.Variable]:
   """Derives features used by ML models from the `progress` variable.
 
   Args:
@@ -365,8 +365,7 @@ def _process_target_lead_times_and_get_duration(
       target_lead_times = [target_lead_times]
 
     # A list of multiple (not necessarily contiguous) lead times:
-    target_lead_times = [pd.Timedelta(x) for x in target_lead_times]
-    target_lead_times.sort()
+    target_lead_times = sorted(pd.Timedelta(x) for x in target_lead_times)  # ty: ignore[invalid-argument-type]
     target_duration = target_lead_times[-1]
   return target_lead_times, target_duration
 

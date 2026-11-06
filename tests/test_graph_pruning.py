@@ -68,6 +68,7 @@ def earth_mesh():
   """The icosahedral mesh refined twice, on the WGS84 ellipsoid, with GraphCast's query radius."""
   mesh_data = icosahedral_mesh.get_multi_mesh_data(2)
   graph = mesh_data.mesh_graph
+  assert mesh_data.mesh_size is not None
   return TriangleMesh(vertices=graph.vertices, faces=graph.faces), 0.6 * mesh_data.mesh_size
 
 
@@ -109,7 +110,7 @@ def test_prune_mesh_from_mask(earth_mesh, mask):
   expected, vertices_map = graph_pruning.prune_mesh(connected, mesh, mode="all")
   np.testing.assert_array_equal(pruned.vertices, expected.vertices)
   np.testing.assert_array_equal(pruned.faces, expected.faces)
-  np.testing.assert_array_equal(pruned_boundary, [vertices_map[n] for n in boundary if n in vertices_map])
+  np.testing.assert_array_equal(pruned_boundary, [vertices_map[int(n)] for n in boundary if n in vertices_map])
   assert 0 < len(pruned_boundary) < len(boundary)
 
 

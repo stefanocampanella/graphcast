@@ -64,7 +64,7 @@ def test_year_progress_is_almost_one_before_year_ends(subtests):
 
 def test_day_progress_computes_for_all_times_and_longitudes(subtests):
   """Day progress has one value per time and longitude (shape `[time, lon]`)."""
-  times = np.random.randint(low=0, high=1e10, size=10)
+  times = np.random.randint(low=0, high=10**10, size=10)
   longitudes = np.arange(0, 360.0, 1.0)
   day_progress = data_utils.get_day_progress(times, longitudes)
   with subtests.test("Day progress is computed for all times and longinutes"):
