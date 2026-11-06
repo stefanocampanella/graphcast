@@ -678,20 +678,17 @@ def pmap(
   input_treedef = None
   output_treedef = None
 
+  def check_leading_dim(variable: xarray.Variable) -> xarray.Variable:
+    index = variable.dims.index(dim) if dim in variable.dims else None
+    if index != 0:
+      raise ValueError(f"Expected dim {dim} at index 0, found at {index}.")
+    return variable
+
   def fn_passed_to_pmap(*flat_args):
     assert input_treedef is not None
 
     # Inside the pmap the original first dimension will no longer be present:
-    def check_and_remove_leading_dim(dims):
-      try:
-        index = dims.index(dim)
-      except ValueError:
-        index = None
-      if index != 0:
-        raise ValueError(f"Expected dim {dim} at index 0, found at {index}.")
-      return dims[1:]
-
-    with dims_change_on_unflatten(check_and_remove_leading_dim):
+    with dims_change_on_unflatten(lambda dims: dims[1:]):
       args = jax.tree_util.tree_unflatten(input_treedef, flat_args)
     result = fn(*args)
     nonlocal output_treedef
@@ -709,6 +706,8 @@ def pmap(
 
   def result_fn(*args):
     nonlocal input_treedef
+    # Checked before jax.pmap, which would otherwise map over the wrong axis and fail with an unrelated error.
+    tree_map_variables(check_leading_dim, args)
     flat_args, input_treedef = jax.tree_util.tree_flatten(args)
     flat_result = pmapped_fn(*flat_args)
     assert output_treedef is not None
