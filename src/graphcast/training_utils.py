@@ -295,14 +295,23 @@ def save_model(
 
 # Per-device rng keys in data parallelism. The model is deterministic today, but a probabilistic variant will need a
 # key in the predictor and the loss, different on every device (each holds different samples of the batch). The
-# fold-in trick of the UvA deep learning tutorials ("Data parallelism" and "Fully sharded data parallelism" in the
-# "Training models at scale" notebooks), `fold_in(key, axis_index("batch"))`, works in shard_map on our mesh with
+# fold-in trick of the UvA tutorial [1], `fold_in(key, axis_index("batch"))`, works in shard_map on our mesh with
 # Explicit axes only if the key is an argument of shard_map (spec P(), the same key on every device, folded inside).
-# Closing over a key computed outside shard_map fails with "NotImplementedError: Closing over inputs to shard_map
-# where the input is sharded on `Explicit` axes is not implemented" (the error that kept the previous helper from
-# passing keys; jax-ml/jax issue 29162). Splitting the key into one per device and sharding it along the batch axis
-# also works, once resharded explicitly (`jax.reshard(jax.random.split(key, n), P("batch"))`). See also jax-ml/jax
-# discussion 22862 and issue 22860 on rng keys and sharding.
+# Closing over a key computed outside shard_map fails with
+#
+#   NotImplementedError: Closing over inputs to shard_map where the input is sharded on `Explicit` axes is not
+#   implemented. As a workaround, please pass those inputs as an argument to shard_map.
+#   Got input with shape key<fry>[]({Explicit: ('batch',)})
+#
+# (the error that kept the previous helper from passing keys, see [4]). Splitting the key into one per device and
+# sharding it along the batch axis also works, once resharded explicitly
+# (`jax.reshard(jax.random.split(key, n), P("batch"))`); without it, shard_map rejects the unsharded keys. On rng keys
+# and sharding, see also [2] and [3].
+#
+# [1] https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/scaling/JAX/data_parallel_fsdp.html
+# [2] https://github.com/jax-ml/jax/discussions/22862
+# [3] https://github.com/jax-ml/jax/issues/22860
+# [4] https://github.com/jax-ml/jax/issues/29162
 def data_parallel(
   fn: Callable[..., Any], mesh: Mesh, batch_axis: str = "batch", check_vma: bool = False
 ) -> Callable[..., Any]:
