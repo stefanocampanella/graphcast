@@ -403,6 +403,8 @@ class DeepTypedGraphNet(hk.Module):
     # parameters: XLA fails to compile host offloading inside a switch in a scan). Unrolled, XLA optimizes across steps,
     # which is faster (about 30 % for the processor of the coarse mesh) but keeps more activations.
     stacked_params = jax.tree_util.tree_map(lambda *ps: jnp.stack(ps), *step_params) if self._scan else None
+    if self._scan:
+      features = _vary_like_others(features)
     for _unused_repetition_i in range(self._num_processor_repetitions):
       if self._scan:
         features, _ = jax.lax.scan(lambda f, p: (step.apply(p, None, f), None), features, stacked_params)
@@ -496,3 +498,20 @@ def _get_aggregate_edges_for_nodes_fn(name):
   if hasattr(jraph, name):
     return getattr(jraph, name)
   raise ValueError(f"Unknown aggregate_edges_for_nodes_fn function {name} specified.")
+
+
+def _vary_like_others(tree):
+  """Marks every leaf as varying along the manual mesh axes along which any leaf varies.
+
+  Inside shard_map with check_vma, a scan carry must keep its type, including the axes along which it varies across
+  devices. The processor's carry starts with mesh edge features computed from the graph and the parameters only (the
+  same on every device) and comes back varying along the batch axis, like the node features. Outside shard_map, or
+  with check_vma off, no leaf varies and the tree is returned as is.
+  """
+  varying = frozenset().union(*(jax.typeof(leaf).manual_axis_type.varying for leaf in jax.tree.leaves(tree)))
+
+  def vary(leaf):
+    missing = varying - jax.typeof(leaf).manual_axis_type.varying
+    return jax.lax.pcast(leaf, tuple(sorted(missing)), to="varying") if missing else leaf
+
+  return jax.tree.map(vary, tree)

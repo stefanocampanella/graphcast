@@ -57,21 +57,29 @@ class FullyShardedDataParallel(predictor_base.Predictor):
     self._spec = P(batch_dim_name)
 
   def _sharded(self, method: str, *args: xarray.Dataset, **kwargs) -> Any:
-    """Calls `method` of the wrapped predictor on each shard of `args`, with the (replicated) parameters."""
-    transformed = hk.without_apply_rng(
-      hk.transform(lambda *method_args: getattr(self._predictor_factory(), method)(*method_args, **kwargs))
-    )
+    """Calls `method` of the wrapped predictor on each shard of `args`, with the (replicated) parameters.
+
+    With an rng, each device gets the key folded with its index along the batch axis (the key is an argument of
+    shard_map, see `training_utils.data_parallel`).
+    """
+    transformed = hk.transform(lambda *method_args: getattr(self._predictor_factory(), method)(*method_args, **kwargs))
+    batch_axis = self._spec[0]
+
+    def local_apply(params, rng, *method_args):
+      if rng is not None:
+        rng = jax.random.fold_in(rng, jax.lax.axis_index(batch_axis))
+      return transformed.apply(params, rng, *method_args)
+
     in_specs = (P(),) + (self._spec,) * len(args)
     # The same rng key on every device gives the same parameters, which are then taken from any device. Compiled:
     # outside jit, shard_map runs operation by operation (initializing a tiny GraphCast took 46 s instead of 5 s).
     init = jax.jit(jax.shard_map(transformed.init, mesh=self._mesh, in_specs=in_specs, out_specs=P(), check_vma=False))
     apply = jax.jit(
-      jax.shard_map(transformed.apply, mesh=self._mesh, in_specs=in_specs, out_specs=self._spec, check_vma=False)
+      jax.shard_map(local_apply, mesh=self._mesh, in_specs=(P(), *in_specs), out_specs=self._spec, check_vma=False)
     )
     # Lifted outside shard_map: the parameters are created (or looked up) in the enclosing transform.
-    rng = hk.next_rng_key() if hk.running_init() else None
-    params = hk.transparent_lift(init)(rng, *args)
-    return apply(params, *args)
+    params = hk.transparent_lift(init)(hk.next_rng_key() if hk.running_init() else None, *args)
+    return apply(params, hk.maybe_next_rng_key(), *args)
 
   def __call__(
     self, inputs: xarray.Dataset, targets_template: xarray.Dataset, forcings: xarray.Dataset, **kwargs

@@ -1,5 +1,6 @@
 """Shared fixtures: small synthetic inputs of the downloader, shaped like the ocean dataset and its statistics."""
 
+import dataclasses
 import os
 import pathlib
 
@@ -190,3 +191,61 @@ def mask_path(input_paths, tmp_path_factory) -> str:
   result = CliRunner().invoke(download_mask, [input_paths[0], str(path), "--log-level", "warning"])
   assert result.exit_code == 0, result.output
   return str(path)
+
+
+@dataclasses.dataclass(frozen=True)
+class TinyModel:
+  """A tiny GraphCast task on a coarse grid and the 42-vertex icosahedral multi-mesh, with a batch of random data."""
+
+  lat: np.ndarray
+  lon: np.ndarray
+  task: object
+  model_config: object
+  mesh_data: object
+  batch_size: int
+  batch: tuple[xr.Dataset, xr.Dataset, xr.Dataset]
+  mask: xr.DataArray
+
+  def graphcast(self, scan: bool = False):
+    from graphcast.model import GraphCast
+
+    return GraphCast(
+      _model_config=self.model_config,
+      _task_config=self.task,
+      _grid_lat=self.lat,
+      _grid_lon=self.lon,
+      _grid_mask=None,
+      _mesh_data=self.mesh_data,
+      _scan=scan,
+    )
+
+
+@pytest.fixture(scope="session")
+def tiny_model() -> TinyModel:
+  """Inputs `zos`, targets `zos`, forcings `2t` over a batch of 8, a loss mask with land at the northernmost row."""
+  from graphcast import icosahedral_mesh
+  from graphcast.model import ModelConfig, TaskConfig
+
+  lat, lon, batch_size = np.arange(-75.0, 90.0, 30.0), np.arange(0.0, 360.0, 45.0), 8
+  rng = np.random.default_rng(0)
+
+  def field(day: int) -> xr.DataArray:
+    return xr.DataArray(
+      rng.normal(size=(batch_size, 1, lat.size, lon.size)).astype(np.float32),
+      dims=("batch", "time", "lat", "lon"),
+      coords={"time": np.array([day], dtype="timedelta64[D]"), "lat": lat, "lon": lon},
+    )
+
+  ocean = np.broadcast_to(lat[:, None] < 70.0, (lat.size, lon.size))
+  return TinyModel(
+    lat=lat,
+    lon=lon,
+    task=TaskConfig(
+      input_variables=("zos",), target_variables=("zos",), forcing_variables=("2t",), levels=(0,), input_duration="1D"
+    ),
+    model_config=ModelConfig(latent_size=4, gnn_msg_steps=1, hidden_layers=1, radius_query_fraction_edge_length=0.6),
+    mesh_data=icosahedral_mesh.get_multi_mesh_data(1),
+    batch_size=batch_size,
+    batch=(xr.Dataset({"zos": field(0)}), xr.Dataset({"zos": field(1)}), xr.Dataset({"2t": field(1)})),
+    mask=xr.DataArray(ocean, dims=("lat", "lon"), coords={"lat": lat, "lon": lon}),
+  )
