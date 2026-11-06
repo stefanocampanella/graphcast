@@ -1122,3 +1122,17 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   0.415 s (median), within run-to-run noise. XLA memory 54.0 GiB. As guessed: no difference.
 - **Change:** the padding is removed (maintainer: compatibility with older checkpoints is not a priority). The mesh
   node embedder's first layer has 4 inputs: checkpoints and models saved before cannot be loaded.
+- **PGLE** (`claude-work/…/pgle`):
+  - **Cause:** since e018542 (25 Oct 2026) the train step is compiled ahead of time (`lower().compile()`, for the
+    memory report) and the compiled executable is called; JAX's automatic PGLE lives in the jit call path
+    (`_pjit_call_impl_python`), so it never profiles or recompiles the train step. The "Found 0 instructions from the
+    profile" warnings (also on 22 Oct, when the step went through jit) come from tiny one-operation modules (`jit_add`,
+    `jit_broadcast_in_dim`, ...), which PGLE profiles too and whose single instruction is not in the trace; XLA falls
+    back to its analytical estimator for them. The hypothesis that CUDA forward compatibility breaks CUPTI was wrong
+    (probe job 2723388: CUPTI collects kernels with `apptainer run` and `exec`).
+  - **Experiment:** a snapshot calling the train step through jit when PGLE is enabled (120 km × 8, 150 steps, same
+    nodes): the train step's profile has 1454–1455 instructions (10 missing). Median compute per step: 1 node (job
+    2723583) 0.418 s without, 0.429 s with PGLE; 4 nodes (job 2723899) 0.440 / 0.443 s. Startup +~25 s (step 0 +12 s,
+    two profiling steps of ~2 s, a 12.5 s recompilation at step 3).
+  - **Decision:** no gain, so the training loop is unchanged (it keeps the ahead-of-time compile); `.env` and `TODO.md`
+    record why.
