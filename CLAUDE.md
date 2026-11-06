@@ -16,7 +16,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 `APPTAINERENV_PYTHONPATH` to `src/`, so source edits take effect without rebuilding the image. Python is 3.12.
 
 - CLI (`src/graphcast/__init__.py`, click): `graphcast train CONFIG.toml OUTPUT TRAIN_CKPT`,
-  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute` (basis).
+  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute` (basis),
+  `graphcast make-icosahedral-mesh SPLITS OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
+  ellipsoid, for comparison with the ocean meshes; `mesh.path` of a training config can point to it). Its `.msh`
+  holds the finest triangles, the edges of all levels as line elements in the `multi_mesh_edges` physical group (line
+  elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. A tiny
+  model runs on it; it has not been trained yet.
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly

@@ -21,12 +21,13 @@ import click
 import gmsh
 import seamsh
 
-from graphcast import cli_utils
+from graphcast import cli_utils, icosahedral_mesh
 from graphcast.geospatial_mesh_utils import (
   CompositeMeshSizeField,
   StereoMeshSizeField,
   coarsen_boundaries,
   load_domain,
+  write_multi_mesh,
 )
 from graphcast.gis_utils import CRSRegistry
 from graphcast.mesh_config import MeshGenerationConfig
@@ -75,6 +76,48 @@ def make_ocean_mesh(
   logger.info(f"Using settings: {configs!r}")
   output_path.parent.mkdir(parents=True, exist_ok=True)
   write_ocean_mesh(configs, output_path, data_path)
+
+
+@click.command()
+@click.argument("splits", required=True, type=click.IntRange(min=0))
+@click.argument(
+  "output_path",
+  required=True,
+  type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True),
+)
+@click.option("--description", default=None, help="Description stored in the mesh file.")
+@click.option("--license", "license_", default=None, help="License stored in the mesh file.")
+@click.option(
+  "--overwrite/--no-overwrite",
+  help="Whether to overwrite existing outputs",
+  default=False,
+  is_flag=True,
+)
+@cli_utils.LOG_LEVEL_OPTION
+def make_icosahedral_mesh(
+  splits: int,
+  output_path: pathlib.Path,
+  description: str | None = None,
+  license_: str | None = None,
+  overwrite: bool = False,
+  log_level: str = "info",
+):
+  """Write the icosahedral multi-mesh refined SPLITS times (experimental), on the WGS84 ellipsoid, to OUTPUT_PATH.
+
+  The file holds the finest triangles, the edges of all levels and the mesh size (the longest edge of the finest mesh),
+  and can be used as the mesh of a training configuration.
+  """
+  cli_utils.configure_logging(log_level)
+  if output_path.exists() and not overwrite:
+    raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(
+    splits,
+    description=[description] if description else None,
+    license=[license_] if license_ else None,
+  )
+  logger.info(f"Writing {len(mesh_data.mesh_graph.vertices)} vertices and {len(mesh_data.mesh_graph.edges[0])} edges")
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  write_multi_mesh(mesh_data, output_path, model_name=f"icosahedral_{splits}")
 
 
 def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, data_path: pathlib.Path | None) -> None:

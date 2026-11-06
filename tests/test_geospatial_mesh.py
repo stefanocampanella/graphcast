@@ -1,0 +1,104 @@
+"""Tests of the icosahedral multi-mesh files: writing (`graphcast make-icosahedral-mesh`) and reading them back."""
+
+import dataclasses
+
+import gmsh
+import numpy as np
+import pyproj
+import pytest
+from click.testing import CliRunner
+
+from graphcast import icosahedral_mesh
+from graphcast.geospatial_mesh import make_icosahedral_mesh
+from graphcast.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh_data, write_multi_mesh
+
+SPLITS = 2
+
+
+def _same_crs(wkt_a: str, wkt_b: str) -> bool:
+  return pyproj.CRS(wkt_a) == pyproj.CRS(wkt_b)
+
+
+def test_make_icosahedral_mesh(tmp_path):
+  """The CLI writes the multi-mesh so that reading it gives it back: vertices, finest faces, the edges of all levels
+  in order (also those that are not edges of the finest faces), GraphCast's mesh size, no boundary, the spatial
+  reference system, description and license."""
+  output = tmp_path / "out" / "icosahedral.msh"
+  result = CliRunner().invoke(
+    make_icosahedral_mesh,
+    [str(SPLITS), str(output), "--description", "A test mesh", "--license", "A test license", "--log-level", "warning"],
+  )
+  assert result.exit_code == 0, result.output
+
+  mesh_data = read_mesh_data(output, gmsh_verbosity=0)
+
+  expected = icosahedral_mesh.get_multi_mesh_data(SPLITS)
+  graph, expected_graph = mesh_data.mesh_graph, expected.mesh_graph
+  np.testing.assert_allclose(graph.vertices, expected_graph.vertices, rtol=0, atol=1e-6)
+  np.testing.assert_array_equal(graph.faces, expected_graph.faces)
+  np.testing.assert_array_equal(graph.edges[0], expected_graph.edges[0])
+  np.testing.assert_array_equal(graph.edges[1], expected_graph.edges[1])
+  # The coarser levels add edges that the finest faces do not have.
+  assert len(graph.edges[0]) > 3 * len(graph.faces)
+  assert graph.boundary is not None and not graph.boundary.any()
+  assert _same_crs(graph.spatial_reference_system, expected_graph.spatial_reference_system)
+  assert mesh_data.mesh_size is not None and expected.mesh_size is not None
+  np.testing.assert_allclose(mesh_data.mesh_size, expected.mesh_size)
+  assert mesh_data.description == ["A test mesh"] and mesh_data.license == ["A test license"]
+
+
+def test_make_icosahedral_mesh_refuses_existing_output(tmp_path):
+  """An existing output is replaced only with --overwrite."""
+  output = tmp_path / "icosahedral.msh"
+  output.write_text("")
+  arguments = [str(SPLITS), str(output), "--log-level", "warning"]
+  result = CliRunner().invoke(make_icosahedral_mesh, arguments)
+  assert result.exit_code != 0 and "--overwrite" in result.output
+  assert CliRunner().invoke(make_icosahedral_mesh, [*arguments, "--overwrite"]).exit_code == 0
+
+
+def test_write_multi_mesh_rejects_a_boundary(tmp_path):
+  """A boundary cannot be stored next to the multi-mesh edges (both are line elements): meshes with one are rejected."""
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(0)
+  graph = mesh_data.mesh_graph
+  with_boundary = dataclasses.replace(
+    mesh_data, mesh_graph=dataclasses.replace(graph, boundary=np.arange(len(graph.vertices)) == 0)
+  )
+  with pytest.raises(ValueError, match="boundary"):
+    write_multi_mesh(with_boundary, tmp_path / "mesh.msh")
+
+
+def test_read_mesh_data_with_unsorted_node_tags(tmp_path):
+  """Node tags in a file need not be sorted: faces, edges and the mesh size refer to the right vertices."""
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(1)
+  graph = mesh_data.mesh_graph
+  num_nodes = len(graph.vertices)
+  tags = np.random.default_rng(0).permutation(num_nodes) + 1
+  # A different mesh size per vertex, to check its order too.
+  mesh_size = np.arange(num_nodes, dtype=float)
+  path = tmp_path / "unsorted.msh"
+  gmsh.initialize()
+  gmsh.clear()
+  gmsh.model.add("unsorted")
+  gmsh.model.set_attribute("Projection", ["WKT", graph.spatial_reference_system])
+  surface = gmsh.model.add_discrete_entity(2)
+  gmsh.model.mesh.add_nodes(2, surface, tags, graph.vertices.reshape(-1))
+  gmsh.model.mesh.add_elements_by_type(surface, 2, [], tags[graph.faces].reshape(-1))
+  curve = gmsh.model.add_discrete_entity(1)
+  gmsh.model.mesh.add_elements_by_type(curve, 1, [], tags[np.stack(graph.edges, axis=1)].reshape(-1))
+  gmsh.model.add_physical_group(2, [surface], name="mesh")
+  gmsh.model.add_physical_group(1, [curve], name=MULTI_MESH_EDGES_GROUP)
+  view = gmsh.view.add("MeshSize")
+  gmsh.view.add_homogeneous_model_data(view, 0, "unsorted", "NodeData", tags, mesh_size)
+  gmsh.option.set_number("PostProcessing.SaveMesh", 1)
+  gmsh.view.write(view, str(path))
+
+  read = read_mesh_data(path, gmsh_verbosity=0)
+
+  # Compare through coordinates, whatever order the vertices are read in.
+  vertices = read.mesh_graph.vertices
+  np.testing.assert_allclose(vertices[read.mesh_graph.faces], graph.vertices[graph.faces], rtol=0, atol=1e-6)
+  for read_indices, indices in zip(read.mesh_graph.edges, graph.edges, strict=True):
+    np.testing.assert_allclose(vertices[read_indices], graph.vertices[indices], rtol=0, atol=1e-6)
+  nearest = np.argmin(np.linalg.norm(vertices[:, None] - graph.vertices[None], axis=-1), axis=1)
+  np.testing.assert_array_equal(read.mesh_size, mesh_size[nearest])

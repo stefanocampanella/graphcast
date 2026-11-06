@@ -23,7 +23,7 @@ from graphcast.gis_utils import (
   cartesian_unit_sphere_crs,
   get_transform,
 )
-from graphcast.mesh_graph import MeshGraph, TriangleMesh, merge_meshes
+from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges, merge_meshes
 
 
 def get_hierarchy_of_triangular_meshes_for_sphere(splits: int) -> list[TriangleMesh]:
@@ -74,7 +74,7 @@ def get_multi_mesh_graph(splits: int, crs: CoordinateReferenceSystem = cartesian
      `MeshGraph` with `spatial_reference_system` the WKT of `crs`.
   """
   multi_mesh = merge_meshes(get_hierarchy_of_triangular_meshes_for_sphere(splits))
-  vertices = get_transform(cartesian_unit_sphere_crs, crs)(multi_mesh.vertices.astype(np.float64))
+  vertices = np.asarray(get_transform(cartesian_unit_sphere_crs, crs)(multi_mesh.vertices.astype(np.float64)))
   return MeshGraph(
     vertices=vertices,
     faces=multi_mesh.faces,
@@ -82,6 +82,24 @@ def get_multi_mesh_graph(splits: int, crs: CoordinateReferenceSystem = cartesian
     boundary=None,
     spatial_reference_system=crs.to_wkt(),
     node_tags=None,
+  )
+
+
+def get_multi_mesh_data(
+  splits: int, description: list[str] | None = None, license: list[str] | None = None
+) -> MeshData:
+  """Returns the icosahedral multi-mesh of `get_multi_mesh_graph` (WGS84 Earth-centred coordinates), with GraphCast's
+  mesh size: the length of the longest edge of the finest mesh (straight line, in metres), the same at every vertex
+  (the radius of the grid to mesh query is a fraction of it).
+  """
+  graph = get_multi_mesh_graph(splits)
+  senders, receivers = faces_to_edges(graph.faces)
+  longest_edge = np.linalg.norm(graph.vertices[senders] - graph.vertices[receivers], axis=-1).max()
+  return MeshData(
+    mesh_graph=graph,
+    mesh_size=np.full(len(graph.vertices), longest_edge),
+    description=description or [],
+    license=license or [],
   )
 
 

@@ -27,8 +27,6 @@ from graphcast.mesh_graph import MeshGraph
 SEMI_MAJOR_AXIS = 6_378_137.0
 FLATTENING = 1 / 298.257223563
 ECCENTRICITY_SQUARED = FLATTENING * (2 - FLATTENING)
-# Mean Earth radius, the scale of the query radius.
-EARTH_RADIUS = 6_371_000.0
 
 
 def _wgs84_to_ecef(latitude: np.ndarray, longitude: np.ndarray) -> np.ndarray:
@@ -81,31 +79,36 @@ def _grid_positions(grid_latitude, grid_longitude) -> np.ndarray:
 
 
 @pytest.mark.parametrize("masked", [False, True], ids=["no_mask", "partial_mask"])
-def test_radius_query_indices(grid, partial_mask, masked):
-  """Encoder edges are exactly the (grid point, mesh vertex) pairs within the radius, as a brute-force search finds
-  them, and every valid grid point is reached; masked points are left out. With the unit-sphere mesh of the legacy test
-  the query found no edges at all."""
+@pytest.mark.parametrize("varying", [False, True], ids=["uniform_radius", "radius_per_vertex"])
+def test_radius_query_indices(grid, partial_mask, masked, varying):
+  """Encoder edges are exactly the (grid point, mesh vertex) pairs whose distance (straight line) is within the radius
+  of the mesh vertex, as a brute-force search finds them; masked points are left out. With GraphCast's radius (0.6 of
+  the longest finest edge, more than the circumradius of a face) every valid grid point is reached. A radius per
+  vertex is centred on the mesh vertices. (The legacy test's unit-sphere mesh found no edges at all.)"""
   grid_latitude, grid_longitude = grid
-  mesh = _earth_mesh()
-  radius = 0.2 * EARTH_RADIUS
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(3)
+  mesh = mesh_data.mesh_graph
+  assert mesh_data.mesh_size is not None
+  radius = 0.6 * mesh_data.mesh_size
+  if varying:
+    # Larger balls around the northern vertices.
+    radius = np.where(mesh.vertices[:, 2] > 0, 1.5 * radius, radius)
   mask = partial_mask if masked else None
 
   grid_senders, mesh_receivers = mesh_connectivity.radius_query_indices(
     grid_latitude=grid_latitude, grid_longitude=grid_longitude, mesh=mesh, radius=radius, mask=mask
   )
 
-  # The edges are exactly the (valid grid point, mesh vertex) pairs within the radius, in a straight line.
   distances = np.linalg.norm(
     _grid_positions(grid_latitude, grid_longitude)[:, None, :] - mesh.vertices[None, :, :], axis=-1
   )
-  within = distances <= radius
+  within = distances <= radius[None, :]
   if masked:
     within &= partial_mask.reshape([-1, 1])
   expected = set(zip(*np.nonzero(within), strict=True))
   actual = set(zip(grid_senders.tolist(), mesh_receivers.tolist(), strict=True))
   assert len(actual) == len(grid_senders)
   assert actual == expected
-  assert expected
   # Every valid grid point is reached.
   valid = np.flatnonzero(partial_mask) if masked else np.arange(grid_latitude.size * grid_longitude.size)
   np.testing.assert_array_equal(np.unique(grid_senders), valid)

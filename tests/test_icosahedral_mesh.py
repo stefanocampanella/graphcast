@@ -113,6 +113,21 @@ def test_get_multi_mesh_graph(splits):
   np.testing.assert_allclose(mesh.vertices, expected, rtol=0, atol=1e-3)
 
 
+def test_get_multi_mesh_data():
+  """The multi-mesh data hold the projected multi-mesh and GraphCast's mesh size: the longest edge of the finest mesh
+  (straight line, metres) at every vertex."""
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(2, description=["d"], license=["l"])
+
+  graph = icosahedral_mesh.get_multi_mesh_graph(2)
+  np.testing.assert_array_equal(mesh_data.mesh_graph.vertices, graph.vertices)
+  senders, receivers = mesh_graph.faces_to_edges(graph.faces)
+  longest = np.linalg.norm(graph.vertices[senders] - graph.vertices[receivers], axis=-1).max()
+  np.testing.assert_array_equal(mesh_data.mesh_size, np.full(len(graph.vertices), longest))
+  # About 2,000 km at 2 splits, a quarter of the icosahedron's edge (7,000 km on the Earth).
+  assert 1.9e6 < longest < 2.2e6
+  assert mesh_data.description == ["d"] and mesh_data.license == ["l"]
+
+
 def test_get_multi_mesh_graph_on_the_unit_sphere():
   """Asked for the unit sphere, the multi-mesh keeps the vertices of the hierarchy."""
   merged = mesh_graph.merge_meshes(icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(2))
