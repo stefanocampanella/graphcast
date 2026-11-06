@@ -295,12 +295,10 @@ def assign_coords(
   jax_coords = existing_jax_coords | jax_coords
   x = x.drop_vars(existing_jax_coords.keys())
 
-  # We need to ensure that xarray doesn't try to create an index for
-  # coordinates with the same name as a dimension, since this will fail if
-  # given a wrapped JAX tracer.
-  # It appears the only way to avoid this is to name them differently to any
-  # dimension name, then rename them back afterwards.
-  renamed_jax_coords = {}
+  # xarray must not create an index for coordinates with the same name as a
+  # dimension, since this fails if given a wrapped JAX tracer: they are
+  # assigned as `xarray.Coordinates` without indexes.
+  jax_coord_vars = {}
   for name, coord in jax_coords.items():
     if isinstance(coord, xarray.DataArray):
       coord = coord.variable
@@ -332,16 +330,10 @@ def assign_coords(
     # determine which coords need to be treated as leaves of the flattened
     # structure vs static data.
     coord.attrs[_JAX_COORD_ATTR_NAME] = True
-    renamed_jax_coords[f"__NONINDEX_{name}"] = coord
+    jax_coord_vars[name] = coord
 
-  x = x.assign_coords(coords=coords | renamed_jax_coords)
-
-  rename_back_mapping = {f"__NONINDEX_{name}": name for name in jax_coords}
-  if isinstance(x, xarray.Dataset):
-    # Using 'rename' doesn't work if renaming to the same name as a dimension.
-    return x.rename_vars(rename_back_mapping)
-  else:  # DataArray
-    return x.rename(rename_back_mapping)
+  x = x.assign_coords(coords=coords)
+  return x.assign_coords(xarray.Coordinates(jax_coord_vars, indexes={}))
 
 
 def get_jax_coords(x: DatasetOrDataArray) -> Mapping[Hashable, Any]:

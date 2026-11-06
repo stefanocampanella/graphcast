@@ -325,7 +325,7 @@ def test_jit_function_with_dataset_and_jax_coords():
   assert isinstance(outputs.coords["lon"].data, xarray_jax.JaxArrayWrapper)
   assert "lon" not in outputs.indexes
 
-  assert outputs.dims == inputs.dims
+  assert outputs.sizes == inputs.sizes
   chex.assert_trees_all_equal(outputs.coords["lat"], inputs.coords["lat"])
   # Check our computations with the coordinate values worked:
   chex.assert_trees_all_equal(
