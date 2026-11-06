@@ -1,4 +1,4 @@
-"""Tests of the linear basis functions of a mesh at points and on the grid (basis_utils, graphcast compute-grid-basis)."""
+"""Tests of the linear basis functions of a mesh at points and on the grid (basis_utils, compute-grid-basis)."""
 
 import numpy as np
 import pytest
@@ -30,10 +30,10 @@ def mask() -> np.ndarray:
 
 
 def test_basis_is_the_linear_interpolation_in_the_decoder_face(mesh, mask):
-  """Each ocean grid point gets the barycentric weights of its closest point in the mesh face that contains it (the
-  face the decoder connects it to): 3 non-negative weights per row summing to 1, on the vertices of that face, which
-  give the closest point back. The draft interpolated a dense identity matrix (2 TB for the 25 km mesh) on a new
-  triangulation of a stereographic projection."""
+  """Each ocean grid point gets the barycentric weights of its closest point in the mesh face that contains it (the face
+  the decoder connects it to): 3 non-negative weights per row summing to 1, on the vertices of that face, which give the
+  closest point back. The draft interpolated a dense identity matrix (2 TB for the 25 km mesh) on a new triangulation of
+  a stereographic projection."""
   # In float64, to check the geometry (float32 weights place the closest point within centimetres on these faces).
   basis = basis_utils.compute_grid_basis(mesh, latitudes=LAT, longitudes=LON, mask=mask, dtype=np.float64)
 
@@ -73,8 +73,8 @@ def test_basis_at_the_mesh_vertices_is_the_identity(mesh):
 
 def test_basis_at_the_vertices_of_a_finer_mesh():
   """Mesh to mesh: at the vertices of the next refinement of an icosahedral mesh (on the unit sphere, where the new
-  vertices lie radially above the midpoints of the coarse edges), the coarse basis is 1 at the shared vertices and
-  (1/2, 1/2) on the two ends of the split edge, e.g. for hierarchical meshes."""
+  vertices lie radially above the midpoints of the coarse edges), the coarse basis is 1 at the shared vertices and (1/2,
+  1/2) on the two ends of the split edge, e.g. for hierarchical meshes."""
   _, fine = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(1)
   coarse = icosahedral_mesh.get_multi_mesh_graph(0, crs=cartesian_unit_sphere_crs)
   basis = basis_utils.compute_basis(coarse, fine.vertices.astype(np.float64), dtype=np.float64).toarray()
@@ -93,8 +93,8 @@ def test_basis_at_the_vertices_of_a_finer_mesh():
 
 
 def test_compute_cli(tmp_path, mask_path):
-  """`graphcast compute-grid-basis` reads the mesh and the mask written by graphcast download-mask, and saves the basis on the
-  ocean points of that grid; an existing output is replaced only with --overwrite."""
+  """`graphcast compute-grid-basis` reads the mesh and the mask written by graphcast download-mask, and saves the basis
+  on the ocean points of that grid; an existing output is replaced only with --overwrite."""
   mesh_path = tmp_path / "mesh.msh"
   write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(1), mesh_path)
   output = tmp_path / "basis.npz"
