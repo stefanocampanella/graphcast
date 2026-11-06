@@ -89,3 +89,57 @@ def test_forcings_without_grid_dimensions(tiny_model):
   params = transformed.init(jax.random.key(0), inputs, targets, forcings)
   predictions = transformed.apply(params, None, inputs, targets, forcings)
   assert predictions["zos"].shape == targets["zos"].shape
+
+
+def _graphcast(tiny_model, mask=None, **options):
+  return GraphCast(
+    _model_config=tiny_model.model_config,
+    _task_config=tiny_model.task,
+    _grid_lat=tiny_model.lat,
+    _grid_lon=tiny_model.lon,
+    _grid_mask=mask,
+    _mesh_data=tiny_model.mesh_data,
+    **options,
+  )
+
+
+@pytest.mark.parametrize("options", [{"_remat": True}, {"_edge_chunk_size": 50}], ids=["remat", "edge_chunks"])
+def test_scan_and_unrolled_processor_are_interchangeable(tiny_model, options):
+  """The scanned and unrolled processors (and with rematerialization or edge chunks) have the same parameters and give
+  the same predictions with them, so checkpoints work with either."""
+  inputs, targets, forcings = tiny_model.batch
+  unrolled = hk.transform(lambda i, t, f: _graphcast(tiny_model, _scan=False)(i, t, f))
+  scanned = hk.transform(lambda i, t, f: _graphcast(tiny_model, _scan=True, **options)(i, t, f))
+  params = unrolled.init(jax.random.key(0), inputs, targets, forcings)
+  assert jax.tree.structure(scanned.init(jax.random.key(0), inputs, targets, forcings)) == jax.tree.structure(params)
+
+  expected = unrolled.apply(params, None, inputs, targets, forcings)
+  actual = scanned.apply(params, None, inputs, targets, forcings)
+  np.testing.assert_allclose(actual["zos"].data, expected["zos"].data, rtol=1e-5, atol=1e-6)
+
+
+def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
+  """With connected_grid_nodes, grid points connected to no mesh vertex (here the masked ones) are not graph nodes:
+  predictions at the ocean points are unchanged, and zero at the masked ones."""
+  inputs, targets, forcings = tiny_model.batch
+  mask = tiny_model.mask.values
+  config = dataclasses.replace(tiny_model.model_config, connected_grid_nodes=True)
+
+  def predict(connected):
+    return GraphCast(
+      _model_config=config if connected else tiny_model.model_config,
+      _task_config=tiny_model.task,
+      _grid_lat=tiny_model.lat,
+      _grid_lon=tiny_model.lon,
+      _grid_mask=mask,
+      _mesh_data=tiny_model.mesh_data,
+    )
+
+  everything = hk.transform(lambda i, t, f: predict(False)(i, t, f))
+  connected = hk.transform(lambda i, t, f: predict(True)(i, t, f))
+  params = everything.init(jax.random.key(0), inputs, targets, forcings)
+
+  expected = np.asarray(everything.apply(params, None, inputs, targets, forcings)["zos"].data)
+  actual = np.asarray(connected.apply(params, None, inputs, targets, forcings)["zos"].data)
+  np.testing.assert_allclose(actual[..., mask], expected[..., mask], rtol=1e-5, atol=1e-6)
+  np.testing.assert_array_equal(actual[..., ~mask], 0.0)
