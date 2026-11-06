@@ -1,4 +1,6 @@
-# Copyright 2026 Stefano Campanella.
+# Copyright 2023 DeepMind Technologies Limited.
+# Copyright 2025 Stefano Campanella.
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Contains code from GraphCast's icosahedral_mesh.py (merge_meshes, faces_to_edges), modified by Stefano
+# Campanella; the changes are in the git history.
 # TODO: switch from np.ndarray to chex.Array in type hints
 # TODO: MeshGraph and TriangleMesh share most of the code, refactor
 # TODO: TriangleMesh could easily hold possibly square meshes, not just triangular ones.
