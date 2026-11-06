@@ -516,6 +516,9 @@ def _wrap(da: xarray.DataArray, longitude_dim="lon"):
 
 def fix_longitude(da: xarray.DataArray, longitude_dim: str = "lon"):
   """Wraps longitudes around -180 to 180 degrees."""
+  if not np.any(da[longitude_dim].to_numpy() > 180.0):
+    # Already wrapped.
+    return da
   da_wrapped = _wrap(da, longitude_dim=longitude_dim)
   longitude_orig = da[longitude_dim].to_numpy()
   longitude_orig = xarray.DataArray(
