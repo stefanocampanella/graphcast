@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from graphcast import icosahedral_mesh, mesh_graph
+from graphcast.gis_utils import _cartesian_wkt
 
 
 @pytest.mark.parametrize("splits", list(range(4)))
@@ -38,6 +39,7 @@ def test_merge_meshes(splits):
   np.testing.assert_array_equal(mesh.faces, mesh_hierarchy[-1].faces)
   np.testing.assert_array_equal(mesh.edges[0], expected_senders)
   np.testing.assert_array_equal(mesh.edges[1], expected_receivers)
+  assert mesh.spatial_reference_system == mesh_hierarchy[-1].spatial_reference_system
 
 
 def test_merge_meshes_rejects_non_nested_vertices():
@@ -46,6 +48,22 @@ def test_merge_meshes_rejects_non_nested_vertices():
   shuffled = mesh_graph.TriangleMesh(vertices=fine.vertices[::-1], faces=fine.faces)
   with pytest.raises(AssertionError):
     mesh_graph.merge_meshes([coarse, shuffled])
+
+
+def test_merge_meshes_rejects_mixed_spatial_reference_systems():
+  """All levels must be in the same coordinates: a level in another spatial reference system is rejected."""
+  coarse, fine = icosahedral_mesh.get_hierarchy_of_triangular_meshes_for_sphere(splits=1)
+  relabelled = mesh_graph.TriangleMesh(
+    vertices=fine.vertices, faces=fine.faces, spatial_reference_system=_cartesian_wkt
+  )
+  with pytest.raises(AssertionError):
+    mesh_graph.merge_meshes([coarse, relabelled])
+
+
+def test_graph_defaults_to_earth_centred_coordinates():
+  """Like meshes, a graph's vertices default to WGS84 Earth-centred coordinates (the WKT, not a registry name)."""
+  graph = mesh_graph.Graph(vertices=np.zeros((2, 3)), edges=(np.array([0]), np.array([1])))
+  assert graph.spatial_reference_system == _cartesian_wkt
 
 
 def test_faces_to_edges():

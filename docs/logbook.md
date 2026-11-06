@@ -974,3 +974,22 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `tests/test_mesh_graph.py` with the current semantics; `mesh_connectivity` tests on an Earth-sized mesh against the
   WGS84 formulas, with brute-force checks of the radius query and containing faces, with and without a mask; the
   missing-coordinate test of `data_utils` names the missing coordinate.
+
+## 2026-11-06 10:30: review of group 1, icosahedral multi-mesh on the ellipsoid
+
+- **Review:** project the icosahedral mesh onto the ellipsoid (unit sphere → WGS84 Earth-centred coordinates) instead
+  of scaling it to a sphere; fix the spatial reference systems of `mesh_graph.Graph` (the name "cartesian" instead of
+  the WKT) and of the icosahedral meshes (labelled WGS84 though on the unit sphere); add a tested function that merges
+  the hierarchy, projects it and returns a `MeshGraph`; investigate whether the model then runs on it.
+- **Changes:** `icosahedral_mesh.get_multi_mesh_graph(splits, crs=cartesian_crs)`; icosahedral meshes carry the
+  unit-sphere WKT; `merge_meshes` keeps (and requires a common) spatial reference system; `Graph` defaults to the WGS84
+  WKT; the unused `radius` argument of `get_hierarchy_of_triangular_meshes_for_sphere` (a sphere scaling with a wrong
+  WKT) removed; the connectivity tests use the projected multi-mesh.
+- **Insights:** the unit sphere → WGS84 transform keeps each vertex's latitude and longitude (geodetic = spherical, no
+  datum shift) and puts it on the ellipsoid (6357–6378 km). No other code converts the unit sphere to WGS84
+  Earth-centred coordinates: seamsh meshes are written in them directly, `model_utils` uses the unit sphere only for
+  node features (from latitude and longitude). Investigation (`claude-work/…/icosahedral_model.py`): a tiny GraphCast
+  runs forward on the 642-vertex multi-mesh with a 5° masked grid, with and without scan, given a per-vertex mesh size
+  (longest finest-mesh edge at the vertex: the multi-mesh has none). Gaps for experiments: training reads meshes only
+  from `.msh` files (`MeshConfig.path`), which store triangles, not the multi-mesh's coarser edges; and `get_transform`
+  warns about non-zero elevations of 1e-8–1e-7 m (absolute tolerance 1e-8, below float32 rounding).
