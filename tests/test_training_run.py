@@ -8,7 +8,6 @@ one-process "cluster" on localhost.
 import os
 import pathlib
 import re
-import socket
 import subprocess
 import sys
 
@@ -24,6 +23,7 @@ from graphcast.model import CheckPoint
 REPOSITORY = pathlib.Path(__file__).parents[1]
 PRODUCTION_CONFIG = REPOSITORY / "configs" / "training" / "production_run.toml"
 TRAINING_STEPS = 4
+INPUT_VARIABLES = '["thetao", "zos", "deptho", "glorys_mask", "lsm", "year_progress_sin", "year_progress_cos"]'
 
 # Runs graphcast train in a fresh process: jax.distributed with one process on localhost, then the CLI (its own call
 # to jax.distributed.initialize, which needs a cluster to detect, is skipped).
@@ -64,10 +64,7 @@ def setup(standardized_path, mask_path, tmp_path_factory) -> dict[str, pathlib.P
   text = PRODUCTION_CONFIG.read_text()
   for pattern, replacement in (
     (r"^training_steps = [\d_]+", "training_steps = STEPS"),
-    (
-      r"^input_variables = \[.*?\]",
-      'input_variables = ["thetao", "zos", "deptho", "glorys_mask", "lsm", "year_progress_sin", "year_progress_cos"]',
-    ),
+    (r"^input_variables = \[.*?\]", f"input_variables = {INPUT_VARIABLES}"),
     (r"^target_variables = \[.*?\]", 'target_variables = ["thetao", "zos"]'),
     (r"^forcing_variables = \[.*?\]", 'forcing_variables = ["year_progress_sin", "year_progress_cos"]'),
     (r"^latent_size = \d+", "latent_size = 8"),
