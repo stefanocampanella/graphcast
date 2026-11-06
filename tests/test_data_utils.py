@@ -309,3 +309,23 @@ def test_add_tisr_var_fails_with_batch_dim_size_greater_than_one():
 
   with pytest.raises(ValueError, match=r"cannot select a dimension"):
     data_utils.add_tisr_var(data)
+
+
+def test_fix_longitude_wraps_to_the_dateline():
+  """Longitudes in [0, 360) become [-180, 180]: the data are rolled to start at the first longitude past 180°."""
+  lon = np.array([0.0, 90.0, 180.0, 270.0])
+  data = xa.DataArray(np.array([[1.0, 2.0, 3.0, 4.0]]), dims=("lat", "lon"), coords={"lat": [0.0], "lon": lon})
+
+  fixed = data_utils.fix_longitude(data)
+
+  np.testing.assert_array_equal(fixed["lon"].values, [-90.0, 0.0, 90.0, 180.0])
+  np.testing.assert_array_equal(fixed.values, [[4.0, 1.0, 2.0, 3.0]])
+  # The same values at the same places.
+  np.testing.assert_array_equal(fixed.sel(lon=-90.0).values, data.sel(lon=270.0).values)
+
+
+def test_fix_longitude_of_wrapped_data_is_a_no_op():
+  """Data already in [-180, 180] are returned as they are (np.argwhere found no longitude past 180°: IndexError)."""
+  lon = np.array([-90.0, 0.0, 90.0])
+  data = xa.DataArray(np.array([[1.0, 2.0, 3.0]]), dims=("lat", "lon"), coords={"lat": [0.0], "lon": lon})
+  xa.testing.assert_identical(data_utils.fix_longitude(data), data)
