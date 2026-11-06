@@ -1,11 +1,17 @@
 """Shared fixtures: small synthetic inputs of the downloader, shaped like the ocean dataset and its statistics."""
 
+import os
 import pathlib
 
 import numpy as np
 import pandas as pd
 import pytest
 import xarray as xr
+
+# Four CPU devices, for the tests of data parallelism (pmap, shard_map). Set before jax is imported (none of the
+# imports above does); the image sets XLA_FLAGS itself, so the flag is appended.
+if "--xla_force_host_platform_device_count" not in os.environ.get("XLA_FLAGS", ""):
+  os.environ["XLA_FLAGS"] = (os.environ.get("XLA_FLAGS", "") + " --xla_force_host_platform_device_count=4").strip()
 
 DEPTH, LAT, LON = 3, 4, 5
 # Download settings matching the synthetic inputs (as configs/download/zarr_*.toml do for the real ones).
