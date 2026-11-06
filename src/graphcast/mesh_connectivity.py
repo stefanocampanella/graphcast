@@ -36,13 +36,12 @@ from graphcast.typed_graph import (
 logger = logging.getLogger(__name__)
 
 
-# TODO: update tests and usage in notebooks (e.g. mesh_comparison.ipynb) to take into account that radius of the Earth
-#  is now used (no longer unit sphere)
-# FIXME: implement this using pyproj
+# TODO: update usage in notebooks (e.g. mesh_comparison.ipynb): coordinates are on the Earth, no longer the unit sphere.
 def _grid_lat_lon_to_coordinates(
   grid_latitude: np.ndarray, grid_longitude: np.ndarray
 ) -> np.ndarray:
-  """Lat [num_lat] lon [num_lon] to 3d coordinates [num_lat, num_lon, 3]."""
+  """Lat [num_lat] lon [num_lon] to WGS84 Earth-centred coordinates in metres [num_lat, num_lon, 3] (`cartesian_crs`,
+  the coordinates of the meshes)."""
   num_lat = len(grid_latitude)
   num_lon = len(grid_longitude)
   lon, lat = np.meshgrid(grid_longitude, grid_latitude, indexing="ij")
@@ -71,17 +70,18 @@ def radius_query_indices(
   Args:
     grid_latitude: Latitude values for the grid [num_lat_points]
     grid_longitude: Longitude values for the grid [num_lon_points]
-    mesh: Mesh object.
-    radius: Radius of connectivity in R3. for a sphere of unit radius.
-    mask: Boolean mask of shape [num_lat_points, num_lon_points] to filter.
+    mesh: Mesh object, in the coordinates of the grid (WGS84 Earth-centred, metres).
+    radius: Radius of connectivity (straight line, metres), one for all mesh vertices or one per vertex
+      [num_mesh_vertices]: the balls are centred on the mesh vertices.
+    mask: Boolean mask of shape [num_lat_points, num_lon_points]: only unmasked grid points are connected.
 
   Returns:
-    tuple with `grid_indices` and `mesh_indices` indicating edges between the
-    grid and the mesh such that the distances in a straight line (not geodesic)
-    are smaller than or equal to `radius`.
-    * grid_indices: Indices of shape [num_edges], that index into a
+    tuple with `grid_senders` and `mesh_receivers` indicating edges from the
+    grid to the mesh such that the distances in a straight line (not geodesic)
+    are smaller than or equal to the radius of the mesh vertex.
+    * grid_senders: Indices of shape [num_edges], that index into a
       [num_lat_points, num_lon_points] grid, after flattening the leading axes.
-    * mesh_indices: Indices of shape [num_edges], that index into mesh.vertices.
+    * mesh_receivers: Indices of shape [num_edges], that index into mesh.vertices.
   """
   if mask is None:
     mask = np.ones((grid_latitude.shape[0], grid_longitude.shape[0]), dtype=bool)
@@ -125,16 +125,16 @@ def get_mesh_to_grid_edges(
   Args:
     grid_latitude: Latitude values for the grid [num_lat_points]
     grid_longitude: Longitude values for the grid [num_lon_points]
-    mesh: Mesh object.
-    mask: Boolean mask of shape [num_lat_points, num_lon_points] to filter.
+    mesh: Mesh object, in the coordinates of the grid (WGS84 Earth-centred, metres).
+    mask: Boolean mask of shape [num_lat_points, num_lon_points]: only unmasked grid points are connected.
 
   Returns:
-    tuple with `grid_indices` and `mesh_indices` indicating edges between the
-    grid and the mesh vertices of the triangle that contain each grid point.
-    The number of edges is always num_lat_points * num_lon_points * 3
-    * grid_indices: Indices of shape [num_edges], that index into a
+    tuple with `mesh_senders` and `grid_receivers` indicating edges from the
+    vertices of the mesh face closest to each unmasked grid point (the face that
+    contains it) to that point. The number of edges is 3 * the number of unmasked points.
+    * mesh_senders: Indices of shape [num_edges], that index into mesh.vertices.
+    * grid_receivers: Indices of shape [num_edges], that index into a
       [num_lat_points, num_lon_points] grid, after flattening the leading axes.
-    * mesh_indices: Indices of shape [num_edges], that index into mesh.vertices.
   """
   # [num_grid_points=num_lat_points * num_lon_points]
   grid_mask = mask.reshape([-1])
@@ -152,7 +152,6 @@ def get_mesh_to_grid_edges(
   return mesh_senders, grid_receivers
 
 
-# TODO: add tests
 # TODO: some notebooks might have used `get_mesh_to_mesh_edges` instead of `get_mesh_to_points_edges`,
 #  both the signature and direction of edges have to be refactore.
 def get_mesh_to_points_edges(
