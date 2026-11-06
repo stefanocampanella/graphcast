@@ -413,6 +413,9 @@ def read_mesh(
       mesh_size_view_tag = view_tag
       break
   if mesh_size_view_tag is None:
+    if mesh_size_tag_name is not None:
+      names = [get_view_name(view_tag) for view_tag in view_tags]
+      raise ValueError(f"No view {mesh_size_tag_name!r} with the mesh size in {mesh_path}, views: {names}")
     data_node_tags = np.empty((0,), dtype=int)
     data = np.empty((0,), dtype=float)
   else:
@@ -445,8 +448,7 @@ def read_mesh(
   data_node_tags = data_node_tags[data_mask]  # [num_valid_node_tags]
   # node_coords index i -> j = data_node_tag_inv_map[i] -> data[j]
   data_node_tags_inv_map = {n: i for (i, n) in enumerate(data_node_tags)}
-  mesh_size = [data[data_node_tags_inv_map[n]] for n in node_tags]
-  mesh_size = np.array(mesh_size)
+  mesh_size = None if mesh_size_view_tag is None else np.array([data[data_node_tags_inv_map[n]] for n in node_tags])
 
   srs_string_type, srs_string = gmsh.model.get_attribute(srs_attribute_name)
   assert srs_string_type.upper() == "WKT"
