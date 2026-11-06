@@ -222,7 +222,8 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
 
   @partial(np.vectorize, otypes=[int])
   def unmasked_to_masked_fn(n: int) -> int:
-    if index := valid_indices_inverse_map.get(n):
+    # Not a truth test: the first unmasked point has index 0.
+    if (index := valid_indices_inverse_map.get(n)) is not None:
       return index
     else:
       if raise_error:
@@ -235,7 +236,6 @@ def get_masking_indices_fns(mask: npt.NDArray[np.bool], raise_error: bool = True
   return unmasked_to_masked_fn, masked_to_unmasked_fn
 
 
-# TODO: add tests
 def get_dummy_xscaling_graph(
   mesh_a: TriangleMesh, mesh_b: TriangleMesh, name_a: str = "mesh_a", name_b: str = "mesh_b"
 ) -> TypedGraph:
@@ -279,8 +279,8 @@ def get_dummy_xscaling_graph(
     return edge_set
 
   edges = {
-    EdgeSetKey(name_a, (name_a, name_a)): _get_mesh_edge_set(mesh_b),
-    EdgeSetKey(name_b, (name_b, name_b)): _get_mesh_edge_set(mesh_a),
+    EdgeSetKey(name_a, (name_a, name_a)): _get_mesh_edge_set(mesh_a),
+    EdgeSetKey(name_b, (name_b, name_b)): _get_mesh_edge_set(mesh_b),
     EdgeSetKey(name_a + "_to_" + name_b, (name_a, name_b)): _get_mesh_to_mesh_edge_set(
       mesh_a, mesh_b
     ),
