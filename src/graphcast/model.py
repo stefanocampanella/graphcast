@@ -871,7 +871,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # xarray `Dataset` (batch, time, lat, lon, level, multiple vars)
     # to xarray `DataArray` (batch, lat, lon, channels)
     stacked_inputs = model_utils.dataset_to_stacked(inputs)
-    stacked_forcings = model_utils.dataset_to_stacked(forcings)
+    # Forcings off the grid (e.g. only year progress) are broadcast to the grid of the inputs.
+    stacked_forcings = model_utils.dataset_to_stacked(forcings, sizes={**inputs.sizes, **forcings.sizes})
     stacked_inputs = xarray.concat([stacked_inputs, stacked_forcings], dim="channels")
 
     # xarray `DataArray` (batch, lat, lon, channels)
