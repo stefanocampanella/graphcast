@@ -15,9 +15,7 @@ import xarray as xr
 from jax import checkpoint_policies as cp
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import sync_global_devices
-from jax.experimental.shard_map import shard_map
 from jax.sharding import AxisType, Mesh
-from jax.sharding import PartitionSpec as P
 
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
@@ -292,50 +290,3 @@ def save_model(
       file = typing.cast(typing.BinaryIO, file)
       ckpt_dump(file, graphcast_ckpt)
   sync_global_devices("save_model")
-
-
-# get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
-# However, in the case of FSDS, there is the need to have a different rng key for each element of the batch.
-# However, it turns out to be non-trivial. See:
-# https://github.com/jax-ml/jax/discussions/22862
-# https://github.com/jax-ml/jax/issues/22860
-# Fold-in trick taken from
-# https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/scaling/JAX/data_parallel_fsdp.html
-# might not work when using a global mesh, and produce errors like the following.
-#
-#    File ".../jax/_src/prng.py", line 628, in random_fold_in
-#      return random_fold_in_p.bind(keys, msgs)
-#             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-#   NotImplementedError: Closing over inputs to shard_map where the input is sharded on `Explicit` axes is not
-#   implemented. As a workaround, please pass those inputs as an argument to shard_map.
-#   Got input with shape key<fry>[]({Explicit: ('batch',)})
-#
-# See also: https://github.com/jax-ml/jax/issues/29162
-#
-# An alternative to fold-in might be to split the rng key and shard it, e.g.,
-#   rngs = jax.random.split(rng, device_mesh.shape[sharding_dim])
-#   rngs = jax.device_put(rngs, device_mesh)
-# However, the previous might produce the following error related to addressable devices and require more thinking.
-
-
-def fsdp_map(local_fn, mesh: jax.sharding.Mesh, batch_dim_name: str = "batch"):
-  def _local_grad_fn(params, rng_key, data, static_data):
-    local_rng_key = jax.random.fold_in(rng_key, jax.lax.axis_index(batch_dim_name))
-    return local_fn(params, local_rng_key, data, static_data)
-
-  def _pmean_grad_fn(params, rng_key, data, static_data):
-    return jax.lax.pmean(
-      _local_grad_fn(params, rng_key, data, static_data), axis_name=batch_dim_name
-    )
-
-  def global_fn(params, rng_key, data, static_data):
-    _global_grad_fn = shard_map(
-      _pmean_grad_fn,
-      mesh=mesh,
-      in_specs=(P(), P(), P(batch_dim_name), P()),
-      out_specs=P(),
-      check_rep=False,
-    )
-    return _global_grad_fn(params, rng_key, data, static_data)
-
-  return global_fn
