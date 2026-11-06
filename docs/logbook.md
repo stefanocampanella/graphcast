@@ -1105,3 +1105,20 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Result:** 446 tests, 3 min 54 s with coverage through `apptainer run` (login node); coverage 94 % (53 % before
   group 1); every module above 80 % except `predictor_base` (abstract) and the CLI group `__init__`.
 - **Candidate for deletion:** `cli_utils.DictParamType` is unused (tested meanwhile); `Configs` is used by notebooks.
+
+## 2026-11-06 20:00: mesh node embedder padding; PGLE
+
+- **Request:** is the zero padding of the mesh node inputs (`model.py`, "to make sure capacity of the embedded is
+  identical", from upstream GraphCast) needed? Guess from the code first, then measure; then why the PGLE profile was
+  empty, fix it and report gains. Delete `cli_utils.DictParamType` (done).
+- **Guess (code only):** the mesh node embedder has its own parameters, so the zero columns add nothing forward and
+  get zero gradients; they only make the first layer's initial weights smaller (fan-in C + 4 = 228 instead of 4 at 50
+  levels, std 7.5x smaller) and cost a wasted matrix product. Expected: no difference.
+- **Experiment** (`claude-work/…/pad_check`, `training2647`): 120 km × 8, 50 levels, 2000 steps, validation every 500,
+  seeds 42 and 43, pad (current) vs nopad (positions only); jobs 2722806–2722809 on four nodes. Validation loss at step
+  1999: pad 0.11303 / 0.11251, nopad 0.11309 / 0.11274 (+0.13 % on the mean, seeds 0.46 % apart); training losses and
+  per-variable validation losses the same within the seed spread. Compute 0.471 / 0.489 vs 0.448 / 0.454 s per step,
+  but on four nodes; the same node, alternating (job 2723585, 300 steps each): pad 0.433 / 0.427 s, nopad 0.431 /
+  0.415 s (median), within run-to-run noise. XLA memory 54.0 GiB. As guessed: no difference.
+- **Change:** the padding is removed (maintainer: compatibility with older checkpoints is not a priority). The mesh
+  node embedder's first layer has 4 inputs: checkpoints and models saved before cannot be loaded.

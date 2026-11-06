@@ -143,3 +143,13 @@ def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
   actual = np.asarray(connected.apply(params, None, inputs, targets, forcings)["zos"].data)
   np.testing.assert_allclose(actual[..., mask], expected[..., mask], rtol=1e-5, atol=1e-6)
   np.testing.assert_array_equal(actual[..., ~mask], 0.0)
+
+
+def test_mesh_nodes_are_embedded_from_their_positions_only(tiny_model):
+  """The mesh node embedder sees the 4 position features of the mesh nodes, not zeros for the grid node input channels
+  (upstream GraphCast's padding, which changed only the initialization)."""
+  inputs, targets, forcings = tiny_model.batch
+  transformed = hk.transform(lambda i, t, f: _graphcast(tiny_model)(i, t, f))
+  params = transformed.init(jax.random.key(0), inputs, targets, forcings)
+  (name,) = [name for name in params if "mesh_node_embedder" in name and name.endswith("linear_0")]
+  assert params[name]["w"].shape[0] == 4
