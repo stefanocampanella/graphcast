@@ -1011,3 +1011,13 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   group `Coastline`. CLI → `.msh` → `read_mesh_data` → tiny GraphCast forward works, with and without scan. The legacy
   test's radius 0.2 (unit sphere, 3 splits) came from the original GraphCast test, about twice GraphCast's 0.6 × longest
   finest edge (0.099); 0.6 exceeds a face's circumradius (L/√3 ≈ 0.577 L), so every grid point is connected.
+
+## 2026-11-06 11:15: make-icosahedral-mesh reads a config
+
+- **Review:** the command takes a configuration file (splits, description, license) committed in `configs/mesh`, as
+  the ocean meshes and the other commands do; why the underscore in `license_`?
+- **Changes:** `mesh_config.IcosahedralMeshConfig` (unknown keys rejected, `splits` non-negative, also `model_name`
+  and `view_tag_name`); `graphcast make-icosahedral-mesh CONFIG OUTPUT [--overwrite]`; `configs/mesh/icosahedral_6.toml`
+  (GraphCast's 6 refinements, licensed CC BY-NC-SA 4.0 like the ocean meshes): 40,962 vertices, 327,660 directed
+  edges, finest edges 110–132 km, mesh size 132 km, 11.6 MB, reads back without boundary. The `license_` option is
+  gone with the config (the underscore avoided shadowing the built-in `license`, which ruff does not check here).

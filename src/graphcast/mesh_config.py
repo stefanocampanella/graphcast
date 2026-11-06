@@ -1,9 +1,9 @@
-"""Validated settings of the ocean mesh generator (graphcast make-ocean-mesh)."""
+"""Validated settings of the mesh generators (graphcast make-ocean-mesh and make-icosahedral-mesh)."""
 
 import pathlib
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, PositiveFloat, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, NonNegativeInt, PositiveFloat, model_validator
 
 from graphcast.gis_utils import CRSName
 
@@ -142,6 +142,16 @@ class MeshGenerationConfig(ApplicationConfig):
     if self.view_tag_name in names:
       raise ValueError(f"view_tag_name {self.view_tag_name!r} is also the name of a field")
     return self
+
+
+class IcosahedralMeshConfig(ApplicationConfig):
+  """Settings of graphcast make-icosahedral-mesh: the icosahedral multi-mesh refined `splits` times."""
+
+  description: str = ""
+  license: str = ""
+  splits: NonNegativeInt
+  model_name: str = "IcosahedralMesh"
+  view_tag_name: str = Field(default="MeshSize", description="Name of the view holding the mesh size at the nodes")
 
 
 def field_arguments(field: BaseModel, prefix: pathlib.Path | None = None) -> dict[str, Any]:

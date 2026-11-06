@@ -12,7 +12,12 @@ from pydantic import ValidationError
 from graphcast import cli_utils
 from graphcast.geospatial_mesh import make_ocean_mesh
 from graphcast.geospatial_mesh_utils import read_mesh_data
-from graphcast.mesh_config import MeshGenerationConfig, ShoreProximityFieldConfig, field_arguments
+from graphcast.mesh_config import (
+  IcosahedralMeshConfig,
+  MeshGenerationConfig,
+  ShoreProximityFieldConfig,
+  field_arguments,
+)
 from graphcast.mesh_graph import faces_to_edges
 
 MESH_CONFIGS = pathlib.Path(__file__).parents[1] / "configs" / "mesh"
@@ -38,15 +43,26 @@ def test_defaults():
   assert configs.coarsen_boundaries.x0 == (0.0, 0.0) and configs.coarsen_boundaries.x0_projection == "stereographic"
 
 
-@pytest.mark.parametrize("path", sorted(MESH_CONFIGS.glob("*.toml")), ids=lambda path: path.name)
+@pytest.mark.parametrize(
+  "path", sorted(set(MESH_CONFIGS.glob("*.toml")) - set(MESH_CONFIGS.glob("icosahedral_*.toml"))), ids=lambda p: p.name
+)
 def test_shipped_configs_are_valid(path):
-  """Every shipped mesh config validates, and a uniform config's name and description give its value in km."""
+  """Every shipped ocean mesh config validates, and a uniform config's name and description give its value in km."""
   configs = cli_utils.read_configs(path, schema=MeshGenerationConfig)
   if path.name.startswith("uniform_") and path.stem.endswith("km"):
     (field,) = configs.fields
     km = int(path.stem.removeprefix("uniform_").removesuffix("km"))
     assert field.name == "uniform" and field.value == km * 1000
     assert f"value of {km} km" in " ".join(configs.description.split())
+
+
+@pytest.mark.parametrize("path", sorted(MESH_CONFIGS.glob("icosahedral_*.toml")), ids=lambda path: path.name)
+def test_shipped_icosahedral_configs_are_valid(path):
+  """Every shipped icosahedral mesh config validates, and its name and description give its number of refinements."""
+  configs = cli_utils.read_configs(path, schema=IcosahedralMeshConfig)
+  assert configs.splits == int(path.stem.removeprefix("icosahedral_"))
+  assert f"refined {configs.splits} times" in " ".join(configs.description.split())
+  assert configs.license
 
 
 @pytest.mark.parametrize(

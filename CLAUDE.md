@@ -17,8 +17,11 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 
 - CLI (`src/graphcast/__init__.py`, click): `graphcast train CONFIG.toml OUTPUT TRAIN_CKPT`,
   `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute` (basis),
-  `graphcast make-icosahedral-mesh SPLITS OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
-  ellipsoid, for comparison with the ocean meshes; `mesh.path` of a training config can point to it). Its `.msh`
+  `graphcast make-icosahedral-mesh CONFIG.toml OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
+  ellipsoid, for comparison with the ocean meshes; settings `splits`, `description`, `license` in
+  `configs/mesh/icosahedral_*.toml`, `IcosahedralMeshConfig`; `mesh.path` of a training config can point to the
+  output; `icosahedral_6.toml`, GraphCast's 6 refinements, gives 40,962 vertices, 327,660 directed edges, finest
+  edges 110–132 km, 11.6 MB). Its `.msh`
   holds the finest triangles, the edges of all levels as line elements in the `multi_mesh_edges` physical group (line
   elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. A tiny
   model runs on it; it has not been trained yet.

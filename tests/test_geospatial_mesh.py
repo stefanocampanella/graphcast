@@ -1,6 +1,7 @@
 """Tests of the icosahedral multi-mesh files: writing (`graphcast make-icosahedral-mesh`) and reading them back."""
 
 import dataclasses
+import pathlib
 
 import gmsh
 import numpy as np
@@ -19,14 +20,19 @@ def _same_crs(wkt_a: str, wkt_b: str) -> bool:
   return pyproj.CRS(wkt_a) == pyproj.CRS(wkt_b)
 
 
+def _write_config(tmp_path: pathlib.Path, extra: str = "") -> pathlib.Path:
+  path = tmp_path / "icosahedral.toml"
+  path.write_text(f'description = "A test mesh"\nlicense = "A test license"\nsplits = {SPLITS}\n' + extra)
+  return path
+
+
 def test_make_icosahedral_mesh(tmp_path):
-  """The CLI writes the multi-mesh so that reading it gives it back: vertices, finest faces, the edges of all levels
-  in order (also those that are not edges of the finest faces), GraphCast's mesh size, no boundary, the spatial
-  reference system, description and license."""
+  """The CLI writes the multi-mesh of the config so that reading it gives it back: vertices, finest faces, the edges
+  of all levels in order (also those that are not edges of the finest faces), GraphCast's mesh size, no boundary, the
+  spatial reference system, description and license."""
   output = tmp_path / "out" / "icosahedral.msh"
   result = CliRunner().invoke(
-    make_icosahedral_mesh,
-    [str(SPLITS), str(output), "--description", "A test mesh", "--license", "A test license", "--log-level", "warning"],
+    make_icosahedral_mesh, [str(_write_config(tmp_path)), str(output), "--log-level", "warning"]
   )
   assert result.exit_code == 0, result.output
 
@@ -50,11 +56,25 @@ def test_make_icosahedral_mesh(tmp_path):
 def test_make_icosahedral_mesh_refuses_existing_output(tmp_path):
   """An existing output is replaced only with --overwrite."""
   output = tmp_path / "icosahedral.msh"
-  output.write_text("")
-  arguments = [str(SPLITS), str(output), "--log-level", "warning"]
+  output.write_text("existing")
+  arguments = [str(_write_config(tmp_path)), str(output), "--log-level", "warning"]
   result = CliRunner().invoke(make_icosahedral_mesh, arguments)
   assert result.exit_code != 0 and "--overwrite" in result.output
+  assert output.read_text() == "existing"
   assert CliRunner().invoke(make_icosahedral_mesh, [*arguments, "--overwrite"]).exit_code == 0
+
+
+@pytest.mark.parametrize(
+  "settings", ["splits = 2\nunknown = 1\n", "splits = -1\n"], ids=["unknown_key", "negative_splits"]
+)
+def test_invalid_icosahedral_config_is_a_click_error(tmp_path, settings):
+  """Unknown keys and a negative number of refinements are reported as a CLI error before anything is written."""
+  config = tmp_path / "icosahedral.toml"
+  config.write_text(settings)
+  output = tmp_path / "icosahedral.msh"
+  result = CliRunner().invoke(make_icosahedral_mesh, [str(config), str(output)])
+  assert result.exit_code != 0 and "Invalid configuration" in result.output
+  assert not output.exists()
 
 
 def test_write_multi_mesh_rejects_a_boundary(tmp_path):
