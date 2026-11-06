@@ -29,9 +29,9 @@ from graphcast.training import train
   help="Enable Grain debug mode",
 )
 def cli(
-    grain_worker_profiling: bool,
-    grain_traceback_filtering: str,
-    grain_debug_mode: bool,
+  grain_worker_profiling: bool,
+  grain_traceback_filtering: str,
+  grain_debug_mode: bool,
 ):
   # Grain reads absl flags, which raise if accessed before parsing (normally done by absl.app.run).
   flags.FLAGS.mark_as_parsed()

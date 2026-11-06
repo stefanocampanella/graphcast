@@ -220,9 +220,7 @@ def get_bipartite_graph_spatial_features(
   num_edges = senders.shape[0]
   dtype = senders_node_lat.dtype
   assert receivers_node_lat.dtype == dtype
-  senders_node_phi, senders_node_theta = lat_lon_deg_to_spherical(
-    node_lon=senders_node_lon, node_lat=senders_node_lat
-  )
+  senders_node_phi, senders_node_theta = lat_lon_deg_to_spherical(node_lon=senders_node_lon, node_lat=senders_node_lat)
   receivers_node_phi, receivers_node_theta = lat_lon_deg_to_spherical(
     node_lon=receivers_node_lon, node_lat=receivers_node_lat
   )
@@ -275,9 +273,7 @@ def get_bipartite_graph_spatial_features(
 
   # TODO: this should probably be deprecated
   if add_edge_receiver_coordinates:
-    edge_phi, edge_theta = lat_lon_deg_to_spherical(
-      receivers_node_lon[receivers], receivers_node_lat[receivers]
-    )
+    edge_phi, edge_theta = lat_lon_deg_to_spherical(receivers_node_lon[receivers], receivers_node_lat[receivers])
     edge_features.append(edge_phi / (2 * np.pi))
     edge_features.append(edge_theta / (2 * np.pi))
 
@@ -450,9 +446,7 @@ class Embedder(hk.Module):
       activate_final=False,
       name=self.name + "_mlp",
     )
-    layer_norm = hk.LayerNorm(
-      axis=-1, create_scale=True, create_offset=True, name=self.name + "_layer_norm"
-    )
+    layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=self.name + "_layer_norm")
     network = hk.Sequential([network, layer_norm])
 
     # Name the output inside the remat, as DeepTypedGraphNet does, so that the remat policy can save or offload it.

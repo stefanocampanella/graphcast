@@ -77,9 +77,7 @@ class Bfloat16Cast(predictor_base.Predictor):
       return self._predictor.loss(inputs, targets, forcings, **kwargs)
 
     with bfloat16_variable_view():
-      loss, scalars = self._predictor.loss(
-        *_all_inputs_to_bfloat16(inputs, targets, forcings), **kwargs
-      )
+      loss, scalars = self._predictor.loss(*_all_inputs_to_bfloat16(inputs, targets, forcings), **kwargs)
 
     if loss.dtype != jnp.bfloat16:
       raise ValueError(f"Expected bfloat16 loss, got {loss.dtype}")
@@ -120,21 +118,15 @@ class Bfloat16Cast(predictor_base.Predictor):
       raise ValueError(f"Expected bfloat16 output, got {predictions_dtype}")
 
     targets_dtype = infer_floating_dtype(targets)  # pytype: disable=wrong-arg-types
-    return tree_map_cast(
-      ((loss, scalars), predictions), input_dtype=jnp.bfloat16, output_dtype=targets_dtype
-    )
+    return tree_map_cast(((loss, scalars), predictions), input_dtype=jnp.bfloat16, output_dtype=targets_dtype)
 
 
 def infer_floating_dtype(data_vars: Mapping[str, chex.Array]) -> np.dtype:
   """Infers a floating dtype from an input mapping of data."""
   dtypes = {v.dtype for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)}
   if len(dtypes) != 1:
-    dtypes_and_shapes = {
-      k: (v.dtype, v.shape) for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)
-    }
-    raise ValueError(
-      f"Did not found exactly one floating dtype {dtypes} in input variables:{dtypes_and_shapes}"
-    )
+    dtypes_and_shapes = {k: (v.dtype, v.shape) for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)}
+    raise ValueError(f"Did not found exactly one floating dtype {dtypes} in input variables:{dtypes_and_shapes}")
   return list(dtypes)[0]
 
 

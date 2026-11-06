@@ -269,12 +269,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
 
     if self._mesh_data.mesh_size is None:
       raise ValueError("The mesh has no mesh size: the query radius of the encoder is a fraction of it")
-    self._query_radius = (
-      self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
-    )
-    self._mesh2grid_edge_normalization_factor = (
-      self._model_config.mesh2grid_edge_normalization_factor
-    )
+    self._query_radius = self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
+    self._mesh2grid_edge_normalization_factor = self._model_config.mesh2grid_edge_normalization_factor
     self._per_variable_weights = self._model_config.per_variable_weights
     self._spatial_features_kwargs = dict(
       add_node_position=False,
@@ -314,9 +310,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       embed_nodes=False,
       embed_edges=False,
       edge_latent_size=dict(grid2mesh=self._model_config.latent_size),
-      node_latent_size=dict(
-        mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size
-      ),
+      node_latent_size=dict(mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size),
       mlp_hidden_size=self._model_config.latent_size,
       mlp_num_hidden_layers=self._model_config.hidden_layers,
       num_message_passing_steps=1,
@@ -374,9 +368,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
       embed_nodes=False,
       embed_edges=False,
       edge_latent_size=dict(mesh2grid=self._model_config.latent_size),
-      node_latent_size=dict(
-        mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size
-      ),
+      node_latent_size=dict(mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size),
       mlp_hidden_size=self._model_config.latent_size,
       mlp_num_hidden_layers=self._model_config.hidden_layers,
       num_message_passing_steps=1,
@@ -520,17 +512,15 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # Precompute structural node and edge features according to config options.
     # Structural features are those that depend on the fixed values of the
     # latitude and longitudes of the nodes.
-    (senders_node_features, receivers_node_features, edge_features) = (
-      model_utils.get_bipartite_graph_spatial_features(
-        senders_node_lat=self._grid_nodes_lat,
-        senders_node_lon=self._grid_nodes_lon,
-        receivers_node_lat=self._mesh_nodes_lat,
-        receivers_node_lon=self._mesh_nodes_lon,
-        senders=senders,
-        receivers=receivers,
-        edge_normalization=None,
-        **self._spatial_features_kwargs,
-      )
+    (senders_node_features, receivers_node_features, edge_features) = model_utils.get_bipartite_graph_spatial_features(
+      senders_node_lat=self._grid_nodes_lat,
+      senders_node_lon=self._grid_nodes_lon,
+      receivers_node_lat=self._mesh_nodes_lat,
+      receivers_node_lon=self._mesh_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      edge_normalization=None,
+      **self._spatial_features_kwargs,
     )
 
     # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
@@ -582,9 +572,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     assert len(senders) == len(receivers) == edge_features.shape[0]
     n_edge = np.array([len(senders)])
     assert n_mesh_node == len(node_features)
-    logger.info(
-      f"Mesh (processor) graph contains: {n_mesh_node[0]} mesh nodes and {n_edge[0]} edges."
-    )
+    logger.info(f"Mesh (processor) graph contains: {n_mesh_node[0]} mesh nodes and {n_edge[0]} edges.")
     mesh_node_set = typed_graph.NodeSet(n_node=n_mesh_node, features=node_features)
     edge_set = typed_graph.EdgeSet(
       n_edge=n_edge,
@@ -610,17 +598,15 @@ class GraphCast(hk.Module, predictor_base.Predictor):
 
     # Precompute structural node and edge features according to config options.
     assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
-    (senders_node_features, receivers_node_features, edge_features) = (
-      model_utils.get_bipartite_graph_spatial_features(
-        senders_node_lat=self._mesh_nodes_lat,
-        senders_node_lon=self._mesh_nodes_lon,
-        receivers_node_lat=self._grid_nodes_lat,
-        receivers_node_lon=self._grid_nodes_lon,
-        senders=senders,
-        receivers=receivers,
-        edge_normalization=self._mesh2grid_edge_normalization_factor,
-        **self._spatial_features_kwargs,
-      )
+    (senders_node_features, receivers_node_features, edge_features) = model_utils.get_bipartite_graph_spatial_features(
+      senders_node_lat=self._mesh_nodes_lat,
+      senders_node_lon=self._mesh_nodes_lon,
+      receivers_node_lat=self._grid_nodes_lat,
+      receivers_node_lon=self._grid_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      edge_normalization=self._mesh2grid_edge_normalization_factor,
+      **self._spatial_features_kwargs,
     )
 
     # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
@@ -764,10 +750,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     grid2mesh_out = grid2mesh_gnn(input_graph)
     latent_mesh_nodes = grid2mesh_out.nodes["mesh_nodes"].features
     latent_grid_nodes = grid2mesh_out.nodes["grid_nodes"].features
-    assert (
-      latent_grid_nodes.shape[0] == self._num_grid_nodes
-      and latent_mesh_nodes.shape[0] == self._num_mesh_nodes
-    )
+    assert latent_grid_nodes.shape[0] == self._num_grid_nodes and latent_mesh_nodes.shape[0] == self._num_mesh_nodes
     return latent_mesh_nodes, latent_grid_nodes
 
   def _run_mesh_gnn(
@@ -802,9 +785,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     nodes = mesh_graph.nodes["mesh_nodes"]
     nodes = nodes._replace(features=latent_mesh_nodes)
 
-    input_graph = mesh_graph._replace(
-      edges={mesh_edges_key: new_edges}, nodes={"mesh_nodes": nodes}
-    )
+    input_graph = mesh_graph._replace(edges={mesh_edges_key: new_edges}, nodes={"mesh_nodes": nodes})
     # Create and run the GNN.
     mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh_gnn_kwargs)
     mesh_out = mesh_gnn(input_graph)
@@ -897,9 +878,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
         .at[self._grid_node_indices[unmasked]]
         .set(grid_node_outputs[unmasked])
       )
-    grid_outputs_lat_lon_leading = jax.lax.reshape(
-      grid_node_outputs, grid_shape + grid_node_outputs.shape[1:]
-    )
+    grid_outputs_lat_lon_leading = jax.lax.reshape(grid_node_outputs, grid_shape + grid_node_outputs.shape[1:])
     dims = ("lat", "lon", "batch", "channels")
     grid_xarray_lat_lon_leading = xarray_jax.DataArray(data=grid_outputs_lat_lon_leading, dims=dims)
     grid_xarray = model_utils.restore_leading_axes(grid_xarray_lat_lon_leading)
@@ -922,7 +901,10 @@ def _check_rollout_inputs(inputs: xarray.Dataset, task: TaskConfig) -> None:
   (autoregressive.Predictor._get_and_validate_constant_inputs)."""
   rolled = set(task.target_variables) | set(task.forcing_variables)
   if varying := sorted(name for name in task.input_variables if name not in rolled and "time" in inputs[name].dims):
-    raise ValueError(f"Input variables {varying} are neither predicted, forced nor constant: they cannot be rolled out.")
+    raise ValueError(
+      f"Input variables {varying} are neither predicted, forced nor constant: they cannot be rolled out."
+    )
+
 
 def _get_max_edge_distance(mesh: TriangleMesh | MeshGraph):
   if isinstance(mesh, TriangleMesh):

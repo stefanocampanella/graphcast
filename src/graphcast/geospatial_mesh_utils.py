@@ -95,9 +95,7 @@ class StereoMeshSizeField(abc.ABC):
       x = transform(x)  # type: ignore
     assert isinstance(x, np.ndarray) and x.shape[1] == 2
     earth_radius_squared = stereographic_crs.GetSemiMajor() * stereographic_crs.GetSemiMinor()
-    stereo_factor = (4 * earth_radius_squared) / (
-      4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2
-    )
+    stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
     return mesh_size / stereo_factor
 
 
@@ -189,9 +187,7 @@ class RasterField(BoundedStereoMeshSizeField):
     else:
       self.field_max = np.nanquantile(grid, q_high)
     grid = grid.fillna(self.field_max)
-    gdal_raster = xarray_to_gdal_raster(
-      da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim
-    )
+    gdal_raster = xarray_to_gdal_raster(da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim)
     self.field = seamsh.field.Raster(gdal_raster)
 
   def criterion(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
@@ -420,9 +416,7 @@ def read_mesh(
     data = np.empty((0,), dtype=float)
   else:
     # Here we need to do two things: filter the nodes, and ensure that they have the same order as in node_coords.
-    data_type, data_node_tags, data, _, num_components = gmsh.view.getHomogeneousModelData(
-      mesh_size_view_tag, step
-    )
+    data_type, data_node_tags, data, _, num_components = gmsh.view.getHomogeneousModelData(mesh_size_view_tag, step)
     assert data_type == "NodeData" and num_components == 1
 
   # Node coords have the same order as in node_tags, so we can filter them directly.
@@ -463,16 +457,12 @@ def read_mesh(
   return mesh, mesh_size
 
 
-def load_domain(
-  path: pathlib.Path, physical_name_field: str = "featurecla", curve_type: str = "bspline"
-):
+def load_domain(path: pathlib.Path, physical_name_field: str = "featurecla", curve_type: str = "bspline"):
   # Path must be a shapefile.
   if not path.name.endswith(".shp"):
     raise ValueError(f"Path must be a shapefile, got {path}")
   domain = seamsh.geometry.Domain(projection=stereographic_crs)
-  domain.add_boundary_curves_shp(
-    str(path), physical_name_field, getattr(seamsh.geometry.CurveType, curve_type.upper())
-  )
+  domain.add_boundary_curves_shp(str(path), physical_name_field, getattr(seamsh.geometry.CurveType, curve_type.upper()))
   return domain
 
 
@@ -485,9 +475,7 @@ def coarsen_boundaries(
   """Creates a new Domain with the same projection and coarsened boundaries."""
   x0_projection = CRSRegistry[x0_projection_name]
   mesh_size_f = UniformField(mesh_size)
-  coarse = seamsh.geometry.coarsen_boundaries(
-    domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f
-  )
+  coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse
 
 
@@ -503,9 +491,7 @@ def read_mesh_data(
   gmsh.option.setNumber("General.Verbosity", gmsh_verbosity)
 
   mesh_size_tag_name = mesh_size_tag_name or "MeshSize"
-  mesh, mesh_size = read_mesh(
-    mesh_path=mesh_path, mesh_size_tag_name=mesh_size_tag_name, step=mesh_size_tag_step
-  )
+  mesh, mesh_size = read_mesh(mesh_path=mesh_path, mesh_size_tag_name=mesh_size_tag_name, step=mesh_size_tag_step)
   mesh_license = gmsh.model.getAttribute("license")
   mesh_description = gmsh.model.getAttribute("description")
   assert mesh.node_tags is not None
@@ -517,12 +503,8 @@ def read_mesh_data(
     boundary=mesh.boundary,
     spatial_reference_system=mesh.spatial_reference_system,
   )
-  logger.info(
-    "Mesh graph contains %d vertices and %d edges.", len(graph.vertices), len(graph.edges[0])
-  )
-  mesh_data = MeshData(
-    mesh_graph=graph, mesh_size=mesh_size, description=mesh_description, license=mesh_license
-  )
+  logger.info("Mesh graph contains %d vertices and %d edges.", len(graph.vertices), len(graph.edges[0]))
+  mesh_data = MeshData(mesh_graph=graph, mesh_size=mesh_size, description=mesh_description, license=mesh_license)
   return mesh_data
 
 

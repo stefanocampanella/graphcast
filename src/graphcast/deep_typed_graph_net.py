@@ -161,9 +161,7 @@ class DeepTypedGraphNet(hk.Module):
     self._activation = _get_activation_fn(activation)
     self._initialized = False
     self._f32_aggregation = f32_aggregation
-    self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(
-      aggregate_edges_for_nodes_fn
-    )
+    self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(aggregate_edges_for_nodes_fn)
     self._aggregate_normalization = aggregate_normalization
     self._remat = remat
     self._policy = policy
@@ -200,18 +198,14 @@ class DeepTypedGraphNet(hk.Module):
         def concat_trick_mlp(*args, **kwargs):
           combined_args = tree.tree_flatten(args)[0] + tree.tree_flatten(kwargs)[0]
           linear_layers = [
-            hk.Linear(output_size, name=name + f"_linear_concat_trick_arg_{n}")
-            for n, _ in enumerate(combined_args)
+            hk.Linear(output_size, name=name + f"_linear_concat_trick_arg_{n}") for n, _ in enumerate(combined_args)
           ]
           mlp = hk.nets.MLP(
-            output_sizes=[self._mlp_hidden_size] * (self._mlp_num_hidden_layers - 1)
-            + [output_size],
+            output_sizes=[self._mlp_hidden_size] * (self._mlp_num_hidden_layers - 1) + [output_size],
             name=name + "_mlp",
             activation=self._activation,
           )
-          single_arg = sum(
-            layer(arg) for layer, arg in zip(linear_layers, combined_args, strict=False)
-          )
+          single_arg = sum(layer(arg) for layer, arg in zip(linear_layers, combined_args, strict=False))
           single_arg = self._activation(single_arg)
           return mlp(single_arg)
 
@@ -227,9 +221,7 @@ class DeepTypedGraphNet(hk.Module):
     def build_mlp_with_maybe_layer_norm(name, output_size):
       network = build_mlp(name, output_size)
       if self._use_layer_norm:
-        layer_norm = hk.LayerNorm(
-          axis=-1, create_scale=True, create_offset=True, name=name + "_layer_norm"
-        )
+        layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=name + "_layer_norm")
         network = hk.Sequential([network, layer_norm])
       return network
 
@@ -263,9 +255,7 @@ class DeepTypedGraphNet(hk.Module):
       return graph
 
     if self._remat:
-      _embedder_network = hk.remat(
-        _embedder_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
+      _embedder_network = hk.remat(_embedder_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._embedder_network = _embedder_network
 
     if self._f32_aggregation:
@@ -312,9 +302,7 @@ class DeepTypedGraphNet(hk.Module):
       return graph
 
     if self._remat:
-      _processor_network = hk.remat(
-        _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
+      _processor_network = hk.remat(_processor_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._processor_network = _processor_network
 
     # The output MLPs converts edge/node latent features into the output sizes.
@@ -337,9 +325,7 @@ class DeepTypedGraphNet(hk.Module):
       return graph
 
     if self._remat:
-      _output_network = hk.remat(
-        _output_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
+      _output_network = hk.remat(_output_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._output_network = _output_network
 
   def _embed(self, input_graph: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
@@ -363,9 +349,7 @@ class DeepTypedGraphNet(hk.Module):
         new_nodes[node_set_name] = node_set._replace(
           features=jnp.concatenate([node_features, broadcasted_context], axis=-1)
         )
-      input_graph = input_graph._replace(
-        nodes=new_nodes, context=input_graph.context._replace(features=())
-      )
+      input_graph = input_graph._replace(nodes=new_nodes, context=input_graph.context._replace(features=()))
 
     # Embeds the node and edge features.
     latent_graph_0 = self._embedder_network(input_graph)
@@ -417,9 +401,7 @@ class DeepTypedGraphNet(hk.Module):
       edges={k: s._replace(features=edge_features[k]) for k, s in latent_graph_0.edges.items()},
     )
 
-  def _process_step(
-    self, processor_network_k, latent_graph_prev_k: typed_graph.TypedGraph
-  ) -> typed_graph.TypedGraph:
+  def _process_step(self, processor_network_k, latent_graph_prev_k: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
     """Single step of message passing with node/edge residual connections."""
 
     # One step of message passing.
@@ -428,15 +410,11 @@ class DeepTypedGraphNet(hk.Module):
     # Add residuals.
     nodes_with_residuals = {}
     for k, prev_set in latent_graph_prev_k.nodes.items():
-      nodes_with_residuals[k] = prev_set._replace(
-        features=prev_set.features + latent_graph_k.nodes[k].features
-      )
+      nodes_with_residuals[k] = prev_set._replace(features=prev_set.features + latent_graph_k.nodes[k].features)
 
     edges_with_residuals = {}
     for k, prev_set in latent_graph_prev_k.edges.items():
-      edges_with_residuals[k] = prev_set._replace(
-        features=prev_set.features + latent_graph_k.edges[k].features
-      )
+      edges_with_residuals[k] = prev_set._replace(features=prev_set.features + latent_graph_k.edges[k].features)
 
     latent_graph_k = latent_graph_k._replace(nodes=nodes_with_residuals, edges=edges_with_residuals)
     return latent_graph_k

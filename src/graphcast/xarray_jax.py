@@ -375,9 +375,7 @@ def wrap_data(value, to_jax=False, np_contiguous=True):
   def _wrap_data(ds_or_da: DatasetOrDataArray) -> DatasetOrDataArray:
     if isinstance(ds_or_da, xarray.Dataset):
       return Dataset(
-        data_vars={
-          var: (data.dims, _as_something(data.data)) for var, data in ds_or_da.data_vars.items()
-        },
+        data_vars={var: (data.dims, _as_something(data.data)) for var, data in ds_or_da.data_vars.items()},
         coords=ds_or_da.coords,
         jax_coords={},
         attrs=ds_or_da.attrs,
@@ -393,9 +391,7 @@ def wrap_data(value, to_jax=False, np_contiguous=True):
     else:
       raise ValueError(f"Unsupported type: {type(ds_or_da)}")
 
-  return jax.tree_util.tree_map(
-    _wrap_data, value, is_leaf=lambda x: isinstance(x, (xarray.Dataset, xarray.DataArray))
-  )
+  return jax.tree_util.tree_map(_wrap_data, value, is_leaf=lambda x: isinstance(x, (xarray.Dataset, xarray.DataArray)))
 
 
 def unwrap(value, require_jax=False):
@@ -424,9 +420,7 @@ def _wrapped(func):
   return wrapped_func
 
 
-def unwrap_data(
-  value: xarray.Variable | xarray.DataArray, require_jax: bool = False
-) -> jax.Array | np.ndarray:
+def unwrap_data(value: xarray.Variable | xarray.DataArray, require_jax: bool = False) -> jax.Array | np.ndarray:
   """The unwrapped (see unwrap) data of a an xarray.Variable or DataArray."""
   return unwrap(value.data, require_jax=require_jax)
 
@@ -444,9 +438,7 @@ def unwrap_coords(
   dataset: xarray.Dataset | xarray.DataArray, require_jax: bool = False
 ) -> Mapping[str, jax.Array | np.ndarray]:
   """The unwrapped data (see unwrap) of the coords in a Dataset or DataArray."""
-  return {
-    str(name): unwrap_data(var, require_jax=require_jax) for name, var in dataset.coords.items()
-  }
+  return {str(name): unwrap_data(var, require_jax=require_jax) for name, var in dataset.coords.items()}
 
 
 def jax_data(value: xarray.Variable | xarray.DataArray) -> jax.Array:
@@ -714,9 +706,7 @@ def pmap(
 _PyTree = TypeVar("_PyTree")
 
 
-def tree_map_variables(
-  func: Callable[[xarray.Variable], xarray.Variable], tree_data: _PyTree
-) -> _PyTree:
+def tree_map_variables(func: Callable[[xarray.Variable], xarray.Variable], tree_data: _PyTree) -> _PyTree:
   """Like jax.tree.map but operates with Variables as leaves.
 
   This will work with any jax.tree_util-registered PyTree containing xarray
@@ -879,9 +869,7 @@ def scan(
     y_leaves, y_treedef = jax.tree.flatten(y)
     return carry, y_leaves
 
-  final_carry, ys_leaves = jax.lax.scan(
-    scan_fn, init, xs_leaves, length=length, reverse=reverse, unroll=unroll
-  )
+  final_carry, ys_leaves = jax.lax.scan(scan_fn, init, xs_leaves, length=length, reverse=reverse, unroll=unroll)
 
   assert isinstance(y_treedef, jax.tree_util.PyTreeDef)
 
@@ -946,9 +934,7 @@ def _flatten_variable(
   return children, aux
 
 
-def _unflatten_variable(
-  aux: tuple[Hashable, ...], children: tuple[jax.typing.ArrayLike]
-) -> xarray.Variable:  # pylint: disable=g-one-element-tuple
+def _unflatten_variable(aux: tuple[Hashable, ...], children: tuple[jax.typing.ArrayLike]) -> xarray.Variable:  # pylint: disable=g-one-element-tuple
   """Unflattens a Variable for jax.tree_util."""
   dims = aux
   dims_change_fn = _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None)
@@ -1006,9 +992,7 @@ class _HashableCoords(collections.abc.Mapping):
 
   def __hash__(self):
     if not hasattr(self, "_hash"):
-      self._hash = hash(
-        frozenset((name, var.data.tobytes()) for name, var in self._variables.items())
-      )
+      self._hash = hash(frozenset((name, var.data.tobytes()) for name, var in self._variables.items()))
     return self._hash
 
   def __eq__(self, other):
@@ -1084,9 +1068,7 @@ def _unflatten_dataset(
   if _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None):
     # Drop static coords which have dims not present in any of the data_vars.
     # See corresponding comment in _unflatten_data_array.
-    static_coord_vars = _drop_with_none_of_dims(
-      static_coord_vars, dataset.dims
-    )  # pytype: disable=wrong-arg-types
+    static_coord_vars = _drop_with_none_of_dims(static_coord_vars, dataset.dims)  # pytype: disable=wrong-arg-types
   return assign_coords(dataset, coords=static_coord_vars, jax_coords=jax_coord_vars)
 
 
@@ -1134,8 +1116,6 @@ def device_put(value, device=None):
 def make_array_from_process_local_data(value, mesh: Mesh, spec: P):
   @_wrapped
   def _make_global_array(local_data):
-    return jax.make_array_from_process_local_data(
-      local_data=local_data, sharding=NamedSharding(mesh, spec)
-    )
+    return jax.make_array_from_process_local_data(local_data=local_data, sharding=NamedSharding(mesh, spec))
 
   return jax.tree_util.tree_map(_make_global_array, value)

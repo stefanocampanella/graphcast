@@ -236,9 +236,7 @@ def get_transform(
   def wrapped(coordinates: Coordinates) -> Coordinates:
     # We assume that the coordinate dimension is the last one.
     if isinstance(coordinates, tuple):
-      assert len(coordinates) == num_coords_in, (
-        f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
-      )
+      assert len(coordinates) == num_coords_in, f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
       if len(coordinates) == 2:
         xx, yy = coordinates  # type: ignore
         zz = np.zeros_like(xx)
@@ -259,9 +257,7 @@ def get_transform(
     else:
       raise ValueError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
     result = transformer.transform(xx=xx, yy=yy, zz=zz, inplace=False, **kwargs)
-    assert len(result) >= num_coords_out, (
-      f"Expected {num_coords_out} coordinates, got {len(result)}"
-    )
+    assert len(result) >= num_coords_out, f"Expected {num_coords_out} coordinates, got {len(result)}"
     # We don't use elevation, in case of conversion to equirectangular projection drop it.
     if len(result) == 3 and num_coords_out == 2:
       if not np.allclose(result[2], 0.0, rtol=0.0, atol=elevation_tolerance):
@@ -374,9 +370,7 @@ def xarray_to_gdal_raster(
   assert np.all(lat_delta == lat_res), f"Latitude grid must be uniformly spaced, got {lat_delta}"
   lon_delta = np.diff(lon)
   lon_res = lon_delta[0]
-  assert np.all(lon_delta == lon_delta[0]), (
-    f"Longitude grid must be uniformly spaced, got {lon_delta}"
-  )
+  assert np.all(lon_delta == lon_delta[0]), f"Longitude grid must be uniformly spaced, got {lon_delta}"
 
   # Ensure north-up orientation, as GDAL expects
   if lat_res > 0:

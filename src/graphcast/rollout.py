@@ -157,9 +157,7 @@ def chunked_prediction_generator(
     # Replace the timedelta, by the one corresponding to the first chunk, so we
     # don't recompile at every iteration, keeping the
     actual_target_time = current_targets_template.coords["time"]
-    current_targets_template = current_targets_template.assign_coords(
-      time=targets_chunk_time
-    ).compute()
+    current_targets_template = current_targets_template.assign_coords(time=targets_chunk_time).compute()
 
     current_forcings = forcings.isel(time=target_slice)
     current_forcings = current_forcings.assign_coords(time=targets_chunk_time)
@@ -211,9 +209,7 @@ def _get_next_inputs(
   )
 
 
-def extend_targets_template(
-  targets_template: xarray.Dataset, required_num_steps: int
-) -> xarray.Dataset:
+def extend_targets_template(targets_template: xarray.Dataset, required_num_steps: int) -> xarray.Dataset:
   """Extends `targets_template` to `required_num_steps` with lazy arrays.
 
   It uses lazy dask arrays of zeros, so it does not require instantiating the
