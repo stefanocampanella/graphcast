@@ -546,36 +546,22 @@ def test_pmap_with_tree_mix_of_xarray_and_jax_array():
   np.testing.assert_array_equal(jax.device_get(inputs["bar"] + 1), jax.device_get(result_bar))
 
 
-def _check_pmap_complains_when_dim_not_first():
+@pytest.mark.parametrize("structure", ["data_array", "dataset_jax_coord"])
+def test_pmap_complains_when_dim_not_first(structure):
+  """`pmap` rejects a mapped dimension that is not the leading one with its own message, before calling `jax.pmap`
+  (inside the mapped function the check came after jax had already failed with its own error)."""
   devices = jax.local_device_count()
-  data_array = xarray_jax.DataArray(data=jnp.ones((3, devices, 4), dtype=np.float32), dims=("lat", "device", "lon"))
+  if structure == "data_array":
+    inputs = xarray_jax.DataArray(data=jnp.ones((3, devices, 4), dtype=np.float32), dims=("lat", "device", "lon"))
+  else:
+    inputs = xarray_jax.Dataset(
+      {"foo": (("device", "lat"), jnp.ones((devices, 3), dtype=np.float32))},
+      jax_coords={"time": xarray_jax.Variable(("time", "device"), jnp.zeros((2, devices), dtype=np.float32))},
+    )
 
   func = xarray_jax.pmap(lambda x: x + 1, dim="device")
-  if jax.config.jax_pmap_shmap_merge:
-    regex = "cannot select an axis to squeeze out which has size not equal to one.*"
-  else:
-    regex = "Expected dim device at index 0, found at 1"
-  with pytest.raises(ValueError, match=regex):
-    func(data_array)
-
-
-def test_pmap_complains_when_dim_not_first():
-  """`pmap` rejects a mapped dimension that is not the leading one."""
-  _check_pmap_complains_when_dim_not_first()
-
-
-@pytest.fixture
-def pmap_shmap_merge():
-  """Sets `jax_pmap_shmap_merge` for one test and restores it afterwards."""
-  previous = jax.config.jax_pmap_shmap_merge
-  jax.config.update("jax_pmap_shmap_merge", True)
-  yield
-  jax.config.update("jax_pmap_shmap_merge", previous)
-
-
-def test_pmap_complains_when_dim_not_first_pmap_shmap_merge(pmap_shmap_merge):
-  """Same as `test_pmap_complains_when_dim_not_first`, with `pmap` implemented through `shard_map`."""
-  _check_pmap_complains_when_dim_not_first()
+  with pytest.raises(ValueError, match="Expected dim device at index 0, found at 1"):
+    func(inputs)
 
 
 def test_apply_ufunc():
