@@ -507,7 +507,7 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   portable, cluster-specific settings live under `clusters/<name>/`; user-specific settings (e.g. AWS profiles) come
   from environment variables, not configs; no backward-compatibility code for formats nobody uses; one library per job
   (e.g. TensorStore for all arrays); prefer simple implementations (no resume or blocking machinery unless failures
-  show up); avoid `climatology.align_with` (slow).
+  show up).
 - Storage quotas (`jutil` also reports compute budgets, see above): `df` shows only the whole filesystem; project quotas (data and inodes, soft and hard limits) are
   shown by `jutil project dataquota -p e-dev-2026d09-119 [-U TB]` (`jutil user dataquota` shows per-user rows without
   limits). Usage is updated a few times a day. Check before writing large data: on 27 Oct 2026 fscratch had 40 TB
