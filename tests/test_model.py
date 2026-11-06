@@ -3,6 +3,7 @@
 import dataclasses
 
 import haiku as hk
+import jax
 import numpy as np
 import pytest
 import xarray as xr
@@ -61,3 +62,30 @@ def test_a_mesh_without_mesh_size_is_rejected():
 
   with pytest.raises(ValueError, match="mesh size"):
     hk.transform(build).init(None)
+
+
+def test_forcings_without_grid_dimensions(tiny_model):
+  """Forcings that are not on the grid (e.g. only year progress, a function of time) are broadcast to the grid points,
+  as inputs are: stacking them alone failed with a KeyError on `lat`."""
+  inputs, targets, _ = tiny_model.batch
+  year_progress = xr.DataArray(
+    np.full((tiny_model.batch_size, 1), 0.25, dtype=np.float32), dims=("batch", "time"), coords={"time": targets.time}
+  )
+  forcings = xr.Dataset({"year_progress_sin": year_progress})
+  task = dataclasses.replace(tiny_model.task, forcing_variables=("year_progress_sin",))
+
+  def predict(inputs, targets, forcings):
+    model = GraphCast(
+      _model_config=tiny_model.model_config,
+      _task_config=task,
+      _grid_lat=tiny_model.lat,
+      _grid_lon=tiny_model.lon,
+      _grid_mask=None,
+      _mesh_data=tiny_model.mesh_data,
+    )
+    return model(inputs, targets, forcings)
+
+  transformed = hk.transform(predict)
+  params = transformed.init(jax.random.key(0), inputs, targets, forcings)
+  predictions = transformed.apply(params, None, inputs, targets, forcings)
+  assert predictions["zos"].shape == targets["zos"].shape
