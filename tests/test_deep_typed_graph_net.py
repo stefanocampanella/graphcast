@@ -86,7 +86,7 @@ def test_context_features_are_given_to_every_node():
   """Graph-level (context) features are concatenated to each node's features before the embedding."""
   _, params = _run(_graph(context=np.ones((1, 4))), use_concat_trick=False)
   _, without = _run(use_concat_trick=False)
-  embedder = [name for name in params if "encoder_nodes_n" in name and name.endswith("linear_0")][0]
+  embedder = next(name for name in params if "encoder_nodes_n" in name and name.endswith("linear_0"))
   assert params[embedder]["w"].shape[0] == without[embedder]["w"].shape[0] + 4
 
 
