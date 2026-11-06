@@ -23,6 +23,7 @@ import click
 import grain.python as grain
 import haiku as hk
 import jax
+import numpy as np
 import optax
 import xarray as xr
 from jax.sharding import NamedSharding
@@ -149,7 +150,6 @@ def train(
     (tendency_std, loss_masks), to_jax=True, np_contiguous=False
   )
 
-  @hk.without_apply_rng
   @hk.transform
   def loss_fn(
       data: Datasets, static_data: tuple[xr.Dataset, xr.Dataset]
@@ -244,19 +244,20 @@ def train(
     if configs.policy.remat_loss:
       local_loss_fn = jax.checkpoint(local_loss_fn, policy=trn_utils.get_policy(configs))
 
+    # The model is deterministic and ignores the rng; a key per step and device is passed for probabilistic variants.
+    # Built inside jit from the seed and the step: the same on every process, and reproducible after a restart.
+    def step_key(stream: int, step) -> jax.Array:
+      return jax.random.fold_in(jax.random.fold_in(jax.random.key(configs.seed), stream), step)
+
+    parallel_loss_fn = trn_utils.data_parallel(local_loss_fn, device_mesh)
+    parallel_eval_fn = trn_utils.data_parallel(loss_fn.apply, device_mesh)
+
     @partial(jax.jit, donate_argnums=(0, 1))
-    def train_step(params, opt_state, data, static_data):
+    def train_step(params, opt_state, step, data, static_data):
       def fsdp_loss_fn(
           params, data: Datasets, static_data: DatasetsOrDataArrays
       ) -> JAXLossAndDiagnostics:
-        _fsdp_loss_fn = jax.shard_map(
-          local_loss_fn,
-          mesh=device_mesh,
-          in_specs=(P(), P("batch"), None),
-          out_specs=P("batch"),
-          check_vma=False,
-        )
-        loss, diagnostics = _fsdp_loss_fn(params, data, static_data)
+        loss, diagnostics = parallel_loss_fn(params, step_key(0, step), data, static_data)
         return jax.tree_util.tree_map(jax.numpy.mean, (loss, diagnostics))
 
       fsdp_grad_fn = jax.value_and_grad(fsdp_loss_fn, has_aux=True)
@@ -269,14 +270,8 @@ def train(
       return updated_params, next_opt_state, loss_and_diagnostics
 
     @jax.jit
-    def eval_step(params, data, static_data):
-      loss_and_diagnostics = jax.shard_map(
-        loss_fn.apply,
-        mesh=device_mesh,
-        in_specs=(P(), P("batch"), None),
-        out_specs=P("batch"),
-        check_vma=False,
-      )(params, data, static_data)
+    def eval_step(params, step, data, static_data):
+      loss_and_diagnostics = parallel_eval_fn(params, step_key(1, step), data, static_data)
       return jax.tree_util.tree_map(jax.numpy.mean, loss_and_diagnostics)
 
     def validate(params) -> JAXLossAndDiagnostics:
@@ -288,10 +283,11 @@ def train(
       iterator = iter(validation_dataset.to_iter_dataset(read_options=read_options))
       metrics = []
       try:
-        for _ in range(len(validation_dataset)):
+        for batch_index in range(len(validation_dataset)):
           batch = dataloader_utils.next_batch_on_device(iterator, device_mesh=device_mesh)
           with jax.sharding.set_mesh(device_mesh):
-            metrics.append(eval_step(params, batch, static_data))
+            # Keys by batch, the same at every validation.
+            metrics.append(eval_step(params, np.int32(batch_index), batch, static_data))
       finally:
         iterator.close()
       return jax.tree_util.tree_map(lambda *values: jax.numpy.mean(jax.numpy.stack(values)), *metrics)
@@ -317,9 +313,11 @@ def train(
       with jax.sharding.set_mesh(device_mesh):
         if compiled_train_step is None:
           # Compile once explicitly to log the memory XLA plans for a step (device and host), then reuse it.
-          compiled_train_step = train_step.lower(params, opt_state, batch, static_data).compile()
+          compiled_train_step = train_step.lower(params, opt_state, np.int32(current_step), batch, static_data).compile()
           cli_utils.run_analysis_and_report(compiled_train_step)
-        params, opt_state, train_metrics = compiled_train_step(params, opt_state, batch, static_data)
+        params, opt_state, train_metrics = compiled_train_step(
+          params, opt_state, np.int32(current_step), batch, static_data
+        )
       # Wait for the step, so that the timings below separate compute from checkpointing and logging.
       jax.block_until_ready(train_metrics)
       compute_end = time.perf_counter()

@@ -16,6 +16,7 @@ from jax import checkpoint_policies as cp
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import sync_global_devices
 from jax.sharding import AxisType, Mesh
+from jax.sharding import PartitionSpec as P
 
 from graphcast import xarray_jax
 from graphcast.casting import Bfloat16Cast
@@ -290,3 +291,30 @@ def save_model(
       file = typing.cast(typing.BinaryIO, file)
       ckpt_dump(file, graphcast_ckpt)
   sync_global_devices("save_model")
+
+
+# Per-device rng keys in data parallelism. The model is deterministic today, but a probabilistic variant will need a
+# key in the predictor and the loss, different on every device (each holds different samples of the batch). The
+# fold-in trick of the UvA deep learning tutorials ("Data parallelism" and "Fully sharded data parallelism" in the
+# "Training models at scale" notebooks), `fold_in(key, axis_index("batch"))`, works in shard_map on our mesh with
+# Explicit axes only if the key is an argument of shard_map (spec P(), the same key on every device, folded inside).
+# Closing over a key computed outside shard_map fails with "NotImplementedError: Closing over inputs to shard_map
+# where the input is sharded on `Explicit` axes is not implemented" (the error that kept the previous helper from
+# passing keys; jax-ml/jax issue 29162). Splitting the key into one per device and sharding it along the batch axis
+# also works, once resharded explicitly (`jax.reshard(jax.random.split(key, n), P("batch"))`). See also jax-ml/jax
+# discussion 22862 and issue 22860 on rng keys and sharding.
+def data_parallel(
+  fn: Callable[..., Any], mesh: Mesh, batch_axis: str = "batch", check_vma: bool = False
+) -> Callable[..., Any]:
+  """Maps `fn(params, rng, data, static_data)` over the shards of `data` along the `batch_axis` of `mesh`.
+
+  `params`, `rng` and `static_data` are passed whole to every device; each device folds its index along the batch
+  axis into `rng`, so the devices get different keys. Results are concatenated along their leading axis.
+  """
+
+  def local_fn(params, rng, data, static_data):
+    return fn(params, jax.random.fold_in(rng, jax.lax.axis_index(batch_axis)), data, static_data)
+
+  return jax.shard_map(
+    local_fn, mesh=mesh, in_specs=(P(), P(), P(batch_axis), None), out_specs=P(batch_axis), check_vma=check_vma
+  )
