@@ -17,7 +17,7 @@ def test_points_on_the_surface_convert_to_latitude_and_longitude_without_warning
   vertices = icosahedral_mesh.get_multi_mesh_graph(3, crs=crs).vertices.astype(np.float32)
   with warnings.catch_warnings():
     warnings.simplefilter("error")
-    lon, lat = get_transform(crs, equirectangular_crs, pack_back=False)(vertices)
+    lon, lat = np.asarray(get_transform(crs, equirectangular_crs)(vertices)).T
   assert np.all(np.abs(lat) <= 90.0) and np.all(np.abs(lon) <= 180.0)
 
 
