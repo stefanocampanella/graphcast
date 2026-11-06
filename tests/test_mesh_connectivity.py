@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 
 from graphcast import icosahedral_mesh, mesh_connectivity
-from graphcast.mesh_graph import MeshGraph
+from graphcast.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
 
 # WGS84 ellipsoid.
 SEMI_MAJOR_AXIS = 6_378_137.0
@@ -139,3 +139,42 @@ def test_get_mesh_to_grid_edges(grid, partial_mask, masked):
   weights = np.linalg.solve(mesh.vertices[senders].transpose(0, 2, 1), positions[..., None])[..., 0]
   weights /= weights.sum(axis=1, keepdims=True)
   assert weights.min() > -0.05
+
+
+def test_masking_index_maps():
+  """Indices into the unmasked points map to indices into all points and back; the first unmasked point (index 0)
+  maps back too (it was taken as missing). Indices without a counterpart raise, or get the default."""
+  mask = np.array([False, True, False, True, True])
+  unmasked_to_masked, masked_to_unmasked = mesh_connectivity.get_masking_indices_fns(mask)
+  np.testing.assert_array_equal(masked_to_unmasked(np.array([0, 1, 2])), [1, 3, 4])
+  np.testing.assert_array_equal(unmasked_to_masked(np.array([1, 3, 4])), [0, 1, 2])
+  with pytest.raises(ValueError, match="no index of masked array"):
+    unmasked_to_masked(np.array([2]))
+  with pytest.raises(ValueError, match="no index of unmasked array"):
+    masked_to_unmasked(np.array([3]))
+  lenient_to_masked, lenient_to_unmasked = mesh_connectivity.get_masking_indices_fns(mask, raise_error=False)
+  np.testing.assert_array_equal(lenient_to_masked(np.array([0, 1])), [-1, 0])
+  np.testing.assert_array_equal(lenient_to_unmasked(np.array([2, 3])), [4, -1])
+
+
+def test_dummy_xscaling_graph():
+  """Two meshes as one typed graph: each mesh's edges on its own nodes, and edges from the vertices of the face of
+  one mesh closest to each vertex of the other (3 per receiving vertex)."""
+  coarse = icosahedral_mesh.get_multi_mesh_graph(0)
+  fine = icosahedral_mesh.get_multi_mesh_graph(1)
+  coarse = TriangleMesh(vertices=coarse.vertices, faces=coarse.faces)
+  fine = TriangleMesh(vertices=fine.vertices, faces=fine.faces)
+
+  graph = mesh_connectivity.get_dummy_xscaling_graph(coarse, fine, name_a="coarse", name_b="fine")
+
+  for name, mesh in (("coarse", coarse), ("fine", fine)):
+    edges = graph.edges[graph.edge_key_by_name(name)].indices
+    np.testing.assert_array_equal(np.stack([edges.senders, edges.receivers]), np.stack(faces_to_edges(mesh.faces)))
+  for senders_name, senders_mesh, receivers_mesh in (("coarse", coarse, fine), ("fine", fine, coarse)):
+    receivers_name = "fine" if senders_name == "coarse" else "coarse"
+    key = graph.edge_key_by_name(f"{senders_name}_to_{receivers_name}")
+    assert key.node_sets == (senders_name, receivers_name)
+    edges = graph.edges[key].indices
+    np.testing.assert_array_equal(edges.receivers, np.repeat(np.arange(len(receivers_mesh.vertices)), 3))
+    faces = {tuple(face) for face in senders_mesh.faces.tolist()}
+    assert all(tuple(face) in faces for face in edges.senders.reshape(-1, 3).tolist())
