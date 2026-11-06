@@ -1,4 +1,4 @@
-"""graphcast compute-basis: the linear basis functions of a mesh on the ocean points of the training grid (draft)."""
+"""graphcast compute-grid-basis: linear basis functions of a mesh at the ocean points of the training grid (draft)."""
 
 import logging
 import pathlib
@@ -15,7 +15,7 @@ from graphcast.geospatial_mesh_utils import read_mesh
 logger = logging.getLogger(__name__)
 
 
-@click.command("compute-basis")
+@click.command("compute-grid-basis")
 @click.argument("mesh_path", type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False))
 @click.argument("mask_path", type=click.Path(path_type=pathlib.Path, exists=True))
 @click.argument("output_path", type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True))
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
   is_flag=True,
 )
 @cli_utils.LOG_LEVEL_OPTION
-def compute_basis_command(
+def compute_grid_basis_command(
   mesh_path: pathlib.Path,
   mask_path: pathlib.Path,
   output_path: pathlib.Path,
@@ -50,7 +50,3 @@ def compute_basis_command(
   # Written to the path as given (save_npz would append .npz to a path without it).
   with output_path.open("wb") as file:
     sparse.save_npz(file, basis)
-
-
-if __name__ == "__main__":
-  compute_basis_command()

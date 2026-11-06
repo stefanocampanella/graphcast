@@ -3,7 +3,7 @@
 import click
 from absl import flags
 
-from graphcast.basis import compute_basis_command
+from graphcast.basis import compute_grid_basis_command
 from graphcast.downloader import compute_tendency_std, download, download_mask
 from graphcast.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
 from graphcast.training import train
@@ -43,7 +43,7 @@ def cli(
 cli.add_command(train)
 cli.add_command(make_ocean_mesh)
 cli.add_command(make_icosahedral_mesh)
-cli.add_command(compute_basis_command)
+cli.add_command(compute_grid_basis_command)
 cli.add_command(download)
 cli.add_command(download_mask)
 cli.add_command(compute_tendency_std)
