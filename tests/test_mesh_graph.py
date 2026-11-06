@@ -20,7 +20,7 @@
 import numpy as np
 import pytest
 
-from graphcast import icosahedral_mesh, mesh_graph
+from graphcast import icosahedral_mesh, mesh_graph, typed_graph
 from graphcast.gis_utils import _cartesian_wkt
 
 
@@ -79,3 +79,73 @@ def test_faces_to_edges():
 
   np.testing.assert_array_equal(senders, expected_senders)
   np.testing.assert_array_equal(receivers, expected_receivers)
+
+
+def _octahedron(radius: float = 1.0) -> mesh_graph.TriangleMesh:
+  """Vertices at the poles and on the equator at longitudes 0, 90, 180, 270."""
+  vertices = radius * np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], dtype=float)
+  faces = np.array([[0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1], [5, 2, 1], [5, 3, 2], [5, 4, 3], [5, 1, 4]])
+  return mesh_graph.TriangleMesh(vertices=vertices, faces=faces)
+
+
+EXPECTED_LATITUDES = [90.0, 0.0, 0.0, 0.0, 0.0, -90.0]
+EXPECTED_LONGITUDES = [0.0, 0.0, 90.0, 180.0, 270.0]
+
+
+def test_mesh_to_latlon():
+  """Vertices on the unit sphere become (latitude, longitude) in degrees, longitudes in [0, 360); each edge of the
+  faces appears once, undirected."""
+  graph = mesh_graph.mesh_to_latlon(_octahedron(), unit_sphere=True)
+
+  latitudes, longitudes = graph.vertices
+  np.testing.assert_allclose(latitudes, EXPECTED_LATITUDES, atol=1e-9)
+  np.testing.assert_allclose(longitudes[1:5], EXPECTED_LONGITUDES[1:], atol=1e-9)
+  edges = set(zip(*graph.edges, strict=True))
+  assert len(edges) == 12
+  assert all(s < r for s, r in edges)
+
+
+def test_typed_to_latlon():
+  """An edge set between two node sets is drawn on their concatenated vertices (receivers after senders); within one
+  node set, on its vertices."""
+  # On the WGS84 ellipsoid: the equator at the semi-major axis, the poles at the semi-minor one.
+  semi_major = 6_378_137.0
+  semi_minor = semi_major * (1 - 1 / 298.257223563)
+  octahedron = _octahedron()
+  poles, equator = octahedron.vertices[[0, 5]] * semi_minor, octahedron.vertices[1:5] * semi_major
+
+  def nodes(features):
+    return typed_graph.NodeSet(n_node=np.array([len(features)]), features=features)
+
+  def edges(senders, receivers):
+    indices = typed_graph.EdgesIndices(senders=np.array(senders), receivers=np.array(receivers))
+    return typed_graph.EdgeSet(n_edge=np.array([len(senders)]), indices=indices, features=np.zeros((len(senders), 0)))
+
+  between = typed_graph.EdgeSetKey("pole2equator", ("poles", "equator"))
+  within = typed_graph.EdgeSetKey("ring", ("equator", "equator"))
+  graph = typed_graph.TypedGraph(
+    context=typed_graph.Context(n_graph=np.array([1]), features=()),
+    nodes={"poles": nodes(poles), "equator": nodes(equator)},
+    edges={between: edges([0, 1], [0, 2]), within: edges([0, 1, 2, 3], [1, 2, 3, 0])},
+  )
+
+  pole2equator = mesh_graph.typed_to_latlon(graph, "pole2equator")
+  latitudes, _ = pole2equator.vertices
+  np.testing.assert_allclose(latitudes, [90.0, -90.0, 0.0, 0.0, 0.0, 0.0], atol=1e-9)
+  np.testing.assert_array_equal(np.stack(pole2equator.edges), [[0, 1], [2, 4]])
+  ring = mesh_graph.typed_to_latlon(graph, "ring")
+  np.testing.assert_allclose(ring.vertices[1], EXPECTED_LONGITUDES[1:], atol=1e-9)
+  np.testing.assert_array_equal(np.stack(ring.edges), [[0, 1, 2, 3], [1, 2, 3, 0]])
+
+
+def test_latlon_to_nx():
+  """The networkx graph has a node per vertex with its latitude and longitude, and the directed edges; the summary
+  counts them."""
+  wgs_graph = mesh_graph.EquirectangularGraph(
+    vertices=(np.array([10.0, 20.0, 30.0]), np.array([100.0, 110.0, 120.0])), edges=(np.array([0, 1]), np.array([1, 2]))
+  )
+  graph = mesh_graph.latlon_to_nx(wgs_graph)
+
+  assert graph.nodes[1] == {"latitude": 20.0, "longitude": 110.0}
+  assert list(graph.edges) == [(0, 1), (1, 2)]
+  assert mesh_graph.graph_summary(graph) == "Nodes: 3, Edges: 2, Average degree: 1.3333333333333333"

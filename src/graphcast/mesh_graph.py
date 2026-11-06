@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# TODO: add tests for the conversions to latitude and longitude and to networkx
 # TODO: switch from np.ndarray to chex.Array in type hints
 # TODO: MeshGraph and TriangleMesh share most of the code, refactor
 # TODO: TriangleMesh could easily hold possibly square meshes, not just triangular ones.
@@ -267,7 +266,7 @@ def latlon_to_nx(wgs_graph: EquirectangularGraph) -> nx.DiGraph:
   latitudes, longitudes = wgs_graph.vertices
   vertices = [
     (node, {"latitude": latitude, "longitude": longitude})
-    for node, (latitude, longitude) in enumerate(zip(longitudes, latitudes, strict=False))
+    for node, (latitude, longitude) in enumerate(zip(latitudes, longitudes, strict=True))
   ]
   graph.add_nodes_from(vertices)
   senders, receivers = wgs_graph.edges
