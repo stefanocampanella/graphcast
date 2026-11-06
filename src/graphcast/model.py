@@ -739,21 +739,12 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     mesh_node_positions = model_utils.fixed_position_features(
       mesh_nodes.features.astype(grid_node_input_features.dtype)
     )
-    # TODO: this comment from the original GraphCast code should be checked.
-    # "To make sure capacity of the embedded is identical for the grid nodes and
-    # the mesh nodes, we also append some dummy zero input features for the
-    # mesh nodes."
-    # In doubt, we add dummy features for the mesh nodes here as done originally.
-    dummy_mesh_inputs = jnp.zeros(
-      (mesh_node_positions.shape[0], grid_node_input_features.shape[-1]),
-      dtype=grid_node_input_features.dtype,
-    )
-    mesh_node_inputs = jnp.concatenate([dummy_mesh_inputs, mesh_node_positions], axis=-1)
-    assert mesh_node_inputs.shape[-1] == grid_node_inputs.shape[-1] == (
-        grid_node_input_features.shape[-1] + 4
-    )
+    # Mesh nodes have only their positions as inputs. Upstream GraphCast padded them with zeros for the grid node
+    # input channels "to make sure capacity of the embedder is identical"; the mesh node embedder has its own
+    # parameters, so the zeros only made its first layer's initial weights smaller (fan-in C + 4 instead of 4) and cost
+    # a matrix product: without them, validation losses and step times were the same within noise (Nov 2026).
     mesh_node_embedder = Embedder(**self._embedder_kwargs, name="mesh_node_embedder")
-    mesh_node_features = mesh_node_embedder(mesh_node_inputs)
+    mesh_node_features = mesh_node_embedder(mesh_node_positions)
     mesh_node_features = _add_batch_second_axis(mesh_node_features, batch_size)
     new_mesh_nodes = mesh_nodes._replace(features=mesh_node_features)
 
