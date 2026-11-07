@@ -122,6 +122,8 @@ omit = ["src/graphcast/__main__.py", "src/graphcast/notebooks_utils.py"]
 
 [tool.coverage.report]
 show_missing = true
+# pytest --cov fails below this total (CI); coverage was 94 % in Nov 2026.
+fail_under = 80
 
 [tool.ruff]
 indent-width = 2
