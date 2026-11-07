@@ -1222,3 +1222,10 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Image versions** for comparison with CI: GDAL 3.13.1 / PROJ 9.7.0; pyproj 3.8.0 with its own PROJ 9.8.1 (wheel).
 - **Coverage** with the gate: 93.37 %, 441 passed in 4 min 42 s (`graphcast-g4.sif`, login node).
 - CLAUDE.md: the absltest, uv-fallback and "format only new modules" notes replaced by the hooks, ty invocation and CI.
+- **CI runs** (7 Nov 2026, after the maintainer granted the token the Workflows permission):
+  1. 42390949291: the environment did not solve, as conda-forge's GDAL 3.13.1 builds all need PROJ >= 9.8.1: PROJ is
+     no longer pinned (c74539c); CI gets GDAL 3.13.1 / PROJ 9.8.1, pyproj 3.8.0 / PROJ 9.8.1.
+  2. 42391097167: the newer PyPI releases (pandas 3.1.1, pydantic 2.14.3, jax 0.12.0.1; the image has 3.0.5, 2.13.5,
+     0.11.1.dev) gave 16 test failures (`DatetimeIndex.dayofyear` deprecated, turned into errors by the warning
+     filter) and 5 ty diagnostics (`default_factory` optional, `tree_map_cast` dtypes): fixed in 0cb21b4.
+  3. 42391894372: green in 5 min 54 s, 441 passed, coverage 93.37 %.
