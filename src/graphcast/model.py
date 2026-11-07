@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """A predictor that runs multiple graph neural networks on mesh data.
 
 It learns to interpolate between the grid and the mesh nodes, with the loss
@@ -162,7 +166,7 @@ DEFAULT_TASK = TaskConfig(
   target_variables=TARGET_VARS,
   forcing_variables=FORCING_VARS,
   levels=LEVELS_10,
-  input_duration="2d",
+  input_duration="2D",
 )
 
 
@@ -267,31 +271,29 @@ class GraphCast(hk.Module, predictor_base.Predictor):
   def __post_init__(self):
     super().__post_init__(name=self._name or "graphcast")
 
-    self._query_radius = (
-      self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
-    )
-    self._mesh2grid_edge_normalization_factor = (
-      self._model_config.mesh2grid_edge_normalization_factor
-    )
+    if self._mesh_data.mesh_size is None:
+      raise ValueError("The mesh has no mesh size: the query radius of the encoder is a fraction of it")
+    self._query_radius = self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
+    self._mesh2grid_edge_normalization_factor = self._model_config.mesh2grid_edge_normalization_factor
     self._per_variable_weights = self._model_config.per_variable_weights
-    self._spatial_features_kwargs = dict(
-      add_node_position=False,
-      add_node_coordinates=True,
-      add_edge_fwd_azimuth=False,
-      add_edge_direction=True,
-      add_edge_length=True,
-      add_edge_receiver_coordinates=False,
-    )
+    self._spatial_features_kwargs = {
+      "add_node_position": False,
+      "add_node_coordinates": True,
+      "add_edge_fwd_azimuth": False,
+      "add_edge_direction": True,
+      "add_edge_length": True,
+      "add_edge_receiver_coordinates": False,
+    }
 
     # Grid/mesh nodes and {grid2mesh,mesh,mesh2grid} edges embedder.
-    self._embedder_kwargs = dict(
-      mlp_hidden_dim=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      output_dim=self._model_config.latent_size,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-    )
+    self._embedder_kwargs = {
+      "mlp_hidden_dim": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "output_dim": self._model_config.latent_size,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+    }
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
     #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
@@ -308,53 +310,51 @@ class GraphCast(hk.Module, predictor_base.Predictor):
 
     # Encoder, which moves data from the grid to the mesh with a single message
     # passing step. `_run_grid2mesh_gnn` takes care of embedding grid and mesh nodes, and grid2mesh edges as well.
-    self._grid2mesh_gnn_kwargs = dict(
-      embed_nodes=False,
-      embed_edges=False,
-      edge_latent_size=dict(grid2mesh=self._model_config.latent_size),
-      node_latent_size=dict(
-        mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size
-      ),
-      mlp_hidden_size=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      num_message_passing_steps=1,
-      use_layer_norm=True,
-      use_concat_trick=True,
-      include_sent_messages_in_node_update=False,
-      activation="swish",
-      f32_aggregation=True,
-      aggregate_normalization=None,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      scan=False,
-      edge_chunk_size=self._edge_chunk_size,
-      name="grid2mesh_gnn",
-    )
+    self._grid2mesh_gnn_kwargs = {
+      "embed_nodes": False,
+      "embed_edges": False,
+      "edge_latent_size": {"grid2mesh": self._model_config.latent_size},
+      "node_latent_size": {"mesh_nodes": self._model_config.latent_size, "grid_nodes": self._model_config.latent_size},
+      "mlp_hidden_size": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "num_message_passing_steps": 1,
+      "use_layer_norm": True,
+      "use_concat_trick": True,
+      "include_sent_messages_in_node_update": False,
+      "activation": "swish",
+      "f32_aggregation": True,
+      "aggregate_normalization": None,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+      "scan": False,
+      "edge_chunk_size": self._edge_chunk_size,
+      "name": "grid2mesh_gnn",
+    }
 
     # Processor, which performs message passing on the multi-mesh.
     # Mesh node latent representations have been computed by previous layers (encoder).
     # Processor edges are embedded using the same network as for the grid2mesh.
-    self._mesh_gnn_kwargs = dict(
-      embed_nodes=False,
-      embed_edges=False,
-      node_latent_size=dict(mesh_nodes=self._model_config.latent_size),
-      edge_latent_size=dict(mesh=self._model_config.latent_size),
-      mlp_hidden_size=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      num_message_passing_steps=self._model_config.gnn_msg_steps,
-      use_layer_norm=True,
-      use_concat_trick=True,
-      include_sent_messages_in_node_update=False,
-      activation="swish",
-      f32_aggregation=False,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      scan=self._scan,
-      edge_chunk_size=self._edge_chunk_size,
-      name="mesh_gnn",
-    )
+    self._mesh_gnn_kwargs = {
+      "embed_nodes": False,
+      "embed_edges": False,
+      "node_latent_size": {"mesh_nodes": self._model_config.latent_size},
+      "edge_latent_size": {"mesh": self._model_config.latent_size},
+      "mlp_hidden_size": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "num_message_passing_steps": self._model_config.gnn_msg_steps,
+      "use_layer_norm": True,
+      "use_concat_trick": True,
+      "include_sent_messages_in_node_update": False,
+      "activation": "swish",
+      "f32_aggregation": False,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+      "scan": self._scan,
+      "edge_chunk_size": self._edge_chunk_size,
+      "name": "mesh_gnn",
+    }
 
     num_surface_vars = len(set(self._task_config.target_variables) & set(ALL_SURFACE_VARS))
     assert num_surface_vars == len(set(self._task_config.target_variables) - set(ALL_VOLUME_VARS))
@@ -366,30 +366,28 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # message passing step.
     # Grid node latent representations have been computed by previous layers (encoder).
     # mesh2grid edges are embedded using the same network as for the grid2mesh.
-    self._mesh2grid_gnn_kwargs = dict(
+    self._mesh2grid_gnn_kwargs = {
       # Require a specific node dimensionaly for the grid node outputs.
-      node_output_size=dict(grid_nodes=num_outputs),
-      embed_nodes=False,
-      embed_edges=False,
-      edge_latent_size=dict(mesh2grid=self._model_config.latent_size),
-      node_latent_size=dict(
-        mesh_nodes=self._model_config.latent_size, grid_nodes=self._model_config.latent_size
-      ),
-      mlp_hidden_size=self._model_config.latent_size,
-      mlp_num_hidden_layers=self._model_config.hidden_layers,
-      num_message_passing_steps=1,
-      use_layer_norm=True,
-      use_concat_trick=True,
-      include_sent_messages_in_node_update=False,
-      activation="swish",
-      f32_aggregation=False,
-      remat=self._remat,
-      policy=self._policy,
-      prevent_cse=self._prevent_cse,
-      scan=False,
-      edge_chunk_size=self._edge_chunk_size,
-      name="mesh2grid_gnn",
-    )
+      "node_output_size": {"grid_nodes": num_outputs},
+      "embed_nodes": False,
+      "embed_edges": False,
+      "edge_latent_size": {"mesh2grid": self._model_config.latent_size},
+      "node_latent_size": {"mesh_nodes": self._model_config.latent_size, "grid_nodes": self._model_config.latent_size},
+      "mlp_hidden_size": self._model_config.latent_size,
+      "mlp_num_hidden_layers": self._model_config.hidden_layers,
+      "num_message_passing_steps": 1,
+      "use_layer_norm": True,
+      "use_concat_trick": True,
+      "include_sent_messages_in_node_update": False,
+      "activation": "swish",
+      "f32_aggregation": False,
+      "remat": self._remat,
+      "policy": self._policy,
+      "prevent_cse": self._prevent_cse,
+      "scan": False,
+      "edge_chunk_size": self._edge_chunk_size,
+      "name": "mesh2grid_gnn",
+    }
 
     # The `_init_*_properties` methods initialize remaining properties, that is:
     # within `_init_mesh_properties`
@@ -518,17 +516,15 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # Precompute structural node and edge features according to config options.
     # Structural features are those that depend on the fixed values of the
     # latitude and longitudes of the nodes.
-    (senders_node_features, receivers_node_features, edge_features) = (
-      model_utils.get_bipartite_graph_spatial_features(
-        senders_node_lat=self._grid_nodes_lat,
-        senders_node_lon=self._grid_nodes_lon,
-        receivers_node_lat=self._mesh_nodes_lat,
-        receivers_node_lon=self._mesh_nodes_lon,
-        senders=senders,
-        receivers=receivers,
-        edge_normalization=None,
-        **self._spatial_features_kwargs,
-      )
+    (senders_node_features, receivers_node_features, edge_features) = model_utils.get_bipartite_graph_spatial_features(
+      senders_node_lat=self._grid_nodes_lat,
+      senders_node_lon=self._grid_nodes_lon,
+      receivers_node_lat=self._mesh_nodes_lat,
+      receivers_node_lon=self._mesh_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      edge_normalization=None,
+      **self._spatial_features_kwargs,
     )
 
     # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
@@ -580,9 +576,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     assert len(senders) == len(receivers) == edge_features.shape[0]
     n_edge = np.array([len(senders)])
     assert n_mesh_node == len(node_features)
-    logger.info(
-      f"Mesh (processor) graph contains: {n_mesh_node[0]} mesh nodes and {n_edge[0]} edges."
-    )
+    logger.info(f"Mesh (processor) graph contains: {n_mesh_node[0]} mesh nodes and {n_edge[0]} edges.")
     mesh_node_set = typed_graph.NodeSet(n_node=n_mesh_node, features=node_features)
     edge_set = typed_graph.EdgeSet(
       n_edge=n_edge,
@@ -608,17 +602,15 @@ class GraphCast(hk.Module, predictor_base.Predictor):
 
     # Precompute structural node and edge features according to config options.
     assert self._mesh_nodes_lat is not None and self._mesh_nodes_lon is not None
-    (senders_node_features, receivers_node_features, edge_features) = (
-      model_utils.get_bipartite_graph_spatial_features(
-        senders_node_lat=self._mesh_nodes_lat,
-        senders_node_lon=self._mesh_nodes_lon,
-        receivers_node_lat=self._grid_nodes_lat,
-        receivers_node_lon=self._grid_nodes_lon,
-        senders=senders,
-        receivers=receivers,
-        edge_normalization=self._mesh2grid_edge_normalization_factor,
-        **self._spatial_features_kwargs,
-      )
+    (senders_node_features, receivers_node_features, edge_features) = model_utils.get_bipartite_graph_spatial_features(
+      senders_node_lat=self._mesh_nodes_lat,
+      senders_node_lon=self._mesh_nodes_lon,
+      receivers_node_lat=self._grid_nodes_lat,
+      receivers_node_lon=self._grid_nodes_lon,
+      senders=senders,
+      receivers=receivers,
+      edge_normalization=self._mesh2grid_edge_normalization_factor,
+      **self._spatial_features_kwargs,
     )
 
     # Check that values of n_{grid_node,mesh_node,edge} inferred from feature tensors are correct.
@@ -648,7 +640,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     )
     return mesh2grid_graph
 
-  def __call__(
+  def __call__(  # ty: ignore[invalid-method-override]  # optional keyword arguments of the base class
     self,
     inputs: xarray.Dataset,
     targets_template: xarray.Dataset,
@@ -737,21 +729,12 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     mesh_node_positions = model_utils.fixed_position_features(
       mesh_nodes.features.astype(grid_node_input_features.dtype)
     )
-    # TODO: this comment from the original GraphCast code should be checked.
-    # "To make sure capacity of the embedded is identical for the grid nodes and
-    # the mesh nodes, we also append some dummy zero input features for the
-    # mesh nodes."
-    # In doubt, we add dummy features for the mesh nodes here as done originally.
-    dummy_mesh_inputs = jnp.zeros(
-      (mesh_node_positions.shape[0], grid_node_input_features.shape[-1]),
-      dtype=grid_node_input_features.dtype,
-    )
-    mesh_node_inputs = jnp.concatenate([dummy_mesh_inputs, mesh_node_positions], axis=-1)
-    assert mesh_node_inputs.shape[-1] == grid_node_inputs.shape[-1] == (
-        grid_node_input_features.shape[-1] + 4
-    )
+    # Mesh nodes have only their positions as inputs. Upstream GraphCast padded them with zeros for the grid node
+    # input channels "to make sure capacity of the embedder is identical"; the mesh node embedder has its own
+    # parameters, so the zeros only made its first layer's initial weights smaller (fan-in C + 4 instead of 4) and cost
+    # a matrix product: without them, validation losses and step times were the same within noise (Nov 2026).
     mesh_node_embedder = Embedder(**self._embedder_kwargs, name="mesh_node_embedder")
-    mesh_node_features = mesh_node_embedder(mesh_node_inputs)
+    mesh_node_features = mesh_node_embedder(mesh_node_positions)
     mesh_node_features = _add_batch_second_axis(mesh_node_features, batch_size)
     new_mesh_nodes = mesh_nodes._replace(features=mesh_node_features)
 
@@ -771,10 +754,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     grid2mesh_out = grid2mesh_gnn(input_graph)
     latent_mesh_nodes = grid2mesh_out.nodes["mesh_nodes"].features
     latent_grid_nodes = grid2mesh_out.nodes["grid_nodes"].features
-    assert (
-      latent_grid_nodes.shape[0] == self._num_grid_nodes
-      and latent_mesh_nodes.shape[0] == self._num_mesh_nodes
-    )
+    assert latent_grid_nodes.shape[0] == self._num_grid_nodes and latent_mesh_nodes.shape[0] == self._num_mesh_nodes
     return latent_mesh_nodes, latent_grid_nodes
 
   def _run_mesh_gnn(
@@ -809,9 +789,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     nodes = mesh_graph.nodes["mesh_nodes"]
     nodes = nodes._replace(features=latent_mesh_nodes)
 
-    input_graph = mesh_graph._replace(
-      edges={mesh_edges_key: new_edges}, nodes={"mesh_nodes": nodes}
-    )
+    input_graph = mesh_graph._replace(edges={mesh_edges_key: new_edges}, nodes={"mesh_nodes": nodes})
     # Create and run the GNN.
     mesh_gnn = deep_typed_graph_net.DeepTypedGraphNet(**self._mesh_gnn_kwargs)
     mesh_out = mesh_gnn(input_graph)
@@ -869,7 +847,8 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # xarray `Dataset` (batch, time, lat, lon, level, multiple vars)
     # to xarray `DataArray` (batch, lat, lon, channels)
     stacked_inputs = model_utils.dataset_to_stacked(inputs)
-    stacked_forcings = model_utils.dataset_to_stacked(forcings)
+    # Forcings off the grid (e.g. only year progress) are broadcast to the grid of the inputs.
+    stacked_forcings = model_utils.dataset_to_stacked(forcings, sizes={**inputs.sizes, **forcings.sizes})
     stacked_inputs = xarray.concat([stacked_inputs, stacked_forcings], dim="channels")
 
     # xarray `DataArray` (batch, lat, lon, channels)
@@ -893,7 +872,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     # to xarray `DataArray` (batch, lat, lon, channels)
     assert self._grid_lat is not None and self._grid_lon is not None
     grid_shape = (self._grid_lat.shape[0], self._grid_lon.shape[0])
-    grid_node_outputs = grid_node_outputs[: self._num_grid_nodes, ...]
+    grid_node_outputs = grid_node_outputs[: self._num_grid_nodes, ...]  # ty: ignore[invalid-argument-type]
     if self._grid_node_indices is not None:
       # Back to all grid points: the nodes of unmasked points only, other points predict zero.
       num_grid_points = grid_shape[0] * grid_shape[1]
@@ -903,9 +882,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
         .at[self._grid_node_indices[unmasked]]
         .set(grid_node_outputs[unmasked])
       )
-    grid_outputs_lat_lon_leading = jax.lax.reshape(
-      grid_node_outputs, grid_shape + grid_node_outputs.shape[1:]
-    )
+    grid_outputs_lat_lon_leading = jax.lax.reshape(grid_node_outputs, grid_shape + grid_node_outputs.shape[1:])
     dims = ("lat", "lon", "batch", "channels")
     grid_xarray_lat_lon_leading = xarray_jax.DataArray(data=grid_outputs_lat_lon_leading, dims=dims)
     grid_xarray = model_utils.restore_leading_axes(grid_xarray_lat_lon_leading)
@@ -928,7 +905,10 @@ def _check_rollout_inputs(inputs: xarray.Dataset, task: TaskConfig) -> None:
   (autoregressive.Predictor._get_and_validate_constant_inputs)."""
   rolled = set(task.target_variables) | set(task.forcing_variables)
   if varying := sorted(name for name in task.input_variables if name not in rolled and "time" in inputs[name].dims):
-    raise ValueError(f"Input variables {varying} are neither predicted, forced nor constant: they cannot be rolled out.")
+    raise ValueError(
+      f"Input variables {varying} are neither predicted, forced nor constant: they cannot be rolled out."
+    )
+
 
 def _get_max_edge_distance(mesh: TriangleMesh | MeshGraph):
   if isinstance(mesh, TriangleMesh):

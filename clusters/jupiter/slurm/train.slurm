@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 #SBATCH --job-name=test_training
 #SBATCH --account=e-dev-2026d09-119
 #SBATCH --partition=booster

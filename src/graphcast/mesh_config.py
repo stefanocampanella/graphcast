@@ -1,9 +1,23 @@
-"""Validated settings of the ocean mesh generator (graphcast make-ocean-mesh)."""
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Validated settings of the mesh generators (graphcast make-ocean-mesh and make-icosahedral-mesh)."""
 
 import pathlib
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, PositiveFloat, model_validator
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, NonNegativeInt, PositiveFloat, model_validator
 
 from graphcast.gis_utils import CRSName
 
@@ -142,6 +156,16 @@ class MeshGenerationConfig(ApplicationConfig):
     if self.view_tag_name in names:
       raise ValueError(f"view_tag_name {self.view_tag_name!r} is also the name of a field")
     return self
+
+
+class IcosahedralMeshConfig(ApplicationConfig):
+  """Settings of graphcast make-icosahedral-mesh: the icosahedral multi-mesh refined `splits` times."""
+
+  description: str = ""
+  license: str = ""
+  splits: NonNegativeInt
+  model_name: str = "IcosahedralMesh"
+  view_tag_name: str = Field(default="MeshSize", description="Name of the view holding the mesh size at the nodes")
 
 
 def field_arguments(field: BaseModel, prefix: pathlib.Path | None = None) -> dict[str, Any]:

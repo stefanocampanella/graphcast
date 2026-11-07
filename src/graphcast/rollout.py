@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Utils for rolling out models."""
 
 from collections.abc import Iterator
@@ -111,9 +115,10 @@ def chunked_prediction_generator(
   """
 
   # Create copies to avoid mutating inputs.
-  inputs = xarray.Dataset(inputs)
-  targets_template = xarray.Dataset(targets_template)
-  forcings = xarray.Dataset(forcings)
+  # Shallow copies: the datetime coordinates are deleted from them below.
+  inputs = inputs.copy()
+  targets_template = targets_template.copy()
+  forcings = forcings.copy()
 
   if "datetime" in inputs.coords:
     del inputs.coords["datetime"]
@@ -156,9 +161,7 @@ def chunked_prediction_generator(
     # Replace the timedelta, by the one corresponding to the first chunk, so we
     # don't recompile at every iteration, keeping the
     actual_target_time = current_targets_template.coords["time"]
-    current_targets_template = current_targets_template.assign_coords(
-      time=targets_chunk_time
-    ).compute()
+    current_targets_template = current_targets_template.assign_coords(time=targets_chunk_time).compute()
 
     current_forcings = forcings.isel(time=target_slice)
     current_forcings = current_forcings.assign_coords(time=targets_chunk_time)
@@ -205,14 +208,12 @@ def _get_next_inputs(
 
   # Apply concatenate next frame with inputs, crop what we don't need.
   num_inputs = prev_inputs.sizes["time"]
-  return xarray.concat([prev_inputs, next_inputs], dim="time", data_vars="different").tail(
+  return xarray.concat([prev_inputs, next_inputs], dim="time", data_vars="different", compat="equals").tail(
     time=num_inputs
   )
 
 
-def extend_targets_template(
-  targets_template: xarray.Dataset, required_num_steps: int
-) -> xarray.Dataset:
+def extend_targets_template(targets_template: xarray.Dataset, required_num_steps: int) -> xarray.Dataset:
   """Extends `targets_template` to `required_num_steps` with lazy arrays.
 
   It uses lazy dask arrays of zeros, so it does not require instantiating the

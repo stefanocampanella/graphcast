@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+# Commits that only reformat code, ignored by git blame (git config blame.ignoreRevsFile .git-blame-ignore-revs;
+# GitHub uses this file automatically).
+
+# ruff format the whole codebase
+5176406ccbaf00bece3d137b290d7949fd0412ff

@@ -1,5 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Write the standardized anomalies of a dataset, its mask and the tendency statistics to local Zarr stores.
 
 Time-dependent variables become anomaly z-scores with respect to a 365-day climatology and anomaly standard deviation,
@@ -63,6 +75,8 @@ def get_aws_credentials() -> dict:
     logger.info("Reading S3 anonymously")
     return {"type": "anonymous"}
   credentials = credentials.get_frozen_credentials()
+  if credentials.access_key is None or credentials.secret_key is None:
+    raise ValueError("The resolved AWS credentials have no access key or secret key")
   os.environ["AWS_ACCESS_KEY_ID"] = credentials.access_key
   os.environ["AWS_SECRET_ACCESS_KEY"] = credentials.secret_key
   if credentials.token:

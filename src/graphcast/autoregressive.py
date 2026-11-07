@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """A Predictor wrapping a one-step Predictor to make autoregressive predictions."""
 
 import haiku as hk
@@ -104,9 +108,7 @@ class Predictor(predictor_base.Predictor):
 
     overlap = forcings.keys() & targets.keys()
     if overlap:
-      raise ValueError(
-        f"The following were specified as both targets and forcings, which isn't allowed: {overlap}"
-      )
+      raise ValueError(f"The following were specified as both targets and forcings, which isn't allowed: {overlap}")
 
   def _update_inputs(self, inputs, next_frame):
     num_inputs = inputs.sizes["time"]
@@ -173,15 +175,11 @@ class Predictor(predictor_base.Predictor):
 
     def one_step_prediction(inputs, scan_variables):
       flat_forcings = scan_variables
-      forcings = _unflatten_and_expand_time(
-        flat_forcings, forcings_treedef, target_template.coords["time"]
-      )
+      forcings = _unflatten_and_expand_time(flat_forcings, forcings_treedef, target_template.coords["time"])
 
       # Add constant inputs:
       all_inputs = xarray.merge([constant_inputs, inputs])
-      predictions: xarray.Dataset = self._predictor(
-        all_inputs, target_template, forcings=forcings, **kwargs
-      )
+      predictions: xarray.Dataset = self._predictor(all_inputs, target_template, forcings=forcings, **kwargs)
 
       next_frame = xarray.merge([predictions, forcings])
       next_inputs = self._update_inputs(inputs, next_frame)
@@ -234,10 +232,10 @@ class Predictor(predictor_base.Predictor):
     # After the above checks, the remaining inputs must be time-dependent:
     inputs = inputs.drop_vars(constant_inputs.keys())
 
-    if self._noise_level:
+    if noise_level := self._noise_level:
 
       def add_noise(x):
-        return x + self._noise_level * jax.random.normal(hk.next_rng_key(), shape=x.shape)
+        return x + noise_level * jax.random.normal(hk.next_rng_key(), shape=x.shape)
 
       # Add noise to time-dependent variables of the inputs.
       inputs = jax.tree_util.tree_map(add_noise, inputs)
@@ -253,9 +251,7 @@ class Predictor(predictor_base.Predictor):
 
     def one_step_loss(inputs, scan_variables):
       flat_target, flat_forcings = scan_variables
-      forcings = _unflatten_and_expand_time(
-        flat_forcings, forcings_treedef, targets.coords["time"][:1]
-      )
+      forcings = _unflatten_and_expand_time(flat_forcings, forcings_treedef, targets.coords["time"][:1])
 
       target = _unflatten_and_expand_time(flat_target, target_treedef, targets.coords["time"][:1])
 
@@ -287,9 +283,7 @@ class Predictor(predictor_base.Predictor):
     # targets (and unflatten them inside the inner function) because they are
     # passed to the inner function per-timestep without the original time axis.
     # The same apply to the optional forcing.
-    _, (per_timestep_losses, per_timestep_diagnostics) = hk.scan(
-      one_step_loss, inputs, scan_variables
-    )
+    _, (per_timestep_losses, per_timestep_diagnostics) = hk.scan(one_step_loss, inputs, scan_variables)
 
     # Re-wrap loss and diagnostics as DataArray and average them over time:
     (loss, diagnostics) = jax.tree_util.tree_map(

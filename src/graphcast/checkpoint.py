@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,16 +13,16 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Serialize and deserialize trees."""
 
 import dataclasses
 import io
 import types
-from typing import Any, BinaryIO, Optional, TypeVar
+from typing import Any, BinaryIO, Optional
 
 import numpy as np
-
-_T = TypeVar("_T")
 
 
 def dump(dest: BinaryIO, value: Any) -> None:
@@ -39,7 +41,7 @@ def dump(dest: BinaryIO, value: Any) -> None:
   dest.write(buffer.getvalue())
 
 
-def load(source: BinaryIO, typ: type[_T]) -> _T:
+def load[T](source: BinaryIO, typ: type[T]) -> T:
   """Load from a file object and convert it to the specified type.
 
   Args:
@@ -94,7 +96,13 @@ def _unflatten(flat: dict[str, Any]) -> dict[str, Any]:
   return tree
 
 
-def _convert_types(typ: type[_T], value: Any) -> _T:
+def _is_variable_length_container(typ: Any) -> bool:
+  """Lists, dicts and variable-length tuples (`tuple[T, ...]`), which may be empty."""
+  base_type = getattr(typ, "__origin__", None)
+  return base_type in (list, dict) or (base_type is tuple and len(typ.__args__) == 2 and typ.__args__[1] == ...)
+
+
+def _convert_types(typ: Any, value: Any) -> Any:
   """Convert some structure into the given type. The structures must match."""
   if typ in (Any, ...):
     return value
@@ -126,6 +134,9 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
 
       if f.name in value:
         kwargs[f.name] = _convert_types(constructor, value[f.name])
+      elif _is_variable_length_container(constructor):
+        # Empty containers flatten to no keys at all.
+        kwargs[f.name] = _convert_types(constructor, {})
       else:
         raise ValueError(f"Missing value: {f.name}")
     return typ(**kwargs)
@@ -140,25 +151,19 @@ def _convert_types(typ: type[_T], value: Any) -> _T:
   if base_type is list:
     assert len(typ.__args__) == 1
     value_type = typ.__args__[0]
-    return [
-      _convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))
-    ]
+    return [_convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))]
 
   if base_type is tuple:
     if len(typ.__args__) == 2 and typ.__args__[1] == ...:
       # An arbitrary length tuple of a single type, eg: tuple[int, ...]
       value_type = typ.__args__[0]
-      return tuple(
-        _convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0]))
-      )
+      return tuple(_convert_types(value_type, v) for _, v in sorted(value.items(), key=lambda x: int(x[0])))
     else:
       # A fixed length tuple of arbitrary types, eg: tuple[int, str, float]
       assert len(typ.__args__) == len(value)
       return tuple(
         _convert_types(t, v)
-        for t, (_, v) in zip(
-          typ.__args__, sorted(value.items(), key=lambda x: int(x[0])), strict=False
-        )
+        for t, (_, v) in zip(typ.__args__, sorted(value.items(), key=lambda x: int(x[0])), strict=False)
       )
 
   # This is probably unreachable with reasonable serializable inputs.

@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,19 +13,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Utils for creating icosahedral meshes."""
-
-from typing import Literal
 
 import numpy as np
 from scipy.spatial import transform
 
-from graphcast.mesh_graph import TriangleMesh
+from graphcast.gis_utils import (
+  CoordinateReferenceSystem,
+  _cartesian_unit_sphere_wkt,
+  cartesian_crs,
+  cartesian_unit_sphere_crs,
+  get_transform,
+)
+from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges, merge_meshes
 
 
-def get_hierarchy_of_triangular_meshes_for_sphere(
-  splits: int, radius: Literal["unit"] | float = "unit"
-) -> list[TriangleMesh]:
+def get_hierarchy_of_triangular_meshes_for_sphere(splits: int) -> list[TriangleMesh]:
   """Returns a sequence of meshes, each with triangularization sphere.
 
   Starting with a regular icosahedron (12 vertices, 20 faces, 30 edges) with
@@ -40,7 +47,9 @@ def get_hierarchy_of_triangular_meshes_for_sphere(
   Returns:
      Sequence of `TriangleMesh`s of length `splits + 1` each with:
 
-       vertices: [num_vertices, 3] vertex positions in 3D, all with unit norm.
+       vertices: [num_vertices, 3] vertex positions in 3D, all with unit norm
+           (`spatial_reference_system` is the unit sphere's; `get_multi_mesh_graph`
+           projects them to another one).
        faces: [num_faces, 3] with triangular faces joining sets of 3 vertices.
            Each row contains three indices into the vertices array, indicating
            the vertices adjacent to the face. Always with positive orientation
@@ -51,16 +60,51 @@ def get_hierarchy_of_triangular_meshes_for_sphere(
   for _ in range(splits):
     current_mesh = _two_split_unit_sphere_triangle_faces(current_mesh)
     unit_sphere_meshes.append(current_mesh)
+  return unit_sphere_meshes
 
-  if radius == "unit":
-    output_meshes = unit_sphere_meshes
-  else:
-    output_meshes = []
-    for mesh in unit_sphere_meshes:
-      vertices = mesh.vertices * radius
-      output_meshes.append(TriangleMesh(vertices=vertices, faces=mesh.faces))
 
-  return output_meshes
+def get_multi_mesh_graph(splits: int, crs: CoordinateReferenceSystem = cartesian_crs) -> MeshGraph:
+  """Returns the icosahedral multi-mesh with `splits` refinements, with vertices in the coordinates of `crs`.
+
+  The hierarchy is merged (vertices and faces of the finest mesh, edges of the faces of all levels), then the vertices
+  are projected from the unit sphere to `crs`: their spherical latitude and longitude are taken as coordinates of the
+  `crs` datum, so with the default (Earth-centred, Earth-fixed WGS84, in metres) the vertices lie on the ellipsoid.
+  The mesh has no boundary and no seamsh node tags.
+
+  Args:
+     splits: How many times to split each triangle of the icosahedron.
+     crs: Coordinate reference system of the returned vertices.
+  Returns:
+     `MeshGraph` with `spatial_reference_system` the WKT of `crs`.
+  """
+  multi_mesh = merge_meshes(get_hierarchy_of_triangular_meshes_for_sphere(splits))
+  vertices = np.asarray(get_transform(cartesian_unit_sphere_crs, crs)(multi_mesh.vertices.astype(np.float64)))
+  return MeshGraph(
+    vertices=vertices,
+    faces=multi_mesh.faces,
+    edges=multi_mesh.edges,
+    boundary=None,
+    spatial_reference_system=crs.to_wkt(),
+    node_tags=None,
+  )
+
+
+def get_multi_mesh_data(
+  splits: int, description: list[str] | None = None, license: list[str] | None = None
+) -> MeshData:
+  """Returns the icosahedral multi-mesh of `get_multi_mesh_graph` (WGS84 Earth-centred coordinates), with GraphCast's
+  mesh size: the length of the longest edge of the finest mesh (straight line, in metres), the same at every vertex
+  (the radius of the grid to mesh query is a fraction of it).
+  """
+  graph = get_multi_mesh_graph(splits)
+  senders, receivers = faces_to_edges(graph.faces)
+  longest_edge = np.linalg.norm(graph.vertices[senders] - graph.vertices[receivers], axis=-1).max()
+  return MeshData(
+    mesh_graph=graph,
+    mesh_size=np.full(len(graph.vertices), longest_edge),
+    description=description or [],
+    license=license or [],
+  )
 
 
 def get_icosahedron() -> TriangleMesh:
@@ -142,7 +186,11 @@ def get_icosahedron() -> TriangleMesh:
   rotation_matrix = rotation.as_matrix()
   vertices = np.dot(vertices, rotation_matrix)
 
-  return TriangleMesh(vertices=vertices.astype(np.float32), faces=np.array(faces, dtype=np.int32))
+  return TriangleMesh(
+    vertices=vertices.astype(np.float32),
+    faces=np.array(faces, dtype=np.int32),
+    spatial_reference_system=_cartesian_unit_sphere_wkt,
+  )
 
 
 def _two_split_unit_sphere_triangle_faces(triangular_mesh: TriangleMesh) -> TriangleMesh:
@@ -185,7 +233,9 @@ def _two_split_unit_sphere_triangle_faces(triangular_mesh: TriangleMesh) -> Tria
       ]
     )
   return TriangleMesh(
-    vertices=new_vertices_builder.get_all_vertices(), faces=np.array(new_faces, dtype=np.int32)
+    vertices=new_vertices_builder.get_all_vertices(),
+    faces=np.array(new_faces, dtype=np.int32),
+    spatial_reference_system=_cartesian_unit_sphere_wkt,
   )
 
 

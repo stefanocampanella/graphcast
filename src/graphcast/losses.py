@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Loss functions (and terms for use in loss functions) used for weather."""
 
 import functools
 import math
 from collections.abc import Callable, Hashable, Mapping
-from typing import Protocol
+from typing import Any, Protocol
 
 import jax.numpy as jnp
 import numpy as np
@@ -35,9 +39,7 @@ class LossFunction(Protocol):
   this. This is just to document the interface.
   """
 
-  def __call__(
-    self, predictions: xr.Dataset, targets: xr.Dataset, **optional_kwargs
-  ) -> LossAndDiagnostics:
+  def __call__(self, predictions: xr.Dataset, targets: xr.Dataset, **optional_kwargs) -> LossAndDiagnostics:
     """Computes a loss function.
 
     Args:
@@ -95,9 +97,7 @@ def weighted_tweedie_deviance(
     assert prediction.shape == target.shape, "Predictions and targets shapes must match"
 
     return (2 / ((1 - p) * (2 - p))) * (
-      target ** (2 - p)
-      - 2 * (2 - p) * target * prediction ** (1 - p)
-      + (1 - p) * prediction ** (2 - p)
+      target ** (2 - p) - 2 * (2 - p) * target * prediction ** (1 - p) + (1 - p) * prediction ** (2 - p)
     )
 
   weighted_tweedie_deviance_fn = get_weighted_loss(
@@ -196,7 +196,7 @@ def _masked_mean_preserving_batch(
 
 def sum_per_variable_losses(
   per_variable_losses: Mapping[Hashable, xr.DataArray],
-  weights: Mapping[Hashable, np.floating | float] | None = None,
+  weights: Mapping[Any, np.floating | float] | None = None,
 ) -> LossAndDiagnostics:
   """Weighted sum of per-variable losses."""
   weights = weights or {}
@@ -207,8 +207,7 @@ def sum_per_variable_losses(
     )
 
   weighted_per_variable_losses = {
-    name: jnp.array(weights.get(name, 1.0), dtype=loss.dtype) * loss
-    for name, loss in per_variable_losses.items()
+    name: jnp.array(weights.get(name, 1.0), dtype=loss.dtype) * loss for name, loss in per_variable_losses.items()
   }
   total = xr.concat(weighted_per_variable_losses.values(), dim="variable", join="exact").sum(
     dim="variable", skipna=False
@@ -293,9 +292,7 @@ def _weight_for_latitude_vector_without_poles(latitude: xr.DataArray) -> xr.Data
   if not np.isclose(np.max(latitude), 90 - delta_latitude / 2) or not np.isclose(
     np.min(latitude), -90 + delta_latitude / 2
   ):
-    raise ValueError(
-      f"Latitude vector {latitude} does not start/end at +- (90 - delta_latitude/2) degrees."
-    )
+    raise ValueError(f"Latitude vector {latitude} does not start/end at +- (90 - delta_latitude/2) degrees.")
   # Use XArray ufuncs only to avoid the type checker complaining about the
   # result being a numpy array.
   weights = xu.cos(xu.deg2rad(latitude))

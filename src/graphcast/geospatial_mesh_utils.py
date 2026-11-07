@@ -1,4 +1,5 @@
-# Copyright 2026 Stefano Campanella.
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +37,6 @@ from scipy.ndimage import gaussian_filter
 
 from graphcast.gis_utils import (
   CoordinateReferenceSystem,
-  Coordinates,
   CRSName,
   CRSRegistry,
   cartesian_crs,
@@ -48,6 +48,10 @@ from graphcast.mesh_config import FieldConfig, field_arguments
 from graphcast.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
 
 logger = logging.getLogger(__name__)
+
+# Physical group of the line elements that hold the edges of a multi-mesh (edges of all levels of refinement). Line
+# elements outside it are the boundary of the mesh.
+MULTI_MESH_EDGES_GROUP = "multi_mesh_edges"
 
 
 @atexit.register
@@ -88,12 +92,10 @@ class StereoMeshSizeField(abc.ABC):
     projection_crs = CoordinateReferenceSystem.from_osr(projection)
     if not stereographic_crs.IsSame(projection_crs):
       transform = get_transform(projection_crs, stereographic_crs)
-      x = transform(x)  # type: ignore
+      x = transform(x)
     assert isinstance(x, np.ndarray) and x.shape[1] == 2
     earth_radius_squared = stereographic_crs.GetSemiMajor() * stereographic_crs.GetSemiMinor()
-    stereo_factor = (4 * earth_radius_squared) / (
-      4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2
-    )
+    stereo_factor = (4 * earth_radius_squared) / (4 * earth_radius_squared + x[:, 0] ** 2 + x[:, 1] ** 2)
     return mesh_size / stereo_factor
 
 
@@ -185,9 +187,7 @@ class RasterField(BoundedStereoMeshSizeField):
     else:
       self.field_max = np.nanquantile(grid, q_high)
     grid = grid.fillna(self.field_max)
-    gdal_raster = xarray_to_gdal_raster(
-      da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim
-    )
+    gdal_raster = xarray_to_gdal_raster(da=grid, latitude_dim=latitude_dim, longitude_dim=longitude_dim)
     self.field = seamsh.field.Raster(gdal_raster)
 
   def criterion(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
@@ -331,7 +331,7 @@ class CompositeMeshSizeField(StereoMeshSizeField):
       fields[config.name] = FieldsRegistry[config.name](**arguments)
     self.fields = fields
 
-  def mesh_size_3d(self, x: Coordinates, projection: osr.SpatialReference) -> np.ndarray:
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
     return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
 
 
@@ -373,14 +373,16 @@ def read_mesh(
   node_tags, node_coords, _ = gmsh.model.mesh.get_nodes()
   node_coords = node_coords.reshape(-1, 3)
 
-  # Determine boundary nodes from line elements (type=1).
+  # Determine boundary nodes from line elements (type=1), except those holding the edges of a multi-mesh.
   # As a line is bounded by two nodes, we directly get the node tags.
-  line_tags, line_node_tags = gmsh.model.mesh.get_elements_by_type(1)
-  if len(line_tags) > 0:
-    # line_node_tags is a flat array of size 2 * num_lines
-    boundary_node_tags = line_node_tags.reshape(-1, 2)
-  else:
-    boundary_node_tags = np.empty((0, 2), dtype=int)
+  multi_mesh_curves = set(_multi_mesh_curves())
+  boundary_node_tags = [
+    gmsh.model.mesh.get_elements_by_type(1, curve)[1]
+    for _, curve in gmsh.model.get_entities(1)
+    if curve not in multi_mesh_curves
+  ]
+  # Flat arrays of size 2 * num_lines.
+  boundary_node_tags = np.concatenate(boundary_node_tags) if boundary_node_tags else np.empty((0,), dtype=int)
 
   # Meshes produced with seamsh might contain isolated points. Their existence, number and location are determined by
   # the resolution of the shapefile containing the coastlines, and the target mesh size used when coarsening the
@@ -407,13 +409,14 @@ def read_mesh(
       mesh_size_view_tag = view_tag
       break
   if mesh_size_view_tag is None:
+    if mesh_size_tag_name is not None:
+      names = [get_view_name(view_tag) for view_tag in view_tags]
+      raise ValueError(f"No view {mesh_size_tag_name!r} with the mesh size in {mesh_path}, views: {names}")
     data_node_tags = np.empty((0,), dtype=int)
     data = np.empty((0,), dtype=float)
   else:
     # Here we need to do two things: filter the nodes, and ensure that they have the same order as in node_coords.
-    data_type, data_node_tags, data, _, num_components = gmsh.view.getHomogeneousModelData(
-      mesh_size_view_tag, step
-    )
+    data_type, data_node_tags, data, _, num_components = gmsh.view.getHomogeneousModelData(mesh_size_view_tag, step)
     assert data_type == "NodeData" and num_components == 1
 
   # Node coords have the same order as in node_tags, so we can filter them directly.
@@ -423,7 +426,7 @@ def read_mesh(
 
   # node_tags_inv_map tells how to retrieve the index of a node in node_coords from its tag.
   node_tags_inv_map = {n: i for (i, n) in enumerate(node_tags)}
-  node_tags_inv_f = np.vectorize(lambda n: node_tags_inv_map.get(n, -1))
+  node_tags_inv_f = np.vectorize(lambda n: node_tags_inv_map.get(n, -1), otypes=[int])
 
   # Faces contains only valid node tags, so there is no need to filter them.
   faces = node_tags_inv_f(faces_node_tags)  # [num_faces, 3]
@@ -439,8 +442,7 @@ def read_mesh(
   data_node_tags = data_node_tags[data_mask]  # [num_valid_node_tags]
   # node_coords index i -> j = data_node_tag_inv_map[i] -> data[j]
   data_node_tags_inv_map = {n: i for (i, n) in enumerate(data_node_tags)}
-  mesh_size = [data[data_node_tags_inv_map[n]] for n in node_tags]
-  mesh_size = np.array(mesh_size)
+  mesh_size = None if mesh_size_view_tag is None else np.array([data[data_node_tags_inv_map[n]] for n in node_tags])
 
   srs_string_type, srs_string = gmsh.model.get_attribute(srs_attribute_name)
   assert srs_string_type.upper() == "WKT"
@@ -449,22 +451,18 @@ def read_mesh(
     vertices=node_coords,
     faces=faces,
     boundary=boundary_node_mask,
-    node_tags=valid_node_tags,
+    node_tags=node_tags,
     spatial_reference_system=srs_string,
   )
   return mesh, mesh_size
 
 
-def load_domain(
-  path: pathlib.Path, physical_name_field: str = "featurecla", curve_type: str = "bspline"
-):
+def load_domain(path: pathlib.Path, physical_name_field: str = "featurecla", curve_type: str = "bspline"):
   # Path must be a shapefile.
   if not path.name.endswith(".shp"):
     raise ValueError(f"Path must be a shapefile, got {path}")
   domain = seamsh.geometry.Domain(projection=stereographic_crs)
-  domain.add_boundary_curves_shp(
-    str(path), physical_name_field, getattr(seamsh.geometry.CurveType, curve_type.upper())
-  )
+  domain.add_boundary_curves_shp(str(path), physical_name_field, getattr(seamsh.geometry.CurveType, curve_type.upper()))
   return domain
 
 
@@ -477,9 +475,7 @@ def coarsen_boundaries(
   """Creates a new Domain with the same projection and coarsened boundaries."""
   x0_projection = CRSRegistry[x0_projection_name]
   mesh_size_f = UniformField(mesh_size)
-  coarse = seamsh.geometry.coarsen_boundaries(
-    domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f
-  )
+  coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
   return coarse
 
 
@@ -495,22 +491,83 @@ def read_mesh_data(
   gmsh.option.setNumber("General.Verbosity", gmsh_verbosity)
 
   mesh_size_tag_name = mesh_size_tag_name or "MeshSize"
-  mesh, mesh_size = read_mesh(
-    mesh_path=mesh_path, mesh_size_tag_name=mesh_size_tag_name, step=mesh_size_tag_step
-  )
+  mesh, mesh_size = read_mesh(mesh_path=mesh_path, mesh_size_tag_name=mesh_size_tag_name, step=mesh_size_tag_step)
   mesh_license = gmsh.model.getAttribute("license")
   mesh_description = gmsh.model.getAttribute("description")
+  assert mesh.node_tags is not None
+  edges = _read_multi_mesh_edges(mesh.node_tags)
   graph = MeshGraph(
     vertices=mesh.vertices,
-    edges=faces_to_edges(mesh.faces),
+    edges=faces_to_edges(mesh.faces) if edges is None else edges,
     faces=mesh.faces,
     boundary=mesh.boundary,
     spatial_reference_system=mesh.spatial_reference_system,
   )
-  logger.info(
-    "Mesh graph contains %d vertices and %d edges.", len(graph.vertices), len(graph.edges[0])
-  )
-  mesh_data = MeshData(
-    mesh_graph=graph, mesh_size=mesh_size, description=mesh_description, license=mesh_license
-  )
+  logger.info("Mesh graph contains %d vertices and %d edges.", len(graph.vertices), len(graph.edges[0]))
+  mesh_data = MeshData(mesh_graph=graph, mesh_size=mesh_size, description=mesh_description, license=mesh_license)
   return mesh_data
+
+
+def _multi_mesh_curves() -> list[int]:
+  """Tags of the curves (entities of dimension 1) of the multi-mesh edges group of the current gmsh model."""
+  for dim, tag in gmsh.model.get_physical_groups(1):
+    if gmsh.model.get_physical_name(dim, tag) == MULTI_MESH_EDGES_GROUP:
+      return list(gmsh.model.get_entities_for_physical_group(dim, tag))
+  return []
+
+
+def _read_multi_mesh_edges(node_tags: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+  """Directed edges (senders, receivers indices into the nodes with `node_tags`) of the multi-mesh of the current
+  gmsh model, or None if it has no multi-mesh edges group."""
+  curves = _multi_mesh_curves()
+  if not curves:
+    return None
+  line_node_tags = np.concatenate([gmsh.model.mesh.get_elements_by_type(1, curve)[1] for curve in curves])
+  index = {tag: i for i, tag in enumerate(node_tags)}
+  senders, receivers = np.vectorize(index.__getitem__, otypes=[int])(line_node_tags.reshape(-1, 2)).T
+  return senders, receivers
+
+
+def write_multi_mesh(
+  mesh_data: MeshData,
+  output_path: pathlib.Path,
+  model_name: str = "multi_mesh",
+  mesh_size_view_name: str = "MeshSize",
+  srs_attribute_name: str = "Projection",
+) -> None:
+  """Writes a multi-mesh to a gmsh file that `read_mesh_data` reads back.
+
+  The faces are triangles of a discrete surface; the edges (of all levels, also those that are not edges of the
+  faces) are line elements of a discrete curve in the `MULTI_MESH_EDGES_GROUP` physical group, one per directed edge
+  (sender, receiver), in order. The mesh size is a node data view, the spatial reference system, description and
+  license are model attributes. The mesh must have no boundary.
+  """
+  graph = mesh_data.mesh_graph
+  if graph.boundary is not None and np.any(graph.boundary):
+    raise ValueError("Only multi-meshes without boundary can be written")
+  if not gmsh.is_initialized():
+    logger.info("Initialize gmsh.")
+    gmsh.initialize()
+  gmsh.clear()
+  gmsh.model.add(model_name)
+  gmsh.model.set_attribute(srs_attribute_name, ["WKT", graph.spatial_reference_system])
+  if mesh_data.description:
+    gmsh.model.set_attribute("description", list(mesh_data.description))
+  if mesh_data.license:
+    gmsh.model.set_attribute("license", list(mesh_data.license))
+  node_tags = np.arange(1, len(graph.vertices) + 1)
+  surface = gmsh.model.add_discrete_entity(2)
+  gmsh.model.mesh.add_nodes(2, surface, node_tags, np.asarray(graph.vertices, dtype=np.float64).reshape(-1))
+  gmsh.model.mesh.add_elements_by_type(surface, 2, [], node_tags[graph.faces].reshape(-1))
+  curve = gmsh.model.add_discrete_entity(1)
+  senders, receivers = graph.edges
+  gmsh.model.mesh.add_elements_by_type(curve, 1, [], node_tags[np.stack([senders, receivers], axis=1)].reshape(-1))
+  # Once a physical group exists, gmsh saves only the elements of physical groups: the triangles need one too.
+  gmsh.model.add_physical_group(2, [surface], name="mesh")
+  gmsh.model.add_physical_group(1, [curve], name=MULTI_MESH_EDGES_GROUP)
+  view = gmsh.view.add(mesh_size_view_name)
+  gmsh.view.add_homogeneous_model_data(
+    view, 0, model_name, "NodeData", node_tags, np.asarray(mesh_data.mesh_size, dtype=np.float64)
+  )
+  gmsh.option.set_number("PostProcessing.SaveMesh", 1)
+  gmsh.view.write(view, str(output_path))

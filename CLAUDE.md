@@ -16,7 +16,18 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 `APPTAINERENV_PYTHONPATH` to `src/`, so source edits take effect without rebuilding the image. Python is 3.12.
 
 - CLI (`src/graphcast/__init__.py`, click): `graphcast train CONFIG.toml OUTPUT TRAIN_CKPT`,
-  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute` (basis).
+  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute-grid-basis MESH MASK OUTPUT.npz`
+  (draft: linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the
+  decoder faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of
+  another mesh for the planned interpolating decoder and hierarchical meshes),
+  `graphcast make-icosahedral-mesh CONFIG.toml OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
+  ellipsoid, for comparison with the ocean meshes; settings `splits`, `description`, `license` in
+  `configs/mesh/icosahedral_*.toml`, `IcosahedralMeshConfig`; `mesh.path` of a training config can point to the
+  output; `icosahedral_6.toml`, GraphCast's 6 refinements, gives 40,962 vertices, 327,660 directed edges, finest
+  edges 110–132 km, 11.6 MB). Its `.msh`
+  holds the finest triangles, the edges of all levels as line elements in the `multi_mesh_edges` physical group (line
+  elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. A tiny
+  model runs on it; it has not been trained yet.
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -64,7 +75,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
   "pytest >= 9" pytest`. Tests use synthetic data (small Zarr stores in `tmp_path`)
   or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be assumed.
-  The abseil `absltest` modules inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are
+  Every test has a docstring saying what it checks and why (the behaviour or the bug it guards against), not just
+  restating its name. The abseil `absltest` modules inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are
   probably broken; they will be ported to pytest later. There is no CI.
 - Lint/format: `ruff` with **2-space indentation** and 120-column lines (`pyproject.toml`); run `ruff format` and
   `ruff check --fix` only on new or refactored modules (the rest is unformatted, to keep diffs reviewable). Type
@@ -460,6 +472,21 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 
 ## Repository notes
 
+<!-- REUSE-IgnoreStart -->
+- Licensing follows the [REUSE specification](https://reuse.software/spec-3.3/) (since 7 Nov 2026); check it with
+  `uvx reuse lint` (license texts in `LICENSES/`; `LICENSE` stays for GitHub).
+  - Code, configs, scripts and docs are Apache-2.0. Images and animations are CC-BY-4.0. The Argonne, GRC and OGS logos
+    in `assets/poster.svg` are their owners' trademarks.
+  - Every file that takes comments starts (after a shebang) with `SPDX-FileCopyrightText: YEAR Stefano Campanella`
+    (year the file was added) and `SPDX-License-Identifier: Apache-2.0`; Python files add the Apache license text.
+  - Files without such a header (Markdown, HTML, CSV, notebooks, images, lock files, the container template) are
+    covered by `REUSE.toml`: add a pattern there for new kinds of files.
+  - Files with code from GraphCast also keep `SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited` and a
+    sentence saying they were modified (Apache §4(b)), and are listed in `NOTICE` (§4(d)): update it when code from
+    GraphCast is copied into another file. `spack/templates/container/graphcast.def` is Spack's Singularity template
+    (Apache-2.0 OR MIT), modified.
+  - The license grants no rights to DeepMind's, Google's or GraphCast's names (§6); the project will be renamed.
+<!-- REUSE-IgnoreEnd -->
 - Do not commit `graphcast.sif`, `graphcast.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
 - Development branch: `develop` (`develop@esiwace3_hackathon` until Nov 2026).
@@ -490,15 +517,16 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   experiments and insights; append entries as work proceeds (CLAUDE.md keeps what stays valid).
 - Workflow: one feature branch and PR per task into `develop`; the maintainer reviews on GitHub
   or asks for changes directly. Reply to each review comment once addressed. Keep PR descriptions short (purpose,
-  usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by Claude
-  (`git commit --author="Claude <noreply@anthropic.com>"`) with the maintainer as
-  `Co-Authored-By: Stefano Campanella <15182642+stefanocampanella@users.noreply.github.com>`.
-- Conventions from reviews: no data paths, URLs, hardware or cluster references (JUPITER, ARCO-OCEAN) in code
-  comments, docstrings, config comments or `scripts/` (fine as default values and in CLAUDE.md); `scripts/` must be
+  usage, design, verification), without detailed benchmark numbers; keep those here. Commits are authored by the
+  maintainer (the git user, no `--author`), with Claude as co-author through the single `Co-Authored-By: Claude …
+  <noreply@anthropic.com>` trailer that Claude Code adds.
+- Conventions from reviews: no data paths, dataset URLs (e.g. of the ARCO-OCEAN stores), hardware or cluster
+  references (JUPITER, ARCO-OCEAN) in code comments, docstrings, config comments or `scripts/` (fine as default values
+  and in CLAUDE.md); links to references (papers, documentation, issues) are welcome in comments; `scripts/` must be
   portable, cluster-specific settings live under `clusters/<name>/`; user-specific settings (e.g. AWS profiles) come
   from environment variables, not configs; no backward-compatibility code for formats nobody uses; one library per job
   (e.g. TensorStore for all arrays); prefer simple implementations (no resume or blocking machinery unless failures
-  show up); avoid `climatology.align_with` (slow).
+  show up).
 - Storage quotas (`jutil` also reports compute budgets, see above): `df` shows only the whole filesystem; project quotas (data and inodes, soft and hard limits) are
   shown by `jutil project dataquota -p e-dev-2026d09-119 [-U TB]` (`jutil user dataquota` shows per-user rows without
   limits). Usage is updated a few times a day. Check before writing large data: on 27 Oct 2026 fscratch had 40 TB

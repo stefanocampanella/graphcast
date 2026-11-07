@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import logging
 import pathlib
 import tomllib
@@ -31,21 +45,26 @@ def configure_logging(log_level: str) -> None:
     level=log_level.upper(),
     force=True,
   )
+
+
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
 @overload
-def read_configs(path: str | pathlib.Path, schema: type[ModelT],
-                 inject: dict[str, Any] | None = None) -> ModelT: ...
+def read_configs[ModelT: BaseModel](
+  path: str | pathlib.Path, schema: type[ModelT], inject: dict[str, Any] | None = None
+) -> ModelT: ...
 
 
 @overload
-def read_configs(path: str | pathlib.Path, schema: None = None,
-                 inject: dict[str, Any] | None = None) -> dict[str, Any]: ...
+def read_configs(
+  path: str | pathlib.Path, schema: None = None, inject: dict[str, Any] | None = None
+) -> dict[str, Any]: ...
 
 
-def read_configs(path: str | pathlib.Path, schema: type[ModelT] | None = None,
-                 inject: dict[str, Any] | None = None) -> ModelT | dict[str, Any]:
+def read_configs[ModelT: BaseModel](
+  path: str | pathlib.Path, schema: type[ModelT] | None = None, inject: dict[str, Any] | None = None
+) -> ModelT | dict[str, Any]:
   """Read local TOML, apply shallow overrides, and optionally validate a schema."""
   logger.info(f"Reading configs from {path}")
   try:
@@ -65,7 +84,7 @@ class Configs(dict):
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
 
-  def get(
+  def get(  # ty: ignore[invalid-method-override]  # dotted keys, see the class docstring
     self,
     maybe_dot_key: str,
     default: Any | None = None,
@@ -104,63 +123,6 @@ class Configs(dict):
     with path.open("rb") as file:
       configs = Configs(tomllib.load(file))
     return configs
-
-
-class DictParamType(click.ParamType):
-  """Click ParamType that parses mappings like "a:1,b:2" into dict[str, int].
-
-  Rules:
-  - Comma-separated items, each as key:value.
-  - Keys are non-empty strings; surrounding whitespace is ignored.
-  - Values must be integers; surrounding whitespace is ignored.
-  - Empty string yields an empty dict.
-  - Duplicate keys: later values overwrite earlier ones.
-
-  Example:
-    --param=a:1,b:2,c:3  -> {"a": 1, "b": 2, "c": 3}
-  """
-
-  name = "dict"
-
-  def convert(self, value, param, ctx):  # type: ignore[override]
-    if isinstance(value, dict):
-      # Assume it's already a mapping of str->int; perform minimal validation
-      result = {}
-      for k, v in value.items():
-        if not isinstance(k, str) or k.strip() == "":
-          self.fail(f"Invalid key in mapping: {k!r}", param, ctx)
-        try:
-          result[k.strip()] = int(v)
-        except Exception:
-          self.fail(f"Invalid integer value for key {k!r}: {v!r}", param, ctx)
-      return result
-
-    if not isinstance(value, str):
-      self.fail(f"Expected string for {self.name}, got {type(value).__name__}", param, ctx)
-
-    text = value.strip()
-    if text == "":
-      return {}
-
-    items = [p for p in (s.strip() for s in text.split(",")) if p != ""]
-    result: dict[str, int] = {}
-    for item in items:
-      if ":" not in item:
-        self.fail(
-          f"Invalid item {item!r}. Expected 'key:value' pairs separated by commas.",
-          param,
-          ctx,
-        )
-      key, val = item.split(":", 1)
-      key = key.strip()
-      val = val.strip()
-      if key == "":
-        self.fail("Empty key is not allowed in mapping.", param, ctx)
-      try:
-        result[key] = int(val)
-      except Exception:
-        self.fail(f"Value for key {key!r} must be an integer, got {val!r}.", param, ctx)
-    return result
 
 
 class OrbaxLogger(orbax.checkpoint.logging.AbstractLogger):

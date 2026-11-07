@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests of the training data path: windows of the standardized anomaly store (StandardizedAnomalySource), the Grain
 pipeline built from the training config, and the static training inputs (grid, tendency_std, loss masks).
 
@@ -20,7 +34,7 @@ from click.testing import CliRunner
 from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
 from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
 from graphcast.downloader import compute_tendency_std
-from graphcast.training_config import MaskConfig, SourceConfig, TrainingConfig
+from graphcast.training_config import SourceConfig, TrainingConfig
 
 PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 # Task levels: zero-based depth positions in a non-sorted order, to check that the order is kept.
@@ -139,7 +153,7 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert set(inputs.data_vars) == set(task.input_variables)
   assert set(targets.data_vars) == set(task.target_variables)
   assert set(forcings.data_vars) == set(task.forcing_variables)
-  # One input day and one target day, as input_duration and target_lead_times in the config are "1d".
+  # One input day and one target day, as input_duration and target_lead_times in the config are "1D".
   assert inputs.sizes["time"] == 1 and targets.sizes["time"] == 1
   # Static inputs have no time dimension.
   assert "time" not in inputs["deptho"].dims and "time" not in inputs["lsm"].dims
@@ -148,11 +162,11 @@ def test_map_dataset_yields_inputs_targets_forcings(training_configs):
   assert len(map_dataset) > 0
 
 
-@pytest.mark.parametrize(("num_samples", "first_input_days"), [(3, ["2020-03-02", "2020-03-03", "2020-03-04"]),
-                                                               (2, ["2020-03-02", "2020-03-04"])])
-def test_validation_windows_are_held_out_and_evenly_spaced(
-  training_configs, reference, num_samples, first_input_days
-):
+@pytest.mark.parametrize(
+  ("num_samples", "first_input_days"),
+  [(3, ["2020-03-02", "2020-03-03", "2020-03-04"]), (2, ["2020-03-02", "2020-03-04"])],
+)
+def test_validation_windows_are_held_out_and_evenly_spaced(training_configs, reference, num_samples, first_input_days):
   """Validation windows start after split_date, spread evenly over the held-out days, and are the same every time."""
   configs = TrainingConfig.model_validate({**training_configs.model_dump(), "validation": {"num_samples": num_samples}})
   dataset = dataloader_utils.get_dataset(configs)
@@ -235,7 +249,7 @@ def test_tendency_std_with_missing_values_fails(training_configs, tendency_std_p
 
 def test_grid(mask_path, inputs):
   """get_grid returns the latitudes, longitudes and boolean (lat, lon) mask of the mask store, as numpy arrays."""
-  grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+  grid = dataloader_utils.get_grid(mask_path)
   np.testing.assert_array_equal(grid.lat, inputs[0]["lat"].values)
   np.testing.assert_array_equal(grid.lon, inputs[0]["lon"].values)
   np.testing.assert_array_equal(grid.mask, inputs[0]["glorys_mask"].isel(depth=0).values.astype(bool))
@@ -245,7 +259,7 @@ def test_loss_masks(training_configs, tendency_std_path, mask_path):
   """Per target variable and level: grid points with a non-constant series."""
   configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=tendency_std_path)})
   tendency_std = dataloader_utils.get_tendency_std(configs)
-  grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+  grid = dataloader_utils.get_grid(mask_path)
   masks = dataloader_utils.get_loss_masks(tendency_std, grid, ["thetao", "zos"])
   # Volume variables get one mask per level, surface variables a (lat, lon) one.
   assert masks["thetao"].dtype == bool and masks["thetao"].dims == ("level", "lat", "lon")
@@ -275,6 +289,7 @@ def test_grain_workers_survive_sigterm(training_configs):
   workers = [child for child in multiprocessing.active_children() if child not in others]
   assert workers
   for worker in workers:
+    assert worker.pid is not None
     os.kill(worker.pid, signal.SIGTERM)
   for _ in range(2):
     next(iterator)

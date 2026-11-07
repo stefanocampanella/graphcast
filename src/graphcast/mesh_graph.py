@@ -1,4 +1,6 @@
-# Copyright 2026 Stefano Campanella.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# TODO: move tests from icosahedral_mesh and add tests for new functions
+#
+# Contains code from GraphCast's icosahedral_mesh.py (merge_meshes, faces_to_edges), modified by Stefano
+# Campanella; the changes are in the git history.
 # TODO: switch from np.ndarray to chex.Array in type hints
 # TODO: MeshGraph and TriangleMesh share most of the code, refactor
 # TODO: TriangleMesh could easily hold possibly square meshes, not just triangular ones.
@@ -46,7 +50,7 @@ class Graph:
 
   vertices: np.ndarray
   edges: tuple[np.ndarray, np.ndarray]
-  spatial_reference_system: str = "cartesian"
+  spatial_reference_system: str = _cartesian_wkt
 
 
 @chex.dataclass(frozen=True, eq=True)
@@ -130,18 +134,25 @@ def merge_meshes(mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
   Returns:
      `MultiMeshGraph` for which the vertices and faces correspond to the highest
      resolution mesh in the hierarchy, and the edges are computed from the join set of the
-     faces at all levels of the hierarchy.
+     faces at all levels of the hierarchy. All levels must share their spatial reference system,
+     which the result keeps.
   """
   for mesh_i, mesh_ip1 in itertools.pairwise(mesh_list):
     num_nodes_mesh_i = mesh_i.vertices.shape[0]
     assert np.allclose(mesh_i.vertices, mesh_ip1.vertices[:num_nodes_mesh_i])
+    assert mesh_i.spatial_reference_system == mesh_ip1.spatial_reference_system
 
   all_faces = np.concatenate([mesh.faces for mesh in mesh_list], axis=0)
   all_edges = faces_to_edges(all_faces)
   finest_mesh_vertices = mesh_list[-1].vertices
   finest_mesh_faces = mesh_list[-1].faces
 
-  return MeshGraph(vertices=finest_mesh_vertices, edges=all_edges, faces=finest_mesh_faces)
+  return MeshGraph(
+    vertices=finest_mesh_vertices,
+    edges=all_edges,
+    faces=finest_mesh_faces,
+    spatial_reference_system=mesh_list[-1].spatial_reference_system,
+  )
 
 
 def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -179,9 +190,7 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 
   """
   senders, receivers = edges
-  undirected_edges = set(
-    (s, r) if s <= r else (r, s) for (s, r) in zip(senders, receivers, strict=False)
-  )
+  undirected_edges = {(s, r) if s <= r else (r, s) for (s, r) in zip(senders, receivers, strict=False)}
   senders = np.array([edge[0] for edge in undirected_edges])
   receivers = np.array([edge[1] for edge in undirected_edges])
   return senders, receivers
@@ -204,9 +213,7 @@ def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularG
 
 
 # TODO: add tests
-def mesh_to_latlon(
-  mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False
-) -> EquirectangularGraph:
+def mesh_to_latlon(mesh: TriangleMesh | MeshGraph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D mesh.
 
   Args:
@@ -249,8 +256,7 @@ def typed_to_latlon(graph: typed_graph.TypedGraph, edge_set_name: str) -> Equire
   else:
     vertices = senders_nodes.features
     edges = graph.edges[edge_set_key].indices
-  graph = Graph(vertices=vertices, edges=edges)
-  wgs_graph = graph_to_latlon(graph)
+  wgs_graph = graph_to_latlon(Graph(vertices=vertices, edges=edges))
 
   return wgs_graph
 
@@ -260,7 +266,7 @@ def latlon_to_nx(wgs_graph: EquirectangularGraph) -> nx.DiGraph:
   latitudes, longitudes = wgs_graph.vertices
   vertices = [
     (node, {"latitude": latitude, "longitude": longitude})
-    for node, (latitude, longitude) in enumerate(zip(longitudes, latitudes, strict=False))
+    for node, (latitude, longitude) in enumerate(zip(latitudes, longitudes, strict=True))
   ]
   graph.add_nodes_from(vertices)
   senders, receivers = wgs_graph.edges

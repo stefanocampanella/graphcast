@@ -8,9 +8,6 @@
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
-* Investigate why PGLE makes no optimization (empty profile: "Found 0 instructions from the profile"), probably a bug;
-  now that training is compute bound it may pay off. Hints:
-  https://docs.nvidia.com/jax-toolbox/performance-profiling/pgle-profile-guided-latency-estimation (Medium priority)
 * Run the Grain profiler (execution summary per stage) for the store layouts (zarr v2, v3, their SquashFS images) and
   add it to the benchmark reports. The loader no longer limits training, so this is for comparison, not tuning.
   (Low priority)
@@ -29,6 +26,12 @@
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
 * Add routines to check graph statistics (number of nodes, edges, degree, etc.). In particular, one should check that all grid nodes are connected to the processor. **HIGH PRIORITY** 
 * Check that accumulated variables in ARCO-OCEAN are consistent (e.g. they use the (t-24h, t) convention). **HIGH PRIORITY**
+* Simplify `xarray_jax.py` with the Python array API standard: JAX arrays implement it, so xarray can hold them
+  directly, without `JaxArrayWrapper`, `wrap`/`unwrap` or the wrapping in `apply_ufunc` (the custom constructors would
+  remain only for dynamic coordinates). Xarray-JAX, a standalone package derived from GraphCast's `xarray_jax`, did
+  this: https://github.com/mishasinitcyn/Xarray-JAX/pull/4 (closes issue #1 there). Inside `jax.jit`, numpy functions
+  are then no longer redirected to `jax.numpy` (e.g. `np.abs` on a traced array fails): use operators, built-ins or
+  `xarray_jax.apply_ufunc` with the `jax.numpy` function, and check every caller.
 * Add logging settings to training toml config file. (Medium priority)
 * Implement sea-ice loss term accounting for zero-inflated variables (change the loss, inject noise, train a deeper network, or for longer). (Medium priority)
 * Investigate why JAX initialization gets logged twice, on stdout and stderr, in training.py. (Low priority)
@@ -57,6 +60,9 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
+* PGLE (Nov 2026): no gain. The train step is compiled ahead of time, which automatic PGLE skips; the "Found 0
+  instructions" warnings came from one-operation modules. Called through jit, the step gets a full profile but is no
+  faster on 1 or 4 nodes (120 km x 8), for ~25 s of startup. See `clusters/jupiter/.env`.
 * Preemption: Orbax saves at a sync point after SIGTERM (sent 2 minutes before the time limit by `train.slurm`),
   Grain workers ignore SIGTERM, and the run exits with status 75; resume with `--continue` (Nov 2026).
 * Checkpoints: parameters and optimizer state reach Orbax as JAX arrays (no numpy conversion); metrics are converted

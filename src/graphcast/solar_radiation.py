@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Computes TOA incident solar radiation compatible with ERA5.
 
 The Top-Of-the-Atmosphere (TOA) incident solar radiation is available in the
@@ -143,7 +147,7 @@ def era5_tsi_data() -> xa.DataArray:
 _DEFAULT_TSI_DATA_LOADER: TsiDataLoader = era5_tsi_data
 
 
-def get_tsi(timestamps: Sequence[_TimestampLike], tsi_data: xa.DataArray) -> chex.Array:
+def get_tsi(timestamps: Sequence[_TimestampLike] | pd.DatetimeIndex, tsi_data: xa.DataArray) -> chex.Array:
   """Returns TSI values for the given timestamps.
 
   TSI values are interpolated from the provided yearly TSI data.
@@ -157,12 +161,12 @@ def get_tsi(timestamps: Sequence[_TimestampLike], tsi_data: xa.DataArray) -> che
   Returns:
     An Array containing interpolated TSI data.
   """
-  timestamps = pd.DatetimeIndex(timestamps)
-  timestamps_date = pd.DatetimeIndex(timestamps.date)
-  day_fraction = (timestamps - timestamps_date) / pd.Timedelta(days=1)
-  year_length = 365 + timestamps.is_leap_year
-  year_fraction = (timestamps.dayofyear - 1 + day_fraction) / year_length
-  fractional_year = timestamps.year + year_fraction
+  index = pd.DatetimeIndex(timestamps)  # ty: ignore[invalid-argument-type]  # pandas-stubs omit sequences
+  index_date = pd.DatetimeIndex(index.date)
+  day_fraction = (index - index_date) / pd.Timedelta(days=1)
+  year_length = 365 + index.is_leap_year
+  year_fraction = (index.dayofyear - 1 + day_fraction) / year_length
+  fractional_year = index.year + year_fraction
   return np.interp(fractional_year, tsi_data.coords["time"].data, tsi_data.data)
 
 
@@ -235,7 +239,7 @@ def _get_orbital_parameters(j2000_days: chex.Array) -> _OrbitalParameters:
   theta = j2000_days / _JULIAN_YEAR_LENGTH_IN_DAYS
   # The phase of the Earth's rotation along its axis as a ratio. 0 represents
   # Julian epoch J2000.0 at exactly 12:00 Terrestrial Time (TT).
-  rotational_phase = j2000_days % 1.0
+  rotational_phase = j2000_days % 1.0  # ty: ignore[unsupported-operator]  # chex.Array includes numpy scalars
 
   # REL(PTETA).
   rel = 1.7535 + 6.283076 * theta
@@ -329,9 +333,7 @@ def _get_solar_sin_altitude(
   # https://en.wikipedia.org/wiki/Hour_angle#Solar_hour_angle
   hour_angle = 2.0 * jnp.pi * solar_time + longitude
   # https://en.wikipedia.org/wiki/Solar_zenith_angle
-  sin_altitude = (
-    cos_latitude * op.cos_declination * jnp.cos(hour_angle) + sin_latitude * op.sin_declination
-  )
+  sin_altitude = cos_latitude * op.cos_declination * jnp.cos(hour_angle) + sin_latitude * op.sin_declination
   return sin_altitude
 
 
@@ -449,7 +451,7 @@ _get_integrated_radiation_jitted = jax.jit(
 
 
 def get_toa_incident_solar_radiation(
-  timestamps: Sequence[_TimestampLike],
+  timestamps: Sequence[_TimestampLike] | pd.DatetimeIndex,
   latitude: chex.Array,
   longitude: chex.Array,
   tsi_data: xa.DataArray | None = None,
@@ -524,14 +526,12 @@ def get_toa_incident_solar_radiation(
     results.append(
       fn(
         j2000_days=jnp.array(
-          _get_j2000_days(
-            pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp)
-          )
+          _get_j2000_days(pd.Timestamp(timestamp) + integration_period if forward else pd.Timestamp(timestamp))
         ),
         sin_latitude=sin_lat,
         cos_latitude=cos_lat,
         longitude=lon,
-        tsi=tsi[idx],
+        tsi=tsi[idx],  # ty: ignore[invalid-argument-type]  # chex.Array includes numpy scalars
         integration_period=integration_period,
         num_integration_bins=num_integration_bins,
       )
@@ -594,11 +594,11 @@ def get_toa_incident_solar_radiation_for_xarray(
   Raises:
     ValueError: If there are missing coordinates or dimensions.
   """
-  missing_dims = set(["lat", "lon"]) - set(data_array_like.dims)
+  missing_dims = {"lat", "lon"} - set(data_array_like.dims)
   if missing_dims:
     raise ValueError(f"'{missing_dims}' dimensions are missing in `data_array_like`.")
 
-  missing_coords = set(["datetime", "lat", "lon"]) - set(data_array_like.coords)
+  missing_coords = {"datetime", "lat", "lon"} - set(data_array_like.coords)
   if missing_coords:
     raise ValueError(f"'{missing_coords}' coordinates are missing in `data_array_like`.")
 

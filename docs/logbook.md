@@ -941,3 +941,239 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   last saves of a 40,000-step run.
 - **Change:** `production_run.toml` sets `keep_best = 5` (the default stays 1). This resolves the open item of the
   previous entry; periodic snapshots are not added.
+
+## 2026-11-05 16:00: tests for the whole codebase, legacy port and report
+
+- **Request:** port the inherited absltest modules to pytest without reading the implementation, find what breaks
+  and why, report; then test the whole codebase, with coverage, ruff and ty as pre-commit hooks and a GitHub workflow
+  (branch `feature/tests-and-code-quality`, session dir `claude-work/b0a574fd-35c0-4f21-bc1c-92264af27375`).
+- **Changes:** commits authored by the maintainer with Claude as co-author (CLAUDE.md); dev group with pytest-cov,
+  coverage, pre-commit, ruff 0.17.3 and ty 0.0.97 (pinned), coverage and ty settings in `pyproject.toml`; image
+  rebuilt from the branch as `graphcast-new.sif` (not yet replacing `graphcast.sif`); the seven `*_test.py` modules
+  ported to `tests/` (67 functions, 85 cases).
+- **Findings** (`test_report.md` there): 76 pass, 8 fail, 1 error, none from the port. `merge_meshes` and
+  `faces_to_edges` moved to `mesh_graph`; grid coordinates are WGS84 ECEF in metres and `get_mesh_to_grid_edges` takes
+  a mask; jax 0.11 dropped `jax_pmap_shmap_merge`, and `xarray_jax.pmap`'s own dimension check is never reached. The
+  radius-query smoke test passes with 0 edges (unit-sphere mesh, grid in metres). Latent bugs: `basis.py` calls an
+  undefined `cli`; `mesh2grid_edge_normalization_factor` is a float but unpacked as a pair. Coverage 53 %, lowest on
+  the model and training path (8–29 %). ty cannot resolve the image's editable jax install.
+
+## 2026-11-05 18:30: plan for fixes and tests, legacy tests updated
+
+- **Decisions** (maintainer, on the report): delete `climatology`; fix `sharding` to fit the current code (drop it if
+  that needs large untested changes); keep and test `autoregressive`, `validation_utils`, `graph_pruning`,
+  `plot_utils`; make ty see the image's jax through extra search paths in the pre-commit hook, not an image change; fix
+  the `basis` draft; coverage gate 80 %; one PR, reviewed after each group of commits.
+- **Insights:** `sharding.FullyShardedDataParallel` called the lifted `init` inside `shard_map` (leaking tracers) and
+  asked for an rng in `apply`; lifting the shard-mapped `init` instead works (toy predictor on 4 simulated CPU devices:
+  same loss, gradients equal). ty with `--extra-search-path` for `/opt/jax`, `/opt/jaxlibs/jaxlib` and `/opt/flax`
+  resolves every import (170 → 128 diagnostics). `basis` interpolates a dense identity matrix (2 TB for the 25 km
+  mesh). Edge direction features take `sin`/`cos` of azimuths converted to degrees twice (`pyproj.Geod.inv` already
+  returns degrees), so they are meaningless for every model trained so far.
+- **Changes (group 1):** legacy tests updated to the fork: `merge_meshes`/`faces_to_edges` tests moved to
+  `tests/test_mesh_graph.py` with the current semantics; `mesh_connectivity` tests on an Earth-sized mesh against the
+  WGS84 formulas, with brute-force checks of the radius query and containing faces, with and without a mask; the
+  missing-coordinate test of `data_utils` names the missing coordinate.
+
+## 2026-11-06 10:30: review of group 1, icosahedral multi-mesh on the ellipsoid
+
+- **Review:** project the icosahedral mesh onto the ellipsoid (unit sphere → WGS84 Earth-centred coordinates) instead
+  of scaling it to a sphere; fix the spatial reference systems of `mesh_graph.Graph` (the name "cartesian" instead of
+  the WKT) and of the icosahedral meshes (labelled WGS84 though on the unit sphere); add a tested function that merges
+  the hierarchy, projects it and returns a `MeshGraph`; investigate whether the model then runs on it.
+- **Changes:** `icosahedral_mesh.get_multi_mesh_graph(splits, crs=cartesian_crs)`; icosahedral meshes carry the
+  unit-sphere WKT; `merge_meshes` keeps (and requires a common) spatial reference system; `Graph` defaults to the WGS84
+  WKT; the unused `radius` argument of `get_hierarchy_of_triangular_meshes_for_sphere` (a sphere scaling with a wrong
+  WKT) removed; the connectivity tests use the projected multi-mesh.
+- **Insights:** the unit sphere → WGS84 transform keeps each vertex's latitude and longitude (geodetic = spherical, no
+  datum shift) and puts it on the ellipsoid (6357–6378 km). No other code converts the unit sphere to WGS84
+  Earth-centred coordinates: seamsh meshes are written in them directly, `model_utils` uses the unit sphere only for
+  node features (from latitude and longitude). Investigation (`claude-work/…/icosahedral_model.py`): a tiny GraphCast
+  runs forward on the 642-vertex multi-mesh with a 5° masked grid, with and without scan, given a per-vertex mesh size
+  (longest finest-mesh edge at the vertex: the multi-mesh has none). Gaps for experiments: training reads meshes only
+  from `.msh` files (`MeshConfig.path`), which store triangles, not the multi-mesh's coarser edges; and `get_transform`
+  warns about non-zero elevations of 1e-8–1e-7 m (absolute tolerance 1e-8, below float32 rounding).
+
+## 2026-11-06 11:00: icosahedral multi-mesh file (experimental), GraphCast's mesh size and radius
+
+- **Review:** use GraphCast's mesh size; fix the elevation warning as proposed (group 2); add a CLI command, like
+  `make-ocean-mesh`, writing the multi-mesh to a `.msh` file usable in a training config, if gmsh can hold multi-mesh
+  edges that are not edges of the finest mesh; is the test's search radius GraphCast's?
+- **Changes:** `icosahedral_mesh.get_multi_mesh_data` (mesh size = longest finest edge, 1,054 km at 3 splits, at
+  every vertex); `geospatial_mesh_utils.write_multi_mesh` and `graphcast make-icosahedral-mesh SPLITS OUTPUT`;
+  `read_mesh` leaves the `multi_mesh_edges` physical group out of the boundary and `read_mesh_data` takes the edges
+  from it; `read_mesh` stores the node tags aligned with the vertices (they were the sorted unique tags, equal only
+  because seamsh writes sorted tags) and handles meshes without boundary lines (`np.vectorize` on an empty array).
+  The radius-query test uses GraphCast's radius (0.6 × mesh size) and a radius per vertex.
+- **Insights:** gmsh holds them: discrete entities have no topology, so the directed multi-mesh edges are line
+  elements of a discrete curve, kept in order (5,100 at 3 splits), coordinates within 1e-9 m. Once a physical group
+  exists gmsh saves only elements in physical groups, so the triangles need one too. seamsh meshes call their boundary
+  group `Coastline`. CLI → `.msh` → `read_mesh_data` → tiny GraphCast forward works, with and without scan. The legacy
+  test's radius 0.2 (unit sphere, 3 splits) came from the original GraphCast test, about twice GraphCast's 0.6 × longest
+  finest edge (0.099); 0.6 exceeds a face's circumradius (L/√3 ≈ 0.577 L), so every grid point is connected.
+
+## 2026-11-06 11:15: make-icosahedral-mesh reads a config
+
+- **Review:** the command takes a configuration file (splits, description, license) committed in `configs/mesh`, as
+  the ocean meshes and the other commands do; why the underscore in `license_`?
+- **Changes:** `mesh_config.IcosahedralMeshConfig` (unknown keys rejected, `splits` non-negative, also `model_name`
+  and `view_tag_name`); `graphcast make-icosahedral-mesh CONFIG OUTPUT [--overwrite]`; `configs/mesh/icosahedral_6.toml`
+  (GraphCast's 6 refinements, licensed CC BY-NC-SA 4.0 like the ocean meshes): 40,962 vertices, 327,660 directed
+  edges, finest edges 110–132 km, mesh size 132 km, 11.6 MB, reads back without boundary. The `license_` option is
+  gone with the config (the underscore avoided shadowing the built-in `license`, which ruff does not check here).
+
+## 2026-11-06 13:30: group 2, fixes
+
+- **Request:** stubs for ty as proposed (group 4), then group 2 (the fixes of the stage 3 plan).
+- **Changes** (one commit each, each with a test that failed before):
+  - `climatology.py` deleted.
+  - `xarray_jax.pmap` checks the leading dimension before `jax.pmap` (the check ran after jax had failed).
+  - Edge direction features: `np.deg2rad` of pyproj's degrees (since 15e0389, 6 Feb 2026, `np.rad2deg`: sin/cos of
+    meaningless angles on all three edge sets; the forward azimuth feature, off, was not in turns).
+  - `edge_normalization` is a length, as `model.mesh2grid_edge_normalization_factor` (was unpacked as a pair).
+  - Missing mesh size: `read_mesh` names the missing view (was a KeyError) and returns None without a name;
+    `GraphCast` rejects a mesh without mesh size.
+  - `get_transform`: elevation tolerance 1e-6 of the ellipsoid's semi-major axis (was 1e-8 absolute, below float32
+    rounding; the icosahedral multi-mesh warned at every model construction).
+  - `training_utils.fsdp_map` deleted (unused).
+  - Durations in days as "1D" in the training configs (pandas deprecates "d"), validated when the config is read.
+  - `jax.shard_map` in `training.py`; JAX coordinates assigned as `xarray.Coordinates` without indexes (the rename
+    trick warned); DeprecationWarning and FutureWarning from `graphcast` modules are test errors (62 warnings → 1).
+  - `sharding.FullyShardedDataParallel` works: shard-mapped pure init/apply, init lifted outside `shard_map`, both
+    compiled, a predictor factory (Haiku modules made outside a lifted transform cannot be used in it). Tests on 4
+    simulated CPU devices (conftest appends the XLA flag): a tiny GraphCast behind `Mask`, unrolled and scanned, has
+    the same parameters, losses, gradients and predictions with and without it. Parameters replicated, not sharded.
+  - `graphcast compute MESH MASK OUTPUT`: barycentric weights of each ocean grid point in its decoder face (sparse,
+    3 per row); reads the download-mask output like training (`get_grid` takes a path); `python -m graphcast.basis`.
+  - `mesh_connectivity` docstrings match the code.
+- **Experiment** (B1 check, `claude-work/…/b1_check`, jobs 2718140/2718141, 1 node each, `training2647`):
+  `production_run.toml` on 120 km × 8, 500 steps, validation at 250 and 500, code before and after the azimuth fix.
+  Validation loss 0.13241 → 0.12827 before, 0.13227 → 0.12815 after (−0.1 %, within seed noise of 0.6 %); compute
+  0.44 / 0.46 s per step. The fix does not hurt; no measurable gain at 500 steps.
+- **Insight:** jitting the shard-mapped init matters: outside jit, shard_map ran the init of a tiny GraphCast
+  operation by operation (46 s instead of 3 s). Coverage 69 % (53 % before group 1).
+
+## 2026-11-06 15:30: review of group 2
+
+- **Review:** rename `graphcast compute`; other configs to update for "1D"; basis at arbitrary points (planned
+  interpolating decoder, hierarchical meshes); why `check_vma=True` broke training, and whether it is faster; how to
+  pass rng keys to predictors and losses in data-parallel shard_map (a probabilistic variant is planned).
+- **Changes:** `graphcast compute-basis`; `basis_utils.compute_basis(mesh, points)` and `compute_grid_basis`;
+  `training_utils.data_parallel` (key per device by fold-in, the key an argument of shard_map) used by the train and
+  eval steps (keys from the seed and the step, validation by batch), and by `FullyShardedDataParallel`; the scanned
+  processor's carry is cast to the axes it varies along, so it works with `check_vma=True`. JUBE and the mesh study
+  derive their configs from the shipped ones; 12 generated configs in `runs/` still say "1d" (left as is).
+- **Insights** (`claude-work/…/rng_shard_map.py`, `check_vma.py`): closing over a key computed outside shard_map
+  reproduces the error of the deleted comment on Explicit axes; passing it as an argument and folding inside works
+  (split keys too, after `jax.reshard`). `check_vma=True` failed only with scan: the carry starts with mesh edge
+  features equal on every device and returns varying along the batch axis.
+- **Experiment** (jobs 2720430/2720432, 1 node, `training2647`, the B1 check settings: 120 km × 8, 500 steps):
+  `check_vma` off 0.441 s per step, on 0.516 s (+17 %), XLA memory 54.0 GiB both, validation loss 0.12803 / 0.12805
+  (B1 check before the rng change: 0.12815). Kept off: the gradient of the cast to varying is an all-reduce of the mesh
+  edge features' cotangents, which the unchecked version does not do. (A first submission failed in 90 s: the copied
+  config still said "1d", which the new validation rejected.)
+
+## 2026-11-06 18:30: group 3, tests for the whole codebase
+
+- **Request:** update the old run configs ("1d" → "1D", 12 files in `runs/`, not versioned: done), then group 3.
+- **Changes** (tests, 26 modules in `tests/`):
+  - **End-to-end training on CPU** (`test_training_run.py`): `graphcast train` of a tiny model on the icosahedral
+    multi-mesh and the synthetic store, 4 CPU devices, validation, checkpoints, TensorBoard, model saved; then
+    `--continue`. A subprocess, as `jax.distributed` must be initialized first (one-process cluster on localhost);
+    coverage measures it (`patch = ["subprocess"]`, pytest-cov 7 no longer does). The synthetic grid is now global
+    (-67.5° to 67.5°), as the loss latitude weights require.
+  - New test modules: autoregressive, rollout, validation_utils, graph_pruning, plot_utils, casting, cli_utils,
+    grain_utils, typed_graph_net, deep_typed_graph_net, mesh size fields; more in model (scan vs unrolled with the same
+    parameters, connected grid nodes), mesh_graph, mesh_connectivity, gis_utils, data_utils, checkpoint.
+  - `conftest.py`: `JAX_PLATFORMS=cpu` (in a shell of the image on a node without GPUs, NVIDIA's environment made the
+    CUDA plugin fail instead of falling back to the CPU, so `apptainer run … pytest` failed a test), `MPLBACKEND=Agg`,
+    a shared tiny GraphCast fixture.
+- **Bugs found by the tests, fixed** (each its own commit, the test failed before):
+  - `GraphCast`: forcings without grid dimensions (only year progress) failed with a KeyError (`lat`).
+  - `checkpoint`: empty lists/dicts/tuples did not load ("Missing value"): a model trained on a mesh without
+    description could be saved but not loaded.
+  - `rollout`: every rollout failed (`xarray.Dataset(dataset)` rejected by current xarray); a concat relied on a
+    changing xarray default.
+  - `validation_utils`: deprecated `Dataset.drop`.
+  - `plot_utils.plot_data`: animation titles assumed nanosecond timedeltas.
+  - `data_utils.fix_longitude`, `gis_utils.wrap_longitude` (and so `xarray_to_gdal_raster`): IndexError on data already
+    in [-180, 180].
+  - `casting.tree_map_cast`: leaves of other dtypes became None.
+  - `mesh_graph.latlon_to_nx`: latitude and longitude swapped in the node attributes.
+  - `mesh_connectivity.get_masking_indices_fns`: the first unmasked point (index 0) was taken as missing;
+    `get_dummy_xscaling_graph`: each mesh's edges built from the other mesh's faces.
+- **Result:** 446 tests, 3 min 54 s with coverage through `apptainer run` (login node); coverage 94 % (53 % before
+  group 1); every module above 80 % except `predictor_base` (abstract) and the CLI group `__init__`.
+- **Candidate for deletion:** `cli_utils.DictParamType` is unused (tested meanwhile); `Configs` is used by notebooks.
+
+## 2026-11-06 20:00: mesh node embedder padding; PGLE
+
+- **Request:** is the zero padding of the mesh node inputs (`model.py`, "to make sure capacity of the embedded is
+  identical", from upstream GraphCast) needed? Guess from the code first, then measure; then why the PGLE profile was
+  empty, fix it and report gains. Delete `cli_utils.DictParamType` (done).
+- **Guess (code only):** the mesh node embedder has its own parameters, so the zero columns add nothing forward and
+  get zero gradients; they only make the first layer's initial weights smaller (fan-in C + 4 = 228 instead of 4 at 50
+  levels, std 7.5x smaller) and cost a wasted matrix product. Expected: no difference.
+- **Experiment** (`claude-work/…/pad_check`, `training2647`): 120 km × 8, 50 levels, 2000 steps, validation every 500,
+  seeds 42 and 43, pad (current) vs nopad (positions only); jobs 2722806–2722809 on four nodes. Validation loss at step
+  1999: pad 0.11303 / 0.11251, nopad 0.11309 / 0.11274 (+0.13 % on the mean, seeds 0.46 % apart); training losses and
+  per-variable validation losses the same within the seed spread. Compute 0.471 / 0.489 vs 0.448 / 0.454 s per step,
+  but on four nodes; the same node, alternating (job 2723585, 300 steps each): pad 0.433 / 0.427 s, nopad 0.431 /
+  0.415 s (median), within run-to-run noise. XLA memory 54.0 GiB. As guessed: no difference.
+- **Change:** the padding is removed (maintainer: compatibility with older checkpoints is not a priority). The mesh
+  node embedder's first layer has 4 inputs: checkpoints and models saved before cannot be loaded.
+- **PGLE** (`claude-work/…/pgle`):
+  - **Cause:** since e018542 (25 Oct 2026) the train step is compiled ahead of time (`lower().compile()`, for the
+    memory report) and the compiled executable is called; JAX's automatic PGLE lives in the jit call path
+    (`_pjit_call_impl_python`), so it never profiles or recompiles the train step. The "Found 0 instructions from the
+    profile" warnings (also on 22 Oct, when the step went through jit) come from tiny one-operation modules (`jit_add`,
+    `jit_broadcast_in_dim`, ...), which PGLE profiles too and whose single instruction is not in the trace; XLA falls
+    back to its analytical estimator for them. The hypothesis that CUDA forward compatibility breaks CUPTI was wrong
+    (probe job 2723388: CUPTI collects kernels with `apptainer run` and `exec`).
+  - **Experiment:** a snapshot calling the train step through jit when PGLE is enabled (120 km × 8, 150 steps, same
+    nodes): the train step's profile has 1454–1455 instructions (10 missing). Median compute per step: 1 node (job
+    2723583) 0.418 s without, 0.429 s with PGLE; 4 nodes (job 2723899) 0.440 / 0.443 s. Startup +~25 s (step 0 +12 s,
+    two profiling steps of ~2 s, a 12.5 s recompilation at step 3).
+  - **Decision:** no gain, so the training loop is unchanged (it keeps the ahead-of-time compile); `.env` and `TODO.md`
+    record why.
+
+## 2026-11-06 18:15: group 4 of the tests and code-quality PR (format, lint, stubs, licenses, ty)
+
+- **Commits:** `ruff format` of the whole codebase (5176406, listed in `.git-blame-ignore-revs`); ruff lint fixes
+  (literals, PEP 695 generics, `TypeError` for wrong argument types in `gis_utils.get_transform` and `xarray_jax`);
+  type stubs in the dev group (`scipy-stubs ~= 1.18.1`, `pandas-stubs ~= 3.0.5`, `types-networkx`, `types-tqdm`,
+  `botocore-stubs`, image `graphcast-g4.sif` built from the branch); ruff skips `notebooks/`.
+- **Licenses (maintainer: Apache-2.0 everywhere):** every Python file has the maintainer's copyright, an SPDX line and
+  the Apache header; the 28 files derived from GraphCast keep DeepMind's line and say they were modified (§4(b)); the
+  four MIT headers became Apache. `NOTICE` names the fork's origin and lists the derived files (§4(d)) and says the
+  license grants no rights to DeepMind's, Google's or GraphCast's names (§6): the project will be renamed in a
+  follow-up PR (candidates Moby-Dick, Moby-Dix).
+- **ty:** 139 diagnostics with the stubs and the image's jax, jaxlib and flax as extra search paths, now 0. Fixes where
+  annotations or code were wrong (Optional narrowing, Hashable keys, `get_transform`'s return type, `plot_utils` on
+  DataArrays, explicit `TaskConfig` fields, AWS credentials without keys); targeted `# ty: ignore[rule]` with a reason
+  where ty or the stubs cannot follow the code (Grain and Predictor overrides, jraph defaults, constrained type
+  variables, chex.Array). 437 tests pass.
+
+## 2026-11-07 08:30: REUSE compliance
+
+- **Request:** why the PR dropped `SPDX-FileCopyrightText` (four formerly MIT files) and left configuration files
+  without SPDX lines. Answer: the first to give one header form with DeepMind's `Copyright` line (REUSE accepts both),
+  the second a scope I set (Python files only) without asking. Maintainer accepted the recommendation: full REUSE.
+- **Change** (fdc5713): `SPDX-FileCopyrightText` in every Python file (DeepMind's and the maintainer's); SPDX lines in
+  TOML, YAML, shell, Slurm, .env, .gitignore and JUBE files; `REUSE.toml` for the rest; `LICENSES/` with Apache-2.0 and
+  CC-BY-4.0. Images and animations are CC-BY-4.0 (maintainer), except the Argonne, GRC and OGS logos in the poster.
+  `spack/templates/container/graphcast.def` turned out to be Spack's `singularity.def` with additions (Apache-2.0 OR
+  MIT): Spack's copyright is in `REUSE.toml` and `NOTICE`. `uvx reuse lint`: compliant, 169 files.
+- **Next:** a `reuse lint` pre-commit hook in group 5.
+
+## 2026-11-07 08:40: ShellCheck
+
+- **Request:** a linter for the bash scripts. ShellCheck 0.11.0 (`shellcheck-py`, which bundles the binary) on the 14
+  shell files found no errors: 33 SC2034 (unused variable) in `.env` and the JUBE job template, false positives since
+  both are sourced under `set -a`; 2 SC2126 (`grep -c`) in the JUBE run scripts, false positives as they count over
+  several files; notes in `slurm/launch_jupyter.slurm` and `slurm/test_dask_mpi.slurm`, which sourced the removed
+  `clusters/leonardo/` (the second also ran a missing script and had `mkdir -p DASK_MPI_LOG_DIR` without `$`).
+- **Change** (fb82934): both Leonardo scripts deleted (maintainer); the false positives suppressed with reasons.
+  ShellCheck is clean. No `shfmt`: the scripts have one consistent style already.
+- **Next:** the `shellcheck-py` pre-commit hook in group 5, with a `files` pattern for `*.slurm`, `.env` and
+  `*.sbatch.in` (pre-commit detects shell scripts without a `.sh` extension only by the shebang of executables).

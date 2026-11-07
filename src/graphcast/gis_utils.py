@@ -1,4 +1,5 @@
-# Copyright 2026 Stefano Campanella.
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -59,7 +60,7 @@
 # these CRS objects from short strings in config files.
 import warnings
 from collections.abc import Callable
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -223,24 +224,25 @@ def get_transform(
   destination: CoordinateReferenceSystem,
   pack_back=True,
   **kwargs,
-) -> Callable[[Coordinates], Coordinates]:
+) -> Callable[[Coordinates], Any]:  # an array, or a tuple of arrays without pack_back
   """Gets a function that transforms coordinates from one projection to another."""
   transformer = Transformer.from_crs(source, destination)
   assert transformer.source_crs is not None and transformer.target_crs is not None
   num_coords_in = len(transformer.source_crs.axis_info)
   num_coords_out = len(transformer.target_crs.axis_info)
+  # Elevations below this are rounding errors of points on the surface (float32 coordinates: about 6e-8 relative).
+  ellipsoid = transformer.source_crs.ellipsoid
+  elevation_tolerance = 1e-6 * (ellipsoid.semi_major_metre if ellipsoid is not None else 1.0)
 
   def wrapped(coordinates: Coordinates) -> Coordinates:
     # We assume that the coordinate dimension is the last one.
     if isinstance(coordinates, tuple):
-      assert len(coordinates) == num_coords_in, (
-        f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
-      )
+      assert len(coordinates) == num_coords_in, f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
       if len(coordinates) == 2:
-        xx, yy = coordinates  # type: ignore
+        xx, yy = coordinates
         zz = np.zeros_like(xx)
       else:
-        xx, yy, zz = coordinates  # type: ignore
+        xx, yy, zz = coordinates
     elif isinstance(coordinates, np.ndarray):
       assert coordinates.shape[-1] == num_coords_in, (
         f"Expected {num_coords_in} coordinates, got {coordinates.shape[-1]}"
@@ -254,14 +256,12 @@ def get_transform(
         yy = coordinates[..., 1]
         zz = coordinates[..., 2]
     else:
-      raise ValueError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
+      raise TypeError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
     result = transformer.transform(xx=xx, yy=yy, zz=zz, inplace=False, **kwargs)
-    assert len(result) >= num_coords_out, (
-      f"Expected {num_coords_out} coordinates, got {len(result)}"
-    )
+    assert len(result) >= num_coords_out, f"Expected {num_coords_out} coordinates, got {len(result)}"
     # We don't use elevation, in case of conversion to equirectangular projection drop it.
     if len(result) == 3 and num_coords_out == 2:
-      if not np.allclose(result[2], 0.0):
+      if not np.allclose(result[2], 0.0, rtol=0.0, atol=elevation_tolerance):
         warnings.warn(f"Expected elevation to be zero, got {result[2]}")
       result = result[0], result[1]
     if isinstance(coordinates, np.ndarray) and pack_back:
@@ -286,6 +286,9 @@ def wrap_longitude(da: xr.DataArray, longitude_dim: str = "lon"):
     ].to_numpy()
     return wrapped
 
+  if not np.any(da[longitude_dim].to_numpy() > 180.0):
+    # Already wrapped.
+    return da
   da_wrapped = _wrap(da)
   longitude_orig = da[longitude_dim].to_numpy()
   longitude_orig = xr.DataArray(
@@ -368,9 +371,7 @@ def xarray_to_gdal_raster(
   assert np.all(lat_delta == lat_res), f"Latitude grid must be uniformly spaced, got {lat_delta}"
   lon_delta = np.diff(lon)
   lon_res = lon_delta[0]
-  assert np.all(lon_delta == lon_delta[0]), (
-    f"Longitude grid must be uniformly spaced, got {lon_delta}"
-  )
+  assert np.all(lon_delta == lon_delta[0]), f"Longitude grid must be uniformly spaced, got {lon_delta}"
 
   # Ensure north-up orientation, as GDAL expects
   if lat_res > 0:

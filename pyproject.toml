@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "graphcast"
 version = "0.1"
@@ -73,7 +76,23 @@ graphcast = "graphcast:cli"
 Homepage = "https://github.com/stefanocampanella/graphcast"
 
 [dependency-groups]
-dev = ["pytest >= 9"]
+dev = [
+    "coverage[toml] >= 7.17",
+    "pre-commit >= 4.7",
+    "pytest >= 9",
+    "pytest-cov >= 7.1",
+    # Pinned: the rules enabled by default and the formatter's output change between versions; keep in sync with
+    # .pre-commit-config.yaml.
+    "ruff == 0.17.3",
+    "ty == 0.0.97",
+    # Type stubs for ty. scipy-stubs and pandas-stubs track their library's version: keep them compatible with the
+    # image's scipy (1.18.1) and pandas (3.0.5), and update them when the base image updates these.
+    "botocore-stubs",
+    "pandas-stubs ~= 3.0.5",
+    "scipy-stubs ~= 1.18.1",
+    "types-networkx",
+    "types-tqdm",
+]
 
 [build-system]
 requires = ["setuptools (>= 67.0)"]
@@ -89,11 +108,31 @@ filterwarnings = [
     "ignore:Consolidated metadata is currently not part in the Zarr format 3 specification",
     # zarr-python reads and writes whole shards of colexicographic arrays (transpose codec before sharding).
     "ignore:Combining a `sharding_indexed` codec disables partial reads",
+    # Deprecations raised in our own code fail the tests, so they are fixed before the libraries remove the APIs.
+    "error::DeprecationWarning:graphcast",
+    "error::FutureWarning:graphcast",
 ]
+
+[tool.coverage.run]
+source = ["src/graphcast"]
+branch = true
+# Also measure Python subprocesses (the end-to-end training test runs graphcast train in one).
+patch = ["subprocess"]
+omit = ["src/graphcast/__main__.py", "src/graphcast/notebooks_utils.py"]
+
+[tool.coverage.report]
+show_missing = true
 
 [tool.ruff]
 indent-width = 2
 line-length = 120
+# The notebooks are not maintained with the code (some cells are not valid Python).
+extend-exclude = ["notebooks"]
 
 [tool.ruff.format]
 indent-style = "space"
+quote-style = "double"
+
+[tool.ty.environment]
+python-version = "3.12"
+extra-paths = ["src"]

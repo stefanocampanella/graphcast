@@ -1,4 +1,5 @@
-# Copyright 2026 Stefano Campanella.
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,15 +22,16 @@ import click
 import gmsh
 import seamsh
 
-from graphcast import cli_utils
+from graphcast import cli_utils, icosahedral_mesh
 from graphcast.geospatial_mesh_utils import (
   CompositeMeshSizeField,
   StereoMeshSizeField,
   coarsen_boundaries,
   load_domain,
+  write_multi_mesh,
 )
 from graphcast.gis_utils import CRSRegistry
-from graphcast.mesh_config import MeshGenerationConfig
+from graphcast.mesh_config import IcosahedralMeshConfig, MeshGenerationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,50 @@ def make_ocean_mesh(
   logger.info(f"Using settings: {configs!r}")
   output_path.parent.mkdir(parents=True, exist_ok=True)
   write_ocean_mesh(configs, output_path, data_path)
+
+
+@click.command()
+@click.argument(
+  "config_path",
+  required=True,
+  type=click.Path(path_type=pathlib.Path, file_okay=True, readable=True),
+)
+@click.argument(
+  "output_path",
+  required=True,
+  type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True),
+)
+@click.option(
+  "--overwrite/--no-overwrite",
+  help="Whether to overwrite existing outputs",
+  default=False,
+  is_flag=True,
+)
+@cli_utils.LOG_LEVEL_OPTION
+def make_icosahedral_mesh(
+  config_path: pathlib.Path,
+  output_path: pathlib.Path,
+  overwrite: bool = False,
+  log_level: str = "info",
+):
+  """Write the icosahedral multi-mesh of CONFIG_PATH (experimental), on the WGS84 ellipsoid, to OUTPUT_PATH.
+
+  The file holds the finest triangles, the edges of all levels and the mesh size (the longest edge of the finest mesh),
+  and can be used as the mesh of a training configuration.
+  """
+  cli_utils.configure_logging(log_level)
+  configs = cli_utils.read_configs(config_path, schema=IcosahedralMeshConfig)
+  if output_path.exists() and not overwrite:
+    raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
+  logger.info(f"Using settings: {configs!r}")
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(
+    configs.splits,
+    description=[configs.description] if configs.description else None,
+    license=[configs.license] if configs.license else None,
+  )
+  logger.info(f"Writing {len(mesh_data.mesh_graph.vertices)} vertices and {len(mesh_data.mesh_graph.edges[0])} edges")
+  output_path.parent.mkdir(parents=True, exist_ok=True)
+  write_multi_mesh(mesh_data, output_path, model_name=configs.model_name, mesh_size_view_name=configs.view_tag_name)
 
 
 def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, data_path: pathlib.Path | None) -> None:

@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,13 +13,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Wrappers that take care of casting."""
 
 import contextlib
-from collections.abc import Mapping
+from collections.abc import Hashable, Mapping
 from typing import Any
 
-import chex
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -59,11 +62,11 @@ class Bfloat16Cast(predictor_base.Predictor):
         **kwargs,
       )
 
-    predictions_dtype = infer_floating_dtype(predictions)  # pytype: disable=wrong-arg-types
+    predictions_dtype = infer_floating_dtype(predictions)
     if predictions_dtype != jnp.bfloat16:
       raise ValueError(f"Expected bfloat16 output, got {predictions_dtype}")
 
-    targets_dtype = infer_floating_dtype(targets_template)  # pytype: disable=wrong-arg-types
+    targets_dtype = infer_floating_dtype(targets_template)
     return tree_map_cast(predictions, input_dtype=jnp.bfloat16, output_dtype=targets_dtype)
 
   def loss(
@@ -77,14 +80,12 @@ class Bfloat16Cast(predictor_base.Predictor):
       return self._predictor.loss(inputs, targets, forcings, **kwargs)
 
     with bfloat16_variable_view():
-      loss, scalars = self._predictor.loss(
-        *_all_inputs_to_bfloat16(inputs, targets, forcings), **kwargs
-      )
+      loss, scalars = self._predictor.loss(*_all_inputs_to_bfloat16(inputs, targets, forcings), **kwargs)
 
     if loss.dtype != jnp.bfloat16:
       raise ValueError(f"Expected bfloat16 loss, got {loss.dtype}")
 
-    targets_dtype = infer_floating_dtype(targets)  # pytype: disable=wrong-arg-types
+    targets_dtype = infer_floating_dtype(targets)
 
     # Note that casting back the loss to e.g. float32 should not affect data
     # types of the backwards pass, because the first thing the backwards pass
@@ -115,27 +116,21 @@ class Bfloat16Cast(predictor_base.Predictor):
     if loss.dtype != jnp.bfloat16:
       raise ValueError(f"Expected bfloat16 loss, got {loss.dtype}")
 
-    predictions_dtype = infer_floating_dtype(predictions)  # pytype: disable=wrong-arg-types
+    predictions_dtype = infer_floating_dtype(predictions)
     if predictions_dtype != jnp.bfloat16:
       raise ValueError(f"Expected bfloat16 output, got {predictions_dtype}")
 
-    targets_dtype = infer_floating_dtype(targets)  # pytype: disable=wrong-arg-types
-    return tree_map_cast(
-      ((loss, scalars), predictions), input_dtype=jnp.bfloat16, output_dtype=targets_dtype
-    )
+    targets_dtype = infer_floating_dtype(targets)
+    return tree_map_cast(((loss, scalars), predictions), input_dtype=jnp.bfloat16, output_dtype=targets_dtype)
 
 
-def infer_floating_dtype(data_vars: Mapping[str, chex.Array]) -> np.dtype:
+def infer_floating_dtype(data_vars: Mapping[Hashable, Any]) -> np.dtype:
   """Infers a floating dtype from an input mapping of data."""
   dtypes = {v.dtype for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)}
   if len(dtypes) != 1:
-    dtypes_and_shapes = {
-      k: (v.dtype, v.shape) for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)
-    }
-    raise ValueError(
-      f"Did not found exactly one floating dtype {dtypes} in input variables:{dtypes_and_shapes}"
-    )
-  return list(dtypes)[0]
+    dtypes_and_shapes = {k: (v.dtype, v.shape) for k, v in data_vars.items() if jnp.issubdtype(v.dtype, np.floating)}
+    raise ValueError(f"Did not found exactly one floating dtype {dtypes} in input variables:{dtypes_and_shapes}")
+  return next(iter(dtypes))
 
 
 def _all_inputs_to_bfloat16(
@@ -156,8 +151,8 @@ def tree_map_cast(
   output_dtype: np.dtype,
 ) -> PyTree:
   def cast_fn(x):
-    if x.dtype == input_dtype:
-      return x.astype(output_dtype)
+    # Other leaves are kept as they are.
+    return x.astype(output_dtype) if x.dtype == input_dtype else x
 
   return jax.tree_util.tree_map(cast_fn, inputs)
 

@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Utilities for working with trees of xarray.DataArray (including Datasets).
 
 Note that xarray.Dataset doesn't work out-of-the-box with the `tree` library;
@@ -54,7 +58,7 @@ def map_structure(func: Callable[..., Any], *structures: Any) -> Any:
 
   first = structures[0]
   if isinstance(first, xarray.Dataset):
-    data = {k: func(*[s[k] for s in structures]) for k in first.keys()}
+    data = {k: func(*[s[k] for s in structures]) for k in first}
     if all(isinstance(a, (type(None), xarray.DataArray)) for a in data.values()):
       data_arrays = [v.rename(k) for k, v in data.items() if v is not None]
       try:
@@ -63,7 +67,7 @@ def map_structure(func: Callable[..., Any], *structures: Any) -> Any:
         pass
     return data
   if isinstance(first, dict):
-    return {k: map_structure(func, *[s[k] for s in structures]) for k in first.keys()}
+    return {k: map_structure(func, *[s[k] for s in structures]) for k in first}
   if isinstance(first, (list, tuple, set)):
     return type(first)(map_structure(func, *s) for s in zip(*structures, strict=False))
   return func(*structures)

@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+description = """
+  Global icosahedral multi-mesh (experimental), as in GraphCast: a regular icosahedron \
+  refined 6 times (40,962 vertices), with the edges of all 7 levels, projected onto the \
+  WGS84 ellipsoid (each vertex keeps its latitude and longitude). \
+  Edges of the finest level are 110 to 132 km long. All units are meters. \
+  The mesh covers land and sea and has no boundary.
+  """
+license = """
+  The mesh is licensed under the Creative Commons \
+  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
+  may obtain a copy of the License at: \
+  https://creativecommons.org/licenses/by-nc-sa/4.0/.
+  """
+
+splits = 6

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 description = """
   GraphCast model for the ocean at 0.25deg resolution, \
   50 depth levels and sea ice, forced by atmospheric variables and river discharge. \
@@ -72,7 +75,7 @@ levels = "all"
 # levels = [0, 4, 8, 12, 16, 20, 24, 28, 32, 34]
 # levels = { start = 0, stop = 8, step = 2 }  # Inclusive stop: 0, 2, 4, 6, 8.
 # Bounds may be omitted; step defaults to 1. Negative/reverse slices are unsupported.
-input_duration = "1d"
+input_duration = "1D"
 
 [model]
 latent_size = 512
@@ -115,7 +118,7 @@ path = "/data/dataset"
 io_threads = 16
 
 [grain_dataset]
-target_lead_times = "1d"
+target_lead_times = "1D"
 split_date = "2019-06-30T00:00:00"
 local_batch_size = 1
 

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Sample node memory and GPU usage every INTERVAL seconds into CSV files in the current directory, until killed.
 # Run once per node, alongside training, by train_bench.sbatch.in. Usage: usage_sampler.sh [INTERVAL]
 set -u

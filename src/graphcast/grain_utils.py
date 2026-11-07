@@ -1,5 +1,17 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Grain helpers for xarray pipelines.
 
 Grain reader and multiprocessing options are runtime settings read from GRAPHCAST_GRAIN_* environment variables (see
@@ -34,11 +46,7 @@ class GrainOptions:
 
   @property
   def num_workers(self) -> int:
-    return (
-      0
-      if self.multiprocessing_options is None
-      else self.multiprocessing_options.num_workers
-    )
+    return 0 if self.multiprocessing_options is None else self.multiprocessing_options.num_workers
 
 
 class GrainRuntimeConfig(BaseSettings):
@@ -62,23 +70,16 @@ class GrainRuntimeConfig(BaseSettings):
     unknown = sorted(
       name
       for name in os.environ
-      if name.upper().startswith(GRAIN_ENV_PREFIX)
-      and name[len(GRAIN_ENV_PREFIX):].lower() not in cls.model_fields
+      if name.upper().startswith(GRAIN_ENV_PREFIX) and name[len(GRAIN_ENV_PREFIX) :].lower() not in cls.model_fields
     )
     if unknown:
-      expected = ", ".join(
-        GRAIN_ENV_PREFIX + field.upper() for field in cls.model_fields
-      )
-      raise ValueError(
-        f"Unknown environment variables {', '.join(unknown)}; expected any of {expected}"
-      )
+      expected = ", ".join(GRAIN_ENV_PREFIX + field.upper() for field in cls.model_fields)
+      raise ValueError(f"Unknown environment variables {', '.join(unknown)}; expected any of {expected}")
     return values
 
   def options(self) -> GrainOptions:
     """Return Grain options; num_workers = 0 disables mp_prefetch."""
-    read_options = grain.ReadOptions(
-      num_threads=self.num_threads, prefetch_buffer_size=self.prefetch_buffer_size
-    )
+    read_options = grain.ReadOptions(num_threads=self.num_threads, prefetch_buffer_size=self.prefetch_buffer_size)
     if self.num_workers == 0:
       return GrainOptions(read_options)
     return GrainOptions(
@@ -111,15 +112,13 @@ def _spec_like(structure):
     return _xarray_spec(structure)
   if isinstance(structure, dict):
     return {k: _spec_like(v) for k, v in structure.items()}
-  if isinstance(structure, (list, tuple)) and any(
-      isinstance(v, _XARRAY_TYPES) for v in structure
-  ):
+  if isinstance(structure, (list, tuple)) and any(isinstance(v, _XARRAY_TYPES) for v in structure):
     return type(structure).__name__, [_spec_like(v) for v in structure]
   return _original_spec_like(structure)
 
 
 _original_spec_like = tree_lib.spec_like
-tree_lib.spec_like = _spec_like
+tree_lib.spec_like = _spec_like  # ty: ignore[invalid-assignment]  # intentional patch, see above
 
 
 def format_execution_summary(iterator: DatasetIterator) -> str:

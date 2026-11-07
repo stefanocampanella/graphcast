@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """JAX implementation of Graph Networks Simulator.
 
 Generalization to TypedGraphs of the deep Graph Neural Network from:
@@ -161,9 +165,7 @@ class DeepTypedGraphNet(hk.Module):
     self._activation = _get_activation_fn(activation)
     self._initialized = False
     self._f32_aggregation = f32_aggregation
-    self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(
-      aggregate_edges_for_nodes_fn
-    )
+    self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(aggregate_edges_for_nodes_fn)
     self._aggregate_normalization = aggregate_normalization
     self._remat = remat
     self._policy = policy
@@ -200,18 +202,14 @@ class DeepTypedGraphNet(hk.Module):
         def concat_trick_mlp(*args, **kwargs):
           combined_args = tree.tree_flatten(args)[0] + tree.tree_flatten(kwargs)[0]
           linear_layers = [
-            hk.Linear(output_size, name=name + f"_linear_concat_trick_arg_{n}")
-            for n, _ in enumerate(combined_args)
+            hk.Linear(output_size, name=name + f"_linear_concat_trick_arg_{n}") for n, _ in enumerate(combined_args)
           ]
           mlp = hk.nets.MLP(
-            output_sizes=[self._mlp_hidden_size] * (self._mlp_num_hidden_layers - 1)
-            + [output_size],
+            output_sizes=[self._mlp_hidden_size] * (self._mlp_num_hidden_layers - 1) + [output_size],
             name=name + "_mlp",
             activation=self._activation,
           )
-          single_arg = sum(
-            layer(arg) for layer, arg in zip(linear_layers, combined_args, strict=False)
-          )
+          single_arg = sum(layer(arg) for layer, arg in zip(linear_layers, combined_args, strict=False))
           single_arg = self._activation(single_arg)
           return mlp(single_arg)
 
@@ -227,9 +225,7 @@ class DeepTypedGraphNet(hk.Module):
     def build_mlp_with_maybe_layer_norm(name, output_size):
       network = build_mlp(name, output_size)
       if self._use_layer_norm:
-        layer_norm = hk.LayerNorm(
-          axis=-1, create_scale=True, create_offset=True, name=name + "_layer_norm"
-        )
+        layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=name + "_layer_norm")
         network = hk.Sequential([network, layer_norm])
       return network
 
@@ -252,10 +248,10 @@ class DeepTypedGraphNet(hk.Module):
       )
     else:
       embed_node_fn = None
-    embedder_kwargs = dict(
-      embed_edge_fn=embed_edge_fn,
-      embed_node_fn=embed_node_fn,
-    )
+    embedder_kwargs = {
+      "embed_edge_fn": embed_edge_fn,
+      "embed_node_fn": embed_node_fn,
+    }
 
     def _embedder_network(graph):
       graph = typed_graph_net.GraphMapFeatures(**embedder_kwargs)(graph)
@@ -263,9 +259,7 @@ class DeepTypedGraphNet(hk.Module):
       return graph
 
     if self._remat:
-      _embedder_network = hk.remat(
-        _embedder_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
+      _embedder_network = hk.remat(_embedder_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._embedder_network = _embedder_network
 
     if self._f32_aggregation:
@@ -312,24 +306,22 @@ class DeepTypedGraphNet(hk.Module):
       return graph
 
     if self._remat:
-      _processor_network = hk.remat(
-        _processor_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
+      _processor_network = hk.remat(_processor_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._processor_network = _processor_network
 
     # The output MLPs converts edge/node latent features into the output sizes.
-    output_kwargs = dict(
-      embed_edge_fn=_build_update_fns_for_edge_types(
+    output_kwargs = {
+      "embed_edge_fn": _build_update_fns_for_edge_types(
         build_mlp, graph_template, "decoder_edges_", self._edge_output_size
       )
       if self._edge_output_size
       else None,
-      embed_node_fn=_build_update_fns_for_node_types(
+      "embed_node_fn": _build_update_fns_for_node_types(
         build_mlp, graph_template, "decoder_nodes_", self._node_output_size
       )
       if self._node_output_size
       else None,
-    )
+    }
 
     def _output_network(graph):
       graph = typed_graph_net.GraphMapFeatures(**output_kwargs)(graph)
@@ -337,9 +329,7 @@ class DeepTypedGraphNet(hk.Module):
       return graph
 
     if self._remat:
-      _output_network = hk.remat(
-        _output_network, policy=self._policy, prevent_cse=self._prevent_cse
-      )
+      _output_network = hk.remat(_output_network, policy=self._policy, prevent_cse=self._prevent_cse)
     self._output_network = _output_network
 
   def _embed(self, input_graph: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
@@ -363,9 +353,7 @@ class DeepTypedGraphNet(hk.Module):
         new_nodes[node_set_name] = node_set._replace(
           features=jnp.concatenate([node_features, broadcasted_context], axis=-1)
         )
-      input_graph = input_graph._replace(
-        nodes=new_nodes, context=input_graph.context._replace(features=())
-      )
+      input_graph = input_graph._replace(nodes=new_nodes, context=input_graph.context._replace(features=()))
 
     # Embeds the node and edge features.
     latent_graph_0 = self._embedder_network(input_graph)
@@ -403,6 +391,8 @@ class DeepTypedGraphNet(hk.Module):
     # parameters: XLA fails to compile host offloading inside a switch in a scan). Unrolled, XLA optimizes across steps,
     # which is faster (about 30 % for the processor of the coarse mesh) but keeps more activations.
     stacked_params = jax.tree_util.tree_map(lambda *ps: jnp.stack(ps), *step_params) if self._scan else None
+    if self._scan:
+      features = _vary_like_others(features)
     for _unused_repetition_i in range(self._num_processor_repetitions):
       if self._scan:
         features, _ = jax.lax.scan(lambda f, p: (step.apply(p, None, f), None), features, stacked_params)
@@ -415,9 +405,7 @@ class DeepTypedGraphNet(hk.Module):
       edges={k: s._replace(features=edge_features[k]) for k, s in latent_graph_0.edges.items()},
     )
 
-  def _process_step(
-    self, processor_network_k, latent_graph_prev_k: typed_graph.TypedGraph
-  ) -> typed_graph.TypedGraph:
+  def _process_step(self, processor_network_k, latent_graph_prev_k: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
     """Single step of message passing with node/edge residual connections."""
 
     # One step of message passing.
@@ -426,15 +414,11 @@ class DeepTypedGraphNet(hk.Module):
     # Add residuals.
     nodes_with_residuals = {}
     for k, prev_set in latent_graph_prev_k.nodes.items():
-      nodes_with_residuals[k] = prev_set._replace(
-        features=prev_set.features + latent_graph_k.nodes[k].features
-      )
+      nodes_with_residuals[k] = prev_set._replace(features=prev_set.features + latent_graph_k.nodes[k].features)
 
     edges_with_residuals = {}
     for k, prev_set in latent_graph_prev_k.edges.items():
-      edges_with_residuals[k] = prev_set._replace(
-        features=prev_set.features + latent_graph_k.edges[k].features
-      )
+      edges_with_residuals[k] = prev_set._replace(features=prev_set.features + latent_graph_k.edges[k].features)
 
     latent_graph_k = latent_graph_k._replace(nodes=nodes_with_residuals, edges=edges_with_residuals)
     return latent_graph_k
@@ -448,7 +432,7 @@ def _build_update_fns_for_node_types(builder_fn, graph_template, prefix, output_
   """Builds an update function for all node types or a subset of them."""
 
   output_fns = {}
-  for node_set_name in graph_template.nodes.keys():
+  for node_set_name in graph_template.nodes:
     if output_sizes is None:
       # Use the default output size for all types.
       output_size = None
@@ -465,7 +449,7 @@ def _build_update_fns_for_node_types(builder_fn, graph_template, prefix, output_
 def _build_update_fns_for_edge_types(builder_fn, graph_template, prefix, output_sizes=None):
   """Builds an edge function for all node types or a subset of them."""
   output_fns = {}
-  for edge_set_key in graph_template.edges.keys():
+  for edge_set_key in graph_template.edges:
     edge_set_name = edge_set_key.name
     if output_sizes is None:
       # Use the default output size for all types.
@@ -496,3 +480,20 @@ def _get_aggregate_edges_for_nodes_fn(name):
   if hasattr(jraph, name):
     return getattr(jraph, name)
   raise ValueError(f"Unknown aggregate_edges_for_nodes_fn function {name} specified.")
+
+
+def _vary_like_others(tree):
+  """Marks every leaf as varying along the manual mesh axes along which any leaf varies.
+
+  Inside shard_map with check_vma, a scan carry must keep its type, including the axes along which it varies across
+  devices. The processor's carry starts with mesh edge features computed from the graph and the parameters only (the
+  same on every device) and comes back varying along the batch axis, like the node features. Outside shard_map, or
+  with check_vma off, no leaf varies and the tree is returned as is.
+  """
+  varying = frozenset().union(*(jax.typeof(leaf).manual_axis_type.varying for leaf in jax.tree.leaves(tree)))
+
+  def vary(leaf):
+    missing = varying - jax.typeof(leaf).manual_axis_type.varying
+    return jax.lax.pcast(leaf, tuple(sorted(missing)), to="varying") if missing else leaf
+
+  return jax.tree.map(vary, tree)

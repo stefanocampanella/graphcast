@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Standardized anomalies in Zarr v2: one chunk per timestep and depth level.
 zarr_format = 2
 # Dask threads hold about 8 GB of memory each; on a node with few cores use num_workers = 8 and io_threads = 16.

@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests of the settings of the ocean mesh generator (mesh_config.py), of the shipped mesh configs, and of
 graphcast make-ocean-mesh on a synthetic coastline (a ring at 70°S, meshed with a coarse uniform field)."""
 
@@ -12,7 +26,13 @@ from pydantic import ValidationError
 from graphcast import cli_utils
 from graphcast.geospatial_mesh import make_ocean_mesh
 from graphcast.geospatial_mesh_utils import read_mesh_data
-from graphcast.mesh_config import MeshGenerationConfig, ShoreProximityFieldConfig, field_arguments
+from graphcast.mesh_config import (
+  IcosahedralMeshConfig,
+  MeshGenerationConfig,
+  ShoreProximityFieldConfig,
+  field_arguments,
+)
+from graphcast.mesh_graph import faces_to_edges
 
 MESH_CONFIGS = pathlib.Path(__file__).parents[1] / "configs" / "mesh"
 COAST_LATITUDE = -70.0
@@ -37,15 +57,26 @@ def test_defaults():
   assert configs.coarsen_boundaries.x0 == (0.0, 0.0) and configs.coarsen_boundaries.x0_projection == "stereographic"
 
 
-@pytest.mark.parametrize("path", sorted(MESH_CONFIGS.glob("*.toml")), ids=lambda path: path.name)
+@pytest.mark.parametrize(
+  "path", sorted(set(MESH_CONFIGS.glob("*.toml")) - set(MESH_CONFIGS.glob("icosahedral_*.toml"))), ids=lambda p: p.name
+)
 def test_shipped_configs_are_valid(path):
-  """Every shipped mesh config validates, and a uniform config's name and description give its value in km."""
+  """Every shipped ocean mesh config validates, and a uniform config's name and description give its value in km."""
   configs = cli_utils.read_configs(path, schema=MeshGenerationConfig)
   if path.name.startswith("uniform_") and path.stem.endswith("km"):
     (field,) = configs.fields
     km = int(path.stem.removeprefix("uniform_").removesuffix("km"))
     assert field.name == "uniform" and field.value == km * 1000
     assert f"value of {km} km" in " ".join(configs.description.split())
+
+
+@pytest.mark.parametrize("path", sorted(MESH_CONFIGS.glob("icosahedral_*.toml")), ids=lambda path: path.name)
+def test_shipped_icosahedral_configs_are_valid(path):
+  """Every shipped icosahedral mesh config validates, and its name and description give its number of refinements."""
+  configs = cli_utils.read_configs(path, schema=IcosahedralMeshConfig)
+  assert configs.splits == int(path.stem.removeprefix("icosahedral_"))
+  assert f"refined {configs.splits} times" in " ".join(configs.description.split())
+  assert configs.license
 
 
 @pytest.mark.parametrize(
@@ -154,6 +185,12 @@ def test_make_ocean_mesh(coastline):
   assert mesh_data.mesh_size is not None
   np.testing.assert_allclose(mesh_data.mesh_size, 1_000_000.0)
   assert " ".join(mesh_data.description) == "A test mesh" and " ".join(mesh_data.license) == "A test license"
+  # The coastline lines are the boundary (not multi-mesh edges): the edges are those of the triangles.
+  graph = mesh_data.mesh_graph
+  assert graph.boundary is not None and graph.boundary.any() and not graph.boundary.all()
+  senders, receivers = faces_to_edges(graph.faces)
+  np.testing.assert_array_equal(graph.edges[0], senders)
+  np.testing.assert_array_equal(graph.edges[1], receivers)
 
 
 def test_make_ocean_mesh_refuses_existing_output(coastline):

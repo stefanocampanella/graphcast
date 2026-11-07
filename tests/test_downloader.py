@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests of the preprocessing commands (downloader.py): the climatology index, S3 credentials, the standardization
 rules, the store layouts written in Zarr v2 and v3, the CLIs, the mask, and tendency_std.
 
@@ -19,7 +33,6 @@ from click.testing import CliRunner
 from graphcast import dataloader_utils, downloader
 from graphcast.dataloader import get_tensorstore_context
 from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
-from graphcast.training_config import MaskConfig
 
 V2 = {"zarr_format": 2}
 V3_LEXI = {"zarr_format": 3, "time_shard": 4, "depth_time_shard": 2}
@@ -392,7 +405,7 @@ class TestMask:
 
   def test_cli_writes_the_mask_read_by_training(self, mask_path, opened_inputs):
     """The store holds one boolean DataArray, which training reads as its grid (dataloader_utils.get_grid)."""
-    grid = dataloader_utils.get_grid(MaskConfig(path=mask_path, fill_value=0.0))
+    grid = dataloader_utils.get_grid(mask_path)
     expected = downloader.get_mask(opened_inputs[0], MaskDownloadConfig())
     np.testing.assert_array_equal(grid.mask, expected.transpose("lat", "lon").values)
     np.testing.assert_array_equal(grid.lat, expected["lat"].values)

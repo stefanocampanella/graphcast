@@ -1,3 +1,21 @@
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# select, scale and plot_data are adapted from GraphCast's demo notebook by Stefano Campanella; the
+# changes are in the git history.
 import datetime
 import math
 from collections.abc import Callable, Sequence
@@ -8,6 +26,7 @@ import matplotlib.collections as mc
 import matplotlib.pyplot as plt
 import numpy as np
 import xarray
+from matplotlib.figure import Figure
 
 from graphcast.data_utils import fix_longitude as _fix_longitude
 from graphcast.mesh_graph import EquirectangularGraph
@@ -21,23 +40,23 @@ Lines = Sequence[Line]
 def select(
   data: xarray.Dataset, variable: str, level: int | None = None, max_steps: int | None = None
 ) -> xarray.DataArray:
-  data = data[variable]
-  if "batch" in data.dims:
-    data = data.isel(batch=0)
-  if max_steps is not None and "time" in data.sizes and max_steps < data.sizes["time"]:
-    data = data.isel(time=range(max_steps))
-  if level is not None and "level" in data.coords:
-    data = data.sel(level=level)
-  return data
+  field = data[variable]
+  if "batch" in field.dims:
+    field = field.isel(batch=0)
+  if max_steps is not None and "time" in field.sizes and max_steps < field.sizes["time"]:
+    field = field.isel(time=range(max_steps))
+  if level is not None and "level" in field.coords:
+    field = field.sel(level=level)
+  return field
 
 
 def scale(
-  data: xarray.Dataset,
+  data: xarray.DataArray,
   center: float | None = None,
   robust: bool = False,
-) -> tuple[xarray.Dataset, matplotlib.colors.Normalize, str]:
-  vmin = np.nanpercentile(data, (2 if robust else 0))
-  vmax = np.nanpercentile(data, (98 if robust else 100))
+) -> tuple[xarray.DataArray, matplotlib.colors.Normalize, str]:
+  vmin = float(np.nanpercentile(data.values, (2 if robust else 0)))
+  vmax = float(np.nanpercentile(data.values, (98 if robust else 100)))
   if center is not None:
     diff = max(vmax - center, center - vmin)
     vmin = center - diff
@@ -50,12 +69,12 @@ def scale(
 
 
 def plot_data(
-  data: dict[str, xarray.Dataset],
+  data: dict[str, tuple[xarray.DataArray, matplotlib.colors.Normalize, str]],
   fig_title: str,
   plot_size: float = 5,
   robust: bool = False,
   cols: int = 4,
-) -> tuple[matplotlib.figure, Callable, int]:
+) -> tuple[Figure, Callable, int]:
   first_data = next(iter(data.values()))[0]
   max_steps = first_data.sizes.get("time", 1)
   assert all(max_steps == d.sizes.get("time", 1) for d, _, _ in data.values())
@@ -73,9 +92,7 @@ def plot_data(
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(title)
-    im = ax.imshow(
-      plot_data.isel(time=0, missing_dims="ignore"), norm=norm, origin="lower", cmap=cmap
-    )
+    im = ax.imshow(plot_data.isel(time=0, missing_dims="ignore"), norm=norm, origin="lower", cmap=cmap)
     plt.colorbar(
       mappable=im,
       ax=ax,
@@ -90,7 +107,8 @@ def plot_data(
 
   def update(frame):
     if "time" in first_data.dims:
-      td = datetime.timedelta(microseconds=first_data["time"][frame].item() / 1000)
+      # Any resolution: xarray keeps non-nanosecond timedeltas.
+      td = datetime.timedelta(seconds=float(first_data["time"].values[frame] / np.timedelta64(1, "s")))
       figure.suptitle(f"{fig_title}, {td}", fontsize=16)
     else:
       figure.suptitle(fig_title, fontsize=16)
@@ -112,10 +130,7 @@ def get_points_and_lines(wgs_graph: EquirectangularGraph) -> tuple[Points, Lines
   latitudes, longitudes = wgs_graph.vertices
   # points use (longitude, latitude) ordering to comply with other plot utils and notebooks.
   points = [(lon, lat) for lon, lat in zip(longitudes, latitudes, strict=False)]
-  lines = [
-    [points[n1], points[n2]]
-    for (n1, n2) in zip(wgs_graph.edges[0], wgs_graph.edges[1], strict=False)
-  ]
+  lines = [[points[n1], points[n2]] for (n1, n2) in zip(wgs_graph.edges[0], wgs_graph.edges[1], strict=False)]
 
   return points, lines
 
@@ -131,14 +146,13 @@ def get_line_collection(wgs_graph: EquirectangularGraph, **kwargs) -> mc.LineCol
 
   """
   _, line_segments = get_points_and_lines(wgs_graph)
-  line_segments = np.array(line_segments)
   line_collection = mc.LineCollection(line_segments, **kwargs)
   return line_collection
 
 
 def fix_longitude(plot_f):
   def new_plot_f(*args, **kwargs):
-    args = map(lambda da: _fix_longitude(da) if isinstance(da, xarray.DataArray) else da, args)
+    args = (_fix_longitude(da) if isinstance(da, xarray.DataArray) else da for da in args)
     return plot_f(*args, **kwargs)
 
   return new_plot_f

@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Dataset utilities for extracting inputs, targets, and forcings."""
 
 import warnings
-from collections.abc import Mapping, Sequence
+from collections.abc import Hashable, Mapping, Sequence
 from typing import Any
 
 import chex
@@ -98,9 +102,7 @@ def get_day_progress(
   return day_progress.astype(np.float32)
 
 
-def featurize_progress(
-  name: str, dims: Sequence[str], progress: chex.Array
-) -> Mapping[str, xarray.Variable]:
+def featurize_progress(name: str, dims: Sequence[Hashable], progress: chex.Array) -> Mapping[str, xarray.Variable]:
   """Derives features used by ML models from the `progress` variable.
 
   Args:
@@ -119,8 +121,7 @@ def featurize_progress(
   """
   if len(dims) != progress.ndim:
     raise ValueError(
-      f"Number of feature dimensions ({len(dims)}) must be equal to the"
-      f" number of data dimensions: {progress.ndim}."
+      f"Number of feature dimensions ({len(dims)}) must be equal to the number of data dimensions: {progress.ndim}."
     )
   if isinstance(progress, jax.Array):
     progress_phase = progress * (2 * jnp.pi)
@@ -321,9 +322,7 @@ def extract_input_target_times(
       for targets the time coordinates will refer to the lead times requested.
   """
 
-  (target_lead_times, target_duration) = _process_target_lead_times_and_get_duration(
-    target_lead_times
-  )
+  (target_lead_times, target_duration) = _process_target_lead_times_and_get_duration(target_lead_times)
 
   # Shift the coordinates for the time axis so that a timedelta of zero
   # corresponds to the forecast reference time. That is, the final timestep
@@ -357,9 +356,7 @@ def _process_target_lead_times_and_get_duration(
     if target_lead_times.start is None:
       # If the start isn't specified, we assume it starts at the next timestep
       # after lead time 0 (lead time 0 is the final input timestep):
-      target_lead_times = slice(
-        pd.Timedelta(1, "ns"), target_lead_times.stop, target_lead_times.step
-      )
+      target_lead_times = slice(pd.Timedelta(1, "ns"), target_lead_times.stop, target_lead_times.step)
     target_duration = pd.Timedelta(target_lead_times.stop)
   else:
     if not isinstance(target_lead_times, (list, tuple, set)):
@@ -368,8 +365,7 @@ def _process_target_lead_times_and_get_duration(
       target_lead_times = [target_lead_times]
 
     # A list of multiple (not necessarily contiguous) lead times:
-    target_lead_times = [pd.Timedelta(x) for x in target_lead_times]
-    target_lead_times.sort()
+    target_lead_times = sorted(pd.Timedelta(x) for x in target_lead_times)  # ty: ignore[invalid-argument-type]
     target_duration = target_lead_times[-1]
   return target_lead_times, target_duration
 
@@ -380,11 +376,11 @@ def extract_inputs_targets_forcings(
   input_variables: tuple[str, ...],
   target_variables: tuple[str, ...],
   forcing_variables: tuple[str, ...],
-    levels: tuple[int, ...] | None,
+  levels: tuple[int, ...] | None,
   input_duration: TimedeltaLike,
   target_lead_times: TargetLeadTimes,
   tisr_name: str = _DEFAULT_TISR_NAME,
-  integration_period: TimedeltaLike = "1d",
+  integration_period: TimedeltaLike = "1D",
   forward: bool = False,
   to_jax=False,
   derived_vars_device=None,
@@ -458,8 +454,7 @@ def extract_inputs_targets_forcings(
 
   if set(forcing_variables) & set(target_variables):
     raise ValueError(
-      f"Forcing variables {forcing_variables} should not "
-      f"overlap with target variables {target_variables}."
+      f"Forcing variables {forcing_variables} should not overlap with target variables {target_variables}."
     )
 
   inputs = inputs[list(input_variables)]
@@ -516,6 +511,9 @@ def _wrap(da: xarray.DataArray, longitude_dim="lon"):
 
 def fix_longitude(da: xarray.DataArray, longitude_dim: str = "lon"):
   """Wraps longitudes around -180 to 180 degrees."""
+  if not np.any(da[longitude_dim].to_numpy() > 180.0):
+    # Already wrapped.
+    return da
   da_wrapped = _wrap(da, longitude_dim=longitude_dim)
   longitude_orig = da[longitude_dim].to_numpy()
   longitude_orig = xarray.DataArray(

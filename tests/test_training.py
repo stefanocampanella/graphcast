@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests of the training command that run without GPUs: arguments, the restart step, the checkpoint settings and which
 checkpoints the manager keeps."""
 
@@ -79,3 +93,20 @@ def test_without_validation_the_latest_checkpoints_are_kept(tmp_path):
   assert ckpt_mngr.all_steps() == [19, 29]
   assert ckpt_mngr.best_step() == 29
   ckpt_mngr.close()
+
+
+@pytest.mark.parametrize("path", sorted(PRODUCTION_CONFIG.parent.glob("*.toml")), ids=lambda path: path.name)
+def test_shipped_training_configs_are_valid(path):
+  """Every shipped training config validates (including its durations)."""
+  TrainingConfig.model_validate(cli_utils.read_configs(path))
+
+
+@pytest.mark.parametrize(("section", "key"), [("task", "input_duration"), ("grain_dataset", "target_lead_times")])
+@pytest.mark.parametrize("duration", ["1d", "one day"])
+def test_durations_must_parse_without_deprecated_units(section, key, duration):
+  """Durations are checked when the config is read: lowercase "d" for days is deprecated by pandas (an error in pandas
+  4, so a run would fail when it reads the first sample), and the config shipped it."""
+  configs = cli_utils.read_configs(PRODUCTION_CONFIG)
+  configs[section][key] = duration
+  with pytest.raises(ValueError, match="duration"):
+    TrainingConfig.model_validate(configs)

@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Tests of the masked, latitude- and level-weighted losses: masked points do not count, per-variable masks, empty
 levels, and bfloat16 inputs (as inside the model).
 """
@@ -80,8 +94,7 @@ def test_bfloat16_losses():
 
   predictions, targets = _data()
   mask = xr.DataArray(np.ones((LAT.size, 2), dtype=bool), dims=("lat", "lon"))
-  as_bf16 = [data.astype(ml_dtypes.bfloat16) for data in (predictions, targets)]
-  loss, _ = losses.weighted_mse(*as_bf16, mask=mask)
+  loss, _ = losses.weighted_mse(predictions.astype(ml_dtypes.bfloat16), targets.astype(ml_dtypes.bfloat16), mask=mask)
   assert loss.dtype == ml_dtypes.bfloat16
   assert float(loss.values[0]) == pytest.approx(_loss(predictions, targets)[0], rel=1e-2)
 

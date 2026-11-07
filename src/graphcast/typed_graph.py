@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Data-structure for storing graphs with typed edges and nodes."""
 
 from collections.abc import Mapping
@@ -127,13 +131,9 @@ class TypedGraph(NamedTuple):
   edges: Mapping[EdgeSetKey, EdgeSet]
 
   def edge_key_by_name(self, name: str) -> EdgeSetKey:
-    found_key = [k for k in self.edges.keys() if k.name == name]
+    found_key = [k for k in self.edges if k.name == name]
     if len(found_key) != 1:
-      raise KeyError(
-        "invalid edge key '{}'. Available edges: [{}]".format(
-          name, ", ".join(x.name for x in self.edges.keys())
-        )
-      )
+      raise KeyError("invalid edge key '{}'. Available edges: [{}]".format(name, ", ".join(x.name for x in self.edges)))
     return found_key[0]
 
   def edge_by_name(self, name: str) -> EdgeSet:

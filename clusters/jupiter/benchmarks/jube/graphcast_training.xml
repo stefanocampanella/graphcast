@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Stefano Campanella -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 <!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">

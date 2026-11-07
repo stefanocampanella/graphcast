@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +13,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Helpers to use xarray.{Variable,DataArray,Dataset} with JAX.
 
 Allows them to be based on JAX arrays without converting to numpy arrays under
@@ -249,7 +253,7 @@ def Dataset(  # pylint:disable=invalid-name
 DatasetOrDataArray = TypeVar("DatasetOrDataArray", xarray.Dataset, xarray.DataArray)
 
 
-def assign_coords(
+def assign_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
   x: DatasetOrDataArray,
   *,
   coords: Mapping[Hashable, Any] | None = None,
@@ -292,15 +296,13 @@ def assign_coords(
   # it tries to recreate the indexes again for the existing coordinates.
   # Can remove if/when https://github.com/pydata/xarray/issues/7885 fixed.
   existing_jax_coords = get_jax_coords(x)
-  jax_coords = existing_jax_coords | jax_coords
+  jax_coords = {**existing_jax_coords, **jax_coords}
   x = x.drop_vars(existing_jax_coords.keys())
 
-  # We need to ensure that xarray doesn't try to create an index for
-  # coordinates with the same name as a dimension, since this will fail if
-  # given a wrapped JAX tracer.
-  # It appears the only way to avoid this is to name them differently to any
-  # dimension name, then rename them back afterwards.
-  renamed_jax_coords = {}
+  # xarray must not create an index for coordinates with the same name as a
+  # dimension, since this fails if given a wrapped JAX tracer: they are
+  # assigned as `xarray.Coordinates` without indexes.
+  jax_coord_vars = {}
   for name, coord in jax_coords.items():
     if isinstance(coord, xarray.DataArray):
       coord = coord.variable
@@ -332,19 +334,15 @@ def assign_coords(
     # determine which coords need to be treated as leaves of the flattened
     # structure vs static data.
     coord.attrs[_JAX_COORD_ATTR_NAME] = True
-    renamed_jax_coords[f"__NONINDEX_{name}"] = coord
+    jax_coord_vars[name] = coord
 
-  x = x.assign_coords(coords=coords | renamed_jax_coords)
-
-  rename_back_mapping = {f"__NONINDEX_{name}": name for name in jax_coords}
-  if isinstance(x, xarray.Dataset):
-    # Using 'rename' doesn't work if renaming to the same name as a dimension.
-    return x.rename_vars(rename_back_mapping)
-  else:  # DataArray
-    return x.rename(rename_back_mapping)
+  x = x.assign_coords(coords=coords)
+  return x.assign_coords(xarray.Coordinates(jax_coord_vars, indexes={}))
 
 
-def get_jax_coords(x: DatasetOrDataArray) -> Mapping[Hashable, Any]:
+def get_jax_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
+  x: DatasetOrDataArray,
+) -> Mapping[Hashable, Any]:
   return {
     name: coord_var
     for name, coord_var in x.coords.variables.items()
@@ -352,11 +350,11 @@ def get_jax_coords(x: DatasetOrDataArray) -> Mapping[Hashable, Any]:
   }
 
 
-def assign_jax_coords(
+def assign_jax_coords[DatasetOrDataArray: (xarray.Dataset, xarray.DataArray)](
   x: DatasetOrDataArray, jax_coords: Mapping[Hashable, Any] | None = None, **jax_coords_kwargs
 ) -> DatasetOrDataArray:
   """Assigns only jax_coords, with same API as xarray's assign_coords."""
-  return assign_coords(x, jax_coords=jax_coords or jax_coords_kwargs)
+  return assign_coords(x, jax_coords={**(jax_coords or {}), **jax_coords_kwargs})
 
 
 def wrap(value):
@@ -376,22 +374,19 @@ def wrap_data(value, to_jax=False, np_contiguous=True):
   def _as_something(x: np.ndarray) -> np.ndarray | jax.Array:
     if np_contiguous:
       x = np.ascontiguousarray(x)
-    if to_jax:
-      x = jax.numpy.asarray(x)
-    return x
+    return jax.numpy.asarray(x) if to_jax else x
 
   def _wrap_data(ds_or_da: DatasetOrDataArray) -> DatasetOrDataArray:
+    # ty does not narrow constrained type variables with isinstance.
     if isinstance(ds_or_da, xarray.Dataset):
-      return Dataset(
-        data_vars={
-          var: (data.dims, _as_something(data.data)) for var, data in ds_or_da.data_vars.items()
-        },
+      return Dataset(  # ty: ignore[invalid-return-type]
+        data_vars={var: (data.dims, _as_something(data.data)) for var, data in ds_or_da.data_vars.items()},
         coords=ds_or_da.coords,
         jax_coords={},
         attrs=ds_or_da.attrs,
       )
     elif isinstance(ds_or_da, xarray.DataArray):
-      return DataArray(
+      return DataArray(  # ty: ignore[invalid-return-type]
         data=_as_something(ds_or_da.data),
         coords=ds_or_da.coords,
         jax_coords={},
@@ -399,11 +394,9 @@ def wrap_data(value, to_jax=False, np_contiguous=True):
         attrs=ds_or_da.attrs,
       )
     else:
-      raise ValueError(f"Unsupported type: {type(ds_or_da)}")
+      raise TypeError(f"Unsupported type: {type(ds_or_da)}")
 
-  return jax.tree_util.tree_map(
-    _wrap_data, value, is_leaf=lambda x: isinstance(x, (xarray.Dataset, xarray.DataArray))
-  )
+  return jax.tree_util.tree_map(_wrap_data, value, is_leaf=lambda x: isinstance(x, (xarray.Dataset, xarray.DataArray)))
 
 
 def unwrap(value, require_jax=False):
@@ -432,9 +425,7 @@ def _wrapped(func):
   return wrapped_func
 
 
-def unwrap_data(
-  value: xarray.Variable | xarray.DataArray, require_jax: bool = False
-) -> jax.Array | np.ndarray:
+def unwrap_data(value: xarray.Variable | xarray.DataArray, require_jax: bool = False) -> jax.Array | np.ndarray:
   """The unwrapped (see unwrap) data of a an xarray.Variable or DataArray."""
   return unwrap(value.data, require_jax=require_jax)
 
@@ -452,9 +443,7 @@ def unwrap_coords(
   dataset: xarray.Dataset | xarray.DataArray, require_jax: bool = False
 ) -> Mapping[str, jax.Array | np.ndarray]:
   """The unwrapped data (see unwrap) of the coords in a Dataset or DataArray."""
-  return {
-    str(name): unwrap_data(var, require_jax=require_jax) for name, var in dataset.coords.items()
-  }
+  return {str(name): unwrap_data(var, require_jax=require_jax) for name, var in dataset.coords.items()}
 
 
 def jax_data(value: xarray.Variable | xarray.DataArray) -> jax.Array:
@@ -646,8 +635,8 @@ def pmap(
   fn: Callable[..., Any],
   dim: str,
   axis_name: str | None = None,
-  devices: ... = None,
-  backend: ... = None,
+  devices: Any = None,
+  backend: Any = None,
 ) -> Callable[..., Any]:
   """Wraps a subset of jax.pmap functionality to handle xarray input/output.
 
@@ -678,20 +667,17 @@ def pmap(
   input_treedef = None
   output_treedef = None
 
+  def check_leading_dim(variable: xarray.Variable) -> xarray.Variable:
+    index = variable.dims.index(dim) if dim in variable.dims else None
+    if index != 0:
+      raise ValueError(f"Expected dim {dim} at index 0, found at {index}.")
+    return variable
+
   def fn_passed_to_pmap(*flat_args):
     assert input_treedef is not None
 
     # Inside the pmap the original first dimension will no longer be present:
-    def check_and_remove_leading_dim(dims):
-      try:
-        index = dims.index(dim)
-      except ValueError:
-        index = None
-      if index != 0:
-        raise ValueError(f"Expected dim {dim} at index 0, found at {index}.")
-      return dims[1:]
-
-    with dims_change_on_unflatten(check_and_remove_leading_dim):
+    with dims_change_on_unflatten(lambda dims: dims[1:]):
       args = jax.tree_util.tree_unflatten(input_treedef, flat_args)
     result = fn(*args)
     nonlocal output_treedef
@@ -709,6 +695,8 @@ def pmap(
 
   def result_fn(*args):
     nonlocal input_treedef
+    # Checked before jax.pmap, which would otherwise map over the wrong axis and fail with an unrelated error.
+    tree_map_variables(check_leading_dim, args)
     flat_args, input_treedef = jax.tree_util.tree_flatten(args)
     flat_result = pmapped_fn(*flat_args)
     assert output_treedef is not None
@@ -720,12 +708,7 @@ def pmap(
   return result_fn
 
 
-_PyTree = TypeVar("_PyTree")
-
-
-def tree_map_variables(
-  func: Callable[[xarray.Variable], xarray.Variable], tree_data: _PyTree
-) -> _PyTree:
+def tree_map_variables[PyTree](func: Callable[[xarray.Variable], xarray.Variable], tree_data: PyTree) -> PyTree:
   """Like jax.tree.map but operates with Variables as leaves.
 
   This will work with any jax.tree_util-registered PyTree containing xarray
@@ -755,10 +738,10 @@ def tree_map_variables(
   )
 
 
-def tree_map_with_dims(
+def tree_map_with_dims[PyTree](
   func: Callable[[jax.typing.ArrayLike, tuple[str, ...] | None], jax.typing.ArrayLike],
-  data: _PyTree,
-) -> _PyTree:
+  data: PyTree,
+) -> PyTree:
   """Like jax.tree.map but also passes in xarray dimensions where known.
 
   This is convenient when applying logic to every jax array in some xarray data
@@ -812,20 +795,15 @@ def tree_map_with_dims(
   return jax.tree_util.tree_map(wrapped_func, data, is_leaf=is_leaf)
 
 
-_Carry = TypeVar("_Carry")
-_X = TypeVar("_X")
-_Y = TypeVar("_Y")
-
-
-def scan(
-  f: Callable[[_Carry, _X], tuple[_Carry, _Y]],
-  init: _Carry,
+def scan[Carry, X, Y](
+  f: Callable[[Carry, X], tuple[Carry, Y]],
+  init: Carry,
   dim: str,
-  xs: _X | None = None,
+  xs: X | None = None,
   length: int | None = None,
   reverse: bool = False,
   unroll: int | bool = 1,
-) -> tuple[_Carry, _Y]:
+) -> tuple[Carry, Y]:
   """Like jax.lax.scan but supports xarray data.
 
   This can handle a jax.tree containing any mix of xarray and plain jax data.
@@ -882,15 +860,13 @@ def scan(
     else:
       with dims_change_on_unflatten(lambda dims: dims[1:]):
         x = jax.tree.unflatten(xs_treedef, x_leaves)
-    carry, y = f(carry, x)
+    carry, y = f(carry, x)  # ty: ignore[invalid-argument-type]  # x is None only when xs is None
 
     nonlocal y_treedef
     y_leaves, y_treedef = jax.tree.flatten(y)
     return carry, y_leaves
 
-  final_carry, ys_leaves = jax.lax.scan(
-    scan_fn, init, xs_leaves, length=length, reverse=reverse, unroll=unroll
-  )
+  final_carry, ys_leaves = jax.lax.scan(scan_fn, init, xs_leaves, length=length, reverse=reverse, unroll=unroll)
 
   assert isinstance(y_treedef, jax.tree_util.PyTreeDef)
 
@@ -955,9 +931,7 @@ def _flatten_variable(
   return children, aux
 
 
-def _unflatten_variable(
-  aux: tuple[Hashable, ...], children: tuple[jax.typing.ArrayLike]
-) -> xarray.Variable:  # pylint: disable=g-one-element-tuple
+def _unflatten_variable(aux: tuple[Hashable, ...], children: tuple[jax.typing.ArrayLike]) -> xarray.Variable:  # pylint: disable=g-one-element-tuple
   """Unflattens a Variable for jax.tree_util."""
   dims = aux
   dims_change_fn = _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None)
@@ -967,7 +941,7 @@ def _unflatten_variable(
 
 
 def _split_static_and_jax_coords(
-  coords: xarray.core.coordinates.Coordinates,
+  coords: xarray.Coordinates,
 ) -> tuple[Mapping[Hashable, xarray.Variable], Mapping[Hashable, xarray.Variable]]:
   static_coord_vars = {}
   jax_coord_vars = {}
@@ -1015,9 +989,7 @@ class _HashableCoords(collections.abc.Mapping):
 
   def __hash__(self):
     if not hasattr(self, "_hash"):
-      self._hash = hash(
-        frozenset((name, var.data.tobytes()) for name, var in self._variables.items())
-      )
+      self._hash = hash(frozenset((name, var.data.tobytes()) for name, var in self._variables.items()))
     return self._hash
 
   def __eq__(self, other):
@@ -1093,9 +1065,7 @@ def _unflatten_dataset(
   if _DIMS_CHANGE_ON_UNFLATTEN_FN.get(None):
     # Drop static coords which have dims not present in any of the data_vars.
     # See corresponding comment in _unflatten_data_array.
-    static_coord_vars = _drop_with_none_of_dims(
-      static_coord_vars, dataset.dims
-    )  # pytype: disable=wrong-arg-types
+    static_coord_vars = _drop_with_none_of_dims(static_coord_vars, tuple(dataset.dims))
   return assign_coords(dataset, coords=static_coord_vars, jax_coords=jax_coord_vars)
 
 
@@ -1143,8 +1113,6 @@ def device_put(value, device=None):
 def make_array_from_process_local_data(value, mesh: Mesh, spec: P):
   @_wrapped
   def _make_global_array(local_data):
-    return jax.make_array_from_process_local_data(
-      local_data=local_data, sharding=NamedSharding(mesh, spec)
-    )
+    return jax.make_array_from_process_local_data(local_data=local_data, sharding=NamedSharding(mesh, spec))
 
   return jax.tree_util.tree_map(_make_global_array, value)

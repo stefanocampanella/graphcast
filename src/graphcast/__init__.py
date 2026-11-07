@@ -1,11 +1,23 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import click
 from absl import flags
 
-from graphcast.basis import compute
+from graphcast.basis import compute_grid_basis_command
 from graphcast.downloader import compute_tendency_std, download, download_mask
-from graphcast.geospatial_mesh import make_ocean_mesh
+from graphcast.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
 from graphcast.training import train
 
 
@@ -29,9 +41,9 @@ from graphcast.training import train
   help="Enable Grain debug mode",
 )
 def cli(
-    grain_worker_profiling: bool,
-    grain_traceback_filtering: str,
-    grain_debug_mode: bool,
+  grain_worker_profiling: bool,
+  grain_traceback_filtering: str,
+  grain_debug_mode: bool,
 ):
   # Grain reads absl flags, which raise if accessed before parsing (normally done by absl.app.run).
   flags.FLAGS.mark_as_parsed()
@@ -42,7 +54,8 @@ def cli(
 
 cli.add_command(train)
 cli.add_command(make_ocean_mesh)
-cli.add_command(compute)
+cli.add_command(make_icosahedral_mesh)
+cli.add_command(compute_grid_basis_command)
 cli.add_command(download)
 cli.add_command(download_mask)
 cli.add_command(compute_tendency_std)

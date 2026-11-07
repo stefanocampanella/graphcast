@@ -1,3 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import inspect
 import logging
 import os
@@ -15,7 +29,6 @@ import xarray as xr
 from jax import checkpoint_policies as cp
 from jax.experimental import mesh_utils
 from jax.experimental.multihost_utils import sync_global_devices
-from jax.experimental.shard_map import shard_map
 from jax.sharding import AxisType, Mesh
 from jax.sharding import PartitionSpec as P
 
@@ -42,24 +55,20 @@ JAXLossAndDiagnostics = tuple[jax.Array, Mapping[str, jax.Array]]
 
 
 def _make_hybrid_mesh(
-    axis_names: tuple[str, ...],
-    local_shape: tuple[int, ...],
-    process_shape: tuple[int, ...],
+  axis_names: tuple[str, ...],
+  local_shape: tuple[int, ...],
+  process_shape: tuple[int, ...],
 ) -> Mesh:
   # `jax.make_mesh` rejects meshes spanning several GPU nodes, which JAX treats as separate slices. Lay out each
   # process's devices by local_shape and the processes by process_shape instead, so that axis i has size
   # local_shape[i] * process_shape[i].
-  devices = mesh_utils.create_hybrid_device_mesh(
-    local_shape, process_shape, process_is_granule=True
-  )
+  devices = mesh_utils.create_hybrid_device_mesh(local_shape, process_shape, process_is_granule=True)
   return Mesh(devices, axis_names, axis_types=(AxisType.Explicit,) * len(axis_names))
 
 
 def make_batch_mesh() -> Mesh:
   """A one-dimensional mesh over all devices, with axis "batch"."""
-  return _make_hybrid_mesh(
-    ("batch",), (jax.local_device_count(),), (jax.process_count(),)
-  )
+  return _make_hybrid_mesh(("batch",), (jax.local_device_count(),), (jax.process_count(),))
 
 
 def check_writable_paths(
@@ -129,21 +138,23 @@ def get_model_config(configs: TrainingConfig) -> ModelConfig:
 
 
 def get_policy(configs: TrainingConfig) -> Callable:
-  return cp.save_and_offload_only_these_names(**configs.policy.model_dump(exclude={"remat_loss", "prevent_cse", "scan", "edge_chunk_size"}))
+  return cp.save_and_offload_only_these_names(
+    **configs.policy.model_dump(exclude={"remat_loss", "prevent_cse", "scan", "edge_chunk_size"})
+  )
 
 
 def get_predictor(
-    configs: TrainingConfig,
-    model_config: ModelConfig,
-    task_config: TaskConfig,
+  configs: TrainingConfig,
+  model_config: ModelConfig,
+  task_config: TaskConfig,
   mesh_data: MeshData,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,
-    mean_by_level: xr.Dataset | None,
-    stddev_by_level: xr.Dataset | None,
+  mean_by_level: xr.Dataset | None,
+  stddev_by_level: xr.Dataset | None,
   loss_masks: xr.Dataset,
-    diffs_stddev_by_level: xr.Dataset | None = None,
+  diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
   """Wrap GraphCast, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
   diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) -> Bfloat16Cast."""
@@ -182,15 +193,13 @@ def get_predictor(
 
 
 def get_optimizer(
-    configs: TrainingConfig,
+  configs: TrainingConfig,
 ) -> tuple[optax.GradientTransformationExtraArgs, optax.Schedule]:
   logger.info(f"Optimizing with {configs.optimizer}")
   schedule_config = configs.optimizer.schedule
   try:
     scheduler_init = getattr(optax.schedules, schedule_config.name)
-    scheduler = scheduler_init(
-      **schedule_config.model_dump(exclude={"name"}, exclude_unset=True)
-    )
+    scheduler = scheduler_init(**schedule_config.model_dump(exclude={"name"}, exclude_unset=True))
   except (AttributeError, TypeError, ValueError) as error:
     raise ValueError(f"optimizer.schedule ({schedule_config.name}): {error}") from error
 
@@ -203,9 +212,7 @@ def get_optimizer(
         kwargs["learning_rate"] = scheduler
       gradient_transformation = gradient_transformation_init(**kwargs)
     except (AttributeError, TypeError, ValueError) as error:
-      raise ValueError(
-        f"optimizer.gradient_transformation.{index} ({config.name}): {error}"
-      ) from error
+      raise ValueError(f"optimizer.gradient_transformation.{index} ({config.name}): {error}") from error
     gradient_transformations.append(gradient_transformation)
   optimizer = optax.chain(*gradient_transformations)
 
@@ -230,8 +237,7 @@ class TensorboardLogger:
     # Tensorflow should be imported after jax initialization, see: https://github.com/google/flax/issues/4942
     if not jax.distributed.is_initialized():
       raise ValueError(
-        "JAX distributed should be initialized beforehand, "
-        "see: https://github.com/google/flax/issues/4942."
+        "JAX distributed should be initialized beforehand, see: https://github.com/google/flax/issues/4942."
       )
     else:
       _ = jax.devices()
@@ -264,10 +270,10 @@ class TensorboardLogger:
 
 
 def save_model(
-    output_path: pathlib.Path,
-    configs: TrainingConfig,
-    model_config: ModelConfig,
-    task_config: TaskConfig,
+  output_path: pathlib.Path,
+  configs: TrainingConfig,
+  model_config: ModelConfig,
+  task_config: TaskConfig,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
   grid_mask: np.ndarray,
@@ -283,7 +289,7 @@ def save_model(
     grid_mask=grid_mask,
     description=configs.description,
     license=configs.license,
-    params=params,
+    params=params,  # ty: ignore[invalid-argument-type]  # nested mappings of arrays
   )
 
   if jax.process_index() == 0:
@@ -294,48 +300,37 @@ def save_model(
   sync_global_devices("save_model")
 
 
-# get_global_grad_fn supports an apply function which depends on PRNGkeys (after a haiku.transform).
-# However, in the case of FSDS, there is the need to have a different rng key for each element of the batch.
-# However, it turns out to be non-trivial. See:
-# https://github.com/jax-ml/jax/discussions/22862
-# https://github.com/jax-ml/jax/issues/22860
-# Fold-in trick taken from
-# https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/scaling/JAX/data_parallel_fsdp.html
-# might not work when using a global mesh, and produce errors like the following.
+# Per-device rng keys in data parallelism. The model is deterministic today, but a probabilistic variant will need a
+# key in the predictor and the loss, different on every device (each holds different samples of the batch). The
+# fold-in trick of the UvA tutorial [1], `fold_in(key, axis_index("batch"))`, works in shard_map on our mesh with
+# Explicit axes only if the key is an argument of shard_map (spec P(), the same key on every device, folded inside).
+# Closing over a key computed outside shard_map fails with
 #
-#    File ".../jax/_src/prng.py", line 628, in random_fold_in
-#      return random_fold_in_p.bind(keys, msgs)
-#             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 #   NotImplementedError: Closing over inputs to shard_map where the input is sharded on `Explicit` axes is not
 #   implemented. As a workaround, please pass those inputs as an argument to shard_map.
 #   Got input with shape key<fry>[]({Explicit: ('batch',)})
 #
-# See also: https://github.com/jax-ml/jax/issues/29162
+# (the error that kept the previous helper from passing keys, see [4]). Splitting the key into one per device and
+# sharding it along the batch axis also works, once resharded explicitly
+# (`jax.reshard(jax.random.split(key, n), P("batch"))`); without it, shard_map rejects the unsharded keys. On rng keys
+# and sharding, see also [2] and [3].
 #
-# An alternative to fold-in might be to split the rng key and shard it, e.g.,
-#   rngs = jax.random.split(rng, device_mesh.shape[sharding_dim])
-#   rngs = jax.device_put(rngs, device_mesh)
-# However, the previous might produce the following error related to addressable devices and require more thinking.
+# [1] https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/scaling/JAX/data_parallel_fsdp.html
+# [2] https://github.com/jax-ml/jax/discussions/22862
+# [3] https://github.com/jax-ml/jax/issues/22860
+# [4] https://github.com/jax-ml/jax/issues/29162
+def data_parallel(
+  fn: Callable[..., Any], mesh: Mesh, batch_axis: str = "batch", check_vma: bool = False
+) -> Callable[..., Any]:
+  """Maps `fn(params, rng, data, static_data)` over the shards of `data` along the `batch_axis` of `mesh`.
 
+  `params`, `rng` and `static_data` are passed whole to every device; each device folds its index along the batch
+  axis into `rng`, so the devices get different keys. Results are concatenated along their leading axis.
+  """
 
-def fsdp_map(local_fn, mesh: jax.sharding.Mesh, batch_dim_name: str = "batch"):
-  def _local_grad_fn(params, rng_key, data, static_data):
-    local_rng_key = jax.random.fold_in(rng_key, jax.lax.axis_index(batch_dim_name))
-    return local_fn(params, local_rng_key, data, static_data)
+  def local_fn(params, rng, data, static_data):
+    return fn(params, jax.random.fold_in(rng, jax.lax.axis_index(batch_axis)), data, static_data)
 
-  def _pmean_grad_fn(params, rng_key, data, static_data):
-    return jax.lax.pmean(
-      _local_grad_fn(params, rng_key, data, static_data), axis_name=batch_dim_name
-    )
-
-  def global_fn(params, rng_key, data, static_data):
-    _global_grad_fn = shard_map(
-      _pmean_grad_fn,
-      mesh=mesh,
-      in_specs=(P(), P(), P(batch_dim_name), P()),
-      out_specs=P(),
-      check_rep=False,
-    )
-    return _global_grad_fn(params, rng_key, data, static_data)
-
-  return global_fn
+  return jax.shard_map(
+    local_fn, mesh=mesh, in_specs=(P(), P(), P(batch_axis), None), out_specs=P(batch_axis), check_vma=check_vma
+  )

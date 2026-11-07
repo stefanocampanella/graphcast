@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Submit the GPU memory fit experiments (memfit sweep at all 50 levels, 30 steps, one repetition) into
 # results/<date>-<name>/, for the settings that matter for GPU memory. The defaults of production_run.toml: processor in a
 # scan, grid nodes only for connected grid points, nothing offloaded, no edge chunks.
@@ -38,6 +41,7 @@ for entry in "${EXPERIMENTS[@]}"; do
     # shellcheck disable=SC2086
     uv run jube run graphcast_training.xml --tag memfit quick $TAGS --outpath "$ROOT/$NAME" \
         > "$ROOT/$NAME.submit.log" 2>&1
+    # shellcheck disable=SC2126 # one total over several files: grep -c would count per file
     JOBS=$(grep -h "Submitted batch job" "$ROOT/$NAME"/000000/*_submit/work/stdout 2>/dev/null | wc -l)
     echo "| \`$NAME\` | \`memfit quick $TAGS\` | $JOBS |" >> "$ROOT/MANIFEST.md"
     echo "$NAME: $JOBS jobs (memfit quick $TAGS)"

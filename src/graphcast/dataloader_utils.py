@@ -1,5 +1,20 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import dataclasses
 import logging
+import os
 import signal
 from collections.abc import Iterable
 from functools import partial
@@ -26,7 +41,7 @@ from graphcast.dataloader import (
   select_levels,
 )
 from graphcast.model import TaskConfig
-from graphcast.training_config import Levels, LevelSliceConfig, MaskConfig, TrainingConfig
+from graphcast.training_config import Levels, LevelSliceConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,13 +109,13 @@ def get_loss_masks(tendency_std: xr.Dataset, grid: Grid, target_variables: Itera
   return xr.Dataset({name: (tendency_std[name] > 0) & grid_mask for name in target_variables})
 
 
-def get_grid(configs: MaskConfig) -> Grid:
+def get_grid(path: str | os.PathLike) -> Grid:
   """Load the grid from the boolean (lat, lon) mask written by graphcast download-mask."""
-  logger.info(f"Loading the grid mask from {configs.path}")
-  mask = xr.open_dataarray(configs.path, engine="zarr", chunks=None).load()
+  logger.info(f"Loading the grid mask from {path}")
+  mask = xr.open_dataarray(path, engine="zarr", chunks=None).load()
   if mask.dtype != bool or set(mask.dims) != {"lat", "lon"}:
     raise ValueError(
-      f"Expected a boolean (lat, lon) mask in {configs.path}, found {mask.dtype} {mask.dims}: "
+      f"Expected a boolean (lat, lon) mask in {path}, found {mask.dtype} {mask.dims}: "
       "write it with graphcast download-mask"
     )
   return Grid(lat=mask["lat"].to_numpy(), lon=mask["lon"].to_numpy(), mask=mask.transpose("lat", "lon").to_numpy())
@@ -116,7 +131,14 @@ def get_task_config(
     levels = configs.task.levels
   else:
     raise ValueError("A selected dataset is required to resolve task.levels")
-  return TaskConfig(**{**configs.task.model_dump(), "levels": levels})
+  task = configs.task
+  return TaskConfig(
+    input_variables=task.input_variables,
+    target_variables=task.target_variables,
+    forcing_variables=task.forcing_variables,
+    levels=levels,
+    input_duration=task.input_duration,
+  )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -245,7 +267,7 @@ class _FlatSource(grain.RandomAccessDataSource):
   def __len__(self):
     return len(self._source)
 
-  def __getitem__(self, record_key):
+  def __getitem__(self, record_key):  # ty: ignore[invalid-method-override]
     """Return array leaves and reconstruction metadata for one source sample."""
     # Use JAX's registry to traverse xarray containers, not Grain's traversal.
     return jax.tree_util.tree_flatten(self._source[record_key])
@@ -271,7 +293,7 @@ class _Subset(grain.RandomAccessDataSource):
   def __len__(self) -> int:
     return len(self._indices)
 
-  def __getitem__(self, record_key):
+  def __getitem__(self, record_key):  # ty: ignore[invalid-method-override]
     return self._source[self._indices[record_key.__index__()]]
 
 
@@ -325,6 +347,7 @@ def get_grain_options(
       ds=flatten_dataset_iterator,
       **pick_config.model_dump(),
     )
+    assert performance_config.read_options is not None
     options = grain_utils.GrainOptions(performance_config.read_options, performance_config.multiprocessing_options)
     logger.warning(
       f"pick_performance_config chose num_workers={options.num_workers} at runtime. Grain's iterator state depends "

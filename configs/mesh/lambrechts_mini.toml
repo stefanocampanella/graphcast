@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 description = """
   Global ocean triangular mesh, \
   with a target mesh size equal to the smaller of two fields: one growing with the distance from the coast, \

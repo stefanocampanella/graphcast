@@ -1,4 +1,6 @@
-# Copyright 2023 DeepMind Technologies Limited.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +13,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
 """Utilities for building models."""
 
 import dataclasses
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Hashable, Mapping
 from typing import Any
 
 import haiku as hk
@@ -47,7 +51,7 @@ def get_graph_spatial_features(
   add_edge_direction: bool,
   add_edge_length: bool,
   add_edge_receiver_coordinates: bool,
-  edge_normalization: tuple[float, float] | None = None,
+  edge_normalization: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -63,9 +67,9 @@ def get_graph_spatial_features(
         ((x, y) with respectively x easting and y northing directions).
     add_edge_receiver_coordinates: Add receiver longitude and latitude in turns (1 / 2pi radians) to edge features.
     add_edge_length: Add geodetic length to edge features.
-    edge_normalization: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length, otherwise specify location and scale as a pair.
-        This supports using pre-trained model weights with a different graph structure to what it was trained.
+    edge_normalization: Length (same units as the edge lengths) by which edge lengths are divided. If None, the
+        longest edge. This supports using pre-trained model weights with a different graph structure to what it was
+        trained.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
@@ -103,14 +107,10 @@ def get_graph_spatial_features(
   edge_azimuths, _, edge_lengths = geoid.inv(
     node_lon[senders], node_lat[senders], node_lon[receivers], node_lat[receivers]
   )
-  edge_azimuths = np.rad2deg(edge_azimuths)
-  if edge_normalization is None:
-    # Normalize to the maximum edge length.
-    edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
-    edge_normalization_scale = edge_lengths.max()
-  else:
-    edge_normalization_location, edge_normalization_scale = edge_normalization
-  edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+  # pyproj returns azimuths in degrees.
+  edge_azimuths = np.deg2rad(edge_azimuths)
+  # Normalize to the given length, or to the maximum edge length.
+  edge_lengths = edge_lengths / (edge_lengths.max() if edge_normalization is None else edge_normalization)
 
   if add_edge_fwd_azimuth:
     edge_features.append(edge_azimuths / (2 * np.pi))
@@ -182,7 +182,7 @@ def get_bipartite_graph_spatial_features(
   add_edge_direction: bool,
   add_edge_length: bool,
   add_edge_receiver_coordinates: bool,
-  edge_normalization: tuple[float, float] | None = None,
+  edge_normalization: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
   """Computes spatial features for the nodes.
 
@@ -210,9 +210,9 @@ def get_bipartite_graph_spatial_features(
         ((x, y) with respectively x easting and y northing directions).
     add_edge_receiver_coordinates: Add receiver longitude and latitude in turns (1 / 2pi radians) to edge features.
     add_edge_length: Add geodetic length to edge features.
-    edge_normalization: Allows explicitly controlling edge normalization.
-        If None, defaults to max edge length, otherwise specify location and scale as a pair.
-        This supports using pre-trained model weights with a different graph structure to what it was trained.
+    edge_normalization: Length (same units as the edge lengths) by which edge lengths are divided. If None, the
+        longest edge. This supports using pre-trained model weights with a different graph structure to what it was
+        trained.
 
   Returns:
     Arrays of shape: [num_nodes, num_features] and [num_edges, num_features].
@@ -224,9 +224,7 @@ def get_bipartite_graph_spatial_features(
   num_edges = senders.shape[0]
   dtype = senders_node_lat.dtype
   assert receivers_node_lat.dtype == dtype
-  senders_node_phi, senders_node_theta = lat_lon_deg_to_spherical(
-    node_lon=senders_node_lon, node_lat=senders_node_lat
-  )
+  senders_node_phi, senders_node_theta = lat_lon_deg_to_spherical(node_lon=senders_node_lon, node_lat=senders_node_lat)
   receivers_node_phi, receivers_node_theta = lat_lon_deg_to_spherical(
     node_lon=receivers_node_lon, node_lat=receivers_node_lat
   )
@@ -265,14 +263,10 @@ def get_bipartite_graph_spatial_features(
     receivers_node_lon[receivers],
     receivers_node_lat[receivers],
   )
-  edge_azimuths = np.rad2deg(edge_azimuths)
-  if edge_normalization is None:
-    # Normalize to the maximum edge length.
-    edge_normalization_location = np.zeros((num_edges,), dtype=dtype)
-    edge_normalization_scale = edge_lengths.max()
-  else:
-    edge_normalization_location, edge_normalization_scale = edge_normalization
-  edge_lengths = (edge_lengths - edge_normalization_location) / edge_normalization_scale
+  # pyproj returns azimuths in degrees.
+  edge_azimuths = np.deg2rad(edge_azimuths)
+  # Normalize to the given length, or to the maximum edge length.
+  edge_lengths = edge_lengths / (edge_lengths.max() if edge_normalization is None else edge_normalization)
   if add_edge_fwd_azimuth:
     edge_features.append(edge_azimuths / (2 * np.pi))
   if add_edge_direction:
@@ -283,9 +277,7 @@ def get_bipartite_graph_spatial_features(
 
   # TODO: this should probably be deprecated
   if add_edge_receiver_coordinates:
-    edge_phi, edge_theta = lat_lon_deg_to_spherical(
-      receivers_node_lon[receivers], receivers_node_lat[receivers]
-    )
+    edge_phi, edge_theta = lat_lon_deg_to_spherical(receivers_node_lon[receivers], receivers_node_lat[receivers])
     edge_features.append(edge_phi / (2 * np.pi))
     edge_features.append(edge_theta / (2 * np.pi))
 
@@ -299,7 +291,7 @@ def get_bipartite_graph_spatial_features(
 
 def variable_to_stacked(
   variable: xarray.Variable,
-  sizes: Mapping[str, int],
+  sizes: Mapping[Hashable, int],
   preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
 ) -> xarray.Variable:
   """Converts an xarray.Variable to preserved_dims + ("channels",).
@@ -330,7 +322,7 @@ def variable_to_stacked(
 
 def dataset_to_stacked(
   dataset: xarray.Dataset,
-  sizes: Mapping[str, int] | None = None,
+  sizes: Mapping[Hashable, int] | None = None,
   preserved_dims: tuple[str, ...] = ("batch", "lat", "lon"),
 ) -> xarray.DataArray:
   """Converts an xarray.Dataset to a single stacked array.
@@ -352,7 +344,7 @@ def dataset_to_stacked(
   """
   data_vars = [
     variable_to_stacked(dataset.variables[name], sizes or dataset.sizes, preserved_dims)
-    for name in sorted(dataset.data_vars.keys())
+    for name in sorted(dataset.data_vars.keys(), key=str)
   ]
   coords = {dim: coord for dim, coord in dataset.coords.items() if dim in preserved_dims}
   return xarray.DataArray(data=xarray.Variable.concat(data_vars, dim="channels"), coords=coords)
@@ -385,7 +377,7 @@ def stacked_to_dataset(
   """
   unstack_from_channels_sizes = {}
   # noinspection PyTypeChecker
-  var_names = sorted(template_dataset.keys())
+  var_names = sorted(template_dataset.keys(), key=str)
   for name in var_names:
     template_var = template_dataset[name]
     if not all(dim in template_var.dims for dim in preserved_dims):
@@ -456,11 +448,9 @@ class Embedder(hk.Module):
       [self.mlp_hidden_dim] * self.mlp_num_hidden_layers + [self.output_dim],
       activation=jax.nn.swish,
       activate_final=False,
-      name=self.name + "_mlp",
+      name=f"{self.name}_mlp",
     )
-    layer_norm = hk.LayerNorm(
-      axis=-1, create_scale=True, create_offset=True, name=self.name + "_layer_norm"
-    )
+    layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=f"{self.name}_layer_norm")
     network = hk.Sequential([network, layer_norm])
 
     # Name the output inside the remat, as DeepTypedGraphNet does, so that the remat policy can save or offload it.

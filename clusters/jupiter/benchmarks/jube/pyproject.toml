@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "graphcast-jube-bench"
 version = "0.1.0"

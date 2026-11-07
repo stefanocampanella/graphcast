@@ -1,9 +1,25 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 """Validated training settings, independent of the training runtime."""
 
 import warnings
 from typing import Annotated, Any, Literal
 
+import pandas as pd
 from pydantic import (
+  AfterValidator,
   BaseModel,
   ConfigDict,
   Field,
@@ -17,6 +33,21 @@ from pydantic import (
 
 class ApplicationConfig(BaseModel):
   model_config = ConfigDict(extra="forbid")
+
+
+def _check_duration(value: str) -> str:
+  # Deprecated units (e.g. "d" for days, an error in pandas 4) are rejected now rather than when the first sample is read.
+  with warnings.catch_warnings():
+    warnings.simplefilter("error")
+    try:
+      pd.Timedelta(value)
+    except (ValueError, Warning) as error:
+      raise ValueError(f"{value!r} is not a valid duration (e.g. '1D', '24h'): {error}") from error
+  return value
+
+
+# A pandas duration, e.g. "1D" or "24h".
+Duration = Annotated[str, AfterValidator(_check_duration)]
 
 
 class ReadConfig(BaseModel):
@@ -42,7 +73,7 @@ class ReadConfig(BaseModel):
 
   @model_validator(mode="after")
   def reject_path(self):
-    if "filename_or_obj" in self.model_extra:
+    if "filename_or_obj" in (self.model_extra or {}):
       raise ValueError("filename_or_obj must be specified using the source's path")
     return self
 
@@ -71,7 +102,7 @@ class TaskConfig(ApplicationConfig):
   target_variables: tuple[str, ...]
   forcing_variables: tuple[str, ...]
   levels: Levels
-  input_duration: str
+  input_duration: Duration
 
 
 class ModelConfig(ApplicationConfig):
@@ -110,9 +141,7 @@ class SourceConfig(ApplicationConfig):
   @classmethod
   def read_defaults(cls, values):
     if isinstance(values, dict) and isinstance(values.get("read"), dict):
-      defaults = (
-        cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
-      )
+      defaults = cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
       return {**values, "read": {**defaults, **values["read"]}}
     return values
 
@@ -141,11 +170,9 @@ class PerformanceConfig(ApplicationConfig):
 
 
 class GrainDatasetConfig(ApplicationConfig):
-  target_lead_times: str
+  target_lead_times: Duration
   split_date: str
-  local_batch_size: PositiveInt = Field(
-    default=1, description="Samples per local device"
-  )
+  local_batch_size: PositiveInt = Field(default=1, description="Samples per local device")
   pick_performance_config: PerformanceConfig | None = None
 
 
