@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Submit the final benchmark experiments (1024 steps per job, two repetitions) into results/<date>-<name>/.
 # Each experiment is one JUBE run directory, all at the 50 depth levels of configs/training/production_run.toml:
 #   loader      store layouts and SquashFS images x Grain workers and threads

@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 description = """
   GraphCast model for the ocean at 0.25deg resolution, \
   50 depth levels and sea ice, forced by atmospheric variables and river discharge. \

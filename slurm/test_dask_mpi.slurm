@@ -1,4 +1,7 @@
 #! /usr/bin/env bash
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 #SBATCH --account=OGS_test2528_0
 #SBATCH --partition=dcgp_usr_prod
 #SBATCH --nodes=2

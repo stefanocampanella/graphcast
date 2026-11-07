@@ -43,7 +43,17 @@ are recorded in the git history:
   notebooks/graphcast_demo.ipynb
   README.md
 
-All other files are original to this project.
+spack/templates/container/graphcast.def is a modified copy of Spack's Singularity container template, released
+under the Apache License, Version 2.0 or the MIT license, at your option, and distributed here under the former:
+
+  Spack
+  Copyright Spack Project Developers
+  https://github.com/spack/spack
+
+All other files are original to this project. Images and animations are licensed under the Creative Commons
+Attribution 4.0 International License (LICENSES/CC-BY-4.0.txt); the Argonne, GRC and OGS logos in assets/poster.svg
+are trademarks of their owners and are not covered by it. REUSE.toml and the SPDX headers give the copyright and
+license of each file.
 
 The Apache License grants no permission to use the trade names, trademarks, service marks or product names of
 DeepMind, Google or GraphCast (section 6 of the License), except as required to describe the origin of the work and

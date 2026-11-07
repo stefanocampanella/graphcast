@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Standardized anomalies in Zarr v3: one chunk per timestep and depth level, in shards of 8 (with depth) or 256
 # timesteps; the chunks of each shard are ordered by time, then depth.
 zarr_format = 3

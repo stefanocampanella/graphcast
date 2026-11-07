@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Short training run demonstrating that the model trains: production_run.toml with 5000 steps, the learning rate
 # schedule scaled to them (500 warmup steps, cosine decay to step 5000), the coarse mesh and 8 message passing steps
 # (the baseline that clusters/jupiter/slurm/mesh_study.sh varies).
