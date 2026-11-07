@@ -1165,3 +1165,15 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `spack/templates/container/graphcast.def` turned out to be Spack's `singularity.def` with additions (Apache-2.0 OR
   MIT): Spack's copyright is in `REUSE.toml` and `NOTICE`. `uvx reuse lint`: compliant, 169 files.
 - **Next:** a `reuse lint` pre-commit hook in group 5.
+
+## 2026-11-07 08:40: ShellCheck
+
+- **Request:** a linter for the bash scripts. ShellCheck 0.11.0 (`shellcheck-py`, which bundles the binary) on the 14
+  shell files found no errors: 33 SC2034 (unused variable) in `.env` and the JUBE job template, false positives since
+  both are sourced under `set -a`; 2 SC2126 (`grep -c`) in the JUBE run scripts, false positives as they count over
+  several files; notes in `slurm/launch_jupyter.slurm` and `slurm/test_dask_mpi.slurm`, which sourced the removed
+  `clusters/leonardo/` (the second also ran a missing script and had `mkdir -p DASK_MPI_LOG_DIR` without `$`).
+- **Change** (fb82934): both Leonardo scripts deleted (maintainer); the false positives suppressed with reasons.
+  ShellCheck is clean. No `shfmt`: the scripts have one consistent style already.
+- **Next:** the `shellcheck-py` pre-commit hook in group 5, with a `files` pattern for `*.slurm`, `.env` and
+  `*.sbatch.in` (pre-commit detects shell scripts without a `.sh` extension only by the shebang of executables).
