@@ -141,7 +141,7 @@ class SourceConfig(ApplicationConfig):
   @classmethod
   def read_defaults(cls, values):
     if isinstance(values, dict) and isinstance(values.get("read"), dict):
-      defaults = cls.model_fields["read"].default_factory().model_dump(exclude_unset=True)
+      defaults = source_read().model_dump(exclude_unset=True)
       return {**values, "read": {**defaults, **values["read"]}}
     return values
 

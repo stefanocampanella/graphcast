@@ -25,6 +25,7 @@ import haiku as hk
 import jax
 import jax.numpy as jnp
 import numpy as np
+import numpy.typing as npt
 import xarray
 
 from graphcast import predictor_base
@@ -147,8 +148,8 @@ def _all_inputs_to_bfloat16(
 
 def tree_map_cast(
   inputs: PyTree,
-  input_dtype: np.dtype,
-  output_dtype: np.dtype,
+  input_dtype: npt.DTypeLike,
+  output_dtype: npt.DTypeLike,
 ) -> PyTree:
   def cast_fn(x):
     # Other leaves are kept as they are.
