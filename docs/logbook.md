@@ -1153,3 +1153,15 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   DataArrays, explicit `TaskConfig` fields, AWS credentials without keys); targeted `# ty: ignore[rule]` with a reason
   where ty or the stubs cannot follow the code (Grain and Predictor overrides, jraph defaults, constrained type
   variables, chex.Array). 437 tests pass.
+
+## 2026-11-07 08:30: REUSE compliance
+
+- **Request:** why the PR dropped `SPDX-FileCopyrightText` (four formerly MIT files) and left configuration files
+  without SPDX lines. Answer: the first to give one header form with DeepMind's `Copyright` line (REUSE accepts both),
+  the second a scope I set (Python files only) without asking. Maintainer accepted the recommendation: full REUSE.
+- **Change** (fdc5713): `SPDX-FileCopyrightText` in every Python file (DeepMind's and the maintainer's); SPDX lines in
+  TOML, YAML, shell, Slurm, .env, .gitignore and JUBE files; `REUSE.toml` for the rest; `LICENSES/` with Apache-2.0 and
+  CC-BY-4.0. Images and animations are CC-BY-4.0 (maintainer), except the Argonne, GRC and OGS logos in the poster.
+  `spack/templates/container/graphcast.def` turned out to be Spack's `singularity.def` with additions (Apache-2.0 OR
+  MIT): Spack's copyright is in `REUSE.toml` and `NOTICE`. `uvx reuse lint`: compliant, 169 files.
+- **Next:** a `reuse lint` pre-commit hook in group 5.
