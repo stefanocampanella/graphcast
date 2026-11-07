@@ -165,7 +165,7 @@ def get_tsi(timestamps: Sequence[_TimestampLike] | pd.DatetimeIndex, tsi_data: x
   index_date = pd.DatetimeIndex(index.date)
   day_fraction = (index - index_date) / pd.Timedelta(days=1)
   year_length = 365 + index.is_leap_year
-  year_fraction = (index.dayofyear - 1 + day_fraction) / year_length
+  year_fraction = (index.day_of_year - 1 + day_fraction) / year_length
   fractional_year = index.year + year_fraction
   return np.interp(fractional_year, tsi_data.coords["time"].data, tsi_data.data)
 
