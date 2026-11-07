@@ -19,7 +19,7 @@ import pytest
 from click.testing import CliRunner
 from scipy import sparse
 from scipy.interpolate import LinearNDInterpolator
-from scipy.spatial import Delaunay
+from scipy.spatial import ConvexHull, Delaunay
 
 from graphcast import basis_utils, icosahedral_mesh, mesh_connectivity
 from graphcast.basis import compute_grid_basis_command
@@ -146,6 +146,35 @@ def test_basis_equals_scipy_linear_interpolation_on_a_flat_mesh():
 
   expected = LinearNDInterpolator(triangulation, np.eye(len(xy)))(query)
   np.testing.assert_allclose(basis, expected, atol=1e-9)
+
+
+def test_basis_equals_scipy_linear_interpolation_in_cartesian_coordinates():
+  """On a closed mesh on the Earth, the basis equals scipy's `LinearNDInterpolator` in 3D Cartesian coordinates.
+
+  scipy interpolates in the tetrahedra of a 3D Delaunay triangulation of the vertices. The mesh is convex, so its faces
+  are the boundary facets of that triangulation (checked first), and on a facet the tetrahedral interpolation is the
+  barycentric interpolation in the face, as in the basis. Points on the sphere between the vertices lie outside the
+  polyhedron (scipy gives NaN there), so the query points are random points on the faces, which the basis gets moved
+  along the face normal by up to 1 km. scipy gets them moved inwards by 1e-9 of the Earth's radius (6 mm): exactly on
+  the boundary, rounding puts some outside. The interior vertex of their tetrahedron then weighs up to about 1e-6."""
+  mesh = icosahedral_mesh.get_multi_mesh_graph(3)
+  vertices = np.asarray(mesh.vertices, dtype=np.float64)
+  faces = np.asarray(mesh.faces)
+  hull_faces = {tuple(sorted(face)) for face in ConvexHull(vertices).simplices}
+  assert hull_faces == {tuple(sorted(face)) for face in faces}
+
+  rng = np.random.default_rng(0)
+  face_ids = rng.integers(0, len(faces), 2000)
+  corners = vertices[faces[face_ids]]
+  on_faces = (rng.dirichlet(np.ones(3), size=len(face_ids))[:, :, None] * corners).sum(axis=1)
+  normals = np.cross(corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0])
+  normals /= np.linalg.norm(normals, axis=1, keepdims=True)
+  offsets = rng.uniform(-1e3, 1e3, size=(len(face_ids), 1))
+
+  basis = basis_utils.compute_basis(mesh, on_faces + offsets * normals, dtype=np.float64).toarray()
+
+  expected = LinearNDInterpolator(Delaunay(vertices), np.eye(len(vertices)))(on_faces * (1.0 - 1e-9))
+  np.testing.assert_allclose(basis, expected, atol=1e-5)
 
 
 @pytest.mark.parametrize("cap_radius", [20.0, 5.0, 2.5])
