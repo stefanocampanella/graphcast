@@ -1207,3 +1207,18 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   schemas (not re-run); `forward.ipynb` also uses removed APIs and needs a total rewrite (TODO.md).
 - **Benchmark slip:** the first runs imported the image's installed package (no `PYTHONPATH=src`) and did not call
   `gmsh.initialize()`, which `read_mesh`'s callers do; not a bug of the code.
+
+## 2026-11-07 17:30: group 5 of the tests and code-quality PR (pre-commit, CI)
+
+- **Pre-commit** (`.pre-commit-config.yaml`): ruff check --fix and ruff format (v0.17.3), ShellCheck (shellcheck-py
+  v0.11.0.1; the pattern also takes `*.slurm`, `*.sbatch.in` and `.env`, checked with a broken probe file), reuse lint
+  (v6.3.0), and a local ty hook (the environment's Python; `/opt/jax`, `/opt/jaxlibs/jaxlib`, `/opt/flax` added as
+  search paths where they exist). All pass in `graphcast-g4.sif`.
+- **CI** (`.github/workflows/tests.yml`): micromamba with Python 3.12, GDAL 3.13.1, PROJ 9.7.0 (conda-forge), the
+  package and dev group from PyPI, versions printed, hooks, `pytest --cov` (80 % gate, `coverage.xml` artifact).
+  The local dry-run solve with a downloaded micromamba was denied by the auto-mode classifier: the first CI run checks
+  it. The push of the workflow was rejected: the fine-grained token of `gh` lacks the Workflows permission
+  (maintainer to grant it).
+- **Image versions** for comparison with CI: GDAL 3.13.1 / PROJ 9.7.0; pyproj 3.8.0 with its own PROJ 9.8.1 (wheel).
+- **Coverage** with the gate: 93.37 %, 441 passed in 4 min 42 s (`graphcast-g4.sif`, login node).
+- CLAUDE.md: the absltest, uv-fallback and "format only new modules" notes replaced by the hooks, ty invocation and CI.

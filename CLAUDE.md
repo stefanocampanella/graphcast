@@ -74,20 +74,28 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run graphcast.sif python -m pytest` from the repository root (`tests/` takes ~40 s, CPU only, also on
-  compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward compatibility on
-  JUPITER"). With an older image, layer pytest on its venv with uv (login nodes only, needs internet):
-  `apptainer exec graphcast.sif ~/.local/bin/uv run --no-project --python /opt/software/venv/bin/python --with
-  "pytest >= 9" pytest`. Tests use synthetic data (small Zarr stores in `tmp_path`)
-  or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be assumed.
-  Every test has a docstring saying what it checks and why (the behaviour or the bug it guards against), not just
-  restating its name. The abseil `absltest` modules inherited from GraphCast (`src/graphcast/*_test.py`) are not collected and are
-  probably broken; they will be ported to pytest later. There is no CI.
-- Lint/format: `ruff` with **2-space indentation** and 120-column lines (`pyproject.toml`); run `ruff format` and
-  `ruff check --fix` only on new or refactored modules (the rest is unformatted, to keep diffs reviewable). Type
-  checks: `apptainer exec graphcast.sif ~/.local/bin/uvx ty check --python /opt/software/venv --extra-search-path
-  src FILES`; new code should pass (except for `pytest`, which is not in the venv). Pre-existing diagnostics in
-  `dataloader.py`: unresolved `jax` (installed outside the venv) and two Grain `__getitem__` overrides.
+  `apptainer run graphcast.sif python -m pytest` from the repository root (441 tests, ~3.5 min on a login node, CPU
+  only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
+  compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
+  `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
+  `tmp_path`) or, if needed, public ARCO-OCEAN data read anonymously: no AWS profile, credentials or network may be
+  assumed. Every test has a docstring saying what it checks and why (the behaviour or the bug it guards against), not
+  just restating its name. The `absltest` modules inherited from GraphCast were ported to pytest in Nov 2026.
+- Lint, format, types and licensing are pre-commit hooks (`.pre-commit-config.yaml`): `ruff check --fix` and `ruff
+  format` (**2-space indentation**, 120-column lines; the whole codebase was formatted in 5176406, listed in
+  `.git-blame-ignore-revs`: `git config blame.ignoreRevsFile .git-blame-ignore-revs`), ShellCheck, `reuse lint` and
+  ty. Run them in the image: `apptainer exec graphcast.sif pre-commit run --all-files` (the first run downloads the
+  hook environments: login nodes only), or `pre-commit install` to run them on each commit. The ty hook uses the
+  environment's Python and adds the image's editable jax, jaxlib and flax (`/opt/jax`, `/opt/jaxlibs/jaxlib`,
+  `/opt/flax`) as extra search paths; by hand: `apptainer exec graphcast.sif ty check --python /opt/software/venv
+  --extra-search-path /opt/jax --extra-search-path /opt/jaxlibs/jaxlib --extra-search-path /opt/flax src tests`.
+  `src` and `tests` pass; where ty or the stubs cannot follow the code, use a targeted `# ty: ignore[rule]` with a
+  reason. Notebooks are excluded from ruff.
+- CI (`.github/workflows/tests.yml`, GitHub Actions, pushes to `develop`/`main` and pull requests): Python 3.12 with
+  GDAL 3.13.1 and PROJ 9.7.0 from conda-forge (micromamba; keep in sync with `spack.yaml`), the package and dev group
+  from PyPI, the hooks, and `pytest --cov` with the 80 % gate; `coverage.xml` is an artifact. The image has GDAL 3.13.1
+  with PROJ 9.7.0, and pyproj 3.8.0 with its own PROJ 9.8.1 (wheel); the CI log prints the same four versions.
+  Pushing workflow files needs a GitHub token with the `workflow` scope.
 - Image rebuild (needed after dependency changes; `src/` comes from `APPTAINERENV_PYTHONPATH`):
   `spack env create --dir spack-env spack.yaml`, `spack -e spack-env containerize > graphcast.def`, then
   `env APPTAINER_CACHEDIR=$FSCRATCH/.apptainer apptainer build graphcast.sif graphcast.def`. Build to a separate file
