@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+# Pre-commit hooks (ruff, ShellCheck, REUSE, ty) and the test suite with coverage (pytest --cov, 80 % gate), on CPU.
+# GDAL and PROJ come from conda-forge at the versions of the container image (spack.yaml); the Python dependencies
+# from PyPI, as in the image.
+name: tests
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        # A login shell activates the micromamba environment.
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: System libraries of the gmsh wheel
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libglu1-mesa libxcursor1 libxft2 libxinerama1 libxrender1
+
+      - uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-name: graphcast
+          # Keep GDAL and PROJ in sync with spack.yaml.
+          create-args: >-
+            --override-channels -c conda-forge
+            python=3.12 gdal=3.13.1 proj=9.7.0 pip
+          cache-environment: true
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+
+      - name: Install the package and the dev group
+        run: |
+          # Dependency groups need pip >= 25.1.
+          python -m pip install --upgrade "pip >= 25.1"
+          python -m pip install -e . --group dev
+
+      - name: GDAL, PROJ and pyproj versions (compare with the image)
+        run: |
+          python - <<'EOF'
+          from osgeo import gdal, osr
+          import pyproj
+          proj = ".".join(str(f()) for f in (osr.GetPROJVersionMajor, osr.GetPROJVersionMinor, osr.GetPROJVersionMicro))
+          lines = [
+            f"GDAL {gdal.__version__}, PROJ (GDAL) {proj}",
+            f"pyproj {pyproj.__version__}, PROJ (pyproj) {pyproj.proj_version_str}",
+          ]
+          print("\n".join(lines))
+          EOF
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Pre-commit hooks
+        run: pre-commit run --all-files --show-diff-on-failure
+
+      - name: Tests with coverage
+        # Also when a hook failed: both results are useful.
+        if: success() || failure()
+        run: python -m pytest --cov --cov-report=xml --cov-report=term
+
+      - name: Coverage summary
+        if: success() || failure()
+        run: |
+          if [[ -f .coverage ]]; then
+            coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: success() || failure()
+        with:
+          name: coverage
+          path: coverage.xml
+          if-no-files-found: ignore

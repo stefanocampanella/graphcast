@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+# Hooks run by `pre-commit run` (in the image or the CI environment, where the dev group is installed): `pre-commit
+# install` runs them on every commit. The first run downloads the hook environments (needs internet).
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep in sync with the ruff pin of the dev group (pyproject.toml).
+    rev: v0.17.3
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        # Bash scripts without a .sh extension or shebang (pre-commit only detects executables by their shebang).
+        types: [text]
+        files: (\.sh|\.slurm|\.sbatch\.in|/\.env)$
+        args: [--shell=bash]
+
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v6.3.0
+    hooks:
+      # The whole repository: copyright and license of every file (SPDX headers or REUSE.toml).
+      - id: reuse
+
+  - repo: local
+    hooks:
+      # ty from the environment, which has the dependencies to resolve imports. The NVIDIA JAX image installs jax,
+      # jaxlib and flax in editable mode outside the virtual environment, which ty does not follow: add their paths
+      # where they exist.
+      - id: ty
+        name: ty check
+        language: system
+        types: [python]
+        pass_filenames: false
+        entry: >-
+          bash -c 'args=(); for path in /opt/jax /opt/jaxlibs/jaxlib /opt/flax; do
+          if [[ -d $path ]]; then args+=(--extra-search-path "$path"); fi; done;
+          exec ty check --python "$(python -c "import sys; print(sys.prefix)")" "${args[@]}" src tests'
