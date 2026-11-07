@@ -19,7 +19,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute-grid-basis MESH MASK OUTPUT.npz`
   (draft: linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the
   decoder faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of
-  another mesh for the planned interpolating decoder and hierarchical meshes),
+  another mesh for the planned interpolating decoder and hierarchical meshes; on a flat mesh it equals scipy's
+  `LinearNDInterpolator`, on the sphere it differs from interpolating in a projection by O(edge²); coordinates must be
+  in metres, as trimesh's closest point uses an absolute tolerance. Cost (7 Nov 2026, login node, one process): 9.1 /
+  11.8 / 13.7 / 18.6 s and ~2 GiB peak host memory for 120 / 50 / 35 / 25 km meshes at the 693,039 ocean points, as
+  long as building the decoder edges at startup; 50 → 25 km mesh vertices 15.3 s, 1.7 GiB; the matrix is 18.5 MiB.
+  So the basis can be computed when the model is built instead of saved),
   `graphcast make-icosahedral-mesh CONFIG.toml OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
   ellipsoid, for comparison with the ocean meshes; settings `splits`, `description`, `license` in
   `configs/mesh/icosahedral_*.toml`, `IcosahedralMeshConfig`; `mesh.path` of a training config can point to the
