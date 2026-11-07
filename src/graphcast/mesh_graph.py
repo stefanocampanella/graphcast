@@ -1,5 +1,5 @@
-# Copyright 2023 DeepMind Technologies Limited.
-# Copyright 2025 Stefano Campanella.
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

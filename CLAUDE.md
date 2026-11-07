@@ -472,11 +472,21 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 
 ## Repository notes
 
-- License: Apache-2.0 everywhere (`LICENSE`, `pyproject.toml`). Every Python file starts with `# Copyright YEAR Stefano
-  Campanella.`, `# SPDX-License-Identifier: Apache-2.0` and the Apache license text. Files with code from GraphCast
-  also keep `# Copyright 2023 DeepMind Technologies Limited.` and a sentence saying they were modified (Apache §4(b)),
-  and are listed in `NOTICE` (§4(d)): update it when code from GraphCast is copied into another file. The license grants
-  no rights to DeepMind's, Google's or GraphCast's names (§6); the project will be renamed.
+<!-- REUSE-IgnoreStart -->
+- Licensing follows the [REUSE specification](https://reuse.software/spec-3.3/) (since 7 Nov 2026); check it with
+  `uvx reuse lint` (license texts in `LICENSES/`; `LICENSE` stays for GitHub).
+  - Code, configs, scripts and docs are Apache-2.0. Images and animations are CC-BY-4.0. The Argonne, GRC and OGS logos
+    in `assets/poster.svg` are their owners' trademarks.
+  - Every file that takes comments starts (after a shebang) with `SPDX-FileCopyrightText: YEAR Stefano Campanella`
+    (year the file was added) and `SPDX-License-Identifier: Apache-2.0`; Python files add the Apache license text.
+  - Files without such a header (Markdown, HTML, CSV, notebooks, images, lock files, the container template) are
+    covered by `REUSE.toml`: add a pattern there for new kinds of files.
+  - Files with code from GraphCast also keep `SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited` and a
+    sentence saying they were modified (Apache §4(b)), and are listed in `NOTICE` (§4(d)): update it when code from
+    GraphCast is copied into another file. `spack/templates/container/graphcast.def` is Spack's Singularity template
+    (Apache-2.0 OR MIT), modified.
+  - The license grants no rights to DeepMind's, Google's or GraphCast's names (§6); the project will be renamed.
+<!-- REUSE-IgnoreEnd -->
 - Do not commit `graphcast.sif`, `graphcast.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
 - Development branch: `develop` (`develop@esiwace3_hackathon` until Nov 2026).

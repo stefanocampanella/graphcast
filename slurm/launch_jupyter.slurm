@@ -1,4 +1,7 @@
 #! /usr/bin/env bash
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 #SBATCH --account=OGS23_PRACE_IT_0
 #SBATCH --partition=boost_usr_prod
 #SBATCH --ntasks-per-node=1

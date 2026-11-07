@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 [project]
 name = "graphcast"
 version = "0.1"

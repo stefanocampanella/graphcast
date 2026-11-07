@@ -1,0 +1,29 @@
+# Copyright and licensing of the files that carry no SPDX header (https://reuse.software/spec-3.3/).
+# Source files have their own headers; check everything with `reuse lint`.
+version = 1
+
+# Documentation, notebooks, results and generated or empty files.
+[[annotations]]
+path = ["**.md", "**.html", "**.csv", "**.ipynb", "**/uv.lock", "**/.nojekyll", "NOTICE"]
+SPDX-FileCopyrightText = "2024-2026 Stefano Campanella"
+SPDX-License-Identifier = "Apache-2.0"
+
+# Modified copies of GraphCast's README and demo notebook.
+[[annotations]]
+path = ["README.md", "notebooks/graphcast_demo.ipynb"]
+precedence = "override"
+SPDX-FileCopyrightText = ["2023 DeepMind Technologies Limited", "2024-2026 Stefano Campanella"]
+SPDX-License-Identifier = "Apache-2.0"
+
+# Spack's Singularity template (Apache-2.0 OR MIT), modified; distributed under Apache-2.0.
+[[annotations]]
+path = "spack/templates/container/graphcast.def"
+SPDX-FileCopyrightText = ["Spack Project Developers", "2026 Stefano Campanella"]
+SPDX-License-Identifier = "Apache-2.0"
+
+# Images and animations. The Argonne, GRC and OGS logos in assets/poster.svg are trademarks of their owners and are
+# not licensed under CC-BY-4.0.
+[[annotations]]
+path = ["**.svg", "**.png", "**.jpg", "**.jpeg", "**.gif", "**.webp", "**.mp4", "**.webm"]
+SPDX-FileCopyrightText = "2025-2026 Stefano Campanella"
+SPDX-License-Identifier = "CC-BY-4.0"

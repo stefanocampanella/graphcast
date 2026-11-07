@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 description = """
   Global ocean triangular mesh, \
   with a target mesh size set to a uniform field with a value of 60 km. \

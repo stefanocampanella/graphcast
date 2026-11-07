@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 description = """
   Global icosahedral multi-mesh (experimental), as in GraphCast: a regular icosahedron \
   refined 6 times (40,962 vertices), with the edges of all 7 levels, projected onto the \

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
 # Train the 5000-step demo (configs/training/demo_5000.toml: 8 nodes, 32 samples per step, validation loss every 250
 # steps) once per mesh, number of message passing steps and seed, to compare the validation loss of model sizes. Only
 # the mesh, gnn_msg_steps and the seed change (and, where a case does not fit in GPU memory otherwise, the edge chunk
