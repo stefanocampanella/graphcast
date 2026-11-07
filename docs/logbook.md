@@ -1177,3 +1177,33 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   ShellCheck is clean. No `shfmt`: the scripts have one consistent style already.
 - **Next:** the `shellcheck-py` pre-commit hook in group 5, with a `files` pattern for `*.slurm`, `.env` and
   `*.sbatch.in` (pre-commit detects shell scripts without a `.sh` extension only by the shebang of executables).
+
+## 2026-11-07: review of PR 3 (compute_basis, masking test, Configs)
+
+- **Requests:** test `compute_basis` against scipy's `LinearNDInterpolator` (the draft interpolated in a stereographic
+  projection) and measure its time and memory, to decide whether the basis can be computed on the fly for an
+  interpolating decoder; say what bug `test_masking_index_maps` guards against; drop `cli_utils.Configs`.
+- **compute_basis** (03aa169): on a flat triangulation it equals `LinearNDInterpolator` on the same triangles (to
+  1e-9); on the sphere it differs from the draft's stereographic interpolation by O(edge²), about 0.9 edge² for edges
+  of 3.8–0.47°, far below the interpolation error. A prototype on the unit sphere gave 25 edge² at 0.24° edges:
+  trimesh 5.2.0's `closest_point` compares squared distances of candidate faces with `tol.merge` (1e-8, absolute),
+  which all squared distances fall below there, and its tie-breaking returned other faces' points (closest-point error
+  4.8e-7 against 2e-16 in metres). Meshes are in metres, so training is unaffected; the docstring says so.
+- **Cost** (`claude-work/…/basis_bench`, login node jpbl-s01-04, one process each), at the 693,039 ocean points:
+
+  | Mesh | Vertices | Basis | Peak host memory | Decoder edges (built at startup today) |
+  |---|---|---|---|---|
+  | 120 km | 34,007 | 9.1 s | 1.83 GiB | 9.4 s |
+  | 50 km | 181,325 | 11.8 s | 1.92 GiB | 11.8 s |
+  | 35 km | 363,338 | 13.7 s | 2.04 GiB | 14.3 s |
+  | 25 km | 703,663 | 18.6 s | 2.09 GiB | 19.5 s |
+
+  Mesh to mesh: 50 km at the 25 km vertices 15.3 s, 1.72 GiB; 120 km at the 50 km vertices 3.4 s. The matrix is 18.5
+  MiB (3 float32 weights and int32 indices per point). Same query as the decoder edges (closest face with trimesh), so
+  an interpolating decoder could build the basis instead of those edges at no extra startup cost; no file needed.
+- **Masking test** (dd5d552): the docstring names the fix (4e3be30) and that only the unused `unmasked_to_masked` was
+  affected.
+- **Configs** (ca2eec2): removed with its test; `spilhaus.ipynb` and `forward.ipynb` use `read_configs` with the
+  schemas (not re-run); `forward.ipynb` also uses removed APIs and needs a total rewrite (TODO.md).
+- **Benchmark slip:** the first runs imported the image's installed package (no `PYTHONPATH=src`) and did not call
+  `gmsh.initialize()`, which `read_mesh`'s callers do; not a bug of the code.
