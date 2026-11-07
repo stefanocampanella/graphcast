@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Pre-commit hooks (ruff, ShellCheck, REUSE, ty) and the test suite with coverage (pytest --cov, 80 % gate), on CPU.
-# GDAL and PROJ come from conda-forge at the versions of the container image (spack.yaml); the Python dependencies
-# from PyPI, as in the image.
+# GDAL comes from conda-forge at the version of the container image (spack.yaml), with the PROJ it needs; the Python
+# dependencies from PyPI, as in the image.
 name: tests
 
 on:
@@ -39,10 +39,11 @@ jobs:
       - uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: graphcast
-          # Keep GDAL and PROJ in sync with spack.yaml.
+          # Keep GDAL in sync with spack.yaml. PROJ is not pinned: conda-forge's GDAL 3.13.1 needs PROJ >= 9.8.1, while
+          # the image has PROJ 9.7.0 (its pyproj wheel bundles 9.8.1); the next step prints the versions.
           create-args: >-
             --override-channels -c conda-forge
-            python=3.12 gdal=3.13.1 proj=9.7.0 pip
+            python=3.12 gdal=3.13.1 pip
           cache-environment: true
 
       - uses: actions/cache@v6
@@ -51,6 +52,7 @@ jobs:
           key: pip-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
 
       - name: Install the package and the dev group
+        id: install
         run: |
           # Dependency groups need pip >= 25.1.
           python -m pip install --upgrade "pip >= 25.1"
@@ -78,19 +80,19 @@ jobs:
         run: pre-commit run --all-files --show-diff-on-failure
 
       - name: Tests with coverage
-        # Also when a hook failed: both results are useful.
-        if: success() || failure()
+        # Also when a hook failed (both results are useful), but not without the environment.
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: python -m pytest --cov --cov-report=xml --cov-report=term
 
       - name: Coverage summary
-        if: success() || failure()
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           if [[ -f .coverage ]]; then
             coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - uses: actions/upload-artifact@v7
-        if: success() || failure()
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         with:
           name: coverage
           path: coverage.xml
