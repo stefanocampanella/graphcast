@@ -34,6 +34,13 @@ def compute_basis(mesh: Mesh, points: np.ndarray, dtype: type[np.floating] = np.
   face's three vertices have the barycentric coordinates of the closest point there, and all others are zero. For grid
   points, this face is the one the decoder connects the point to (`mesh_connectivity.get_mesh_to_grid_edges`).
 
+  On a flat mesh this is scipy's `LinearNDInterpolator` on the same triangles. On the sphere it differs from
+  interpolating in a map projection (the draft used a stereographic one) by O(edge²), edges in radians.
+
+  Use coordinates in metres, as the meshes are written: trimesh's closest-point search compares squared distances with
+  an absolute tolerance (`trimesh.tol.merge`, 1e-8), so on the unit sphere it returns wrong points for edges below
+  about 1°.
+
   Args:
     mesh: Triangular mesh.
     points: Points [num_points, 3], in the coordinates of the mesh.

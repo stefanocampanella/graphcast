@@ -18,15 +18,20 @@ import numpy as np
 import pytest
 from click.testing import CliRunner
 from scipy import sparse
+from scipy.interpolate import LinearNDInterpolator
+from scipy.spatial import Delaunay
 
 from graphcast import basis_utils, icosahedral_mesh, mesh_connectivity
 from graphcast.basis import compute_grid_basis_command
 from graphcast.dataloader_utils import get_grid
 from graphcast.geospatial_mesh_utils import write_multi_mesh
 from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
+from graphcast.mesh_graph import TriangleMesh
 
 LAT = np.arange(-85.0, 90.0, 10.0)
 LON = np.arange(0.0, 360.0, 10.0)
+# Mean Earth radius in metres: a sphere of the size of the meshes, which are in metres.
+EARTH_RADIUS = 6.371e6
 
 
 @pytest.fixture(scope="module")
@@ -104,6 +109,73 @@ def test_basis_at_the_vertices_of_a_finer_mesh():
   np.testing.assert_allclose(
     midpoints / np.linalg.norm(midpoints, axis=1, keepdims=True), fine.vertices[num_coarse:], atol=1e-6
   )
+
+
+def _stereographic(xyz: np.ndarray) -> np.ndarray:
+  """Projection from the south pole onto the equatorial plane: the north pole maps to the origin."""
+  radius = np.linalg.norm(xyz, axis=1, keepdims=True)
+  return 2.0 * xyz[:, :2] / (radius + xyz[:, 2:3])
+
+
+def _cap(num_points: int, radius_deg: float, rng: np.random.Generator | None = None) -> np.ndarray:
+  """Points on the Earth (in metres) within radius_deg of the north pole: a Fibonacci spiral, quasi-uniform, or uniform
+  random points if rng is given."""
+  cos_max = np.cos(np.deg2rad(radius_deg))
+  if rng is None:
+    i = np.arange(num_points) + 0.5
+    z, phi = 1.0 - (1.0 - cos_max) * i / num_points, np.pi * (1.0 + 5**0.5) * i
+  else:
+    z, phi = rng.uniform(cos_max, 1.0, num_points), rng.uniform(0.0, 2.0 * np.pi, num_points)
+  r = np.sqrt(1.0 - z**2)
+  return EARTH_RADIUS * np.stack([r * np.cos(phi), r * np.sin(phi), z], axis=1)
+
+
+def test_basis_equals_scipy_linear_interpolation_on_a_flat_mesh():
+  """On a flat triangulation, the basis equals scipy's `LinearNDInterpolator` on the same triangles applied to the
+  identity matrix (the values of every basis function), which the draft computed. Points slightly off the plane get the
+  values at their orthogonal projection."""
+  rng = np.random.default_rng(0)
+  xy = rng.uniform(0.0, 1e6, size=(60, 2))
+  triangulation = Delaunay(xy)
+  mesh = TriangleMesh(vertices=np.column_stack([xy, np.zeros(len(xy))]), faces=triangulation.simplices)
+  query = rng.uniform(1e5, 9e5, size=(500, 2))
+  query = query[triangulation.find_simplex(query) >= 0]
+  offsets = rng.uniform(-1e3, 1e3, size=len(query))
+
+  basis = basis_utils.compute_basis(mesh, np.column_stack([query, offsets]), dtype=np.float64).toarray()
+
+  expected = LinearNDInterpolator(triangulation, np.eye(len(xy)))(query)
+  np.testing.assert_allclose(basis, expected, atol=1e-9)
+
+
+@pytest.mark.parametrize("cap_radius", [20.0, 5.0, 2.5])
+def test_basis_against_the_stereographic_draft(cap_radius):
+  """The draft interpolated in a stereographic projection (scipy's `LinearNDInterpolator`), the basis on the flat faces
+  of the mesh: on the same triangles, they differ by the curvature of the projection, O(edge²) (edges in radians).
+  The caps have edges of 1.9°, 0.47° and 0.24° (the 25 km mesh: 0.22°). The difference is far below the interpolation
+  error itself.
+
+  In metres, as the meshes are written: trimesh's closest point compares squared distances with an absolute tolerance
+  (1e-8), so on the unit sphere it picks wrong points for edges below about 1°."""
+  vertices = _cap(400, cap_radius)
+  faces = Delaunay(_stereographic(vertices)).simplices
+  mesh = TriangleMesh(vertices=vertices, faces=faces)
+  points = _cap(2000, 0.6 * cap_radius, rng=np.random.default_rng(0))
+
+  basis = basis_utils.compute_basis(mesh, points, dtype=np.float64).toarray()
+
+  draft = LinearNDInterpolator(_stereographic(vertices), np.eye(len(vertices)))(_stereographic(points))
+  edge = np.median(np.linalg.norm(vertices[faces[:, 0]] - vertices[faces[:, 1]], axis=1)) / EARTH_RADIUS
+  # Also near an edge, where the two may pick the two faces on either side, with O(edge²) weights on their third
+  # vertices.
+  assert np.abs(basis - draft).max() < 1.5 * edge**2
+
+  def smooth(xyz):
+    x, y, z = (xyz / EARTH_RADIUS).T
+    return np.sin(3.0 * x) * np.cos(2.0 * y) + z
+
+  difference = np.abs(basis @ smooth(vertices) - draft @ smooth(vertices)).max()
+  assert difference < 0.5 * np.abs(basis @ smooth(vertices) - smooth(points)).max()
 
 
 def test_compute_cli(tmp_path, mask_path):
