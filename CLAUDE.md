@@ -92,10 +92,11 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `src` and `tests` pass; where ty or the stubs cannot follow the code, use a targeted `# ty: ignore[rule]` with a
   reason. Notebooks are excluded from ruff.
 - CI (`.github/workflows/tests.yml`, GitHub Actions, pushes to `develop`/`main` and pull requests): Python 3.12 with
-  GDAL 3.13.1 and PROJ 9.7.0 from conda-forge (micromamba; keep in sync with `spack.yaml`), the package and dev group
-  from PyPI, the hooks, and `pytest --cov` with the 80 % gate; `coverage.xml` is an artifact. The image has GDAL 3.13.1
-  with PROJ 9.7.0, and pyproj 3.8.0 with its own PROJ 9.8.1 (wheel); the CI log prints the same four versions.
-  Pushing workflow files needs a GitHub token with the `workflow` scope.
+  GDAL 3.13.1 from conda-forge (micromamba; keep in sync with `spack.yaml`), the package and dev group from PyPI, the
+  hooks, and `pytest --cov` with the 80 % gate; `coverage.xml` is an artifact. PROJ is not pinned: conda-forge's GDAL
+  3.13.1 builds need PROJ >= 9.8.1, while the image has GDAL 3.13.1 with PROJ 9.7.0 (and pyproj 3.8.0 with its own
+  PROJ 9.8.1, from the wheel); the CI log prints the same four versions. Pushing workflow files needs a GitHub token
+  with the Workflows permission (fine-grained) or `workflow` scope.
 - Image rebuild (needed after dependency changes; `src/` comes from `APPTAINERENV_PYTHONPATH`):
   `spack env create --dir spack-env spack.yaml`, `spack -e spack-env containerize > graphcast.def`, then
   `env APPTAINER_CACHEDIR=$FSCRATCH/.apptainer apptainer build graphcast.sif graphcast.def`. Build to a separate file
