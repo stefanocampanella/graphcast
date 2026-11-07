@@ -50,22 +50,6 @@ def test_invalid_configs_are_click_errors(tmp_path, content):
     cli_utils.read_configs(path, schema=_Schema)
 
 
-def test_configs_dot_keys(tmp_path):
-  """Configs reads nested tables, with dotted keys in get, defaults, required keys and copies."""
-  path = tmp_path / "config.toml"
-  path.write_text("[a.b]\nc = [1, 2]\n")
-  configs = cli_utils.Configs.read(path)
-  assert configs.get("a.b.c") == [1, 2]
-  assert isinstance(configs.get("a.b"), cli_utils.Configs)
-  assert configs.get("a.x", default=5) == 5
-  with pytest.raises(KeyError, match="a.x"):
-    configs.get("a.x", required=True)
-  configs.get("a.b.c").append(3)
-  assert configs.get("a.b.c") == [1, 2]
-  configs.get("a.b.c", copy=False).append(3)
-  assert configs["a"]["b"]["c"] == [1, 2, 3]
-
-
 def test_configure_logging():
   """The root logger gets the level given by name (the --log-level option)."""
   root = logging.getLogger()

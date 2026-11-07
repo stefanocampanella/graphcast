@@ -15,7 +15,6 @@
 import logging
 import pathlib
 import tomllib
-from copy import deepcopy
 from typing import Any, TypeVar, overload
 
 import click
@@ -75,54 +74,6 @@ def read_configs[ModelT: BaseModel](
     return schema.model_validate(configs) if schema is not None else configs
   except (OSError, tomllib.TOMLDecodeError, ValidationError) as error:
     raise click.ClickException(f"Invalid configuration in {path}:\n{error}") from error
-
-
-class Configs(dict):
-  """A simple dict that can be read from a TOML file and whose tables can be accessed using dot syntax using the get
-  method. Notice, __getitem__ does not accept the dot syntax."""
-
-  def __init__(self, *args, **kwargs):
-    super().__init__(*args, **kwargs)
-
-  def get(  # ty: ignore[invalid-method-override]  # dotted keys, see the class docstring
-    self,
-    maybe_dot_key: str,
-    default: Any | None = None,
-    required: bool = False,
-    copy: bool = True,
-  ):
-    def contains(keys, container):
-      if keys:
-        head, tail = keys[0], keys[1:]
-        return (head in container) and contains(tail, container[head])
-      else:
-        return True
-
-    keys = maybe_dot_key.split(".")
-    if contains(keys, self):
-      value = self
-      for key in keys:
-        value = value[key]
-    elif required:
-      raise KeyError(f"Key {maybe_dot_key} must be specified in config.")
-    else:
-      value = default
-
-    if isinstance(value, dict):
-      value = Configs(value)
-
-    if copy:
-      value = deepcopy(value)
-
-    return value
-
-  @staticmethod
-  def read(path: str | pathlib.Path):
-    path = path if isinstance(path, pathlib.Path | pathlib.Path) else pathlib.Path(path)
-    logger.info(f"Reading configs from {path}")
-    with path.open("rb") as file:
-      configs = Configs(tomllib.load(file))
-    return configs
 
 
 class OrbaxLogger(orbax.checkpoint.logging.AbstractLogger):

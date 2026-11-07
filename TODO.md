@@ -2,6 +2,10 @@
 
 ## Core
 * Fix notebooks (e.g., mesh_comparison.ipynb goes OOM). **HIGH PRIORITY**
+  * `forward.ipynb` needs a total rewrite: besides the configs (now `read_configs` with `TrainingConfig`), it uses
+    removed APIs (`ocean_mesh_utils`, `normalization.InputsAndResiduals`, `dataloader.ARCOTimeseriesSource`,
+    `training_utils.get_surface_mask` and `get_artifacts`) and Leonardo paths.
+  * `spilhaus.ipynb` reads the mesh config with `read_configs` and `MeshGenerationConfig` (Nov 2026, not re-run).
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
