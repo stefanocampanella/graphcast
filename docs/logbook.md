@@ -1178,7 +1178,7 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Next:** the `shellcheck-py` pre-commit hook in group 5, with a `files` pattern for `*.slurm`, `.env` and
   `*.sbatch.in` (pre-commit detects shell scripts without a `.sh` extension only by the shebang of executables).
 
-## 2026-11-07: review of PR 3 (compute_basis, masking test, Configs)
+## 2026-11-07 16:40: review of PR 3 (compute_basis, masking test, Configs)
 
 - **Requests:** test `compute_basis` against scipy's `LinearNDInterpolator` (the draft interpolated in a stereographic
   projection) and measure its time and memory, to decide whether the basis can be computed on the fly for an
