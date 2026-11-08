@@ -1,8 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
 # SPDX-License-Identifier: Apache-2.0
 
-# Commits that only reformat code, ignored by git blame (git config blame.ignoreRevsFile .git-blame-ignore-revs;
+# Commits that only reformat or move code, ignored by git blame (git config blame.ignoreRevsFile .git-blame-ignore-revs;
 # GitHub uses this file automatically).
 
 # ruff format the whole codebase
 b210470b163780d8fd7b2935d1bb7cb88fe3cfdc
+
+# Move src/graphcast to src/mobydick and the model to mobydick.leviathan, with the imports (rename to Moby-Dick)
+b345dec0a86b1e7f184e4378cdfcbd66ac1683f3

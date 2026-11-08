@@ -16,13 +16,13 @@
 #
 # Ported from the absltest tests of the original GraphCast code to pytest and rewritten for meshes and
 # grids in Earth-centred coordinates.
-"""Tests for graphcast.mesh_connectivity: grid and mesh in WGS84 Earth-centred coordinates (metres)."""
+"""Tests for mobydick.mesh_connectivity: grid and mesh in WGS84 Earth-centred coordinates (metres)."""
 
 import numpy as np
 import pytest
 
-from graphcast import icosahedral_mesh, mesh_connectivity
-from graphcast.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
+from mobydick import icosahedral_mesh, mesh_connectivity
+from mobydick.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
 
 # WGS84 ellipsoid.
 SEMI_MAJOR_AXIS = 6_378_137.0

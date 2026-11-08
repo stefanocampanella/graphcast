@@ -21,9 +21,10 @@ import jax.numpy as jnp
 import orbax.checkpoint as ocp
 import pytest
 
-from graphcast import cli_utils, orbax_utils
-from graphcast.training import first_step, train
-from graphcast.training_config import CheckpointConfig, TrainingConfig
+from mobydick import cli_utils, orbax_utils, training_utils
+from mobydick.models import MODELS
+from mobydick.training import first_step, train
+from mobydick.training_config import CheckpointConfig, TrainingConfig
 
 PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 
@@ -109,4 +110,19 @@ def test_durations_must_parse_without_deprecated_units(section, key, duration):
   configs = cli_utils.read_configs(PRODUCTION_CONFIG)
   configs[section][key] = duration
   with pytest.raises(ValueError, match="duration"):
+    TrainingConfig.model_validate(configs)
+
+
+def test_the_model_comes_from_the_architecture_setting():
+  """`[model] architecture` selects the model in MODELS, whose frozen settings carry the name into the saved model;
+  configs without it train Leviathan, and an unknown name is rejected when the config is read, not after the data
+  are loaded."""
+  configs = cli_utils.read_configs(PRODUCTION_CONFIG)
+  model_config = training_utils.get_model_config(TrainingConfig.model_validate(configs))
+  assert model_config.architecture == "leviathan"
+  assert isinstance(model_config, MODELS["leviathan"].model_config)
+  del configs["model"]["architecture"]
+  assert TrainingConfig.model_validate(configs).model.architecture == "leviathan"
+  configs["model"]["architecture"] = "kraken"
+  with pytest.raises(ValueError, match="architecture"):
     TrainingConfig.model_validate(configs)

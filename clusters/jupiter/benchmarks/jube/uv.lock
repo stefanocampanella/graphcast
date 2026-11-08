@@ -3,7 +3,7 @@ revision = 5
 requires-python = ">=3.12"
 
 [[package]]
-name = "graphcast-jube-bench"
+name = "moby-dick-jube-bench"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

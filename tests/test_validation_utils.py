@@ -19,7 +19,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from graphcast import validation_utils
+from mobydick import validation_utils
 
 # A regular global grid (latitudes from -90 + 45/2 to 90 - 45/2), as the latitude weights expect.
 LAT = np.linspace(-67.5, 67.5, 4)

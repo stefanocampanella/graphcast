@@ -1244,3 +1244,52 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Removed:** the `data/geometry/uniform_coarse.msh` and `uniform_fine.msh` symlinks (nothing on `develop` uses the
   old names), the worktree's test images `graphcast-g4.sif` and `graphcast-new.sif` (23 GB), and the session's
   claude-work directory `b0a574fd-35c0-4f21-bc1c-92264af27375` (1.4 GB: scripts and logs of the experiments above).
+
+## 2026-11-08 10:20: rename to Moby-Dick (PR `feature/rename-moby-dick`)
+
+- **Request:** rename the project (legal reasons, Apache-2.0 §6, and divergence from GraphCast); plan first, with the
+  points where the rename could break things, a README describing the current project, one banner for all commands
+  stored as an asset, and the operations left to the maintainer. Session directory
+  `$PROJECT/claude-work/14b6a8df-6a12-47e1-9ce4-a3eab2b94fd5`.
+- **Names (decided by the maintainer):** project Moby-Dick, repository `moby-dick`, command group `moby-dick`,
+  environment prefix `MOBYDICK_` for all models. Derived: distribution (PyPI) `moby-dick` (free on PyPI on 8 Nov
+  2026, as is `mobydick`; `leviathan` is taken), umbrella import package `mobydick`, first model `mobydick.leviathan`
+  (class `Leviathan`, Haiku module `leviathan`), image `moby-dick.sif`. The prefix follows the package that reads the
+  variables (as `SKLEARN_*` for scikit-learn); a single token avoids the ambiguous `MOBY_DICK_GRAIN_NUM_WORKERS`.
+- **Several models:** as in `google-deepmind/weathernext` (the `upstream` remote: one `weathernext` package, shared
+  `utils/`, one subpackage per model), shared code stays flat in `mobydick`, the model moves to `mobydick.leviathan`.
+  `TaskConfig` moved to `mobydick.task`; `[model]` is `leviathan.config.LeviathanConfig` with `architecture =
+  "leviathan"`; `mobydick.models.MODELS` gives the predictor, frozen settings and saved-model type to
+  `get_predictor`, `get_model_config` and `save_model`. Grouping the shared modules into subpackages is left for later
+  (or never).
+- **Commits:** the move (git mv and imports only, in `.git-blame-ignore-revs`); the model hooks; the renames (CLI,
+  `MOBYDICK_GRAIN_*`, class and Haiku name, image, spack template `moby-dick.def`, JUBE `training.xml`, configs,
+  NOTICE, CI); the banner (`src/mobydick/assets/banner.txt`, package data, stderr, rank 0 only,
+  `MOBYDICK_NO_BANNER`); README and CONTRIBUTING (Google's CLA boilerplate) rewritten, README no longer listed as a
+  modified copy of GraphCast's.
+- **Kept:** GraphCast where it names the origin (DeepMind headers, NOTICE, comparisons with upstream, the paper,
+  `notebooks/graphcast_demo.ipynb`), the seamsh fork's `graphcast` branch, data paths and the checkout directory, and
+  historical documents (this logbook, the hackathon slides and results, the ARCO-OCEAN findings; only the slides'
+  repository links changed).
+- **Breaks:** checkpoints and saved models from before (parameters under `graphcast/~/`), `GRAPHCAST_GRAIN_*`
+  (silently ignored), images built before (they install `graphcast`; use `python -m mobydick` with them).
+- **Verification:**
+  - `moby-dick.sif` was built from this branch (~6 min, login node); the shared `graphcast.sif` is untouched. In it:
+    452 tests pass with 93.45 % coverage, all pre-commit hooks pass, `pip show moby-dick` gives 0.1, and the banner
+    comes from package data.
+  - Job 2760080 (`training2647`, 2 nodes, demo_5000 cut to 60 steps, worktree `src`): one banner in the log for
+    8 tasks, `num_workers=1` read from `MOBYDICK_GRAIN_*`, validation loss 0.1566 at step 59. The saved model has
+    parameters under `leviathan/` and `model_config:architecture`.
+  - Job 2760331 (`--continue` to 90 steps): resumed at step 60, validation loss 0.1503 at step 89.
+  - The JUBE `training.xml` dry run works.
+  - The main checkout's `spack-env/` still holds the old `spack.yaml` (template `container/graphcast.def`): recreate
+    it after the merge.
+- **Codecov** (maintainer's request, 8 Nov 2026 11:30): CI uploads `coverage.xml` with `codecov/codecov-action@v7`
+  (v7.1.1 is the latest release), using the repository secret `CODECOV_TOKEN`; upload errors do not fail the checks.
+  The README shows the badge of `stefanocampanella/moby-dick`.
+- **CI failures of 8 Nov 2026** (runs 42467982767, 42469164425, 42469390251): `setup-micromamba` got HTTP 504 for
+  micromamba from GitHub release assets, before any step of ours ran. From JUPITER, `github.com/` answered 200, but
+  repository pages and release assets answered 504 from GitHub's Frankfurt edge (`x-github-edge-region: fra`, GitHub
+  request ids, no proxy); `api.github.com` worked, and githubstatus.com reported no incident. The maintainer could
+  download the asset, so the failure was partial. Pinning `micromamba-version` did not help (pinned and latest both
+  come from GitHub releases) and was reverted.

@@ -16,13 +16,13 @@
 #
 # The merging tests come from the absltest tests of the original GraphCast code (icosahedral_mesh), ported to
 # pytest and updated for this fork.
-"""Tests for graphcast.mesh_graph (the merging tests come from the legacy icosahedral_mesh tests)."""
+"""Tests for mobydick.mesh_graph (the merging tests come from the legacy icosahedral_mesh tests)."""
 
 import numpy as np
 import pytest
 
-from graphcast import icosahedral_mesh, mesh_graph, typed_graph
-from graphcast.gis_utils import _cartesian_wkt
+from mobydick import icosahedral_mesh, mesh_graph, typed_graph
+from mobydick.gis_utils import _cartesian_wkt
 
 
 @pytest.mark.parametrize("splits", list(range(4)))

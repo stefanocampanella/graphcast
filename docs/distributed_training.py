@@ -21,7 +21,8 @@ import jax.numpy as jnp
 import xarray as xr
 from jax.sharding import AxisType, NamedSharding, PartitionSpec
 
-from graphcast import losses, model_utils, xarray_jax, xarray_tree
+from mobydick import losses, xarray_jax, xarray_tree
+from mobydick.leviathan import model_utils
 
 jax.distributed.initialize()
 

@@ -23,7 +23,7 @@ import numpy as np
 import pytest
 import xarray
 
-from graphcast import xarray_jax
+from mobydick import xarray_jax
 
 
 def test_jax_array_wrapper_with_numpy_api():

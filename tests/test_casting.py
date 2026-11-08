@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import casting, predictor_base, xarray_jax
+from mobydick import casting, predictor_base, xarray_jax
 
 
 class _Recorder(predictor_base.Predictor):

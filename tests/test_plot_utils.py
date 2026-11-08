@@ -19,8 +19,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import plot_utils
-from graphcast.mesh_graph import EquirectangularGraph
+from mobydick import plot_utils
+from mobydick.mesh_graph import EquirectangularGraph
 
 
 @pytest.fixture

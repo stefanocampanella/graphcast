@@ -21,7 +21,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import autoregressive, predictor_base, xarray_jax
+from mobydick import autoregressive, predictor_base, xarray_jax
 
 BATCH, LON, STEPS = 2, 3, 4
 DAY = np.timedelta64(1, "D")

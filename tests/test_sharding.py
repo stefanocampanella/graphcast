@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests of the data parallel wrapper (sharding.py) on a tiny GraphCast, over 4 CPU devices (see conftest.py)."""
+"""Tests of the data parallel wrapper (sharding.py) on a tiny Leviathan, over 4 CPU devices (see conftest.py)."""
 
 import haiku as hk
 import jax
@@ -22,9 +22,9 @@ import pytest
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
-from graphcast import predictor_base, xarray_jax
-from graphcast.mask import Mask
-from graphcast.sharding import FullyShardedDataParallel
+from mobydick import predictor_base, xarray_jax
+from mobydick.mask import Mask
+from mobydick.sharding import FullyShardedDataParallel
 
 
 @pytest.fixture(scope="module")
@@ -35,11 +35,11 @@ def mesh() -> Mesh:
 
 
 def _predictor(tiny_model, scan: bool, mesh: Mesh | None) -> Mask:
-  """GraphCast behind loss masks, wrapped for data parallelism if a mesh is given."""
+  """Leviathan behind loss masks, wrapped for data parallelism if a mesh is given."""
   if mesh is None:
-    predictor = tiny_model.graphcast(scan)
+    predictor = tiny_model.leviathan(scan)
   else:
-    predictor = FullyShardedDataParallel(lambda: tiny_model.graphcast(scan), mesh)
+    predictor = FullyShardedDataParallel(lambda: tiny_model.leviathan(scan), mesh)
   return Mask(predictor, mask=tiny_model.mask)
 
 

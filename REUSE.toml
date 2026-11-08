@@ -2,22 +2,22 @@
 # Source files have their own headers; check everything with `reuse lint`.
 version = 1
 
-# Documentation, notebooks, results and generated or empty files.
+# Documentation, notebooks, results, generated or empty files, and the text banner of the command line.
 [[annotations]]
-path = ["**.md", "**.html", "**.csv", "**.ipynb", "**/uv.lock", "**/.nojekyll", "NOTICE"]
+path = ["**.md", "**.html", "**.csv", "**.ipynb", "**/uv.lock", "**/.nojekyll", "NOTICE", "src/mobydick/assets/banner.txt"]
 SPDX-FileCopyrightText = "2024-2026 Stefano Campanella"
 SPDX-License-Identifier = "Apache-2.0"
 
-# Modified copies of GraphCast's README and demo notebook.
+# Modified copy of GraphCast's demo notebook.
 [[annotations]]
-path = ["README.md", "notebooks/graphcast_demo.ipynb"]
+path = "notebooks/graphcast_demo.ipynb"
 precedence = "override"
 SPDX-FileCopyrightText = ["2023 DeepMind Technologies Limited", "2024-2026 Stefano Campanella"]
 SPDX-License-Identifier = "Apache-2.0"
 
 # Spack's Singularity template (Apache-2.0 OR MIT), modified; distributed under Apache-2.0.
 [[annotations]]
-path = "spack/templates/container/graphcast.def"
+path = "spack/templates/container/moby-dick.def"
 SPDX-FileCopyrightText = ["Spack Project Developers", "2026 Stefano Campanella"]
 SPDX-License-Identifier = "Apache-2.0"
 

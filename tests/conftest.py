@@ -190,10 +190,10 @@ def reference(inputs) -> xr.Dataset:
 
 @pytest.fixture(scope="session")
 def standardized_path(input_paths, tmp_path_factory) -> str:
-  """The inputs standardized by graphcast download into a Zarr v2 store."""
+  """The inputs standardized by moby-dick download into a Zarr v2 store."""
   from click.testing import CliRunner
 
-  from graphcast.downloader import download
+  from mobydick.downloader import download
 
   root = tmp_path_factory.mktemp("standardized")
   config = root / "download.toml"
@@ -206,10 +206,10 @@ def standardized_path(input_paths, tmp_path_factory) -> str:
 
 @pytest.fixture(scope="session")
 def mask_path(input_paths, tmp_path_factory) -> str:
-  """The surface mask of the inputs written by graphcast download-mask."""
+  """The surface mask of the inputs written by moby-dick download-mask."""
   from click.testing import CliRunner
 
-  from graphcast.downloader import download_mask
+  from mobydick.downloader import download_mask
 
   path = tmp_path_factory.mktemp("mask") / "mask"
   result = CliRunner().invoke(download_mask, [input_paths[0], str(path), "--log-level", "warning"])
@@ -219,7 +219,7 @@ def mask_path(input_paths, tmp_path_factory) -> str:
 
 @dataclasses.dataclass(frozen=True)
 class TinyModel:
-  """A tiny GraphCast task on a coarse grid and the 42-vertex icosahedral multi-mesh, with a batch of random data."""
+  """A tiny Leviathan task on a coarse grid and the 42-vertex icosahedral multi-mesh, with a batch of random data."""
 
   lat: np.ndarray
   lon: np.ndarray
@@ -230,10 +230,10 @@ class TinyModel:
   batch: tuple[xr.Dataset, xr.Dataset, xr.Dataset]
   mask: xr.DataArray
 
-  def graphcast(self, scan: bool = False):
-    from graphcast.model import GraphCast
+  def leviathan(self, scan: bool = False):
+    from mobydick.leviathan.model import Leviathan
 
-    return GraphCast(
+    return Leviathan(
       _model_config=self.model_config,
       _task_config=self.task,
       _grid_lat=self.lat,
@@ -247,8 +247,8 @@ class TinyModel:
 @pytest.fixture(scope="session")
 def tiny_model() -> TinyModel:
   """Inputs `zos`, targets `zos`, forcings `2t` over a batch of 8, a loss mask with land at the northernmost row."""
-  from graphcast import icosahedral_mesh
-  from graphcast.model import ModelConfig, TaskConfig
+  from mobydick import icosahedral_mesh
+  from mobydick.leviathan.model import ModelConfig, TaskConfig
 
   lat, lon, batch_size = np.arange(-75.0, 90.0, 30.0), np.arange(0.0, 360.0, 45.0), 8
   rng = np.random.default_rng(0)

@@ -23,8 +23,8 @@ import numpy as np
 import pyproj
 import pytest
 
-from graphcast import icosahedral_mesh, mesh_graph
-from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs
+from mobydick import icosahedral_mesh, mesh_graph
+from mobydick.gis_utils import cartesian_crs, cartesian_unit_sphere_crs
 
 # WGS84 ellipsoid.
 SEMI_MAJOR_AXIS = 6_378_137.0

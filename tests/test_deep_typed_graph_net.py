@@ -19,7 +19,7 @@ import jax
 import numpy as np
 import pytest
 
-from graphcast import deep_typed_graph_net, typed_graph
+from mobydick import deep_typed_graph_net, typed_graph
 
 NUM_NODES = 4
 SENDERS, RECEIVERS = np.array([0, 1, 2, 3, 0]), np.array([1, 2, 3, 0, 2])

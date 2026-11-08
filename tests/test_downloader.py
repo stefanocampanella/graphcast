@@ -30,9 +30,9 @@ import xarray as xr
 import xarray_tensorstore
 from click.testing import CliRunner
 
-from graphcast import dataloader_utils, downloader
-from graphcast.dataloader import get_tensorstore_context
-from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
+from mobydick import dataloader_utils, downloader
+from mobydick.dataloader import get_tensorstore_context
+from mobydick.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
 
 V2 = {"zarr_format": 2}
 V3_LEXI = {"zarr_format": 3, "time_shard": 4, "depth_time_shard": 2}
@@ -155,7 +155,7 @@ class TestStandardize:
     standardized = downloader.standardize(*opened_inputs, DownloadConfig.model_validate(download_settings)).compute()
     _assert_equal_to_reference(standardized, reference)
     assert all(np.isfinite(values).all() for values in standardized.data_vars.values())
-    assert "graphcast download" in standardized.attrs["history"]
+    assert "moby-dick download" in standardized.attrs["history"]
 
   @pytest.fixture
   def standardized(self, opened_inputs, download_settings) -> xr.Dataset:
@@ -344,7 +344,7 @@ class TestCli:
 
   @FORMATS
   def test_download(self, input_paths, output_path, reference, download_settings, write_config, settings):
-    """graphcast download writes the reference, for each format."""
+    """moby-dick download writes the reference, for each format."""
     config_path = write_config({**download_settings, **settings})
     result = self._run(input_paths, output_path, "--config", str(config_path))
     assert result.exit_code == 0, result.output
@@ -410,7 +410,7 @@ class TestMask:
     np.testing.assert_array_equal(grid.mask, expected.transpose("lat", "lon").values)
     np.testing.assert_array_equal(grid.lat, expected["lat"].values)
     np.testing.assert_array_equal(grid.lon, expected["lon"].values)
-    assert "graphcast download-mask" in xr.open_dataarray(mask_path, engine="zarr").attrs["history"]
+    assert "moby-dick download-mask" in xr.open_dataarray(mask_path, engine="zarr").attrs["history"]
 
   def test_cli_requires_overwrite(self, input_paths, tmp_path):
     """The mask CLI refuses to replace an existing store without --overwrite."""
@@ -485,8 +485,8 @@ class TestTendencyStd:
     """Configured attributes and the history are written."""
     result = downloader.tendency_std(standardized, TendencyStdConfig(attrs={"title": "Tendencies"}))
     assert result.attrs["title"] == "Tendencies"
-    assert "graphcast compute-tendency-std" in result.attrs["history"]
-    assert "graphcast download" in result.attrs["history"]
+    assert "moby-dick compute-tendency-std" in result.attrs["history"]
+    assert "moby-dick download" in result.attrs["history"]
 
   def test_cli(self, standardized_path, standardized, tmp_path):
     """The store has one chunk per depth level (dataloader_utils.get_tendency_std reads it: test_dataloader.py)."""

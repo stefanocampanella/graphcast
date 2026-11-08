@@ -77,7 +77,7 @@
 * Dataloader performance measured (JUBE loader sweep at 50 levels, all store layouts and Grain settings): compute
   bound (29 Oct 2026).
 * Validation loss on held-out windows during training (29 Oct 2026).
-* Normalization with climatology and anomaly_std: standardized anomaly stores (`graphcast download`, PR #1).
+* Normalization with climatology and anomaly_std: standardized anomaly stores (`moby-dick download`, PR #1).
 * Apptainer image from the NVIDIA JAX container (before the ESiWACE JUPITER hackathon).
 * Train script: CLI and documentation (`clusters/jupiter/slurm/train.slurm`, `scripts/train.sh`).
 * Multiprocessing dataloader (Grain workers reopen the store).
@@ -105,7 +105,7 @@
 
 ## Completed tasks
 
-* ~~Read the single standardized anomaly dataset written by `graphcast download` in the dataloader, instead of dataset, climatology and anomaly_std; write the training mask with `graphcast download-mask`.~~ **DONE**
+* ~~Read the single standardized anomaly dataset written by `moby-dick download` in the dataloader, instead of dataset, climatology and anomaly_std; write the training mask with `moby-dick download-mask`.~~ **DONE**
 * ~~Replace learnable Fourier features with fixed $\sin$ and $\cos$ encodings using concatenation.~~ **DONE**
 * ~~Streamline dataset downloading and post-processing, in particular the download-and-postprocess then
   merge-and-postprocess workflow should be implemented as a single operation.~~ **DONE, now in a separate package:

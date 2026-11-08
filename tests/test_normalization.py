@@ -21,8 +21,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import predictor_base
-from graphcast.normalization import InputNormalization, OutputNormalization
+from mobydick import predictor_base
+from mobydick.normalization import InputNormalization, OutputNormalization
 
 
 class _Recorder(predictor_base.Predictor):
@@ -108,7 +108,7 @@ class TestOutputNormalization:
   def test_log_messages(self, data, caplog):
     """The logged message says whether targets are predicted as residuals or directly."""
     _, _, residual_scales, _ = data
-    with caplog.at_level(logging.INFO, logger="graphcast.normalization"):
+    with caplog.at_level(logging.INFO, logger="mobydick.normalization"):
       OutputNormalization(_Recorder(0.0), residual_scales=None)
       OutputNormalization(_Recorder(0.0), residual_scales=residual_scales)
     assert "predicted directly" in caplog.text

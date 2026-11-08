@@ -18,9 +18,9 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import graph_pruning, icosahedral_mesh, mesh_connectivity
-from graphcast.gis_utils import cartesian_crs, equirectangular_crs, get_transform
-from graphcast.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
+from mobydick import graph_pruning, icosahedral_mesh, mesh_connectivity
+from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
+from mobydick.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
 
 LAT = np.arange(-85.0, 90.0, 10.0)
 LON = np.arange(0.0, 360.0, 10.0)

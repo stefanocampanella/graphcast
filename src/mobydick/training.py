@@ -1,0 +1,370 @@
+# SPDX-FileCopyrightText: 2025 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+import atexit
+import logging
+import os
+import pathlib
+import sys
+import time
+from functools import partial
+
+import click
+import grain.python as grain
+import haiku as hk
+import jax
+import numpy as np
+import optax
+import xarray as xr
+from jax.sharding import NamedSharding
+from jax.sharding import PartitionSpec as P
+from pydantic import ValidationError
+
+from mobydick import cli_utils, dataloader_utils, orbax_utils, xarray_jax
+from mobydick import training_utils as trn_utils
+from mobydick.grain_utils import GRAIN_ENV_PREFIX, GrainRuntimeConfig
+from mobydick.training_config import TrainingConfig
+from mobydick.training_utils import (
+  Datasets,
+  DatasetsOrDataArrays,
+  JAXLossAndDiagnostics,
+)
+
+logger = logging.getLogger(__name__)
+
+# Exit status of a run stopped after a preemption checkpoint (EX_TEMPFAIL): resume it with --continue.
+PREEMPTED_EXIT_STATUS = 75
+
+
+def first_step(restored_step: int | None) -> int:
+  """The first step to run: a checkpoint holds the state after its step, so a restored run continues after it."""
+  return 0 if restored_step is None else restored_step + 1
+
+
+@atexit.register
+def _shutdown_jax_distributed():
+  jax.distributed.shutdown()
+
+
+# FIXME: add docstring
+@click.command()
+@click.argument(
+  "config_path",
+  required=True,
+  type=click.Path(
+    path_type=pathlib.Path,
+    exists=True,
+    dir_okay=False,
+    resolve_path=True,
+  ),
+)
+@click.argument(
+  "output_path",
+  required=True,
+  type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True, resolve_path=True),
+)
+@click.argument(
+  "train_path",
+  required=True,
+  type=click.Path(path_type=pathlib.Path, file_okay=False, writable=True, resolve_path=True),
+)
+@click.option(
+  "--continue",
+  "restart_from_previous_checkpoint",
+  help="Whether to continue previous training.",
+  default=False,
+  is_flag=True,
+)
+@click.option(
+  "--overwrite/--no-overwrite",
+  help="Whether to overwrite the final checkpoint.",
+  default=False,
+  is_flag=True,
+)
+@click.option(
+  "--tensorboard-logdir",
+  help="Tensorboard log directory.",
+  default=cli_utils.get_cwd() / "tb_logdir",
+  type=click.Path(path_type=pathlib.Path, resolve_path=True),
+)
+@cli_utils.LOG_LEVEL_OPTION
+def train(
+  config_path: pathlib.Path,
+  output_path: pathlib.Path,
+  train_path: pathlib.Path,
+  restart_from_previous_checkpoint: bool = False,
+  overwrite: bool = False,
+  tensorboard_logdir: pathlib.Path | None = None,
+  log_level: str = "info",
+):
+  start_time = time.perf_counter()
+  cli_utils.configure_logging(log_level)
+
+  configs = cli_utils.read_configs(config_path, schema=TrainingConfig)
+  try:
+    grain_runtime = GrainRuntimeConfig()
+  except ValidationError as error:
+    raise click.ClickException(f"Invalid {GRAIN_ENV_PREFIX}* environment variables:\n{error}") from error
+  logger.info(f"Using Grain runtime settings: {grain_runtime!r}")
+  # The container image sets its own XLA_FLAGS, which take precedence over the host's: log what XLA actually gets.
+  logger.info(f"Using XLA_FLAGS={os.environ.get('XLA_FLAGS', '')!r}")
+
+  jax.distributed.initialize()
+  logger.info(
+    f"Using a JAX mesh with {jax.device_count()} devices "
+    f"({'multi-host setup' if jax.process_count() > 1 else 'single-host setup'})."
+  )
+
+  trn_utils.check_writable_paths(
+    output_path,
+    train_path,
+    tensorboard_logdir,
+    start_fresh=not restart_from_previous_checkpoint,
+    overwrite=overwrite,
+  )
+
+  model_config = trn_utils.get_model_config(configs)
+  mesh_data = trn_utils.get_mesh(configs)
+  grid = dataloader_utils.get_grid(configs.mask.path)
+  grid_lat, grid_lon, grid_mask = grid
+  dataset = dataloader_utils.get_dataset(configs)
+  task_config = dataloader_utils.get_task_config(configs, dataset)
+  tendency_std = dataloader_utils.get_tendency_std(configs)
+  # Per target variable and level: grid points whose series is not constant (tendency_std > 0).
+  loss_masks = dataloader_utils.get_loss_masks(tendency_std, grid, task_config.target_variables)
+  static_data = xarray_jax.wrap_data((tendency_std, loss_masks), to_jax=True, np_contiguous=False)
+
+  @hk.transform
+  def loss_fn(data: Datasets, static_data: tuple[xr.Dataset, xr.Dataset]) -> JAXLossAndDiagnostics:
+    inputs, targets, forcings = data
+    tendency_std, loss_masks = static_data
+    predictor = trn_utils.get_predictor(
+      configs=configs,
+      model_config=model_config,
+      task_config=task_config,
+      mesh_data=mesh_data,
+      grid_lat=grid_lat,
+      grid_lon=grid_lon,
+      grid_mask=grid_mask,
+      mean_by_level=None,
+      stddev_by_level=None,
+      loss_masks=loss_masks,
+      diffs_stddev_by_level=tendency_std,
+    )
+    loss, diagnostics = predictor.loss(inputs=inputs, targets=targets, forcings=forcings)
+    assert loss.dims == ("batch",) and all(scalar.dims == ("batch",) for scalar in diagnostics.values())
+    # Wait to reduce the batch dimension until shard_map is called.
+    loss_array = xarray_jax.unwrap_data(loss, require_jax=True)
+    assert isinstance(loss_array, jax.Array)
+    return loss_array, xarray_jax.jax_vars(diagnostics)
+
+  optimizer, schedule = trn_utils.get_optimizer(configs)
+
+  # Validation windows are read in this process (no Grain workers), only when the validation loss is computed.
+  validation_dataset = None
+  if configs.validation is not None:
+    validation_dataset = dataloader_utils.get_validation_dataset(configs, dataset)
+    logger.info(
+      f"Validation on {len(validation_dataset)} batches per process every {configs.validation.interval_steps} steps."
+    )
+  train_stream = dataloader_utils.get_dataset_stream(
+    configs=configs,
+    dataset=dataset,
+    seed=configs.seed,
+    grain_runtime=grain_runtime,
+  )
+  # Saved with checkpoints and checked on restore, since Grain's iterator state depends on num_workers.
+  grain_num_workers = orbax_utils.gather_grain_num_workers(train_stream)
+  train_iterator = iter(train_stream.dataset)
+  # Closed in the finally below, also on errors before the loop: the Grain workers ignore SIGTERM.
+  try:
+    params = trn_utils.get_params(
+      lambda rng_key, sample: loss_fn.init(rng_key, data=sample, static_data=static_data),
+      dataloader_utils.get_init_sample(configs, dataset),
+      configs,
+    )
+    device_mesh = trn_utils.make_batch_mesh()
+    params = jax.device_put(params, device=NamedSharding(mesh=device_mesh, spec=P()))
+    opt_state = optimizer.init(params)
+    opt_state = jax.device_put(opt_state, device=NamedSharding(mesh=device_mesh, spec=P()))
+
+    ckpt_mngr = orbax_utils.get_checkpoint_manager(
+      train_path, configs.checkpoints, scored=configs.validation is not None
+    )
+    restored_step = None
+    if restart_from_previous_checkpoint:
+      restored_step = ckpt_mngr.latest_step()
+      if restored_step is None:
+        raise ValueError("Found no checkpoint to restore while restarting training.")
+      restored = orbax_utils.restore_checkpoint(
+        ckpt_mngr=ckpt_mngr,
+        step=restored_step,
+        train_iterator=train_iterator,
+        params=params,
+        opt_state=opt_state,
+        grain_num_workers=grain_num_workers,
+      )
+      train_iterator: dataloader_utils.InputsTargetsForcingsIterator = restored["train_iterator"]
+      params: trn_utils.Params = restored["params"]
+      opt_state: trn_utils.Params = restored["opt_state"]
+
+    training_steps = configs.training_steps
+    start_step = first_step(restored_step)
+    logger.info(f"Training for {training_steps=} starting at step {start_step}.")
+    assert tensorboard_logdir is not None  # the option has a default
+    tb_logger = trn_utils.TensorboardLogger(tensorboard_logdir)
+
+    # The policy names the outputs of rematerialized blocks: only a checkpoint around them can offload those.
+    local_loss_fn = loss_fn.apply
+    if configs.policy.remat_loss:
+      local_loss_fn = jax.checkpoint(local_loss_fn, policy=trn_utils.get_policy(configs))
+
+    # The model is deterministic and ignores the rng; a key per step and device is passed for probabilistic variants.
+    # Built inside jit from the seed and the step: the same on every process, and reproducible after a restart.
+    def step_key(stream: int, step) -> jax.Array:
+      return jax.random.fold_in(jax.random.fold_in(jax.random.key(configs.seed), stream), step)
+
+    parallel_loss_fn = trn_utils.data_parallel(local_loss_fn, device_mesh)
+    parallel_eval_fn = trn_utils.data_parallel(loss_fn.apply, device_mesh)
+
+    @partial(jax.jit, donate_argnums=(0, 1))
+    def train_step(params, opt_state, step, data, static_data):
+      def fsdp_loss_fn(params, data: Datasets, static_data: DatasetsOrDataArrays) -> JAXLossAndDiagnostics:
+        loss, diagnostics = parallel_loss_fn(params, step_key(0, step), data, static_data)
+        return jax.tree_util.tree_map(jax.numpy.mean, (loss, diagnostics))
+
+      fsdp_grad_fn = jax.value_and_grad(fsdp_loss_fn, has_aux=True)
+      loss_and_diagnostics, grads = fsdp_grad_fn(params, data=data, static_data=static_data)
+      updates, next_opt_state = optimizer.update(grads, opt_state, params)
+      updated_params = optax.apply_updates(params, updates)
+
+      return updated_params, next_opt_state, loss_and_diagnostics
+
+    @jax.jit
+    def eval_step(params, step, data, static_data):
+      loss_and_diagnostics = parallel_eval_fn(params, step_key(1, step), data, static_data)
+      return jax.tree_util.tree_map(jax.numpy.mean, loss_and_diagnostics)
+
+    def validate(params) -> JAXLossAndDiagnostics:
+      """Mean loss and diagnostics over the validation batches (all of the same size)."""
+      # A thread pool and buffer of its own, in this process: read_threads windows are read ahead (Grain submits at most
+      # prefetch_buffer_size reads at a time), and the pool is shut down after the last batch.
+      assert configs.validation is not None and validation_dataset is not None
+      threads = configs.validation.read_threads
+      read_options = grain.ReadOptions(num_threads=threads, prefetch_buffer_size=threads)
+      iterator = iter(validation_dataset.to_iter_dataset(read_options=read_options))
+      metrics = []
+      try:
+        for batch_index in range(len(validation_dataset)):
+          batch = dataloader_utils.next_batch_on_device(iterator, device_mesh=device_mesh)
+          with jax.sharding.set_mesh(device_mesh):
+            # Keys by batch, the same at every validation.
+            metrics.append(eval_step(params, np.int32(batch_index), batch, static_data))
+      finally:
+        iterator.close()
+      return jax.tree_util.tree_map(lambda *values: jax.numpy.mean(jax.numpy.stack(values)), *metrics)
+
+    validation_interval = None if configs.validation is None else configs.validation.interval_steps
+
+    def validation_due(step: int) -> bool:
+      return validation_interval is not None and ((step + 1) % validation_interval == 0 or step + 1 == training_steps)
+
+    def save_due(step: int) -> bool:
+      return (step + 1) % configs.checkpoints.save_interval_steps == 0 or step + 1 == training_steps
+
+    mp_prefetch = train_stream.options.multiprocessing_options is not None
+    compiled_train_step = None
+    for current_step in range(start_step, training_steps):
+      step_start = time.perf_counter()
+      batch = dataloader_utils.next_batch_on_device(
+        train_iterator,
+        device_mesh=device_mesh,
+        mp_prefetch=mp_prefetch,
+      )
+      data_end = time.perf_counter()
+      with jax.sharding.set_mesh(device_mesh):
+        if compiled_train_step is None:
+          # Compile once explicitly to log the memory XLA plans for a step (device and host), then reuse it.
+          compiled_train_step = train_step.lower(
+            params, opt_state, np.int32(current_step), batch, static_data
+          ).compile()
+          cli_utils.run_analysis_and_report(compiled_train_step)
+        params, opt_state, train_metrics = compiled_train_step(
+          params, opt_state, np.int32(current_step), batch, static_data
+        )
+      # Wait for the step, so that the timings below separate compute from checkpointing and logging.
+      jax.block_until_ready(train_metrics)
+      compute_end = time.perf_counter()
+      validation_metrics = None
+      if validation_due(current_step):
+        validation_metrics = jax.device_get(validate(params))
+        logger.info(
+          f"Step {current_step} validation: loss {validation_metrics[0]:.5f}, {time.perf_counter() - compute_end:.1f} s"
+        )
+      # All processes agree on the step at which to save after a SIGTERM (JAX's preemption sync point). Checked after
+      # validation, so that a SIGTERM during validation is acted on at this step, and a save step keeps its loss.
+      preempted = ckpt_mngr.reached_preemption(current_step)
+      checkpoint_start = time.perf_counter()
+      if preempted or save_due(current_step):
+        # Regular saves coincide with validation steps (checked by TrainingConfig), so they carry its loss.
+        orbax_utils.save_checkpoint(
+          ckpt_mngr=ckpt_mngr,
+          step=current_step,
+          train_iterator=train_iterator,
+          params=params,
+          opt_state=opt_state,
+          grain_num_workers=grain_num_workers,
+          metrics=None if validation_metrics is None else {orbax_utils.VALID_LOSS: float(validation_metrics[0])},
+        )
+      checkpoint_end = time.perf_counter()
+      tb_logger.log(current_step, train_metrics, lr=float(schedule(current_step)))  # ty: ignore[invalid-argument-type]  # a scalar
+      if validation_metrics is not None:
+        tb_logger.log(current_step, validation_metrics, prefix="valid")
+      # Parsed by the JUBE benchmark in clusters/jupiter/benchmarks/jube, keep the format in sync.
+      step_end = time.perf_counter()
+      logger.info(
+        f"Step {current_step} timings: data {data_end - step_start:.3f} s, "
+        f"compute {compute_end - data_end:.3f} s, checkpoint {checkpoint_end - checkpoint_start:.3f} s, "
+        f"total {step_end - step_start:.3f} s, elapsed {step_end - start_time:.1f} s"
+      )
+      if preempted:
+        ckpt_mngr.wait_until_finished()
+        logger.warning(
+          f"Preempted: saved step {current_step} ({time.perf_counter() - checkpoint_start:.1f} s), stopping without "
+          f"saving the model. Resume with --continue (exit status {PREEMPTED_EXIT_STATUS})."
+        )
+        sys.exit(PREEMPTED_EXIT_STATUS)
+  finally:
+    # Stops the Grain workers, which ignore SIGTERM (dataloader_utils.ignore_sigterm).
+    train_iterator.close()
+
+  ckpt_mngr.wait_until_finished()
+  final_step = ckpt_mngr.best_step()
+  if final_step is None:
+    final_step = ckpt_mngr.latest_step()
+  if final_step is None:
+    raise RuntimeError(f"No checkpoint in {train_path} to save the model from.")
+  logger.info(f"Training finished, final model from step {final_step}.")
+  restored = orbax_utils.restore_checkpoint(ckpt_mngr=ckpt_mngr, step=final_step, params=params)
+  trn_utils.save_model(
+    output_path=output_path,
+    configs=configs,
+    model_config=model_config,
+    task_config=task_config,
+    grid_lat=grid_lat,
+    grid_lon=grid_lon,
+    grid_mask=grid_mask,
+    mesh_data=mesh_data,
+    params=restored["params"],
+  )

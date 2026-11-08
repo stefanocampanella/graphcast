@@ -1,4 +1,4 @@
-Global ocean GraphCast
+Moby-Dick
 Copyright 2024-2026 Stefano Campanella
 
 This project is licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -12,26 +12,27 @@ It is a fork of GraphCast, developed by DeepMind and released under the Apache L
 The following files contain code from GraphCast, modified for this project. Each says so in its header; the changes
 are recorded in the git history:
 
-  src/graphcast/autoregressive.py
-  src/graphcast/casting.py
-  src/graphcast/checkpoint.py
-  src/graphcast/data_utils.py
-  src/graphcast/deep_typed_graph_net.py
-  src/graphcast/icosahedral_mesh.py
-  src/graphcast/losses.py
-  src/graphcast/mesh_connectivity.py
-  src/graphcast/mesh_graph.py
-  src/graphcast/model.py
-  src/graphcast/model_utils.py
-  src/graphcast/normalization.py
-  src/graphcast/plot_utils.py
-  src/graphcast/predictor_base.py
-  src/graphcast/rollout.py
-  src/graphcast/solar_radiation.py
-  src/graphcast/typed_graph.py
-  src/graphcast/typed_graph_net.py
-  src/graphcast/xarray_jax.py
-  src/graphcast/xarray_tree.py
+  src/mobydick/autoregressive.py
+  src/mobydick/casting.py
+  src/mobydick/checkpoint.py
+  src/mobydick/data_utils.py
+  src/mobydick/deep_typed_graph_net.py
+  src/mobydick/icosahedral_mesh.py
+  src/mobydick/losses.py
+  src/mobydick/mesh_connectivity.py
+  src/mobydick/mesh_graph.py
+  src/mobydick/leviathan/model.py
+  src/mobydick/leviathan/model_utils.py
+  src/mobydick/normalization.py
+  src/mobydick/plot_utils.py
+  src/mobydick/predictor_base.py
+  src/mobydick/rollout.py
+  src/mobydick/solar_radiation.py
+  src/mobydick/task.py
+  src/mobydick/typed_graph.py
+  src/mobydick/typed_graph_net.py
+  src/mobydick/xarray_jax.py
+  src/mobydick/xarray_tree.py
   tests/test_checkpoint.py
   tests/test_data_utils.py
   tests/test_icosahedral_mesh.py
@@ -41,9 +42,8 @@ are recorded in the git history:
   tests/test_xarray_jax.py
   tests/test_xarray_tree.py
   notebooks/graphcast_demo.ipynb
-  README.md
 
-spack/templates/container/graphcast.def is a modified copy of Spack's Singularity container template, released
+spack/templates/container/moby-dick.def is a modified copy of Spack's Singularity container template, released
 under the Apache License, Version 2.0 or the MIT license, at your option, and distributed here under the former:
 
   Spack

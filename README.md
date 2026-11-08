@@ -1,152 +1,141 @@
-# GraphCast: Learning skillful medium-range global weather forecasting
+# Moby-Dick
+
+[![codecov](https://codecov.io/gh/stefanocampanella/moby-dick/graph/badge.svg)](https://codecov.io/gh/stefanocampanella/moby-dick)
+
+Moby-Dick is a code base for deep-learning models of the global ocean circulation. It learns the daily evolution of
+the ocean from reanalysis data on unstructured triangular meshes that follow the coastlines. Its first model,
+**Leviathan**, is a graph neural network derived from DeepMind's
+[GraphCast](https://www.science.org/doi/10.1126/science.adi2336) and adapted from the atmosphere to the ocean: depth
+levels instead of pressure levels, land masks, sea ice, and atmospheric and river forcings.
 
 > [!NOTE]
-> This repository contains a fork of the original GraphCast model. The code has been changed 
-> to deploy it on Leonardo, the supercomputer hosted and managed by CINECA. 
-> These include
-> 1. Addition of a few scripts to setup a working environment in the [leonardo directory](./leonardo) (loading the right
-     modules, download and install packages,
-downloading local copies of the datasets and parameters from the Google Cloud bucket of the project, and ERA5 data from the WeatherBench2 dataset).
->   2. Slight modifications to [graphcast_demo.ipynb](./graphcast_demo.ipynb) to work with local data.
->   3. Custom dataloaders (with sharding support to use multiple GPUs) to run experiments on Leonardo using data from the WeatherBench2 dataset.
->   4. Additional gradient checkpointing to comply with the available memory on Leonardo (64GB per GPU). [WIP]
->
-> Notice that, with the current NVIDIA drivers on Leonardo, the latest working version of JAX is 0.4.16. Indeed, from the documentation of Jax: “You should use 
-> an NVIDIA driver version that is at least as new as your NVIDIA CUDA toolkit’s corresponding driver version”. The available versions on Leonardo are CUDA/12.1 and CUDA/12.3, 
-> while the version of the drivers is 530.30.02, as can be read [here](https://docs.nvidia.com/cuda/cuda-toolkit-release-notes/index.html#id5) the version to use is CUDA/12.1.
-> 
-> The end goal of this project is to adapt the model to ocean biogeochemistry forecasting. 
-> Intermediate steps in the process are making GraphCast work with arbitray grid/meshes, and understand how to deal with boundary conditions.  
+> The project is in an early stage (alpha): models train and validate, but there are no released weights, evaluation
+> tools or stable interfaces yet. `TODO.md` lists the open work.
 
+## Data
 
-This package contains example code to run and train [GraphCast](https://www.science.org/doi/10.1126/science.adi2336).
-It also provides three pretrained models:
+Training uses ARCO-OCEAN, daily data at 0.25° and up to 50 depth levels that combine the GLORYS12 ocean reanalysis
+with ERA5 atmospheric fields and GloFAS river discharge:
 
-1.  `GraphCast`, the high-resolution model used in the GraphCast paper (0.25 degree
-resolution, 37 pressure levels), trained on ERA5 data from 1979 to 2017,
+| Group | Variables |
+|---|---|
+| Targets, also inputs | sea surface height `zos`; temperature `thetao`, salinity `so` and currents `uo`, `vo` at depth; sea ice `siconc`, `sithick`, `usi`, `vsi` |
+| Static inputs | bathymetry `glorys_deptho`; masks `glorys_mask`, `glofas_mask`; river upstream area `uparea`; `z`, `lsm` |
+| Forcings | eight ERA5 atmospheric variables; river discharge `dis24` |
 
-2.  `GraphCast_small`, a smaller, low-resolution version of GraphCast (1 degree
-resolution, 13 pressure levels, and a smaller mesh), trained on ERA5 data from
-1979 to 2015, useful to run a model with lower memory and compute constraints,
+The raw dataset is standardized once into a local store of z-scores (`moby-dick download`): anomalies with respect to
+a daily climatology divided by their standard deviation, with explicit conventions for leap days, constant series,
+masked points and static fields. Training reads that store with [TensorStore](https://google.github.io/tensorstore/)
+and [Grain](https://github.com/google/grain) workers.
 
-3.  `GraphCast_operational`, a high-resolution model (0.25 degree resolution, 13
-pressure levels) pre-trained on ERA5 data from 1979 to 2017 and fine-tuned on
-HRES data from 2016 to 2021. This model can be initialized from HRES data (does
-not require precipitation inputs).
+## Models
 
-The model weights, normalization statistics, and example inputs are available on [Google Cloud Bucket](https://console.cloud.google.com/storage/browser/dm_graphcast).
+Models live in subpackages of `mobydick` and share data loading, meshes, losses, normalization and the training loop.
+A training config selects one with `[model] architecture` (`mobydick.models.MODELS`).
 
-Full model training requires downloading the
-[ERA5](https://www.ecmwf.int/en/forecasts/datasets/reanalysis-datasets/era5)
-dataset, available from [ECMWF](https://www.ecmwf.int/). This can best be
-accessed as Zarr from [Weatherbench2's ERA5 data](https://weatherbench2.readthedocs.io/en/latest/data-guide.html#era5) (see the 6h downsampled versions).
+**Leviathan** (`mobydick.leviathan`) is an encoder–processor–decoder graph neural network:
 
-## Overview of files
+- the **encoder** maps ocean grid points to the mesh vertices within a radius;
+- the **processor** passes messages between mesh vertices for `gnn_msg_steps` steps;
+- the **decoder** interpolates back to the ocean grid points from the triangles that contain them.
 
-The best starting point is to open `graphcast_demo.ipynb` in [Colaboratory](https://colab.research.google.com/github/deepmind/graphcast/blob/master/graphcast_demo.ipynb), which gives an
-example of loading data, generating random weights or load a pre-trained
-snapshot, generating predictions, computing the loss and computing gradients.
-The one-step implementation of GraphCast architecture, is provided in
-`graphcast.py`.
+It predicts one day ahead: the residual with respect to the input state, scaled by the standard deviation of the daily
+changes (`tendency_std`). The loss has a mask per variable and depth level, weighs levels by depth, and leaves out
+land and constant points. `autoregressive.py` and `rollout.py` roll the one-step model out for longer forecasts (no
+command for it yet).
 
-### Brief description of library files:
+**Meshes** are generated from coastline shapefiles with seamsh and gmsh,
+from the size fields of a TOML config (uniform, shore proximity, bathymetry). `configs/mesh` has uniform meshes from 25
+to 120 km. The best configuration so far is a 50 km mesh with 16 message passing steps
+(`configs/training/production_run.toml`). An icosahedral multi-mesh as in GraphCast is available for comparison
+(experimental).
 
-*   `autoregressive.py`: Wrapper used to run (and train) the one-step GraphCast
-    to produce a sequence of predictions by auto-regressively feeding the
-    outputs back as inputs at each step, in JAX a differentiable way.
-*   `casting.py`: Wrapper used around GraphCast to make it work using
-    BFloat16 precision.
-*   `checkpoint.py`: Utils to serialize and deserialize trees.
-*   `data_utils.py`: Utils for data preprocessing.
-*   `deep_typed_graph_net.py`: General purpose deep graph neural network (GNN)
-    that operates on `TypedGraph`'s where both inputs and outputs are flat
-    vectors of features for each of the nodes and edges. `graphcast.py` uses
-    three of these for the Grid2Mesh GNN, the Multi-mesh GNN and the Mesh2Grid
-    GNN, respectively.
-*   `grid_mesh_connectivity.py`: Tools for converting between regular grids on a
-    sphere and triangular meshes.
-*   `icosahedral_mesh.py`: Definition of an icosahedral multi-mesh.
-*   `losses.py`: Loss computations, including latitude-weighting.
-*   `model.py`: The main GraphCast model architecture for one-step of
-    predictions.
-*   `model_utils.py`: Utilities to produce flat node and edge vector features
-    from input grid data, and to manipulate the node output vectors back
-    into a multilevel grid data.
-*   `normalization.py`: Wrapper for the one-step GraphCast used to normalize
-    inputs according to historical values, and targets according to historical
-    time differences.
-*   `predictor_base.py`: Defines the interface of the predictor, which GraphCast
-    and all of the wrappers implement.
-*   `rollout.py`: Similar to `autoregressive.py` but used only at inference time
-    using a python loop to produce longer, but non-differentiable trajectories.
-*   `solar_radiation.py`: Computes Top-Of-the-Atmosphere (TOA) incident solar
-    radiation compatible with ERA5. This is used as a forcing variable and thus
-    needs to be computed for target lead times in an operational setting.
-*   `typed_graph.py`: Definition of `TypedGraph`'s.
-*   `typed_graph_net.py`: Implementation of simple graph neural network
-    building blocks defined over `TypedGraph`'s that can be combined to build
-    deeper models.
-*   `xarray_jax.py`: A wrapper to let JAX work with `xarray`s.
-*   `xarray_tree.py`: An implementation of tree.map_structure that works with
-    `xarray`s.
+**Training** is data parallel over GPUs and nodes (JAX `shard_map`), in bfloat16. It runs on any number of nodes, saves
+Orbax checkpoints, validates on held-out years, logs to TensorBoard, and saves and exits cleanly when Slurm preempts the
+job. Memory options (`[policy]`) trade compute for GPU memory: rematerialization, host offloading, a scanned processor
+and chunked edge updates.
 
+## Installation
 
-### Dependencies.
+The code runs in an Apptainer image built with Spack on the NVIDIA JAX container (`spack.yaml`,
+`spack/templates/container/moby-dick.def`):
 
-[Chex](https://github.com/deepmind/chex),
-[Dask](https://github.com/dask/dask),
-[Haiku](https://github.com/deepmind/dm-haiku),
-[JAX](https://github.com/google/jax),
-[JAXline](https://github.com/deepmind/jaxline),
-[Jraph](https://github.com/deepmind/jraph),
-[Numpy](https://numpy.org/),
-[Pandas](https://pandas.pydata.org/),
-[Python](https://www.python.org/),
-[SciPy](https://scipy.org/),
-[Tree](https://github.com/deepmind/tree),
-[Trimesh](https://github.com/mikedh/trimesh) and
-[XArray](https://github.com/pydata/xarray).
-
-
-### License and attribution
-
-The Colab notebook and the associated code are licensed under the Apache
-License, Version 2.0. You may obtain a copy of the License at:
-https://www.apache.org/licenses/LICENSE-2.0.
-
-The model weights are made available for use under the terms of the Creative
-Commons Attribution-NonCommercial-ShareAlike 4.0 International
-(CC BY-NC-SA 4.0). You may obtain a copy of the License at:
-https://creativecommons.org/licenses/by-nc-sa/4.0/.
-
-The weights were trained on ECMWF's ERA5 and HRES data. The colab includes a few
-examples of ERA5 and HRES data that can be used as inputs to the models.
-ECMWF data product are subject to the following terms:
-
-1. Copyright statement: Copyright "© 2023 European Centre for Medium-Range Weather Forecasts (ECMWF)".
-2. Source www.ecmwf.int
-3. Licence Statement: ECMWF data is published under a Creative Commons Attribution 4.0 International (CC BY 4.0). https://creativecommons.org/licenses/by/4.0/
-4. Disclaimer: ECMWF does not accept any liability whatsoever for any error or omission in the data, their availability, or for any loss or damage arising from their use.
-
-### Disclaimer
-
-This is not an officially supported Google product.
-
-Copyright 2023 DeepMind Technologies Limited.
-
-### Citation
-
-If you use this work, consider citing our paper ([blog post](https://deepmind.google/discover/blog/graphcast-ai-model-for-faster-and-more-accurate-global-weather-forecasting/), [Science](https://www.science.org/doi/10.1126/science.adi2336), [arXiv](https://arxiv.org/abs/2212.12794)):
-
-```latex
-@article{lam2023learning,
-  title={Learning skillful medium-range global weather forecasting},
-  author={Lam, Remi and Sanchez-Gonzalez, Alvaro and Willson, Matthew and Wirnsberger, Peter and Fortunato, Meire and Alet, Ferran and Ravuri, Suman and Ewalds, Timo and Eaton-Rosen, Zach and Hu, Weihua and others},
-  journal={Science},
-  volume={382},
-  number={6677},
-  pages={1416--1421},
-  year={2023},
-  publisher={American Association for the Advancement of Science}
-}
+```bash
+spack env create --dir spack-env spack.yaml
+spack -e spack-env containerize > moby-dick.def
+apptainer build moby-dick.sif moby-dick.def
 ```
+
+Set `APPTAINERENV_PYTHONPATH` to the checkout's `src` directory to run the sources without rebuilding the image.
+
+Without containers, Python 3.12 and GDAL 3.13.1 are needed; then:
+
+```bash
+pip install -e . --group dev
+```
+
+The distribution is called `moby-dick` and the import package `mobydick`. It is not on PyPI yet.
+
+## Usage
+
+Every step is a subcommand of `moby-dick`, configured by a TOML file in `configs/`:
+
+| Command | What it does |
+|---|---|
+| `moby-dick download DATASET CLIMATOLOGY ANOMALY_STD OUTPUT --config configs/download/zarr_v3_lexi.toml` | standardize the raw dataset into a local Zarr store (local or S3 inputs) |
+| `moby-dick download-mask DATASET OUTPUT --config configs/download/mask.toml` | write the training mask |
+| `moby-dick compute-tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml` | standard deviation of the daily changes, used to scale the residuals |
+| `moby-dick make-ocean-mesh CONFIG OUTPUT.msh` | generate an ocean mesh (`configs/mesh/`) |
+| `moby-dick make-icosahedral-mesh CONFIG OUTPUT.msh` | generate the icosahedral multi-mesh (experimental) |
+| `moby-dick compute-grid-basis MESH MASK OUTPUT.npz` | linear basis functions of a mesh at the ocean grid points (draft) |
+| `moby-dick train CONFIG OUTPUT TRAIN_DIR [--continue]` | train a model (`configs/training/`) and save it to `OUTPUT` |
+
+Every command prints a banner to standard error first; set `MOBYDICK_NO_BANNER=1` to turn it off. The Grain loader
+reads its settings from `MOBYDICK_GRAIN_*` environment variables (`mobydick.grain_utils.GrainRuntimeConfig`).
+
+## Running on a cluster
+
+`scripts/train.sh` and `scripts/download.sh` run the commands in the image with the inherited environment, binding the
+data under `/data` in the container; they work on any cluster. Cluster-specific settings live under `clusters/<name>/`.
+`clusters/jupiter` has the environment, Slurm jobs, a mesh study and JUBE benchmarks for the JUPITER booster (GH200
+GPUs, Jülich Supercomputing Centre):
+
+```bash
+sbatch --nodes=8 clusters/jupiter/slurm/train.slurm production_run model.npz train_dir
+```
+
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `src/mobydick/` | shared code: command line, data download and loading, meshes, graph network blocks, losses, normalization, training loop |
+| `src/mobydick/leviathan/` | the Leviathan model and its settings |
+| `configs/` | download, mesh and training settings |
+| `scripts/` | portable launchers for Apptainer |
+| `clusters/` | cluster-specific environments, jobs and benchmarks |
+| `tests/` | pytest suite (synthetic data, CPU only) |
+| `notebooks/` | exploratory notebooks, not maintained with the code |
+| `docs/` | logbook, findings on the data, slides of the ESiWACE3 hackathon on JUPITER |
+
+## Development
+
+```bash
+apptainer run moby-dick.sif python -m pytest --cov     # tests, coverage of at least 80 %
+apptainer exec moby-dick.sif pre-commit run --all-files # ruff, ShellCheck, REUSE, ty
+```
+
+The same checks run on GitHub Actions for every pull request, and the coverage report goes to
+[Codecov](https://codecov.io/gh/stefanocampanella/moby-dick). See `CONTRIBUTING.md` for how to contribute.
+
+## License and attribution
+
+Moby-Dick is licensed under the Apache License, Version 2.0 (`LICENSE`); images are licensed under CC BY 4.0. It
+started as a fork of [GraphCast](https://github.com/google-deepmind/graphcast) (Copyright 2023 DeepMind Technologies
+Limited, Apache-2.0): files with code from GraphCast keep its copyright notice and are listed in `NOTICE`. The license
+grants no rights to the names of DeepMind, Google or GraphCast, which are used here only to describe the origin of
+the work. Licensing follows the [REUSE specification](https://reuse.software/spec-3.3/).
+
+GraphCast is described in:
+
+> Remi Lam et al., Learning skillful medium-range global weather forecasting, *Science* 382, 1416–1421 (2023),
+> [doi:10.1126/science.adi2336](https://www.science.org/doi/10.1126/science.adi2336).

@@ -1,0 +1,3 @@
+~
+ Moby-Dick {version} · deep-learning global ocean circulation model
+~

@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests of the settings of the ocean mesh generator (mesh_config.py), of the shipped mesh configs, and of
-graphcast make-ocean-mesh on a synthetic coastline (a ring at 70°S, meshed with a coarse uniform field)."""
+moby-dick make-ocean-mesh on a synthetic coastline (a ring at 70°S, meshed with a coarse uniform field)."""
 
 import pathlib
 
@@ -23,16 +23,16 @@ from click.testing import CliRunner
 from osgeo import ogr, osr
 from pydantic import ValidationError
 
-from graphcast import cli_utils
-from graphcast.geospatial_mesh import make_ocean_mesh
-from graphcast.geospatial_mesh_utils import read_mesh_data
-from graphcast.mesh_config import (
+from mobydick import cli_utils
+from mobydick.geospatial_mesh import make_ocean_mesh
+from mobydick.geospatial_mesh_utils import read_mesh_data
+from mobydick.mesh_config import (
   IcosahedralMeshConfig,
   MeshGenerationConfig,
   ShoreProximityFieldConfig,
   field_arguments,
 )
-from graphcast.mesh_graph import faces_to_edges
+from mobydick.mesh_graph import faces_to_edges
 
 MESH_CONFIGS = pathlib.Path(__file__).parents[1] / "configs" / "mesh"
 COAST_LATITUDE = -70.0

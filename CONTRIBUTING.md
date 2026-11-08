@@ -1,25 +1,15 @@
-# How to Contribute
+# Contributing to Moby-Dick
 
-## Contributor License Agreement
+Contributions are welcome as GitHub pull requests into the `develop` branch, one branch and pull request per change.
+Every pull request is reviewed before it is merged.
 
-Contributions to this project must be accompanied by a Contributor License
-Agreement. You (or your employer) retain the copyright to your contribution,
-this simply gives us permission to use and redistribute your contributions as
-part of the project. Head over to <https://cla.developers.google.com/> to see
-your current agreements on file or to sign a new one.
-
-You generally only need to submit a CLA once, so if you've already submitted one
-(even if it was for a different project), you probably don't need to do it
-again.
-
-## Code reviews
-
-All submissions, including submissions by project members, require review. We
-use GitHub pull requests for this purpose. Consult
-[GitHub Help](https://help.github.com/articles/about-pull-requests/) for more
-information on using pull requests.
-
-## Community Guidelines
-
-This project follows [Google's Open Source Community
-Guidelines](https://opensource.google/conduct/).
+- **Tests:** new code comes with pytest tests in `tests/` (`test_<module>.py`, shared fixtures in
+  `tests/conftest.py`). They run on CPU with synthetic data, with no credentials or network. Each test has a docstring
+  saying what it checks and why.
+- **Checks:** `pre-commit run --all-files` runs ruff (2-space indentation, 120 columns), ShellCheck, `reuse lint` and
+  ty. GitHub Actions runs them, and the tests with at least 80 % coverage, on every pull request.
+- **Licensing:** contributions are licensed under the Apache License, Version 2.0. New files start with SPDX
+  copyright and license headers, as the existing files do (`REUSE.toml` covers files that take no comments). Code copied from GraphCast keeps DeepMind's copyright line, says that it was modified, and is listed in
+  `NOTICE`.
+- **Portability:** `scripts/` and `src/` hold no cluster-specific paths or settings; those go under
+  `clusters/<name>/`, and user-specific settings (e.g. credentials) come from environment variables.

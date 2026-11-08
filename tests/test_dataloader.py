@@ -15,7 +15,7 @@
 """Tests of the training data path: windows of the standardized anomaly store (StandardizedAnomalySource), the Grain
 pipeline built from the training config, and the static training inputs (grid, tendency_std, loss masks).
 
-The synthetic store is written by graphcast download from the inputs of conftest.py; `reference` holds the same
+The synthetic store is written by moby-dick download from the inputs of conftest.py; `reference` holds the same
 standardized anomalies computed directly.
 """
 
@@ -31,10 +31,10 @@ import xarray as xr
 from absl import flags
 from click.testing import CliRunner
 
-from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
-from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
-from graphcast.downloader import compute_tendency_std
-from graphcast.training_config import SourceConfig, TrainingConfig
+from mobydick import cli_utils, dataloader_utils, grain_utils, xarray_jax
+from mobydick.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
+from mobydick.downloader import compute_tendency_std
+from mobydick.training_config import SourceConfig, TrainingConfig
 
 PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 # Task levels: zero-based depth positions in a non-sorted order, to check that the order is kept.
@@ -198,7 +198,7 @@ def test_validation_needs_enough_held_out_windows(training_configs):
 @pytest.mark.parametrize("num_workers", [0, 1])
 def test_stream_with_grain_workers(training_configs, num_workers):
   """Grain workers get the pickled pipeline and reopen the store; batches match those read in this process."""
-  # Grain reads absl flags, which the graphcast CLI marks as parsed.
+  # Grain reads absl flags, which the moby-dick CLI marks as parsed.
   flags.FLAGS.mark_as_parsed()
   dataset = dataloader_utils.get_dataset(training_configs)
   grain_runtime = grain_utils.GrainRuntimeConfig(num_workers=num_workers, num_threads=1, prefetch_buffer_size=1)
@@ -217,7 +217,7 @@ def test_stream_with_grain_workers(training_configs, num_workers):
 
 @pytest.fixture
 def tendency_std_path(standardized_path, tmp_path) -> str:
-  """tendency_std of the synthetic store, written by graphcast compute-tendency-std."""
+  """tendency_std of the synthetic store, written by moby-dick compute-tendency-std."""
   output = tmp_path / "tendency_std"
   result = CliRunner().invoke(compute_tendency_std, [standardized_path, str(output), "--log-level", "warning"])
   assert result.exit_code == 0, result.output
@@ -225,7 +225,7 @@ def tendency_std_path(standardized_path, tmp_path) -> str:
 
 
 def test_tendency_std_of_the_store(training_configs, tendency_std_path):
-  """graphcast compute-tendency-std writes what training reads: task levels selected, 0 at constant points."""
+  """moby-dick compute-tendency-std writes what training reads: task levels selected, 0 at constant points."""
   configs = training_configs.model_copy(update={"tendency_std": SourceConfig(path=tendency_std_path)})
   tendency_std = dataloader_utils.get_tendency_std(configs)
   assert set(tendency_std.data_vars) == {"thetao", "zos"}

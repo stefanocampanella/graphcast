@@ -24,7 +24,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from graphcast import checkpoint
+from mobydick import checkpoint
 
 
 @dataclasses.dataclass

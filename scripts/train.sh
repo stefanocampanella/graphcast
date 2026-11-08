@@ -8,10 +8,10 @@ usage() {
     cat <<'EOF'
 Usage: scripts/train.sh [options] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME
 
-Run GraphCast training in Apptainer using the inherited environment.
+Run Moby-Dick training in Apptainer using the inherited environment.
 Options override environment defaults; relative host paths use PROJECT_DIR.
   --project-dir DIR     Project directory (PROJECT_DIR or current directory)
-  --image FILE          Image (APPTAINER_IMAGE or PROJECT_DIR/graphcast.sif)
+  --image FILE          Image (APPTAINER_IMAGE or PROJECT_DIR/moby-dick.sif)
   --bind-data-dir DIR   Container data destination (DATA_DIR or /data)
   --config-dir DIR      Config directory (CONFIG_DIR or PROJECT_DIR/configs/training)
   --output-dir DIR      Model directory (OUTPUT_DIR or PROJECT_DIR/data/models)
@@ -24,8 +24,8 @@ Options override environment defaults; relative host paths use PROJECT_DIR.
   --help               Show help without checking dependencies
 
 DATA_ROOT defaults to PROJECT_DIR/data.
-Required readable SquashFS files or directories: DATASET (standardized anomalies, graphcast download),
-MASK (graphcast download-mask), TENDENCY_STD.
+Required readable SquashFS files or directories: DATASET (standardized anomalies, moby-dick download),
+MASK (moby-dick download-mask), TENDENCY_STD.
 Required paths: GEOMETRY_DIR.
 Bind paths cannot contain ':' or ',' (Apptainer separators).
 Site setup, --env-file and --log-dir belong to the cluster launcher.
@@ -189,7 +189,7 @@ DATA_DIR=${DATA_DIR:-/data}
 [[ $DATA_DIR == /* ]] || fail "container data destination must be absolute: $DATA_DIR"
 DATA_DIR=${DATA_DIR%/}
 DATA_ROOT=${DATA_ROOT:-$PROJECT_DIR/data}
-APPTAINER_IMAGE=${APPTAINER_IMAGE:-$PROJECT_DIR/graphcast.sif}
+APPTAINER_IMAGE=${APPTAINER_IMAGE:-$PROJECT_DIR/moby-dick.sif}
 CONFIG_DIR=${CONFIG_DIR:-$PROJECT_DIR/configs/training}
 OUTPUT_DIR=${OUTPUT_DIR:-$PROJECT_DIR/data/models}
 TRAIN_DIR=${TRAIN_DIR:-$DATA_ROOT/training}
@@ -252,5 +252,5 @@ fi
 if $CONTINUE; then
     TRAIN_ARGS+=(--continue)
 fi
-exec apptainer "${APPTAINER_ARGS[@]}" "$APPTAINER_IMAGE" graphcast train \
+exec apptainer "${APPTAINER_ARGS[@]}" "$APPTAINER_IMAGE" moby-dick train \
     "${TRAIN_ARGS[@]}" -- "$CONFIG_PATH" "$OUTPUT_PATH" "$TRAIN_PATH"

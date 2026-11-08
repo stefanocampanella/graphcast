@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests of the icosahedral multi-mesh files: writing (`graphcast make-icosahedral-mesh`) and reading them back."""
+"""Tests of the icosahedral multi-mesh files: writing (`moby-dick make-icosahedral-mesh`) and reading them back."""
 
 import dataclasses
 import pathlib
@@ -23,9 +23,9 @@ import pyproj
 import pytest
 from click.testing import CliRunner
 
-from graphcast import icosahedral_mesh
-from graphcast.geospatial_mesh import make_icosahedral_mesh
-from graphcast.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh, read_mesh_data, write_multi_mesh
+from mobydick import icosahedral_mesh
+from mobydick.geospatial_mesh import make_icosahedral_mesh
+from mobydick.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh, read_mesh_data, write_multi_mesh
 
 SPLITS = 2
 

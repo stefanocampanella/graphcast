@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import losses
+from mobydick import losses
 
 LAT = np.linspace(-90.0, 90.0, 5)
 

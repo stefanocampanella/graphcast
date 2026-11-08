@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [project]
-name = "graphcast"
+name = "moby-dick"
 version = "0.1"
 dependencies = [
     # crt: credentials from `aws login` sessions, read by s3fs
@@ -57,10 +57,10 @@ dependencies = [
 ]
 requires-python = ">=3.12, <3.13"
 authors = [{name = "Stefano Campanella", email = "scampanella@ogs.it"}]
-description = "Data-driven global ocean circulation model based on Graphcast by Google DeepMind."
+description = "Moby-Dick: deep-learning global ocean circulation models (first: Leviathan, derived from GraphCast)."
 readme = { file = "README.md", content-type = "text/markdown" }
 license = "Apache-2.0"
-keywords = ["GraphCast", "Ocean", "Prediction"]
+keywords = ["Ocean", "Ocean circulation", "Graph neural networks", "Prediction"]
 classifiers = ["Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "Operating System :: POSIX :: Linux",
@@ -70,10 +70,10 @@ classifiers = ["Development Status :: 3 - Alpha",
     "Topic :: Scientific/Engineering :: Physics"]
 
 [project.scripts]
-graphcast = "graphcast:cli"
+moby-dick = "mobydick:cli"
 
 [project.urls]
-Homepage = "https://github.com/stefanocampanella/graphcast"
+Homepage = "https://github.com/stefanocampanella/moby-dick"
 
 [dependency-groups]
 dev = [
@@ -98,6 +98,10 @@ dev = [
 requires = ["setuptools (>= 67.0)"]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools.package-data]
+# The banner of the command line (mobydick.banner).
+mobydick = ["assets/*.txt"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Test the sources, not the copy of the package installed in the image.
@@ -109,16 +113,16 @@ filterwarnings = [
     # zarr-python reads and writes whole shards of colexicographic arrays (transpose codec before sharding).
     "ignore:Combining a `sharding_indexed` codec disables partial reads",
     # Deprecations raised in our own code fail the tests, so they are fixed before the libraries remove the APIs.
-    "error::DeprecationWarning:graphcast",
-    "error::FutureWarning:graphcast",
+    "error::DeprecationWarning:mobydick",
+    "error::FutureWarning:mobydick",
 ]
 
 [tool.coverage.run]
-source = ["src/graphcast"]
+source = ["src/mobydick"]
 branch = true
-# Also measure Python subprocesses (the end-to-end training test runs graphcast train in one).
+# Also measure Python subprocesses (the end-to-end training test runs moby-dick train in one).
 patch = ["subprocess"]
-omit = ["src/graphcast/__main__.py", "src/graphcast/notebooks_utils.py"]
+omit = ["src/mobydick/__main__.py", "src/mobydick/notebooks_utils.py"]
 
 [tool.coverage.report]
 show_missing = true

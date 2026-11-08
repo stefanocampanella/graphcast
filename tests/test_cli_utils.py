@@ -23,7 +23,7 @@ import jax.numpy as jnp
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from graphcast import cli_utils
+from mobydick import cli_utils
 
 
 class _Schema(BaseModel):

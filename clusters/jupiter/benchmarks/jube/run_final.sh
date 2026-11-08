@@ -25,7 +25,7 @@ EXPERIMENTS=(
 )
 
 {
-    echo "# Final GraphCast training benchmark, $DATE"
+    echo "# Final Moby-Dick training benchmark, $DATE"
     echo
     echo "Code: $(git rev-parse --short HEAD) ($(git log -1 --format=%s))"
     echo "Every experiment: tag long (1024 steps, 3 h limit), two repetitions (rep=1,2) per case."
@@ -42,7 +42,7 @@ for entry in "${EXPERIMENTS[@]}"; do
         continue
     fi
     # shellcheck disable=SC2086
-    uv run jube run graphcast_training.xml --tag $TAGS long --outpath "$ROOT/$NAME" > "$ROOT/$NAME.submit.log" 2>&1
+    uv run jube run training.xml --tag $TAGS long --outpath "$ROOT/$NAME" > "$ROOT/$NAME.submit.log" 2>&1
     # shellcheck disable=SC2126 # one total over several files: grep -c would count per file
     JOBS=$(grep -h "Submitted batch job" "$ROOT/$NAME"/000000/*_submit/work/stdout 2>/dev/null | wc -l)
     echo "| \`$NAME\` | \`$TAGS long\` | $JOBS |" >> "$ROOT/MANIFEST.md"

@@ -21,7 +21,7 @@ import pandas as pd
 import pytest
 import xarray as xr
 
-from graphcast import rollout
+from mobydick import rollout
 
 BATCH, LON, STEPS = 2, 3, 6
 DAY = np.timedelta64(1, "D")

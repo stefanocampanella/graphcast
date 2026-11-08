@@ -22,22 +22,30 @@ import xarray as xr
 from absl import flags
 from grain._src.core import tree_lib
 
-from graphcast import grain_utils
+from mobydick import grain_utils
 
 
 def test_settings_from_the_environment(monkeypatch):
-  """GRAPHCAST_GRAIN_* variables set the reader and worker settings."""
-  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_WORKERS", "3")
-  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_THREADS", "5")
-  monkeypatch.setenv("GRAPHCAST_GRAIN_ENABLE_PROFILING", "true")
+  """MOBYDICK_GRAIN_* variables set the reader and worker settings."""
+  monkeypatch.setenv("MOBYDICK_GRAIN_NUM_WORKERS", "3")
+  monkeypatch.setenv("MOBYDICK_GRAIN_NUM_THREADS", "5")
+  monkeypatch.setenv("MOBYDICK_GRAIN_ENABLE_PROFILING", "true")
   runtime = grain_utils.GrainRuntimeConfig()
   assert (runtime.num_workers, runtime.num_threads, runtime.enable_profiling) == (3, 5, True)
 
 
 def test_unknown_variables_are_rejected(monkeypatch):
   """A misspelled variable is an error naming the expected ones, not silently ignored."""
-  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_WORKER", "3")
-  with pytest.raises(pydantic.ValidationError, match="GRAPHCAST_GRAIN_NUM_WORKER.*expected any of"):
+  monkeypatch.setenv("MOBYDICK_GRAIN_NUM_WORKER", "3")
+  with pytest.raises(pydantic.ValidationError, match="MOBYDICK_GRAIN_NUM_WORKER.*expected any of"):
+    grain_utils.GrainRuntimeConfig()
+
+
+def test_variables_with_the_old_prefix_are_rejected(monkeypatch):
+  """A GRAPHCAST_GRAIN_* variable left from before the rename is an error naming its new name: ignored, it would let
+  training fall back to 0 workers, and --continue of a run saved with workers would not match its Grain state."""
+  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_WORKERS", "1")
+  with pytest.raises(pydantic.ValidationError, match="GRAPHCAST_GRAIN_NUM_WORKERS.*MOBYDICK_GRAIN_NUM_WORKERS"):
     grain_utils.GrainRuntimeConfig()
 
 
