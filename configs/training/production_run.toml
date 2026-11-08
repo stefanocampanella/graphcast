@@ -78,6 +78,8 @@ levels = "all"
 input_duration = "1D"
 
 [model]
+# The model to train (mobydick.models.MODELS).
+architecture = "leviathan"
 latent_size = 512
 # Mesh x message passing study (docs/jupiter-hackathon/results/mesh_msg-2026-10-29): 50 km x 16 steps has the lowest
 # validation loss for its cost; 40 km x 16 is 1.4 % lower at 2.2x the step time and needs edge_chunk_size = 262144.

@@ -30,6 +30,8 @@ from pydantic import (
   model_validator,
 )
 
+from mobydick.leviathan.config import LeviathanConfig
+
 
 class ApplicationConfig(BaseModel):
   model_config = ConfigDict(extra="forbid")
@@ -103,28 +105,6 @@ class TaskConfig(ApplicationConfig):
   forcing_variables: tuple[str, ...]
   levels: Levels
   input_duration: Duration
-
-
-class ModelConfig(ApplicationConfig):
-  latent_size: PositiveInt
-  gnn_msg_steps: PositiveInt
-  hidden_layers: NonNegativeInt
-  radius_query_fraction_edge_length: Annotated[float, Field(gt=0)]
-  per_variable_weights: dict[str, float] = Field(default_factory=dict)
-  mesh2grid_edge_normalization_factor: Annotated[float, Field(gt=0)] | None = None
-  connected_grid_nodes: bool = Field(
-    default=False,
-    description="Grid nodes only for the grid points connected by an edge (encoder senders, decoder receivers): "
-    "the others only cost memory.",
-  )
-  level_weights_coord: str = Field(
-    default="depth",
-    description="Coordinate along the level dimension from which the loss weights of the levels are computed: linear "
-    "in it, summing to 1 (e.g. depth, or level for the positions of the selected levels).",
-  )
-  level_weights_decreasing: bool = Field(
-    default=True, description="Whether the level weights decrease as the coordinate grows (deeper levels weigh less)."
-  )
 
 
 class MeshConfig(ApplicationConfig):
@@ -257,7 +237,8 @@ class TrainingConfig(ApplicationConfig):
   seed: NonNegativeInt
   mesh: MeshConfig
   mask: MaskConfig
-  model: ModelConfig
+  # One model today; with more, a union discriminated by `architecture` (pydantic rejects a one-member one).
+  model: LeviathanConfig
   task: TaskConfig
   normalization: NormalizationConfig
   policy: PolicyConfig = Field(default_factory=PolicyConfig)

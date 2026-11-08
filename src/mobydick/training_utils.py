@@ -37,11 +37,12 @@ from mobydick.casting import Bfloat16Cast
 from mobydick.checkpoint import dump as ckpt_dump
 from mobydick.dataloader import InputsTargetsForcings
 from mobydick.geospatial_mesh_utils import read_mesh_data
-from mobydick.leviathan.model import CheckPoint, GraphCast, ModelConfig, TaskConfig
 from mobydick.mask import Mask
 from mobydick.mesh_graph import MeshData
+from mobydick.models import MODELS
 from mobydick.normalization import InputNormalization, OutputNormalization
 from mobydick.predictor_base import Predictor
+from mobydick.task import TaskConfig
 from mobydick.training_config import TrainingConfig
 
 logger = logging.getLogger(__name__)
@@ -133,8 +134,9 @@ def get_mesh(configs: TrainingConfig) -> MeshData:
   return mesh_data
 
 
-def get_model_config(configs: TrainingConfig) -> ModelConfig:
-  return ModelConfig(**configs.model.model_dump())
+def get_model_config(configs: TrainingConfig) -> Any:
+  """The frozen settings the model of `[model] architecture` is built and saved with."""
+  return MODELS[configs.model.architecture].model_config(**configs.model.model_dump())
 
 
 def get_policy(configs: TrainingConfig) -> Callable:
@@ -145,7 +147,7 @@ def get_policy(configs: TrainingConfig) -> Callable:
 
 def get_predictor(
   configs: TrainingConfig,
-  model_config: ModelConfig,
+  model_config: Any,
   task_config: TaskConfig,
   mesh_data: MeshData,
   grid_lat: np.ndarray,
@@ -158,8 +160,8 @@ def get_predictor(
 ) -> Predictor:
   """Wrap GraphCast, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
   diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) -> Bfloat16Cast."""
-  # Deeper one-step predictor.
-  predictor = GraphCast(
+  # Deeper one-step predictor, the model named by its settings.
+  predictor = MODELS[model_config.architecture].predictor(
     _model_config=model_config,
     _task_config=task_config,
     _grid_lat=grid_lat,
@@ -272,7 +274,7 @@ class TensorboardLogger:
 def save_model(
   output_path: pathlib.Path,
   configs: TrainingConfig,
-  model_config: ModelConfig,
+  model_config: Any,
   task_config: TaskConfig,
   grid_lat: np.ndarray,
   grid_lon: np.ndarray,
@@ -280,7 +282,7 @@ def save_model(
   mesh_data: MeshData,
   params: Params,
 ) -> None:
-  graphcast_ckpt = CheckPoint(
+  saved_model = MODELS[model_config.architecture].checkpoint(
     model_config=model_config,
     task_config=task_config,
     mesh_data=mesh_data,
@@ -289,14 +291,14 @@ def save_model(
     grid_mask=grid_mask,
     description=configs.description,
     license=configs.license,
-    params=params,  # ty: ignore[invalid-argument-type]  # nested mappings of arrays
+    params=params,
   )
 
   if jax.process_index() == 0:
     logger.info(f"Saving the model to {output_path}")
     with output_path.open("wb") as file:
       file = typing.cast(typing.BinaryIO, file)
-      ckpt_dump(file, graphcast_ckpt)
+      ckpt_dump(file, saved_model)
   sync_global_devices("save_model")
 
 

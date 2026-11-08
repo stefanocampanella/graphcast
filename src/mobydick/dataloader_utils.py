@@ -40,7 +40,7 @@ from mobydick.dataloader import (
   open_standardized_anomalies,
   select_levels,
 )
-from mobydick.leviathan.model import TaskConfig
+from mobydick.task import TaskConfig
 from mobydick.training_config import Levels, LevelSliceConfig, TrainingConfig
 
 logger = logging.getLogger(__name__)

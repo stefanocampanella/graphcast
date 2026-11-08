@@ -81,6 +81,8 @@ levels = "all"
 input_duration = "1D"
 
 [model]
+# The model to train (mobydick.models.MODELS).
+architecture = "leviathan"
 latent_size = 512
 gnn_msg_steps = 8
 hidden_layers = 1

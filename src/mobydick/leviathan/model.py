@@ -53,6 +53,7 @@ from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
 from mobydick.leviathan import model_utils
 from mobydick.leviathan.model_utils import Embedder
 from mobydick.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
+from mobydick.task import TaskConfig
 
 logger = logging.getLogger(__name__)
 
@@ -137,18 +138,6 @@ ALL_VARS = TARGET_VARS + FORCING_VARS + STATIC_VARS
 LEVELS_10 = (0, 4, 8, 12, 16, 20, 24, 28, 32, 34)
 
 
-@dataclasses.dataclass(frozen=True, eq=True, repr=True)
-class TaskConfig:
-  """Defines inputs and targets on which a model is trained and/or evaluated."""
-
-  input_variables: tuple[str, ...]
-  # Target variables which the model is expected to predict.
-  target_variables: tuple[str, ...]
-  forcing_variables: tuple[str, ...]
-  levels: tuple[int, ...]
-  input_duration: str
-
-
 # GraphCast includes the forcings within the input variables, but we do not.
 # Conceptually, the distinction between inputs, forcings and targets is given by
 #
@@ -196,6 +185,7 @@ class ModelConfig:
     level_weights_coord: Coordinate along the level dimension from which the loss weights of the levels are computed
         (losses.normalized_level_weights): linear in it, summing to 1.
     level_weights_decreasing: Whether the level weights decrease as the coordinate grows (deeper levels weigh less).
+    architecture: Name of the model in `mobydick.models.MODELS`, saved with the model.
   """
 
   latent_size: int
@@ -207,6 +197,7 @@ class ModelConfig:
   connected_grid_nodes: bool = False
   level_weights_coord: str = "depth"
   level_weights_decreasing: bool = True
+  architecture: str = "leviathan"
 
 
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
