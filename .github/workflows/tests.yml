@@ -97,3 +97,13 @@ jobs:
           name: coverage
           path: coverage.xml
           if-no-files-found: ignore
+
+      # Coverage history and the README badge. The token is the repository's Codecov upload token (secret
+      # CODECOV_TOKEN); an upload error does not fail the checks, so an outage of Codecov cannot block a pull request.
+      - uses: codecov/codecov-action@v7
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        with:
+          files: coverage.xml
+          disable_search: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

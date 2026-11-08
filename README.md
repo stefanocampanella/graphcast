@@ -1,5 +1,7 @@
 # Moby-Dick
 
+[![codecov](https://codecov.io/gh/stefanocampanella/moby-dick/graph/badge.svg)](https://codecov.io/gh/stefanocampanella/moby-dick)
+
 Moby-Dick is a code base for deep-learning models of the global ocean circulation. It learns the daily evolution of
 the ocean from reanalysis data on unstructured triangular meshes that follow the coastlines. Its first model,
 **Leviathan**, is a graph neural network derived from DeepMind's
@@ -122,7 +124,8 @@ apptainer run moby-dick.sif python -m pytest --cov     # tests, coverage of at l
 apptainer exec moby-dick.sif pre-commit run --all-files # ruff, ShellCheck, REUSE, ty
 ```
 
-The same checks run on GitHub Actions for every pull request. See `CONTRIBUTING.md` for how to contribute.
+The same checks run on GitHub Actions for every pull request, and the coverage report goes to
+[Codecov](https://codecov.io/gh/stefanocampanella/moby-dick). See `CONTRIBUTING.md` for how to contribute.
 
 ## License and attribution
 

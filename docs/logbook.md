@@ -1284,3 +1284,12 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   - The JUBE `training.xml` dry run works.
   - The main checkout's `spack-env/` still holds the old `spack.yaml` (template `container/graphcast.def`): recreate
     it after the merge.
+- **Codecov** (maintainer's request, 8 Nov 2026 11:30): CI uploads `coverage.xml` with `codecov/codecov-action@v7`
+  (v7.1.1 is the latest release), using the repository secret `CODECOV_TOKEN`; upload errors do not fail the checks.
+  The README shows the badge of `stefanocampanella/moby-dick`.
+- **CI failures of 8 Nov 2026** (runs 42467982767, 42469164425, 42469390251): `setup-micromamba` got HTTP 504 for
+  micromamba from GitHub release assets, before any step of ours ran. From JUPITER, `github.com/` answered 200, but
+  repository pages and release assets answered 504 from GitHub's Frankfurt edge (`x-github-edge-region: fra`, GitHub
+  request ids, no proxy); `api.github.com` worked, and githubstatus.com reported no incident. The maintainer could
+  download the asset, so the failure was partial. Pinning `micromamba-version` did not help (pinned and latest both
+  come from GitHub releases) and was reverted.

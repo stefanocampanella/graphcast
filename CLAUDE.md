@@ -99,10 +99,11 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   reason. Notebooks are excluded from ruff.
 - CI (`.github/workflows/tests.yml`, GitHub Actions, pushes to `develop`/`main` and pull requests): Python 3.12 with
   GDAL 3.13.1 from conda-forge (micromamba; keep in sync with `spack.yaml`), the package and dev group from PyPI, the
-  hooks, and `pytest --cov` with the 80 % gate; `coverage.xml` is an artifact. PROJ is not pinned: conda-forge's GDAL
-  3.13.1 builds need PROJ >= 9.8.1, while the image has GDAL 3.13.1 with PROJ 9.7.0 (and pyproj 3.8.0 with its own
-  PROJ 9.8.1, from the wheel); the CI log prints the same four versions. Pushing workflow files needs a GitHub token
-  with the Workflows permission (fine-grained) or `workflow` scope.
+  hooks, and `pytest --cov` with the 80 % gate; `coverage.xml` is an artifact and is uploaded to Codecov
+  (`codecov/codecov-action`, secret `CODECOV_TOKEN`; upload errors do not fail the run; badge in the README). PROJ is
+  not pinned: conda-forge's GDAL 3.13.1 builds need PROJ >= 9.8.1, while the image has GDAL 3.13.1 with PROJ 9.7.0
+  (and pyproj 3.8.0 with its own PROJ 9.8.1, from the wheel); the CI log prints the same four versions. Pushing
+  workflow files needs a GitHub token with the Workflows permission (fine-grained) or `workflow` scope.
 - Image rebuild (needed after dependency changes; `src/` comes from `APPTAINERENV_PYTHONPATH`):
   `spack env create --dir spack-env spack.yaml`, `spack -e spack-env containerize > moby-dick.def`, then
   `env APPTAINER_CACHEDIR=$FSCRATCH/.apptainer apptainer build moby-dick.sif moby-dick.def`. Build to a separate file
