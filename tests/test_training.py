@@ -21,9 +21,9 @@ import jax.numpy as jnp
 import orbax.checkpoint as ocp
 import pytest
 
-from graphcast import cli_utils, orbax_utils
-from graphcast.training import first_step, train
-from graphcast.training_config import CheckpointConfig, TrainingConfig
+from mobydick import cli_utils, orbax_utils
+from mobydick.training import first_step, train
+from mobydick.training_config import CheckpointConfig, TrainingConfig
 
 PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 

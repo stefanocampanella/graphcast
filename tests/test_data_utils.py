@@ -23,7 +23,7 @@ import numpy as np
 import pytest
 import xarray as xa
 
-from graphcast import data_utils
+from mobydick import data_utils
 
 
 @pytest.fixture(autouse=True)

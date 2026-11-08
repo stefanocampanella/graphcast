@@ -20,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from graphcast import typed_graph, typed_graph_net
+from mobydick import typed_graph, typed_graph_net
 
 # Three nodes a, b, c (features 1, 2, 4) and edges a->b, b->c, c->a, a->c (features 10, 20, 30, 40).
 NODES = np.array([[1.0], [2.0], [4.0]])

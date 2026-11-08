@@ -19,8 +19,8 @@ outside them.
 import numpy as np
 import xarray as xr
 
-from graphcast import predictor_base
-from graphcast.mask import Mask
+from mobydick import predictor_base
+from mobydick.mask import Mask
 
 
 class _Constant(predictor_base.Predictor):

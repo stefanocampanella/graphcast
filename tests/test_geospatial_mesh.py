@@ -23,9 +23,9 @@ import pyproj
 import pytest
 from click.testing import CliRunner
 
-from graphcast import icosahedral_mesh
-from graphcast.geospatial_mesh import make_icosahedral_mesh
-from graphcast.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh, read_mesh_data, write_multi_mesh
+from mobydick import icosahedral_mesh
+from mobydick.geospatial_mesh import make_icosahedral_mesh
+from mobydick.geospatial_mesh_utils import MULTI_MESH_EDGES_GROUP, read_mesh, read_mesh_data, write_multi_mesh
 
 SPLITS = 2
 

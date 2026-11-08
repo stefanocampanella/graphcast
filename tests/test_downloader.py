@@ -30,9 +30,9 @@ import xarray as xr
 import xarray_tensorstore
 from click.testing import CliRunner
 
-from graphcast import dataloader_utils, downloader
-from graphcast.dataloader import get_tensorstore_context
-from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
+from mobydick import dataloader_utils, downloader
+from mobydick.dataloader import get_tensorstore_context
+from mobydick.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
 
 V2 = {"zarr_format": 2}
 V3_LEXI = {"zarr_format": 3, "time_shard": 4, "depth_time_shard": 2}

@@ -21,8 +21,8 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast import predictor_base
-from graphcast.normalization import InputNormalization, OutputNormalization
+from mobydick import predictor_base
+from mobydick.normalization import InputNormalization, OutputNormalization
 
 
 class _Recorder(predictor_base.Predictor):

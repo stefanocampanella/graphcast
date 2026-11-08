@@ -193,7 +193,7 @@ def standardized_path(input_paths, tmp_path_factory) -> str:
   """The inputs standardized by graphcast download into a Zarr v2 store."""
   from click.testing import CliRunner
 
-  from graphcast.downloader import download
+  from mobydick.downloader import download
 
   root = tmp_path_factory.mktemp("standardized")
   config = root / "download.toml"
@@ -209,7 +209,7 @@ def mask_path(input_paths, tmp_path_factory) -> str:
   """The surface mask of the inputs written by graphcast download-mask."""
   from click.testing import CliRunner
 
-  from graphcast.downloader import download_mask
+  from mobydick.downloader import download_mask
 
   path = tmp_path_factory.mktemp("mask") / "mask"
   result = CliRunner().invoke(download_mask, [input_paths[0], str(path), "--log-level", "warning"])
@@ -231,7 +231,7 @@ class TinyModel:
   mask: xr.DataArray
 
   def graphcast(self, scan: bool = False):
-    from graphcast.model import GraphCast
+    from mobydick.leviathan.model import GraphCast
 
     return GraphCast(
       _model_config=self.model_config,
@@ -247,8 +247,8 @@ class TinyModel:
 @pytest.fixture(scope="session")
 def tiny_model() -> TinyModel:
   """Inputs `zos`, targets `zos`, forcings `2t` over a batch of 8, a loss mask with land at the northernmost row."""
-  from graphcast import icosahedral_mesh
-  from graphcast.model import ModelConfig, TaskConfig
+  from mobydick import icosahedral_mesh
+  from mobydick.leviathan.model import ModelConfig, TaskConfig
 
   lat, lon, batch_size = np.arange(-75.0, 90.0, 30.0), np.arange(0.0, 360.0, 45.0), 8
   rng = np.random.default_rng(0)

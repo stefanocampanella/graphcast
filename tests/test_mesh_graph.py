@@ -21,8 +21,8 @@
 import numpy as np
 import pytest
 
-from graphcast import icosahedral_mesh, mesh_graph, typed_graph
-from graphcast.gis_utils import _cartesian_wkt
+from mobydick import icosahedral_mesh, mesh_graph, typed_graph
+from mobydick.gis_utils import _cartesian_wkt
 
 
 @pytest.mark.parametrize("splits", list(range(4)))

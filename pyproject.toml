@@ -114,11 +114,11 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["src/graphcast"]
+source = ["src/mobydick"]
 branch = true
 # Also measure Python subprocesses (the end-to-end training test runs graphcast train in one).
 patch = ["subprocess"]
-omit = ["src/graphcast/__main__.py", "src/graphcast/notebooks_utils.py"]
+omit = ["src/mobydick/__main__.py", "src/mobydick/notebooks_utils.py"]
 
 [tool.coverage.report]
 show_missing = true

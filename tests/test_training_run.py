@@ -30,10 +30,10 @@ import numpy as np
 import pytest
 from click.testing import CliRunner
 
-from graphcast import checkpoint, icosahedral_mesh
-from graphcast.downloader import compute_tendency_std
-from graphcast.geospatial_mesh_utils import write_multi_mesh
-from graphcast.model import CheckPoint
+from mobydick import checkpoint, icosahedral_mesh
+from mobydick.downloader import compute_tendency_std
+from mobydick.geospatial_mesh_utils import write_multi_mesh
+from mobydick.leviathan.model import CheckPoint
 
 REPOSITORY = pathlib.Path(__file__).parents[1]
 PRODUCTION_CONFIG = REPOSITORY / "configs" / "training" / "production_run.toml"
@@ -54,7 +54,7 @@ with socket.socket() as s:
 jax.distributed.initialize(f"127.0.0.1:{port}", num_processes=1, process_id=0)
 jax.distributed.initialize = lambda *args, **kwargs: None
 
-from graphcast.training import train
+from mobydick.training import train
 
 train.main(sys.argv[1:], prog_name="graphcast train")
 """

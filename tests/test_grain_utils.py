@@ -22,7 +22,7 @@ import xarray as xr
 from absl import flags
 from grain._src.core import tree_lib
 
-from graphcast import grain_utils
+from mobydick import grain_utils
 
 
 def test_settings_from_the_environment(monkeypatch):

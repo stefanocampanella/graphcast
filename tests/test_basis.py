@@ -21,12 +21,12 @@ from scipy import sparse
 from scipy.interpolate import LinearNDInterpolator
 from scipy.spatial import ConvexHull, Delaunay
 
-from graphcast import basis_utils, icosahedral_mesh, mesh_connectivity
-from graphcast.basis import compute_grid_basis_command
-from graphcast.dataloader_utils import get_grid
-from graphcast.geospatial_mesh_utils import write_multi_mesh
-from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
-from graphcast.mesh_graph import TriangleMesh
+from mobydick import basis_utils, icosahedral_mesh, mesh_connectivity
+from mobydick.basis import compute_grid_basis_command
+from mobydick.dataloader_utils import get_grid
+from mobydick.geospatial_mesh_utils import write_multi_mesh
+from mobydick.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
+from mobydick.mesh_graph import TriangleMesh
 
 LAT = np.arange(-85.0, 90.0, 10.0)
 LON = np.arange(0.0, 360.0, 10.0)

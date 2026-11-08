@@ -20,7 +20,7 @@
 import numpy as np
 import xarray
 
-from graphcast import xarray_tree
+from mobydick import xarray_tree
 
 TEST_DATASET = xarray.Dataset(
   data_vars={

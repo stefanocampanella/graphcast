@@ -21,8 +21,8 @@
 import numpy as np
 import pytest
 
-from graphcast import icosahedral_mesh, mesh_connectivity
-from graphcast.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
+from mobydick import icosahedral_mesh, mesh_connectivity
+from mobydick.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
 
 # WGS84 ellipsoid.
 SEMI_MAJOR_AXIS = 6_378_137.0

@@ -68,7 +68,7 @@ Stage: final
 
 %files
   pyproject.toml /app/pyproject.toml
-  src/graphcast /app/src/graphcast
+  src/mobydick /app/src/mobydick
 
 %post
 

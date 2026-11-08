@@ -22,9 +22,9 @@ import pytest
 from jax.sharding import Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
-from graphcast import predictor_base, xarray_jax
-from graphcast.mask import Mask
-from graphcast.sharding import FullyShardedDataParallel
+from mobydick import predictor_base, xarray_jax
+from mobydick.mask import Mask
+from mobydick.sharding import FullyShardedDataParallel
 
 
 @pytest.fixture(scope="module")

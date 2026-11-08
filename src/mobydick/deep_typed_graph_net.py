@@ -1,0 +1,499 @@
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
+# SPDX-FileCopyrightText: 2024 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Modified by Stefano Campanella for the ocean version of GraphCast; the changes are in the git history.
+"""JAX implementation of Graph Networks Simulator.
+
+Generalization to TypedGraphs of the deep Graph Neural Network from:
+
+@inproceedings{pfaff2021learning,
+  title={Learning Mesh-Based Simulation with Graph Networks},
+  author={Pfaff, Tobias and Fortunato, Meire and Sanchez-Gonzalez, Alvaro and
+      Battaglia, Peter},
+  booktitle={International Conference on Learning Representations},
+  year={2021}
+}
+
+@inproceedings{sanchez2020learning,
+  title={Learning to simulate complex physics with graph networks},
+  author={Sanchez-Gonzalez, Alvaro and Godwin, Jonathan and Pfaff, Tobias and
+      Ying, Rex and Leskovec, Jure and Battaglia, Peter},
+  booktitle={International conference on machine learning},
+  pages={8459--8468},
+  year={2020},
+  organization={PMLR}
+}
+"""
+
+from collections.abc import Mapping
+
+import haiku as hk
+import jax
+import jax.numpy as jnp
+import jax.tree_util as tree
+import jraph
+from jax.ad_checkpoint import checkpoint_name
+
+from mobydick import typed_graph, typed_graph_net
+
+
+class DeepTypedGraphNet(hk.Module):
+  """Deep Graph Neural Network.
+
+  It works with TypedGraphs with typed nodes and edges. It runs message
+  passing on all of the node sets and all of the edge sets in the graph. For
+  each message passing step a `typed_graph_net.InteractionNetwork` is used to
+  update the full TypedGraph by using different MLPs for each of the node sets
+  and each of the edge sets.
+
+  If embed_{nodes,edges} is specified the node/edge features will be embedded
+  into a fixed dimensionality before running the first step of message passing.
+
+  If {node,edge}_output_size the final node/edge features will be embedded into
+  the specified output size.
+
+  This class may be used for shared or unshared message passing:
+  * num_message_passing_steps = N, num_processor_repetitions = 1, gives
+    N layers of message passing with fully unshared weights:
+    [W_1, W_2, ... , W_M] (default)
+  * num_message_passing_steps = 1, num_processor_repetitions = M, gives
+    N layers of message passing with fully shared weights:
+    [W_1] * M
+  * num_message_passing_steps = N, num_processor_repetitions = M, gives
+    M*N layers of message passing with both shared and unshared message passing
+    such that the weights used at each iteration are:
+    [W_1, W_2, ... , W_N] * M
+
+  """
+
+  def __init__(
+    self,
+    *,
+    node_latent_size: Mapping[str, int],
+    edge_latent_size: Mapping[str, int],
+    mlp_hidden_size: int,
+    mlp_num_hidden_layers: int,
+    num_message_passing_steps: int,
+    num_processor_repetitions: int = 1,
+    embed_nodes: bool = True,
+    embed_edges: bool = True,
+    node_output_size: Mapping[str, int] | None = None,
+    edge_output_size: Mapping[str, int] | None = None,
+    include_sent_messages_in_node_update: bool = False,
+    use_layer_norm: bool = True,
+    use_concat_trick: bool = True,
+    activation: str = "relu",
+    f32_aggregation: bool = False,
+    aggregate_edges_for_nodes_fn: str = "segment_sum",
+    aggregate_normalization: float | None = None,
+    remat: bool = True,
+    policy=None,
+    prevent_cse: bool = True,
+    scan: bool = False,
+    edge_chunk_size: int = 0,
+    name: str = "DeepTypedGraphNet",
+  ):
+    """Inits the model.
+
+    Args:
+      node_latent_size: Size of the node latent representations.
+      edge_latent_size: Size of the edge latent representations.
+      mlp_hidden_size: Hidden layer size for all MLPs.
+      mlp_num_hidden_layers: Number of hidden layers in all MLPs.
+      num_message_passing_steps: Number of unshared message passing steps
+         in the processor steps.
+      num_processor_repetitions: Number of times that the same processor is
+         applied sequencially.
+      embed_nodes: If False, the node embedder will be omitted.
+      embed_edges: If False, the edge embedder will be omitted.
+      node_output_size: Size of the output node representations for
+         each node type. For node types not specified here, the latent node
+         representation from the output of the processor will be returned.
+      edge_output_size: Size of the output edge representations for
+         each edge type. For edge types not specified here, the latent edge
+         representation from the output of the processor will be returned.
+      include_sent_messages_in_node_update: Whether to include pooled sent
+          messages from each node in the node update.
+      use_layer_norm: Whether it uses layer norm or not.
+      activation: name of activation function.
+      f32_aggregation: Use float32 in the edge aggregation.
+      aggregate_edges_for_nodes_fn: function used to aggregate messages to each
+        node.
+      aggregate_normalization: An optional constant that normalizes the output
+        of aggregate_edges_for_nodes_fn. For context, this can be used to
+        reduce the shock the model undergoes when switching resolution, which
+        increase the number of edges connected to a node. In particular, this is
+        useful when using segment_sum, but should not be combined with
+        segment_mean.
+      remat: Whether to use remat.
+      policy: remat policy.
+      prevent_cse: Whether to prevent common subexpression elimination.
+      scan: Whether to use scan to reduce compilation times.
+      edge_chunk_size: If positive, update edge sets with more edges in chunks of this many edges (see
+        `typed_graph_net.GraphNetwork`).
+      name: Name of the model.
+    """
+
+    super().__init__(name=name)
+
+    self._node_latent_size = node_latent_size
+    self._edge_latent_size = edge_latent_size
+    self._mlp_hidden_size = mlp_hidden_size
+    self._mlp_num_hidden_layers = mlp_num_hidden_layers
+    self._num_message_passing_steps = num_message_passing_steps
+    self._num_processor_repetitions = num_processor_repetitions
+    self._embed_nodes = embed_nodes
+    self._embed_edges = embed_edges
+    self._node_output_size = node_output_size
+    self._edge_output_size = edge_output_size
+    self._include_sent_messages_in_node_update = include_sent_messages_in_node_update
+    self._use_layer_norm = use_layer_norm
+    self._use_concat_trick = use_concat_trick
+    self._activation = _get_activation_fn(activation)
+    self._initialized = False
+    self._f32_aggregation = f32_aggregation
+    self._aggregate_edges_for_nodes_fn = _get_aggregate_edges_for_nodes_fn(aggregate_edges_for_nodes_fn)
+    self._aggregate_normalization = aggregate_normalization
+    self._remat = remat
+    self._policy = policy
+    self._prevent_cse = prevent_cse
+    self._scan = scan
+    self._edge_chunk_size = edge_chunk_size
+
+    if aggregate_normalization:
+      # using aggregate_normalization only makes sense with segment_sum.
+      assert aggregate_edges_for_nodes_fn == "segment_sum"
+
+  def __call__(self, input_graph: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
+    """Forward pass of the learnable dynamics model."""
+    self._networks_builder(input_graph)
+
+    # Embed input features (if applicable).
+    latent_graph_0 = self._embed(input_graph)
+
+    # Do `m` message passing steps in the latent graphs.
+    latent_graph_m = self._process(latent_graph_0)
+
+    # Compute outputs from the last latent graph (if applicable).
+    return self._output(latent_graph_m)
+
+  def _networks_builder(self, graph_template):
+    if self._initialized:
+      return
+    self._initialized = True
+
+    def build_mlp(name, output_size):
+      if self._use_concat_trick:
+        # Implements the concat trick in PhysicsNemo by NVIDIA, see:
+        # https://github.com/NVIDIA/physicsnemo/blob/f4bc2336af73f9ab3e73f43e8a911267076b79ed/physicsnemo/nn/module/gnn_layers/mesh_graph_mlp.py#L369
+        def concat_trick_mlp(*args, **kwargs):
+          combined_args = tree.tree_flatten(args)[0] + tree.tree_flatten(kwargs)[0]
+          linear_layers = [
+            hk.Linear(output_size, name=name + f"_linear_concat_trick_arg_{n}") for n, _ in enumerate(combined_args)
+          ]
+          mlp = hk.nets.MLP(
+            output_sizes=[self._mlp_hidden_size] * (self._mlp_num_hidden_layers - 1) + [output_size],
+            name=name + "_mlp",
+            activation=self._activation,
+          )
+          single_arg = sum(layer(arg) for layer, arg in zip(linear_layers, combined_args, strict=False))
+          single_arg = self._activation(single_arg)
+          return mlp(single_arg)
+
+        return concat_trick_mlp
+      else:
+        mlp = hk.nets.MLP(
+          output_sizes=[self._mlp_hidden_size] * self._mlp_num_hidden_layers + [output_size],
+          name=name + "_mlp",
+          activation=self._activation,
+        )
+        return jraph.concatenated_args(mlp)
+
+    def build_mlp_with_maybe_layer_norm(name, output_size):
+      network = build_mlp(name, output_size)
+      if self._use_layer_norm:
+        layer_norm = hk.LayerNorm(axis=-1, create_scale=True, create_offset=True, name=name + "_layer_norm")
+        network = hk.Sequential([network, layer_norm])
+      return network
+
+    # The embedder graph network independently embeds edge and node features.
+    if self._embed_edges:
+      embed_edge_fn = _build_update_fns_for_edge_types(
+        build_mlp_with_maybe_layer_norm,
+        graph_template,
+        "encoder_edges_",
+        output_sizes=self._edge_latent_size,
+      )
+    else:
+      embed_edge_fn = None
+    if self._embed_nodes:
+      embed_node_fn = _build_update_fns_for_node_types(
+        build_mlp_with_maybe_layer_norm,
+        graph_template,
+        "encoder_nodes_",
+        output_sizes=self._node_latent_size,
+      )
+    else:
+      embed_node_fn = None
+    embedder_kwargs = {
+      "embed_edge_fn": embed_edge_fn,
+      "embed_node_fn": embed_node_fn,
+    }
+
+    def _embedder_network(graph):
+      graph = typed_graph_net.GraphMapFeatures(**embedder_kwargs)(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "graph_embedder"), graph)
+      return graph
+
+    if self._remat:
+      _embedder_network = hk.remat(_embedder_network, policy=self._policy, prevent_cse=self._prevent_cse)
+    self._embedder_network = _embedder_network
+
+    if self._f32_aggregation:
+
+      def aggregate_fn(data, *args, **kwargs):
+        dtype = data.dtype
+        data = data.astype(jnp.float32)
+        output = self._aggregate_edges_for_nodes_fn(data, *args, **kwargs)
+        if self._aggregate_normalization:
+          output = output / self._aggregate_normalization
+        output = output.astype(dtype)
+        return output
+
+    else:
+
+      def aggregate_fn(data, *args, **kwargs):
+        output = self._aggregate_edges_for_nodes_fn(data, *args, **kwargs)
+        if self._aggregate_normalization:
+          output = output / self._aggregate_normalization
+        return output
+
+    # A message passing step: a graph network that updates the node and edge latent features. Each step has its own
+    # parameters (see `_process`). Note that we can use `modules.InteractionNetwork` because it also outputs the
+    # messages as updated edge latent features.
+    def _processor_network(graph):
+      graph = typed_graph_net.InteractionNetwork(
+        update_edge_fn=_build_update_fns_for_edge_types(
+          build_mlp_with_maybe_layer_norm,
+          graph_template,
+          "processor_edges_",
+          output_sizes=self._edge_latent_size,
+        ),
+        update_node_fn=_build_update_fns_for_node_types(
+          build_mlp_with_maybe_layer_norm,
+          graph_template,
+          "processor_nodes_",
+          output_sizes=self._node_latent_size,
+        ),
+        aggregate_edges_for_nodes_fn=aggregate_fn,
+        include_sent_messages_in_node_update=(self._include_sent_messages_in_node_update),
+        edge_chunk_size=self._edge_chunk_size,
+      )(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "message_passing"), graph)
+      return graph
+
+    if self._remat:
+      _processor_network = hk.remat(_processor_network, policy=self._policy, prevent_cse=self._prevent_cse)
+    self._processor_network = _processor_network
+
+    # The output MLPs converts edge/node latent features into the output sizes.
+    output_kwargs = {
+      "embed_edge_fn": _build_update_fns_for_edge_types(
+        build_mlp, graph_template, "decoder_edges_", self._edge_output_size
+      )
+      if self._edge_output_size
+      else None,
+      "embed_node_fn": _build_update_fns_for_node_types(
+        build_mlp, graph_template, "decoder_nodes_", self._node_output_size
+      )
+      if self._node_output_size
+      else None,
+    }
+
+    def _output_network(graph):
+      graph = typed_graph_net.GraphMapFeatures(**output_kwargs)(graph)
+      graph = jax.tree_util.tree_map(lambda xs: checkpoint_name(xs, "graph_output"), graph)
+      return graph
+
+    if self._remat:
+      _output_network = hk.remat(_output_network, policy=self._policy, prevent_cse=self._prevent_cse)
+    self._output_network = _output_network
+
+  def _embed(self, input_graph: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
+    """Embeds the input graph features into a latent graph."""
+
+    # Copy the context to all of the node types, if applicable.
+    context_features = input_graph.context.features
+    if jax.tree_util.tree_leaves(context_features):
+      # This code assumes a single input feature array for the context and for
+      # each node type.
+      assert len(jax.tree_util.tree_leaves(context_features)) == 1
+      new_nodes = {}
+      for node_set_name, node_set in input_graph.nodes.items():
+        node_features = node_set.features
+        broadcasted_context = jnp.repeat(
+          context_features,
+          node_set.n_node,
+          axis=0,
+          total_repeat_length=node_features.shape[0],
+        )
+        new_nodes[node_set_name] = node_set._replace(
+          features=jnp.concatenate([node_features, broadcasted_context], axis=-1)
+        )
+      input_graph = input_graph._replace(nodes=new_nodes, context=input_graph.context._replace(features=()))
+
+    # Embeds the node and edge features.
+    latent_graph_0 = self._embedder_network(input_graph)
+    return latent_graph_0
+
+  def _process(self, latent_graph_0: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
+    """Processes the latent graph with several steps of message passing."""
+
+    # Do `num_message_passing_steps` steps with unshared weights, and repeat them `self._num_processor_repetitions`
+    # times. A step is a pure function of its own parameters and the latent features (the graph structure is closed
+    # over), so the parameters are the same with and without scan: created step after step by `hk.lift`, they also get
+    # the same initial values.
+    def step_fn(features):
+      node_features, edge_features = features
+      graph = latent_graph_0._replace(
+        nodes={k: s._replace(features=node_features[k]) for k, s in latent_graph_0.nodes.items()},
+        edges={k: s._replace(features=edge_features[k]) for k, s in latent_graph_0.edges.items()},
+      )
+      graph = self._process_step(self._processor_network, graph)
+      return (
+        {k: s.features for k, s in graph.nodes.items()},
+        {k: s.features for k, s in graph.edges.items()},
+      )
+
+    step = hk.transform(step_fn)
+    features = (
+      {k: s.features for k, s in latent_graph_0.nodes.items()},
+      {k: s.features for k, s in latent_graph_0.edges.items()},
+    )
+    step_params = [
+      hk.lift(step.init, name=f"processor_step_{step_i}")(hk.maybe_next_rng_key(), features)
+      for step_i in range(self._num_message_passing_steps)
+    ]
+    # With scan, the steps run in a loop over their parameters stacked along a leading axis (no switch over per-step
+    # parameters: XLA fails to compile host offloading inside a switch in a scan). Unrolled, XLA optimizes across steps,
+    # which is faster (about 30 % for the processor of the coarse mesh) but keeps more activations.
+    stacked_params = jax.tree_util.tree_map(lambda *ps: jnp.stack(ps), *step_params) if self._scan else None
+    if self._scan:
+      features = _vary_like_others(features)
+    for _unused_repetition_i in range(self._num_processor_repetitions):
+      if self._scan:
+        features, _ = jax.lax.scan(lambda f, p: (step.apply(p, None, f), None), features, stacked_params)
+      else:
+        for params in step_params:
+          features = step.apply(params, None, features)
+    node_features, edge_features = features
+    return latent_graph_0._replace(
+      nodes={k: s._replace(features=node_features[k]) for k, s in latent_graph_0.nodes.items()},
+      edges={k: s._replace(features=edge_features[k]) for k, s in latent_graph_0.edges.items()},
+    )
+
+  def _process_step(self, processor_network_k, latent_graph_prev_k: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
+    """Single step of message passing with node/edge residual connections."""
+
+    # One step of message passing.
+    latent_graph_k = processor_network_k(latent_graph_prev_k)
+
+    # Add residuals.
+    nodes_with_residuals = {}
+    for k, prev_set in latent_graph_prev_k.nodes.items():
+      nodes_with_residuals[k] = prev_set._replace(features=prev_set.features + latent_graph_k.nodes[k].features)
+
+    edges_with_residuals = {}
+    for k, prev_set in latent_graph_prev_k.edges.items():
+      edges_with_residuals[k] = prev_set._replace(features=prev_set.features + latent_graph_k.edges[k].features)
+
+    latent_graph_k = latent_graph_k._replace(nodes=nodes_with_residuals, edges=edges_with_residuals)
+    return latent_graph_k
+
+  def _output(self, latent_graph: typed_graph.TypedGraph) -> typed_graph.TypedGraph:
+    """Produces the output from the latent graph."""
+    return self._output_network(latent_graph)
+
+
+def _build_update_fns_for_node_types(builder_fn, graph_template, prefix, output_sizes=None):
+  """Builds an update function for all node types or a subset of them."""
+
+  output_fns = {}
+  for node_set_name in graph_template.nodes:
+    if output_sizes is None:
+      # Use the default output size for all types.
+      output_size = None
+    else:
+      # Otherwise, ignore any type that does not have an explicit output size.
+      if node_set_name in output_sizes:
+        output_size = output_sizes[node_set_name]
+      else:
+        continue
+    output_fns[node_set_name] = builder_fn(f"{prefix}{node_set_name}", output_size)
+  return output_fns
+
+
+def _build_update_fns_for_edge_types(builder_fn, graph_template, prefix, output_sizes=None):
+  """Builds an edge function for all node types or a subset of them."""
+  output_fns = {}
+  for edge_set_key in graph_template.edges:
+    edge_set_name = edge_set_key.name
+    if output_sizes is None:
+      # Use the default output size for all types.
+      output_size = None
+    else:
+      # Otherwise, ignore any type that does not have an explicit output size.
+      if edge_set_name in output_sizes:
+        output_size = output_sizes[edge_set_name]
+      else:
+        continue
+    output_fns[edge_set_name] = builder_fn(f"{prefix}{edge_set_name}", output_size)
+  return output_fns
+
+
+def _get_activation_fn(name):
+  """Return activation function corresponding to function_name."""
+  if name == "identity":
+    return lambda x: x
+  if hasattr(jax.nn, name):
+    return getattr(jax.nn, name)
+  if hasattr(jnp, name):
+    return getattr(jnp, name)
+  raise ValueError(f"Unknown activation function {name} specified.")
+
+
+def _get_aggregate_edges_for_nodes_fn(name):
+  """Return aggregate_edges_for_nodes_fn corresponding to function_name."""
+  if hasattr(jraph, name):
+    return getattr(jraph, name)
+  raise ValueError(f"Unknown aggregate_edges_for_nodes_fn function {name} specified.")
+
+
+def _vary_like_others(tree):
+  """Marks every leaf as varying along the manual mesh axes along which any leaf varies.
+
+  Inside shard_map with check_vma, a scan carry must keep its type, including the axes along which it varies across
+  devices. The processor's carry starts with mesh edge features computed from the graph and the parameters only (the
+  same on every device) and comes back varying along the batch axis, like the node features. Outside shard_map, or
+  with check_vma off, no leaf varies and the tree is returned as is.
+  """
+  varying = frozenset().union(*(jax.typeof(leaf).manual_axis_type.varying for leaf in jax.tree.leaves(tree)))
+
+  def vary(leaf):
+    missing = varying - jax.typeof(leaf).manual_axis_type.varying
+    return jax.lax.pcast(leaf, tuple(sorted(missing)), to="varying") if missing else leaf
+
+  return jax.tree.map(vary, tree)

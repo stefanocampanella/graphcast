@@ -24,7 +24,7 @@ import pandas as pd
 import pytest
 import xarray as xa
 
-from graphcast import solar_radiation
+from mobydick import solar_radiation
 
 logger = logging.getLogger(__name__)
 

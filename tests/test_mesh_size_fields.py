@@ -18,13 +18,13 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from graphcast.geospatial_mesh_utils import (
+from mobydick.geospatial_mesh_utils import (
   BathymetryField,
   BathymetryHessianField,
   RasterField,
   UniformField,
 )
-from graphcast.gis_utils import equirectangular_crs, stereographic_crs
+from mobydick.gis_utils import equirectangular_crs, stereographic_crs
 
 LAT = np.arange(-60.0, 61.0, 30.0)
 LON = np.arange(0.0, 360.0, 30.0)

@@ -31,10 +31,10 @@ import xarray as xr
 from absl import flags
 from click.testing import CliRunner
 
-from graphcast import cli_utils, dataloader_utils, grain_utils, xarray_jax
-from graphcast.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
-from graphcast.downloader import compute_tendency_std
-from graphcast.training_config import SourceConfig, TrainingConfig
+from mobydick import cli_utils, dataloader_utils, grain_utils, xarray_jax
+from mobydick.dataloader import StandardizedAnomalySource, get_tensorstore_context, select_levels
+from mobydick.downloader import compute_tendency_std
+from mobydick.training_config import SourceConfig, TrainingConfig
 
 PRODUCTION_CONFIG = pathlib.Path(__file__).parents[1] / "configs" / "training" / "production_run.toml"
 # Task levels: zero-based depth positions in a non-sorted order, to check that the order is kept.

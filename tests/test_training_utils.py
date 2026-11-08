@@ -23,8 +23,8 @@ import pytest
 from jax.sharding import AxisType, Mesh, NamedSharding
 from jax.sharding import PartitionSpec as P
 
-from graphcast import training_utils, xarray_jax
-from graphcast.mask import Mask
+from mobydick import training_utils, xarray_jax
+from mobydick.mask import Mask
 
 
 @pytest.fixture(scope="module")

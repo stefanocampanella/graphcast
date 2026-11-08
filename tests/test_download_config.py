@@ -20,8 +20,8 @@ import click
 import pydantic
 import pytest
 
-from graphcast import cli_utils
-from graphcast.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
+from mobydick import cli_utils
+from mobydick.download_config import DownloadConfig, MaskDownloadConfig, TendencyStdConfig
 
 CONFIG_DIR = pathlib.Path(__file__).parents[1] / "configs" / "download"
 CONFIGS = sorted(CONFIG_DIR.glob("zarr_*.toml"))

@@ -21,8 +21,8 @@ import pytest
 import xarray as xr
 from osgeo import gdal
 
-from graphcast import gis_utils, icosahedral_mesh
-from graphcast.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
+from mobydick import gis_utils, icosahedral_mesh
+from mobydick.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
 
 
 @pytest.mark.parametrize("crs", [cartesian_unit_sphere_crs, cartesian_crs], ids=["unit_sphere", "wgs84"])
