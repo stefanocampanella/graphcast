@@ -1293,3 +1293,13 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   request ids, no proxy); `api.github.com` worked, and githubstatus.com reported no incident. The maintainer could
   download the asset, so the failure was partial. Pinning `micromamba-version` did not help (pinned and latest both
   come from GitHub releases) and was reverted.
+
+## 2026-11-08 12:15: CI split into lint / reuse / tests (PR `feature/split-ci`)
+
+- **Request** (agreed before PR #5 merged): one status per check, as a single red job hid that the tests passed.
+- **Change:** `tests.yml` became `ci.yml` (workflow `CI`) with three parallel jobs: `lint` (ruff check, ruff format,
+  ShellCheck: `setup-python` and pre-commit, `SKIP=reuse,ty`), `reuse` (`pre-commit run reuse`) and `tests`
+  (micromamba environment as before, `pre-commit run ty`, then pytest with coverage, artifact and Codecov, also when
+  ty fails). Hook versions stay in `.pre-commit-config.yaml`. The split does not help against GitHub release-download
+  outages (shellcheck-py and micromamba both download from GitHub releases).
+- If branch protection requires the old `checks` status, it has to be replaced with `lint`, `reuse` and `tests`.

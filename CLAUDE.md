@@ -97,9 +97,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   --extra-search-path /opt/jax --extra-search-path /opt/jaxlibs/jaxlib --extra-search-path /opt/flax src tests`.
   `src` and `tests` pass; where ty or the stubs cannot follow the code, use a targeted `# ty: ignore[rule]` with a
   reason. Notebooks are excluded from ruff.
-- CI (`.github/workflows/tests.yml`, GitHub Actions, pushes to `develop`/`main` and pull requests): Python 3.12 with
-  GDAL 3.13.1 from conda-forge (micromamba; keep in sync with `spack.yaml`), the package and dev group from PyPI, the
-  hooks, and `pytest --cov` with the 80 % gate; `coverage.xml` is an artifact and is uploaded to Codecov
+- CI (`.github/workflows/ci.yml`, GitHub Actions, pushes to `develop`/`main` and pull requests), three independent
+  jobs: `lint` (ruff and ShellCheck hooks, `setup-python` and pre-commit only), `reuse` (the REUSE hook) and `tests`:
+  Python 3.12 with GDAL 3.13.1 from conda-forge (micromamba; keep in sync with `spack.yaml`), the package and dev group
+  from PyPI, the ty hook, and `pytest --cov` with the 80 % gate (run even if ty fails); `coverage.xml` is an artifact and is uploaded to Codecov
   (`codecov/codecov-action`, secret `CODECOV_TOKEN`; upload errors do not fail the run; badge in the README). PROJ is
   not pinned: conda-forge's GDAL 3.13.1 builds need PROJ >= 9.8.1, while the image has GDAL 3.13.1 with PROJ 9.7.0
   (and pyproj 3.8.0 with its own PROJ 9.8.1, from the wheel); the CI log prints the same four versions. Pushing
