@@ -1273,3 +1273,14 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   repository links changed).
 - **Breaks:** checkpoints and saved models from before (parameters under `graphcast/~/`), `GRAPHCAST_GRAIN_*`
   (silently ignored), images built before (they install `graphcast`; use `python -m mobydick` with them).
+- **Verification:**
+  - `moby-dick.sif` was built from this branch (~6 min, login node); the shared `graphcast.sif` is untouched. In it:
+    452 tests pass with 93.45 % coverage, all pre-commit hooks pass, `pip show moby-dick` gives 0.1, and the banner
+    comes from package data.
+  - Job 2760080 (`training2647`, 2 nodes, demo_5000 cut to 60 steps, worktree `src`): one banner in the log for
+    8 tasks, `num_workers=1` read from `MOBYDICK_GRAIN_*`, validation loss 0.1566 at step 59. The saved model has
+    parameters under `leviathan/` and `model_config:architecture`.
+  - Job 2760331 (`--continue` to 90 steps): resumed at step 60, validation loss 0.1503 at step 89.
+  - The JUBE `training.xml` dry run works.
+  - The main checkout's `spack-env/` still holds the old `spack.yaml` (template `container/graphcast.def`): recreate
+    it after the merge.
