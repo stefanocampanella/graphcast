@@ -34,6 +34,6 @@ class ModelSpec:
 
 MODELS: dict[str, ModelSpec] = {
   "leviathan": ModelSpec(
-    predictor=leviathan.GraphCast, model_config=leviathan.ModelConfig, checkpoint=leviathan.CheckPoint
+    predictor=leviathan.Leviathan, model_config=leviathan.ModelConfig, checkpoint=leviathan.CheckPoint
   ),
 }

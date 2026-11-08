@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests of the icosahedral multi-mesh files: writing (`graphcast make-icosahedral-mesh`) and reading them back."""
+"""Tests of the icosahedral multi-mesh files: writing (`moby-dick make-icosahedral-mesh`) and reading them back."""
 
 import dataclasses
 import pathlib

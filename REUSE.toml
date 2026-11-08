@@ -17,7 +17,7 @@ SPDX-License-Identifier = "Apache-2.0"
 
 # Spack's Singularity template (Apache-2.0 OR MIT), modified; distributed under Apache-2.0.
 [[annotations]]
-path = "spack/templates/container/graphcast.def"
+path = "spack/templates/container/moby-dick.def"
 SPDX-FileCopyrightText = ["Spack Project Developers", "2026 Stefano Campanella"]
 SPDX-License-Identifier = "Apache-2.0"
 

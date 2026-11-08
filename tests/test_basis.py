@@ -208,7 +208,7 @@ def test_basis_against_the_stereographic_draft(cap_radius):
 
 
 def test_compute_cli(tmp_path, mask_path):
-  """`graphcast compute-grid-basis` reads the mesh and the mask written by graphcast download-mask, and saves the basis
+  """`moby-dick compute-grid-basis` reads the mesh and the mask written by moby-dick download-mask, and saves the basis
   on the ocean points of that grid; an existing output is replaced only with --overwrite."""
   mesh_path = tmp_path / "mesh.msh"
   write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(1), mesh_path)

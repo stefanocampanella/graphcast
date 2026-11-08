@@ -1,4 +1,4 @@
-Global ocean GraphCast
+Moby-Dick
 Copyright 2024-2026 Stefano Campanella
 
 This project is licensed under the Apache License, Version 2.0 (see LICENSE).
@@ -43,7 +43,7 @@ are recorded in the git history:
   notebooks/graphcast_demo.ipynb
   README.md
 
-spack/templates/container/graphcast.def is a modified copy of Spack's Singularity container template, released
+spack/templates/container/moby-dick.def is a modified copy of Spack's Singularity container template, released
 under the Apache License, Version 2.0 or the MIT license, at your option, and distributed here under the former:
 
   Spack

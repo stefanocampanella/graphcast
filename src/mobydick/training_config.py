@@ -127,7 +127,7 @@ class SourceConfig(ApplicationConfig):
 
 
 class StoreConfig(ApplicationConfig):
-  """A standardized anomaly store written by graphcast download, read with TensorStore."""
+  """A standardized anomaly store written by moby-dick download, read with TensorStore."""
 
   path: str
   io_threads: PositiveInt = Field(
@@ -136,7 +136,7 @@ class StoreConfig(ApplicationConfig):
 
 
 class MaskConfig(ApplicationConfig):
-  """A boolean (lat, lon) mask written by graphcast download-mask."""
+  """A boolean (lat, lon) mask written by moby-dick download-mask."""
 
   path: str
   fill_value: float

@@ -24,7 +24,7 @@ build
 
 # Apptainer images and the generated recipe
 *.sif
-/graphcast.def
+/moby-dick.def
 # Coverage data
 .coverage
 .coverage.*

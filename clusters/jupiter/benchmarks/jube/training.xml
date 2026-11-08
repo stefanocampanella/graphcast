@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Stefano Campanella -->
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-<!-- GraphCast training I/O benchmark on JUPITER, see README.md in this directory. -->
+<!-- Moby-Dick training I/O benchmark on JUPITER, see README.md in this directory. -->
 <jube>
     <tags forced="true">
         <check_tags>loader|io_threads|cpus|scaling|memfit</check_tags>
@@ -24,8 +24,8 @@
         <tag name="edge_chunks">Update edges in chunks of 262144 (policy.edge_chunk_size)</tag>
     </tags>
 
-    <benchmark name="graphcast_training_io" outpath="bench_run">
-        <comment>GraphCast training at all depth levels with different store layouts, Grain and TensorStore settings</comment>
+    <benchmark name="training_io" outpath="bench_run">
+        <comment>Training at all depth levels with different store layouts, Grain and TensorStore settings</comment>
 
         <!-- One value per case: format:grain_workers:grain_threads:io_threads:nodes:cpus_per_task.
              Tagged values are concatenated; the sweeps other than loader vary one factor around the baseline
@@ -88,7 +88,7 @@
                 + max($num_workers, 1) * $num_threads * 10.0, 1)
             </parameter>
 
-            <!-- Standardized anomaly stores (graphcast download) and SquashFS images of them, all on fscratch, so that
+            <!-- Standardized anomaly stores (moby-dick download) and SquashFS images of them, all on fscratch, so that
                  only the format differs: zarr v2; zarr v3 sharded 8 time x 50 depth, with the chunks of each shard in
                  lexicographic or colexicographic order. -->
             <parameter name="anomalies_dir">/e/fscratch/e-dev-2026d09-119/graphcast/data/anomalies</parameter>
@@ -98,7 +98,7 @@
                 "zarr_v2": "$anomalies_dir/zarr_v2",
                 "zarr_v3_lexi": "$anomalies_dir/zarr_v3_lexi", "zarr_v3_colexi": "$anomalies_dir/zarr_v3_colexi"}["$format"]
             </parameter>
-            <!-- Small, loaded once (graphcast download-mask; tendency statistics): the same for all formats. -->
+            <!-- Small, loaded once (moby-dick download-mask; tendency statistics): the same for all formats. -->
             <parameter name="mask_path">$anomalies_dir/glorys_mask</parameter>
             <parameter name="tendency_std_path">$anomalies_dir/tendency_std</parameter>
         </parameterset>

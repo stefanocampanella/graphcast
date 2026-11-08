@@ -36,7 +36,7 @@ class FullyShardedDataParallel(predictor_base.Predictor):
 
   The wrapped predictor runs inside `shard_map`, as a separate transform lifted into the enclosing one
   (`hk.transparent_lift`), so the wrapper is used inside `hk.transform` like any other predictor. Haiku modules (e.g.
-  `GraphCast`) cannot be used inside a lifted transform if they were created outside it: the wrapper takes a function
+  `Leviathan`) cannot be used inside a lifted transform if they were created outside it: the wrapper takes a function
   that creates the predictor, called inside.
   """
 
@@ -73,7 +73,7 @@ class FullyShardedDataParallel(predictor_base.Predictor):
 
     in_specs = (P(),) + (self._spec,) * len(args)
     # The same rng key on every device gives the same parameters, which are then taken from any device. Compiled:
-    # outside jit, shard_map runs operation by operation (initializing a tiny GraphCast took 46 s instead of 5 s).
+    # outside jit, shard_map runs operation by operation (initializing a tiny Leviathan took 46 s instead of 5 s).
     init = jax.jit(jax.shard_map(transformed.init, mesh=self._mesh, in_specs=in_specs, out_specs=P(), check_vma=False))
     apply = jax.jit(
       jax.shard_map(local_apply, mesh=self._mesh, in_specs=(P(), *in_specs), out_specs=self._spec, check_vma=False)

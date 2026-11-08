@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""graphcast compute-grid-basis: linear basis functions of a mesh at the ocean points of the training grid (draft)."""
+"""moby-dick compute-grid-basis: linear basis functions of a mesh at the ocean points of the training grid (draft)."""
 
 import logging
 import pathlib
@@ -48,7 +48,7 @@ def compute_grid_basis_command(
   log_level: str = "info",
 ):
   """Evaluate the linear basis functions of the mesh at MESH_PATH on the ocean points of the mask at MASK_PATH
-  (written by graphcast download-mask) and save them to OUTPUT_PATH, a sparse [ocean points, mesh vertices] matrix
+  (written by moby-dick download-mask) and save them to OUTPUT_PATH, a sparse [ocean points, mesh vertices] matrix
   (scipy .npz)."""
   cli_utils.configure_logging(log_level)
   if output_path.exists() and not overwrite:

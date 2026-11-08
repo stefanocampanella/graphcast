@@ -163,7 +163,7 @@ DEFAULT_TASK = TaskConfig(
 #   Are there more sensible choice of values for these quantities, given the differences from the original GraphCast implementation?
 @dataclasses.dataclass(frozen=True, eq=True, repr=True)
 class ModelConfig:
-  """Defines the architecture of the GraphCast neural network architecture.
+  """Settings of the Leviathan architecture, frozen and saved with the model.
 
   Properties:
     gnn_msg_steps: How many Graph Network message passing steps to do.
@@ -215,8 +215,8 @@ class CheckPoint:
 
 # # TODO: add parameters documentation
 @dataclasses.dataclass(repr=True)
-class GraphCast(hk.Module, predictor_base.Predictor):
-  """GraphCast Predictor.
+class Leviathan(hk.Module, predictor_base.Predictor):
+  """Leviathan predictor: an encoder-processor-decoder graph neural network derived from GraphCast.
 
   The model works on graphs that take into account:
   * Mesh nodes: nodes for the vertices of the mesh.
@@ -260,7 +260,7 @@ class GraphCast(hk.Module, predictor_base.Predictor):
   _name: str | None = None
 
   def __post_init__(self):
-    super().__post_init__(name=self._name or "graphcast")
+    super().__post_init__(name=self._name or "leviathan")
 
     if self._mesh_data.mesh_size is None:
       raise ValueError("The mesh has no mesh size: the query radius of the encoder is a fraction of it")
@@ -287,12 +287,12 @@ class GraphCast(hk.Module, predictor_base.Predictor):
     }
 
     #  Building the encoder and decoder graphs is time-consuming, as it requires a kd-tree search over the mesh or
-    #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a GraphCast object can be created
+    #  grid nodes. As there are no Haiku modules instantiated inside the constructor, a Leviathan object can be created
     #  outside a Haiku transform and then serialized. Notice that this requires serializing, among other things,
     #  TypedGraph objects. In the case of graphs, current options are:
     #    1. Extend the TypedGraph class with methods to serialize and deserialize its objects.
     #    2. Register TypedGraph as a pytree and use Orbax.
-    #    3. Convert TypedGraph to an object that can be serialized with `graphcast.checkpoint`
+    #    3. Convert TypedGraph to an object that can be serialized with `mobydick.checkpoint`
     #    4. Use pickle or cloudpickle.
     #  Another use of creating and saving the graphs is for fingerprinting the model (in case of multiple
     #  experiments with different graphs).

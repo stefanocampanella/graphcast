@@ -77,8 +77,8 @@ def test_each_device_gets_its_own_rng_key(mesh, check_vma):
 
 
 @pytest.mark.parametrize("scan", [False, True], ids=["unrolled", "scan"])
-def test_graphcast_loss_with_check_vma(mesh, tiny_model, scan):
-  """The training loss (GraphCast behind Mask, loss masks as unmapped static data) gives the same loss and gradients
+def test_leviathan_loss_with_check_vma(mesh, tiny_model, scan):
+  """The training loss (Leviathan behind Mask, loss masks as unmapped static data) gives the same loss and gradients
   with and without shard_map's check of varying axes. With it, the scanned processor failed: its carry starts with
   mesh edge features that are the same on every device and comes back varying along the batch axis."""
   data = tiny_model.batch
@@ -86,7 +86,7 @@ def test_graphcast_loss_with_check_vma(mesh, tiny_model, scan):
 
   @hk.transform
   def loss_fn(data, static):
-    (loss, diagnostics), _ = Mask(tiny_model.graphcast(scan), mask=static).loss_and_predictions(*data)
+    (loss, diagnostics), _ = Mask(tiny_model.leviathan(scan), mask=static).loss_and_predictions(*data)
     return xarray_jax.unwrap_data(loss, require_jax=True), xarray_jax.jax_vars(diagnostics)
 
   params = loss_fn.init(jax.random.key(0), data, static)

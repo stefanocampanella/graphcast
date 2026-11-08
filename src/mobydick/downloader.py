@@ -247,7 +247,7 @@ def standardize(
     f"{dataset.attrs.get('history', '')}\n"
     "Standardized anomalies: z = (x - climatology) / max(anomaly_std, smallest positive anomaly_std), 0 where x equals "
     f"the climatology within {configs.equal_tolerance:g} float32 epsilons; static variables min-max normalized; 0 "
-    "outside the masks of the variables (graphcast download)."
+    "outside the masks of the variables (moby-dick download)."
   ).strip()
   return result
 
@@ -357,7 +357,7 @@ def get_mask(dataset: xr.Dataset, configs: MaskDownloadConfig) -> xr.DataArray:
   # The source encoding (e.g. an integer dtype and fill value) does not apply to booleans.
   mask = xarray_tensorstore.read(mask).compute().astype(bool).drop_encoding()
   mask.attrs["history"] = (
-    f"{mask.attrs.get('history', '')}\n{configs.name} at depth position {configs.level}, as booleans (graphcast "
+    f"{mask.attrs.get('history', '')}\n{configs.name} at depth position {configs.level}, as booleans (moby-dick "
     "download-mask)."
   ).strip()
   return mask
@@ -393,7 +393,7 @@ def tendency_std(standardized: xr.Dataset, configs: TendencyStdConfig) -> xr.Dat
   zero_inflated = [name for name in names if name in configs.zero_inflated]
   dataset.attrs["history"] = (
     f"{standardized.attrs.get('history', '')}\nStandard deviation of the one-step differences, assuming zero mean"
-    f"{f', of the non-zero ones for {zero_inflated}' if zero_inflated else ''} (graphcast compute-tendency-std)."
+    f"{f', of the non-zero ones for {zero_inflated}' if zero_inflated else ''} (moby-dick compute-tendency-std)."
   ).strip()
   dataset.attrs.update(configs.attrs)
   return dataset
@@ -451,7 +451,7 @@ def download_mask(
   """Write a mask of DATASET at one depth level to OUTPUT, a local Zarr store holding one boolean DataArray.
 
   DATASET is a Zarr store with consolidated metadata, given as a local path or a URL (e.g. s3://bucket/path). The
-  mask variable and level come from the settings (graphcast.download_config.MaskDownloadConfig).
+  mask variable and level come from the settings (mobydick.download_config.MaskDownloadConfig).
   """
   configs = _set_up(MaskDownloadConfig, config_path, output_path, overwrite, log_level)
   dataset = open_input(dataset_path, _input_context(1, dataset_path))
@@ -475,9 +475,9 @@ def compute_tendency_std(
 ):
   """Write the standard deviation of the one-step differences of STANDARDIZED to OUTPUT, a local Zarr store.
 
-  STANDARDIZED is a store written by graphcast download, given as a local path or a URL (e.g. s3://bucket/path). The
+  STANDARDIZED is a store written by moby-dick download, given as a local path or a URL (e.g. s3://bucket/path). The
   output (tendency_std of the training configs) normalizes the residuals predicted by the model. Settings:
-  graphcast.download_config.TendencyStdConfig.
+  mobydick.download_config.TendencyStdConfig.
   """
   configs = _set_up(TendencyStdConfig, config_path, output_path, overwrite, log_level)
   standardized = open_input(standardized_path, _input_context(configs.io_threads, standardized_path))
@@ -526,7 +526,7 @@ def download(
   """Write the standardized anomalies of DATASET to OUTPUT, a local Zarr store with consolidated metadata.
 
   DATASET, CLIMATOLOGY and ANOMALY_STD are Zarr stores with consolidated metadata, given as local paths or URLs
-  (e.g. s3://bucket/path). Settings: graphcast.download_config.DownloadConfig (Zarr v2 without a config file).
+  (e.g. s3://bucket/path). Settings: mobydick.download_config.DownloadConfig (Zarr v2 without a config file).
   """
   configs = _set_up(DownloadConfig, config_path, output_path, overwrite, log_level)
   context = _input_context(configs.io_threads, dataset_path, climatology_path, anomaly_std_path)

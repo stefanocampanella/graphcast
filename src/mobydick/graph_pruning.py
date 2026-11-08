@@ -25,7 +25,7 @@
 # limitations under the License.
 # NOTICE:
 # The routines here are intended to prune processor (mesh-)graphs and will stay as legacy, as they are of limited use.
-# While at the moment of writing VRAM is still precious, when using land-masking in the ocean version of GraphCast
+# While at the moment of writing VRAM is still precious, when using land-masking in Leviathan
 # there is little practical interest in pruning.
 # The reason is that typically such graphs are well-connected enough to leave them unpruned after a few message-passing
 # steps. Here is a more formal definition of the problem:

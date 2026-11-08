@@ -38,7 +38,7 @@ jobs:
 
       - uses: mamba-org/setup-micromamba@v3
         with:
-          environment-name: graphcast
+          environment-name: moby-dick
           # Keep GDAL in sync with spack.yaml. PROJ is not pinned: conda-forge's GDAL 3.13.1 needs PROJ >= 9.8.1, while
           # the image has PROJ 9.7.0 (its pyproj wheel bundles 9.8.1); the next step prints the versions.
           create-args: >-

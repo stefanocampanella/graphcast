@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests of the checks of GraphCast's inputs and mesh (model.py)."""
+"""Tests of the Leviathan model (model.py): the checks of its inputs and mesh, scan, initialization."""
 
 import dataclasses
 
@@ -23,7 +23,7 @@ import pytest
 import xarray as xr
 
 from mobydick import icosahedral_mesh
-from mobydick.leviathan.model import GraphCast, ModelConfig, TaskConfig, _check_rollout_inputs
+from mobydick.leviathan.model import Leviathan, ModelConfig, TaskConfig, _check_rollout_inputs
 
 
 def _task(input_variables: tuple[str, ...]) -> TaskConfig:
@@ -65,7 +65,7 @@ def test_a_mesh_without_mesh_size_is_rejected():
   model_config = ModelConfig(latent_size=4, gnn_msg_steps=1, hidden_layers=1, radius_query_fraction_edge_length=0.6)
 
   def build():
-    GraphCast(
+    Leviathan(
       _model_config=model_config,
       _task_config=_task(("thetao", "2t")),
       _grid_lat=np.array([-10.0, 10.0]),
@@ -89,7 +89,7 @@ def test_forcings_without_grid_dimensions(tiny_model):
   task = dataclasses.replace(tiny_model.task, forcing_variables=("year_progress_sin",))
 
   def predict(inputs, targets, forcings):
-    model = GraphCast(
+    model = Leviathan(
       _model_config=tiny_model.model_config,
       _task_config=task,
       _grid_lat=tiny_model.lat,
@@ -105,8 +105,8 @@ def test_forcings_without_grid_dimensions(tiny_model):
   assert predictions["zos"].shape == targets["zos"].shape
 
 
-def _graphcast(tiny_model, mask=None, **options):
-  return GraphCast(
+def _leviathan(tiny_model, mask=None, **options):
+  return Leviathan(
     _model_config=tiny_model.model_config,
     _task_config=tiny_model.task,
     _grid_lat=tiny_model.lat,
@@ -122,8 +122,8 @@ def test_scan_and_unrolled_processor_are_interchangeable(tiny_model, options):
   """The scanned and unrolled processors (and with rematerialization or edge chunks) have the same parameters and give
   the same predictions with them, so checkpoints work with either."""
   inputs, targets, forcings = tiny_model.batch
-  unrolled = hk.transform(lambda i, t, f: _graphcast(tiny_model, _scan=False)(i, t, f))
-  scanned = hk.transform(lambda i, t, f: _graphcast(tiny_model, _scan=True, **options)(i, t, f))
+  unrolled = hk.transform(lambda i, t, f: _leviathan(tiny_model, _scan=False)(i, t, f))
+  scanned = hk.transform(lambda i, t, f: _leviathan(tiny_model, _scan=True, **options)(i, t, f))
   params = unrolled.init(jax.random.key(0), inputs, targets, forcings)
   assert jax.tree.structure(scanned.init(jax.random.key(0), inputs, targets, forcings)) == jax.tree.structure(params)
 
@@ -140,7 +140,7 @@ def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
   config = dataclasses.replace(tiny_model.model_config, connected_grid_nodes=True)
 
   def predict(connected):
-    return GraphCast(
+    return Leviathan(
       _model_config=config if connected else tiny_model.model_config,
       _task_config=tiny_model.task,
       _grid_lat=tiny_model.lat,
@@ -163,7 +163,7 @@ def test_mesh_nodes_are_embedded_from_their_positions_only(tiny_model):
   """The mesh node embedder sees the 4 position features of the mesh nodes, not zeros for the grid node input channels
   (upstream GraphCast's padding, which changed only the initialization)."""
   inputs, targets, forcings = tiny_model.batch
-  transformed = hk.transform(lambda i, t, f: _graphcast(tiny_model)(i, t, f))
+  transformed = hk.transform(lambda i, t, f: _leviathan(tiny_model)(i, t, f))
   params = transformed.init(jax.random.key(0), inputs, targets, forcings)
   (name,) = [name for name in params if "mesh_node_embedder" in name and name.endswith("linear_0")]
   assert params[name]["w"].shape[0] == 4

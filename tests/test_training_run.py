@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""End-to-end training on CPU: graphcast train on the synthetic standardized store, a tiny model on the icosahedral
+"""End-to-end training on CPU: moby-dick train on the synthetic standardized store, a tiny model on the icosahedral
 multi-mesh, 4 devices in one process, then a restart with --continue.
 
 Training initializes jax.distributed, which must happen before any other JAX call: each run is a subprocess with a
@@ -40,7 +40,7 @@ PRODUCTION_CONFIG = REPOSITORY / "configs" / "training" / "production_run.toml"
 TRAINING_STEPS = 4
 INPUT_VARIABLES = '["thetao", "zos", "deptho", "glorys_mask", "lsm", "year_progress_sin", "year_progress_cos"]'
 
-# Runs graphcast train in a fresh process: jax.distributed with one process on localhost, then the CLI (its own call
+# Runs moby-dick train in a fresh process: jax.distributed with one process on localhost, then the CLI (its own call
 # to jax.distributed.initialize, which needs a cluster to detect, is skipped).
 RUNNER = """
 import socket
@@ -56,7 +56,7 @@ jax.distributed.initialize = lambda *args, **kwargs: None
 
 from mobydick.training import train
 
-train.main(sys.argv[1:], prog_name="graphcast train")
+train.main(sys.argv[1:], prog_name="moby-dick train")
 """
 
 
@@ -112,7 +112,7 @@ def _train(config: pathlib.Path, setup: dict, *options: str) -> subprocess.Compl
     "PYTHONPATH": str(REPOSITORY / "src"),
     "JAX_PLATFORMS": "cpu",
     # No Grain worker processes: windows are read in the training process.
-    "GRAPHCAST_GRAIN_NUM_WORKERS": "0",
+    "MOBYDICK_GRAIN_NUM_WORKERS": "0",
   }
   arguments = [
     str(config),

@@ -14,7 +14,7 @@
 # limitations under the License.
 """Grain helpers for xarray pipelines.
 
-Grain reader and multiprocessing options are runtime settings read from GRAPHCAST_GRAIN_* environment variables (see
+Grain reader and multiprocessing options are runtime settings read from MOBYDICK_GRAIN_* environment variables (see
 `GrainRuntimeConfig`), not from training configuration files.
 
 Importing this module patches Grain's output-spec recording (used by `py_debug_mode` and dataset visualization) so
@@ -34,7 +34,7 @@ from grain.python import DatasetIterator
 from pydantic import NonNegativeInt, PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-GRAIN_ENV_PREFIX = "GRAPHCAST_GRAIN_"
+GRAIN_ENV_PREFIX = "MOBYDICK_GRAIN_"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -50,7 +50,7 @@ class GrainOptions:
 
 
 class GrainRuntimeConfig(BaseSettings):
-  """Grain reader and multiprocessing options, read from GRAPHCAST_GRAIN_* environment variables.
+  """Grain reader and multiprocessing options, read from MOBYDICK_GRAIN_* environment variables.
 
   Grain's iterator state depends on num_workers: checkpoints must be restored with the value they were saved with.
   """

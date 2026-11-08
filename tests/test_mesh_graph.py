@@ -16,7 +16,7 @@
 #
 # The merging tests come from the absltest tests of the original GraphCast code (icosahedral_mesh), ported to
 # pytest and updated for this fork.
-"""Tests for graphcast.mesh_graph (the merging tests come from the legacy icosahedral_mesh tests)."""
+"""Tests for mobydick.mesh_graph (the merging tests come from the legacy icosahedral_mesh tests)."""
 
 import numpy as np
 import pytest

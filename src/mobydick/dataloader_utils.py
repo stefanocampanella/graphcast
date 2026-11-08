@@ -74,7 +74,7 @@ class Grid(NamedTuple):
 
 
 def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
-  """Load the tendency_std written by graphcast compute-tendency-std, with the task levels.
+  """Load the tendency_std written by moby-dick compute-tendency-std, with the task levels.
 
   It is 0 where a series is constant (including outside the masks of the variables): those points are excluded from
   the loss (`get_loss_masks`) and predicted as their input. Missing values are an error.
@@ -86,7 +86,7 @@ def get_tendency_std(configs: TrainingConfig) -> xr.Dataset:
   for name, values in tendency_std.data_vars.items():
     if not np.isfinite(values.values).all() or (values.values < 0).any():
       raise ValueError(
-        f"tendency_std of {name} has missing or negative values: write it with graphcast compute-tendency-std"
+        f"tendency_std of {name} has missing or negative values: write it with moby-dick compute-tendency-std"
       )
   return tendency_std
 
@@ -110,13 +110,13 @@ def get_loss_masks(tendency_std: xr.Dataset, grid: Grid, target_variables: Itera
 
 
 def get_grid(path: str | os.PathLike) -> Grid:
-  """Load the grid from the boolean (lat, lon) mask written by graphcast download-mask."""
+  """Load the grid from the boolean (lat, lon) mask written by moby-dick download-mask."""
   logger.info(f"Loading the grid mask from {path}")
   mask = xr.open_dataarray(path, engine="zarr", chunks=None).load()
   if mask.dtype != bool or set(mask.dims) != {"lat", "lon"}:
     raise ValueError(
       f"Expected a boolean (lat, lon) mask in {path}, found {mask.dtype} {mask.dims}: "
-      "write it with graphcast download-mask"
+      "write it with moby-dick download-mask"
     )
   return Grid(lat=mask["lat"].to_numpy(), lon=mask["lon"].to_numpy(), mask=mask.transpose("lat", "lon").to_numpy())
 
@@ -157,7 +157,7 @@ def get_dataset_stream(
 ) -> DatasetStream:
   """Return the training stream of the standardized anomaly store, opened with the task levels (get_dataset).
 
-  Grain options come from grain_runtime (GRAPHCAST_GRAIN_* environment variables by default), unless
+  Grain options come from grain_runtime (MOBYDICK_GRAIN_* environment variables by default), unless
   grain_dataset.pick_performance_config is set.
   """
   grain_runtime = grain_utils.GrainRuntimeConfig() if grain_runtime is None else grain_runtime

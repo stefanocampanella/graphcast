@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests of the settings of the ocean mesh generator (mesh_config.py), of the shipped mesh configs, and of
-graphcast make-ocean-mesh on a synthetic coastline (a ring at 70°S, meshed with a coarse uniform field)."""
+moby-dick make-ocean-mesh on a synthetic coastline (a ring at 70°S, meshed with a coarse uniform field)."""
 
 import pathlib
 

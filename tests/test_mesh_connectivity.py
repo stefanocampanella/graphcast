@@ -16,7 +16,7 @@
 #
 # Ported from the absltest tests of the original GraphCast code to pytest and rewritten for meshes and
 # grids in Earth-centred coordinates.
-"""Tests for graphcast.mesh_connectivity: grid and mesh in WGS84 Earth-centred coordinates (metres)."""
+"""Tests for mobydick.mesh_connectivity: grid and mesh in WGS84 Earth-centred coordinates (metres)."""
 
 import numpy as np
 import pytest

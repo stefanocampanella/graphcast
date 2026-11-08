@@ -27,7 +27,7 @@ spack:
         - python3-pip
         - python3-gmsh
     format: singularity
-    template: container/graphcast.def
+    template: container/moby-dick.def
     images:
       build: ghcr.io/spack/ubuntu-noble:1.2.2
       final: nvcr.io/nvidia/jax:26.09-py3

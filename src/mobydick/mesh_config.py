@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Validated settings of the mesh generators (graphcast make-ocean-mesh and make-icosahedral-mesh)."""
+"""Validated settings of the mesh generators (moby-dick make-ocean-mesh and make-icosahedral-mesh)."""
 
 import pathlib
 from typing import Annotated, Any, Literal, Self
@@ -135,7 +135,7 @@ FieldConfig = Annotated[
 
 
 class MeshGenerationConfig(ApplicationConfig):
-  """Settings of graphcast make-ocean-mesh: the target mesh size is the minimum of the fields."""
+  """Settings of moby-dick make-ocean-mesh: the target mesh size is the minimum of the fields."""
 
   description: str = ""
   license: str = ""
@@ -159,7 +159,7 @@ class MeshGenerationConfig(ApplicationConfig):
 
 
 class IcosahedralMeshConfig(ApplicationConfig):
-  """Settings of graphcast make-icosahedral-mesh: the icosahedral multi-mesh refined `splits` times."""
+  """Settings of moby-dick make-icosahedral-mesh: the icosahedral multi-mesh refined `splits` times."""
 
   description: str = ""
   license: str = ""

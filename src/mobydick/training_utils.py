@@ -158,7 +158,7 @@ def get_predictor(
   loss_masks: xr.Dataset,
   diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
-  """Wrap GraphCast, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
+  """Wrap the model of `[model] architecture`, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
   diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) -> Bfloat16Cast."""
   # Deeper one-step predictor, the model named by its settings.
   predictor = MODELS[model_config.architecture].predictor(
@@ -175,7 +175,7 @@ def get_predictor(
     _edge_chunk_size=configs.policy.edge_chunk_size,
   )
 
-  # Modify inputs/outputs to `graphcast.GraphCast` to handle conversion to from/to float32 to/from BFloat16.
+  # Modify inputs/outputs of the model to handle conversion to from/to float32 to/from BFloat16.
   predictor = Bfloat16Cast(predictor)
 
   # Normalization wraps `casting.Bfloat16Cast`, so the casting to/from BFloat16 happens on normalized values. The

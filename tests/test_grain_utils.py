@@ -26,18 +26,18 @@ from mobydick import grain_utils
 
 
 def test_settings_from_the_environment(monkeypatch):
-  """GRAPHCAST_GRAIN_* variables set the reader and worker settings."""
-  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_WORKERS", "3")
-  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_THREADS", "5")
-  monkeypatch.setenv("GRAPHCAST_GRAIN_ENABLE_PROFILING", "true")
+  """MOBYDICK_GRAIN_* variables set the reader and worker settings."""
+  monkeypatch.setenv("MOBYDICK_GRAIN_NUM_WORKERS", "3")
+  monkeypatch.setenv("MOBYDICK_GRAIN_NUM_THREADS", "5")
+  monkeypatch.setenv("MOBYDICK_GRAIN_ENABLE_PROFILING", "true")
   runtime = grain_utils.GrainRuntimeConfig()
   assert (runtime.num_workers, runtime.num_threads, runtime.enable_profiling) == (3, 5, True)
 
 
 def test_unknown_variables_are_rejected(monkeypatch):
   """A misspelled variable is an error naming the expected ones, not silently ignored."""
-  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_WORKER", "3")
-  with pytest.raises(pydantic.ValidationError, match="GRAPHCAST_GRAIN_NUM_WORKER.*expected any of"):
+  monkeypatch.setenv("MOBYDICK_GRAIN_NUM_WORKER", "3")
+  with pytest.raises(pydantic.ValidationError, match="MOBYDICK_GRAIN_NUM_WORKER.*expected any of"):
     grain_utils.GrainRuntimeConfig()
 
 

@@ -109,7 +109,7 @@ class MeshGraph:
   node_tags: np.ndarray | None = None
 
 
-# FIXME: graphcast.checkpoint isn't able to deserialize a union with anything except None.
+# FIXME: mobydick.checkpoint isn't able to deserialize a union with anything except None.
 #  However, it would be nice to have a way to store scalar mesh_size for backward compatibility with GraphCast for weather.
 @chex.dataclass(frozen=True, eq=True)
 class MeshData:

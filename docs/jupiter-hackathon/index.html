@@ -1045,28 +1045,28 @@
     <!-- Material -->
     <section data-background-image="assets/slide-bg.jpg" data-background-size="cover">
       <h2>Material from the hackathon</h2>
-      <p class="tiny muted">All paths are in <a href="https://github.com/stefanocampanella/graphcast/tree/develop@esiwace3_hackathon">github.com/stefanocampanella/graphcast</a>, branch <code>develop@esiwace3_hackathon</code>.</p>
+      <p class="tiny muted">All paths are in <a href="https://github.com/stefanocampanella/moby-dick/tree/develop@esiwace3_hackathon">github.com/stefanocampanella/moby-dick</a>, branch <code>develop@esiwace3_hackathon</code>.</p>
       <div class="cols">
         <div>
           <h3>Reproducible training runs</h3>
           <ul class="small">
-            <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/clusters/jupiter/.env"><code>clusters/jupiter/.env</code></a>: datasets, Grain, zarr and XLA settings</li>
-            <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/clusters/jupiter/slurm/train.slurm"><code>clusters/jupiter/slurm/train.slurm</code></a> and
-              <a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/scripts/train.sh"><code>scripts/train.sh</code></a>: launcher and Apptainer runner</li>
-            <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/configs/training/production_run.toml"><code>configs/training/production_run.toml</code></a>,
-              <a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/configs/training/demo_5000.toml"><code>demo_5000.toml</code></a>: training configurations</li>
-            <li><a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/spack/templates/container/graphcast.def"><code>spack/templates/container/graphcast.def</code></a>: Apptainer image (NVIDIA JAX)</li>
+            <li><a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/clusters/jupiter/.env"><code>clusters/jupiter/.env</code></a>: datasets, Grain, zarr and XLA settings</li>
+            <li><a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/clusters/jupiter/slurm/train.slurm"><code>clusters/jupiter/slurm/train.slurm</code></a> and
+              <a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/scripts/train.sh"><code>scripts/train.sh</code></a>: launcher and Apptainer runner</li>
+            <li><a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/configs/training/production_run.toml"><code>configs/training/production_run.toml</code></a>,
+              <a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/configs/training/demo_5000.toml"><code>demo_5000.toml</code></a>: training configurations</li>
+            <li><a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/spack/templates/container/graphcast.def"><code>spack/templates/container/graphcast.def</code></a>: Apptainer image (NVIDIA JAX)</li>
             <li>Demo run: <a href="results/demo_5000_32gpu_v3/scalars.csv"><code>scalars.csv</code></a> (all TensorBoard scalars, 5000 steps);
               first demo (22 Oct, unrolled): <a href="results/demo_5000_32gpu/scalars.csv"><code>scalars.csv</code></a></li>
             <li>Mesh study: <a href="results/mesh_study/REPORT.md"><code>REPORT.md</code></a>,
               <a href="results/mesh_study/summary.csv"><code>summary.csv</code></a> (9 meshes),
-              <a href="https://github.com/stefanocampanella/graphcast/blob/develop@esiwace3_hackathon/clusters/jupiter/slurm/mesh_study.sh"><code>mesh_study.sh</code></a></li>
+              <a href="https://github.com/stefanocampanella/moby-dick/blob/develop@esiwace3_hackathon/clusters/jupiter/slurm/mesh_study.sh"><code>mesh_study.sh</code></a></li>
           </ul>
         </div>
         <div>
           <h3>Benchmark</h3>
           <ul class="small">
-            <li><a href="https://github.com/stefanocampanella/graphcast/tree/develop@esiwace3_hackathon/clusters/jupiter/benchmarks/jube"><code>clusters/jupiter/benchmarks/jube/</code></a>:
+            <li><a href="https://github.com/stefanocampanella/moby-dick/tree/develop@esiwace3_hackathon/clusters/jupiter/benchmarks/jube"><code>clusters/jupiter/benchmarks/jube/</code></a>:
               <code>graphcast_training.xml</code>, <code>train_bench.sbatch.in</code>, <code>run_final.sh</code>, <code>run_memfit.sh</code>, <code>summarize.py</code>,
               <code>usage_sampler.sh</code>, <code>usage_summary.py</code>, <code>README.md</code></li>
             <li>Final run: <a href="results/benchmark-2026-10-25/REPORT.md"><code>REPORT.md</code></a>,
@@ -1075,9 +1075,9 @@
               22 Oct: <a href="results/benchmark-2026-10-22/REPORT.md"><code>REPORT.md</code></a></li>
             <li>GPU memory fit: <a href="results/memfit-2026-10-25/REPORT.md"><code>REPORT.md</code></a>,
               <a href="results/memfit-2026-10-25/summary_jobs.csv"><code>summary_jobs.csv</code></a> (350 jobs)</li>
-            <li>Code fixes: <a href="https://github.com/stefanocampanella/graphcast/compare/de10cec...develop@esiwace3_hackathon">commits <code>de10cec…</code></a>
+            <li>Code fixes: <a href="https://github.com/stefanocampanella/moby-dick/compare/de10cec...develop@esiwace3_hackathon">commits <code>de10cec…</code></a>
               (meshes, dtypes, message passing, checkpoints, test loss, remat and scan)</li>
-            <li>These slides: <a href="https://github.com/stefanocampanella/graphcast/tree/develop@esiwace3_hackathon/docs/jupiter-hackathon"><code>docs/jupiter-hackathon/</code></a></li>
+            <li>These slides: <a href="https://github.com/stefanocampanella/moby-dick/tree/develop@esiwace3_hackathon/docs/jupiter-hackathon"><code>docs/jupiter-hackathon/</code></a></li>
           </ul>
         </div>
       </div>

@@ -55,7 +55,7 @@ def open_standardized_anomalies(
   io_threads: int = 16,
   start_date: str | None = None,
 ) -> xr.Dataset:
-  """Open a standardized anomaly store (written by graphcast download) lazily, with TensorStore.
+  """Open a standardized anomaly store (written by moby-dick download) lazily, with TensorStore.
 
   Only the selected levels and the timesteps from start_date to end_date (both included) are kept.
   """

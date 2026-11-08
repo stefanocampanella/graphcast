@@ -1,6 +1,6 @@
-# GraphCast training benchmark (JUBE)
+# Moby-Dick training benchmark (JUBE)
 
-Benchmarks GraphCast training on JUPITER at all 50 depth levels (`configs/training/production_run.toml`) while varying how the
+Benchmarks Moby-Dick training on JUPITER at all 50 depth levels (`configs/training/production_run.toml`) while varying how the
 data is stored and read: layout of the standardized anomaly store (zarr v2, sharded zarr v3, SquashFS images of each),
 Grain workers and threads, TensorStore I/O threads, CPUs per task and node count, and the model size that fits in GPU
 memory. It follows the structure of the
@@ -9,7 +9,7 @@ a self-contained job template filled in by JUBE and submitted with `sbatch`.
 
 | File                        | Purpose                                                                        |
 |-----------------------------|--------------------------------------------------------------------------------|
-| `graphcast_training.xml`    | JUBE benchmark: cases, job and config substitution, analysis and result tables |
+| `training.xml`              | JUBE benchmark: cases, job and config substitution, analysis and result tables |
 | `train_bench.sbatch.in`     | SLURM job template, one job per workpackage                                    |
 | `usage_sampler.sh`          | Samples node memory and GPU usage every 2 s on each node of a job              |
 | `usage_summary.py`          | Summarizes these samples as `BENCH_*` lines in `job.out`                       |
@@ -49,10 +49,10 @@ buffer instead of two), `offload` (`policy.remat_loss = true`: the named activat
 
 ```bash
 # Check what would be submitted, without using any compute time
-uv run jube run graphcast_training.xml --tag loader dryrun --outpath /tmp/jube_dry
+uv run jube run training.xml --tag loader dryrun --outpath /tmp/jube_dry
 
 # Submit
-uv run jube run graphcast_training.xml --tag io_threads cpus scaling   # 16 jobs
+uv run jube run training.xml --tag io_threads cpus scaling   # 16 jobs
 ./run_final.sh            # loader, io_threads, cpus, scaling with long (76 jobs)
 ./run_memfit.sh           # memfit quick: defaults, offloading with 0 workers, edge chunks (150 jobs)
 
@@ -88,7 +88,7 @@ comparable with the current ones. Findings that still guide the sweeps:
 
 ## What is measured
 
-`graphcast train` logs one line per step:
+`moby-dick train` logs one line per step:
 `Step N timings: data D s, compute C s, checkpoint K s, total T s, elapsed E s`.
 The analysis reads rank 0 (`task-0.err`) and reports, over steps 10 and later (after compilation and
 prefetch warm-up):
@@ -137,11 +137,11 @@ These follow from the dataloader investigations (login-node `test_dataloader.py`
   (`save_interval_steps = 1000000`; `production_run.toml` saves every 500 steps). The checkpoint time is still reported
   separately.
 - **Caching**: each workpackage uses a different seed, so that runs do not read samples cached by earlier
-  runs. The jobs read the standardized anomaly stores written by `graphcast download`, all in
+  runs. The jobs read the standardized anomaly stores written by `moby-dick download`, all in
   `$FSCRATCH/graphcast/data/anomalies` so that only the layout differs: `zarr_v2`, the sharded zarr v3 stores
   (8 time x 50 depth) with the chunks of each shard in lexicographic (`zarr_v3_lexi`) or colexicographic
   (`zarr_v3_colexi`) order, and SquashFS images of each (`squashfs_v2`, `squashfs_v3_lexi`, `squashfs_v3_colexi`). The
-  mask (`graphcast download-mask`) and `tendency_std` are small and loaded once, the same for all formats.
+  mask (`moby-dick download-mask`) and `tendency_std` are small and loaded once, the same for all formats.
 - **Concurrent jobs share the file system**: jobs that run while many others read from `/e/scratch` see data
   stalls of seconds on single ranks (in `results/2026-10-22-final-v2`, jobs started after the I/O experiments
   were in full swing took 0.88 instead of 0.47 s per step, with the same median compute). Compare cases that ran
