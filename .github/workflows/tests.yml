@@ -38,6 +38,9 @@ jobs:
 
       - uses: mamba-org/setup-micromamba@v3
         with:
+          # A pinned stable version is downloaded from GitHub releases (mamba-org/micromamba-releases); "latest" comes
+          # from micro.mamba.pm, whose 504 errors failed the runs of 8 Nov 2026.
+          micromamba-version: 2.10.0-0
           environment-name: moby-dick
           # Keep GDAL in sync with spack.yaml. PROJ is not pinned: conda-forge's GDAL 3.13.1 needs PROJ >= 9.8.1, while
           # the image has PROJ 9.7.0 (its pyproj wheel bundles 9.8.1); the next step prints the versions.
