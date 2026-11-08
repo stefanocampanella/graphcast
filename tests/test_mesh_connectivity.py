@@ -146,7 +146,7 @@ def test_masking_index_maps():
   """Indices into the unmasked points map to indices into all points and back. Indices without a counterpart raise,
   or get the default.
 
-  Regression test for a bug fixed in 4e3be30 (Nov 2026): `unmasked_to_masked` looked up the index of a point among the
+  Regression test for a bug fixed in b8286ea (Nov 2026): `unmasked_to_masked` looked up the index of a point among the
   unmasked ones with `if index := inverse_map.get(n):`, a truth test, so the first unmasked point, whose index is 0,
   was taken as missing: it raised "no index of masked array", or got the default (-1) with `raise_error=False`. Only
   `masked_to_unmasked` is used to build the encoder and decoder edges, so trained models were not affected."""
