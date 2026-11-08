@@ -41,7 +41,6 @@ are recorded in the git history:
   tests/test_xarray_jax.py
   tests/test_xarray_tree.py
   notebooks/graphcast_demo.ipynb
-  README.md
 
 spack/templates/container/moby-dick.def is a modified copy of Spack's Singularity container template, released
 under the Apache License, Version 2.0 or the MIT license, at your option, and distributed here under the former:

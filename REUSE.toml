@@ -8,9 +8,9 @@ path = ["**.md", "**.html", "**.csv", "**.ipynb", "**/uv.lock", "**/.nojekyll", 
 SPDX-FileCopyrightText = "2024-2026 Stefano Campanella"
 SPDX-License-Identifier = "Apache-2.0"
 
-# Modified copies of GraphCast's README and demo notebook.
+# Modified copy of GraphCast's demo notebook.
 [[annotations]]
-path = ["README.md", "notebooks/graphcast_demo.ipynb"]
+path = "notebooks/graphcast_demo.ipynb"
 precedence = "override"
 SPDX-FileCopyrightText = ["2023 DeepMind Technologies Limited", "2024-2026 Stefano Campanella"]
 SPDX-License-Identifier = "Apache-2.0"
