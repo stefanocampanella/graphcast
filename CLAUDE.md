@@ -4,19 +4,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A fork of DeepMind's GraphCast adapted to **global ocean circulation** (ARCO-OCEAN / GLORYS data, depth levels
-instead of pressure levels). The model runs on unstructured triangular ocean meshes (seamsh/gmsh `.msh` files),
-not the icosahedral multi-mesh. The main target system is JUPITER (JSC, GH200 GPUs, Slurm partition `booster`).
-The top-level README is mostly the upstream GraphCast README and is out of date; `TODO.md` lists open work.
+**Moby-Dick** (repository `moby-dick`): deep-learning models of the **global ocean circulation** (ARCO-OCEAN /
+GLORYS data, depth levels instead of pressure levels). It started as a fork of DeepMind's GraphCast and was renamed on
+8 Nov 2026 (legal reasons, Apache-2.0 §6, and divergence from upstream). Names: distribution and command `moby-dick`,
+umbrella import package `mobydick` (shared code), one subpackage per model (first: `mobydick.leviathan`, class
+`Leviathan`, Haiku module `leviathan`), environment variables `MOBYDICK_*` for all models (model-specific ones
+`MOBYDICK_<MODEL>_*`), image `moby-dick.sif`. GraphCast stays named where the text describes the origin (headers,
+NOTICE, comparisons with upstream); data paths and the checkout directory still say `graphcast`.
+Leviathan runs on unstructured triangular ocean meshes (seamsh/gmsh `.msh` files), not the icosahedral multi-mesh. The main target system is JUPITER (JSC, GH200 GPUs, Slurm partition `booster`).
+The README describes the project (rewritten on 8 Nov 2026); `TODO.md` lists open work.
 
 ## Environment and commands
 
-Code runs inside an Apptainer image (`graphcast.sif`, built from `spack/templates/container/graphcast.def`:
+Code runs inside an Apptainer image (`moby-dick.sif`, built from `spack/templates/container/moby-dick.def`:
 NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). `clusters/jupiter/.env` sets
 `APPTAINERENV_PYTHONPATH` to `src/`, so source edits take effect without rebuilding the image. Python is 3.12.
 
-- CLI (`src/graphcast/__init__.py`, click): `graphcast train CONFIG.toml OUTPUT TRAIN_CKPT`,
-  `graphcast make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `graphcast compute-grid-basis MESH MASK OUTPUT.npz`
+- CLI (`src/mobydick/__init__.py`, click; every command first prints the banner `src/mobydick/assets/banner.txt` to
+  stderr, on rank 0 only, `MOBYDICK_NO_BANNER=1` to silence it; `python -m mobydick` works too): `moby-dick train CONFIG.toml OUTPUT TRAIN_CKPT`,
+  `moby-dick make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `moby-dick compute-grid-basis MESH MASK OUTPUT.npz`
   (draft: linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the
   decoder faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of
   another mesh for the planned interpolating decoder and hierarchical meshes; on a flat mesh it equals scipy's
@@ -25,7 +31,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   11.8 / 13.7 / 18.6 s and ~2 GiB peak host memory for 120 / 50 / 35 / 25 km meshes at the 693,039 ocean points, as
   long as building the decoder edges at startup; 50 → 25 km mesh vertices 15.3 s, 1.7 GiB; the matrix is 18.5 MiB.
   So the basis can be computed when the model is built instead of saved),
-  `graphcast make-icosahedral-mesh CONFIG.toml OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
+  `moby-dick make-icosahedral-mesh CONFIG.toml OUTPUT.msh` (experimental: the icosahedral multi-mesh on the WGS84
   ellipsoid, for comparison with the ocean meshes; settings `splits`, `description`, `license` in
   `configs/mesh/icosahedral_*.toml`, `IcosahedralMeshConfig`; `mesh.path` of a training config can point to the
   output; `icosahedral_6.toml`, GraphCast's 6 refinements, gives 40,962 vertices, 327,660 directed edges, finest
@@ -50,7 +56,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 - Mesh study: `clusters/jupiter/slurm/mesh_study.sh [--account A] STUDY SEEDS MESH:MSG_STEPS[:EDGE_CHUNK_SIZE[:HH:MM:SS]]
   ...` (demo_5000 on 8 nodes per case and seed, validation loss on held-out windows; jobs use the checkout's `src`).
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
-  `uv run jube run graphcast_training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
+  `uv run jube run training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
   Everything runs at all 50 levels (`production_run.toml`, coarse mesh × 8 steps unless a tag says otherwise); cases
   are `format:workers:threads:io_threads:nodes:cpus` (baseline `zarr_v2:4:2:16:1:72`), sweeps `loader` (6 layouts × 0x4 to 8x2), `io_threads`, `cpus`, `scaling`, `memfit`; jobs
   use the `src` of the checkout JUBE runs from. `run_final.sh` (loader, io_threads, cpus, scaling, `long`) /
@@ -74,7 +80,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run graphcast.sif python -m pytest` from the repository root (441 tests, ~3.5 min on a login node, CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (452 tests, ~3.5 min on a login node, CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
@@ -84,10 +90,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 - Lint, format, types and licensing are pre-commit hooks (`.pre-commit-config.yaml`): `ruff check --fix` and `ruff
   format` (**2-space indentation**, 120-column lines; the whole codebase was formatted in b210470, listed in
   `.git-blame-ignore-revs`: `git config blame.ignoreRevsFile .git-blame-ignore-revs`), ShellCheck, `reuse lint` and
-  ty. Run them in the image: `apptainer exec graphcast.sif pre-commit run --all-files` (the first run downloads the
+  ty. Run them in the image: `apptainer exec moby-dick.sif pre-commit run --all-files` (the first run downloads the
   hook environments: login nodes only), or `pre-commit install` to run them on each commit. The ty hook uses the
   environment's Python and adds the image's editable jax, jaxlib and flax (`/opt/jax`, `/opt/jaxlibs/jaxlib`,
-  `/opt/flax`) as extra search paths; by hand: `apptainer exec graphcast.sif ty check --python /opt/software/venv
+  `/opt/flax`) as extra search paths; by hand: `apptainer exec moby-dick.sif ty check --python /opt/software/venv
   --extra-search-path /opt/jax --extra-search-path /opt/jaxlibs/jaxlib --extra-search-path /opt/flax src tests`.
   `src` and `tests` pass; where ty or the stubs cannot follow the code, use a targeted `# ty: ignore[rule]` with a
   reason. Notebooks are excluded from ruff.
@@ -98,12 +104,16 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   PROJ 9.8.1, from the wheel); the CI log prints the same four versions. Pushing workflow files needs a GitHub token
   with the Workflows permission (fine-grained) or `workflow` scope.
 - Image rebuild (needed after dependency changes; `src/` comes from `APPTAINERENV_PYTHONPATH`):
-  `spack env create --dir spack-env spack.yaml`, `spack -e spack-env containerize > graphcast.def`, then
-  `env APPTAINER_CACHEDIR=$FSCRATCH/.apptainer apptainer build graphcast.sif graphcast.def`. Build to a separate file
-  first and ask before replacing the shared `graphcast.sif`: running jobs use it. Run `containerize` from the checkout
+  `spack env create --dir spack-env spack.yaml`, `spack -e spack-env containerize > moby-dick.def`, then
+  `env APPTAINER_CACHEDIR=$FSCRATCH/.apptainer apptainer build moby-dick.sif moby-dick.def`. Build to a separate file
+  first and ask before replacing the shared `moby-dick.sif`: running jobs use it. Run `containerize` from the checkout
   whose `pyproject.toml` and `src/` the image should contain (a worktree works with
-  `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`); the build takes ~6 min on a login node. Previous
-  images are kept as `graphcast-YYYY-MM-DD.sif`. Past commands are in `~/.bash_eternal_history`.
+  `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`, as long as that environment was created from the
+  current `spack.yaml`: it keeps a copy, and the template is `container/moby-dick.def` since the rename); the build
+  takes ~6 min on a login node. Previous images are kept as `moby-dick-YYYY-MM-DD.sif` (before the rename
+  `graphcast-YYYY-MM-DD.sif`, which install the package as `graphcast`: with sources from `PYTHONPATH` they need
+  `python -m mobydick`, and their `graphcast` command runs the old installed code). Past commands are in
+  `~/.bash_eternal_history`.
 
 ### CUDA forward compatibility on JUPITER
 
@@ -129,18 +139,18 @@ or container runtimes) the outcome differs and has to be checked again. The imag
 
 ## Standardized anomaly stores
 
-`graphcast download` (`downloader.py`, settings in `download_config.py`) standardizes the raw dataset once
+`moby-dick download` (`downloader.py`, settings in `download_config.py`) standardizes the raw dataset once
 (climatology alignment, filling, clipping, z-scores, min-max static fields, float32) and writes one local store;
 training reads it with `dataloader.StandardizedAnomalySource`, which adds the batch dimension, the `datetime`
 coordinate and relative time (the previous `ARCOTimeseriesSource` did all of this per sample from the raw dataset,
-climatology and anomaly_std; it was removed on 28 Oct 2026). `graphcast download-mask` writes the training mask: the
+climatology and anomaly_std; it was removed on 28 Oct 2026). `moby-dick download-mask` writes the training mask: the
 mask variable (`name`, default `glorys_mask`) at one depth position (`level`), as a single boolean `(lat, lon)`
 DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_utils.get_grid`: lat, lon, mask).
 
 - `tendency_std` (residual normalization in training) is the zero-mean standard deviation of the one-step differences
   of the standardized anomalies over the whole series, per variable and point (no time dimension). The copy in use,
   `/e/scratch/training2647/graphcast_data/zarr_v2/tendency_std` (also `s3://ogs-arco-ocean/tendency_std/res=0p25`,
-  to be deleted there), was computed with arco-make's `diff_std` step, which is expensive: keep it. `graphcast
+  to be deleted there), was computed with arco-make's `diff_std` step, which is expensive: keep it. `moby-dick
   compute-tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml` (`downloader.tendency_std`,
   `TendencyStdConfig`; `download.sh`/`download.slurm --tendency-std`) recomputes it from a standardized store,
   in float64, with Dask chunks of 256 days of one depth level. A std of 0 is written as NaN (`zero_as_missing`);
@@ -242,7 +252,7 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   node with 16 I/O threads.
 
 - Entry points: `scripts/download.sh` is portable (inherited environment, `APPTAINER_IMAGE` defaulting to
-  `PROJECT_DIR/graphcast.sif`); `clusters/jupiter/slurm/download.slurm` sources `clusters/jupiter/.env` (or
+  `PROJECT_DIR/moby-dick.sif`); `clusters/jupiter/slurm/download.slurm` sources `clusters/jupiter/.env` (or
   `--env-file`) and runs it. Paths are CLI arguments; the TOML holds settings only (Zarr format, v3 shard sizes,
   order of chunks within shards, Blosc, `num_workers` Dask threads, `io_threads` TensorStore concurrency).
 - **Permanent copies** (3 Nov 2026), in `$PROJECT/data` (`/e/project1/e-dev-2026d09-119/data`; provenance and
@@ -363,8 +373,8 @@ Preliminary (27 Oct 2026, login node with a 20-core quota, short runs, throwaway
 **Configuration.** Training is driven by a TOML file (`configs/training/production_run.toml`, the best configuration:
 50 km mesh × 16 message passing steps, 40,000 steps, validation; `demo_5000.toml` is a
 5000-step demo on 8 nodes) validated by pydantic models in `training_config.py` (`TrainingConfig` with sections
-task, model, mesh, mask, dataset, grain_dataset, normalization, policy, optimizer, checkpoints, …). Paths in the
-TOML are container paths (`/data/...`). Grain worker/buffer settings come from `GRAPHCAST_GRAIN_*` environment
+task, model (the model's own settings, e.g. `leviathan.config.LeviathanConfig`, selected by `architecture`), mesh, mask, dataset, grain_dataset, normalization, policy, optimizer, checkpoints, …). Paths in the
+TOML are container paths (`/data/...`). Grain worker/buffer settings come from `MOBYDICK_GRAIN_*` environment
 variables (`grain_utils.GrainRuntimeConfig`), not the TOML; Grain iterator checkpoints depend on the worker count.
 Variables (29 Oct 2026): targets `zos`, `thetao`, `so`, `uo`, `vo` and sea ice (`siconc`, `sithick`, `usi`, `vsi`),
 which are also inputs; static inputs `glorys_deptho`, `glorys_mask`, `glofas_mask`, `uparea`, `z`, `lsm` (no time
@@ -396,7 +406,7 @@ log) predicts GPU OOM before training starts.
 - **Preemption:** Slurm sends SIGTERM 120 s before the limit (`train.slurm`, `--signal=TERM@120`; KillWait is 30 s).
   JAX's preemption service catches it, all processes agree on a sync step (`reached_preemption`), the loop saves,
   waits for the commit and exits with status 75 without saving the model: resume with `--continue` (same
-  `GRAPHCAST_GRAIN_NUM_WORKERS`). Grain workers ignore SIGTERM (`dataloader_utils.ignore_sigterm`), and the loop closes
+  `MOBYDICK_GRAIN_NUM_WORKERS`). Grain workers ignore SIGTERM (`dataloader_utils.ignore_sigterm`), and the loop closes
   the iterator in a `finally` to stop them (Python's exit would send them SIGTERM and wait forever).
 - **Orbax:** the per-process mesh workaround for Orbax issue 2545 was removed (fixed in the image's Orbax 0.12.4).
   A save copies one replica of each replicated array to the host (split over the GPUs by replica-parallel saving),
@@ -423,14 +433,14 @@ log) predicts GPU OOM before training starts.
 **Predictor stack** (`training_utils.get_predictor`), outermost first:
 `Mask` (`mask.py`, per-variable loss masks) → `OutputNormalization` (`normalization.py`, residuals / tendency_std) →
 [`InputNormalization`, only with input statistics; the standardized store needs none] → `Bfloat16Cast` (`casting.py`)
-→ `GraphCast` (`model.py`). Training is one-step; `autoregressive.py` / `rollout.py` handle multi-step.
+→ the model of `[model] architecture` (`models.MODELS`; `Leviathan`, `leviathan/model.py`). Training is one-step; `autoregressive.py` / `rollout.py` handle multi-step.
 
-**GraphCast model** (`model.py`): grid ↔ mesh connectivity comes from `mesh_connectivity.py` (encoder edges by
+**Leviathan model** (`leviathan/model.py`, settings `leviathan/config.py`): grid ↔ mesh connectivity comes from `mesh_connectivity.py` (encoder edges by
 radius query, decoder edges by containing triangle, both restricted by the ocean mask). With
 `model.connected_grid_nodes` only grid points that are encoder senders or decoder receivers become grid nodes;
 the decoder writes back only ocean (unmasked) points. Three `DeepTypedGraphNet`s (`deep_typed_graph_net.py`,
 built from `typed_graph_net.py` blocks on `typed_graph.TypedGraph`) form encoder (grid2mesh), processor
-(mesh_gnn, `gnn_msg_steps` steps) and decoder (mesh2grid). Feature construction is in `model_utils.py`;
+(mesh_gnn, `gnn_msg_steps` steps) and decoder (mesh2grid). Feature construction is in `leviathan/model_utils.py`;
 geodesic edge features use `gis_utils.py`.
 
 **Memory controls** (`[policy]`):
@@ -448,7 +458,7 @@ geodesic edge features use `gis_utils.py`.
 
 **Data** (`dataloader.py`, `dataloader_utils.py`, `grain_utils.py`, `data_utils.py`, `xarray_jax.py`): windows of
 the standardized anomaly store (zarr or SquashFS, read with xarray-tensorstore) fed through Grain multiprocessing
-workers; residuals are normalized with `tendency_std`, and the boolean surface mask comes from `graphcast
+workers; residuals are normalized with `tendency_std`, and the boolean surface mask comes from `moby-dick
 download-mask`. With the previous dataloader (zarr-python, standardizing per sample), host memory limited Grain to
 about 2 workers at all 50 depth levels. With the new one (29 Oct 2026) every setting from 0 x 4 to 4 x 2 keeps the
 GPUs busy at 50 levels and 8 x 2 runs out of host memory; the `.env` default is 1 worker x 2 threads.
@@ -497,11 +507,11 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
     covered by `REUSE.toml`: add a pattern there for new kinds of files.
   - Files with code from GraphCast also keep `SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited` and a
     sentence saying they were modified (Apache §4(b)), and are listed in `NOTICE` (§4(d)): update it when code from
-    GraphCast is copied into another file. `spack/templates/container/graphcast.def` is Spack's Singularity template
+    GraphCast is copied into another file. `spack/templates/container/moby-dick.def` is Spack's Singularity template
     (Apache-2.0 OR MIT), modified.
-  - The license grants no rights to DeepMind's, Google's or GraphCast's names (§6); the project will be renamed.
+  - The license grants no rights to DeepMind's, Google's or GraphCast's names (§6), hence the rename to Moby-Dick.
 <!-- REUSE-IgnoreEnd -->
-- Do not commit `graphcast.sif`, `graphcast.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
+- Do not commit `moby-dick.sif`, `moby-dick.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
 - Development branch: `develop` (`develop@esiwace3_hackathon` until Nov 2026).
 - Slurm accounts (JUPITER booster): `training2647` for small runs (tests, short benchmarks) until it ends on

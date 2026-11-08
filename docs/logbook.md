@@ -1244,3 +1244,32 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Removed:** the `data/geometry/uniform_coarse.msh` and `uniform_fine.msh` symlinks (nothing on `develop` uses the
   old names), the worktree's test images `graphcast-g4.sif` and `graphcast-new.sif` (23 GB), and the session's
   claude-work directory `b0a574fd-35c0-4f21-bc1c-92264af27375` (1.4 GB: scripts and logs of the experiments above).
+
+## 2026-11-08 10:20: rename to Moby-Dick (PR `feature/rename-moby-dick`)
+
+- **Request:** rename the project (legal reasons, Apache-2.0 §6, and divergence from GraphCast); plan first, with the
+  points where the rename could break things, a README describing the current project, one banner for all commands
+  stored as an asset, and the operations left to the maintainer. Session directory
+  `$PROJECT/claude-work/14b6a8df-6a12-47e1-9ce4-a3eab2b94fd5`.
+- **Names (decided by the maintainer):** project Moby-Dick, repository `moby-dick`, command group `moby-dick`,
+  environment prefix `MOBYDICK_` for all models. Derived: distribution (PyPI) `moby-dick` (free on PyPI on 8 Nov
+  2026, as is `mobydick`; `leviathan` is taken), umbrella import package `mobydick`, first model `mobydick.leviathan`
+  (class `Leviathan`, Haiku module `leviathan`), image `moby-dick.sif`. The prefix follows the package that reads the
+  variables (as `SKLEARN_*` for scikit-learn); a single token avoids the ambiguous `MOBY_DICK_GRAIN_NUM_WORKERS`.
+- **Several models:** as in `google-deepmind/weathernext` (the `upstream` remote: one `weathernext` package, shared
+  `utils/`, one subpackage per model), shared code stays flat in `mobydick`, the model moves to `mobydick.leviathan`.
+  `TaskConfig` moved to `mobydick.task`; `[model]` is `leviathan.config.LeviathanConfig` with `architecture =
+  "leviathan"`; `mobydick.models.MODELS` gives the predictor, frozen settings and saved-model type to
+  `get_predictor`, `get_model_config` and `save_model`. Grouping the shared modules into subpackages is left for later
+  (or never).
+- **Commits:** the move (git mv and imports only, in `.git-blame-ignore-revs`); the model hooks; the renames (CLI,
+  `MOBYDICK_GRAIN_*`, class and Haiku name, image, spack template `moby-dick.def`, JUBE `training.xml`, configs,
+  NOTICE, CI); the banner (`src/mobydick/assets/banner.txt`, package data, stderr, rank 0 only,
+  `MOBYDICK_NO_BANNER`); README and CONTRIBUTING (Google's CLA boilerplate) rewritten, README no longer listed as a
+  modified copy of GraphCast's.
+- **Kept:** GraphCast where it names the origin (DeepMind headers, NOTICE, comparisons with upstream, the paper,
+  `notebooks/graphcast_demo.ipynb`), the seamsh fork's `graphcast` branch, data paths and the checkout directory, and
+  historical documents (this logbook, the hackathon slides and results, the ARCO-OCEAN findings; only the slides'
+  repository links changed).
+- **Breaks:** checkpoints and saved models from before (parameters under `graphcast/~/`), `GRAPHCAST_GRAIN_*`
+  (silently ignored), images built before (they install `graphcast`; use `python -m mobydick` with them).
