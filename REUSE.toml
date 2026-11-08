@@ -2,9 +2,9 @@
 # Source files have their own headers; check everything with `reuse lint`.
 version = 1
 
-# Documentation, notebooks, results and generated or empty files.
+# Documentation, notebooks, results, generated or empty files, and the text banner of the command line.
 [[annotations]]
-path = ["**.md", "**.html", "**.csv", "**.ipynb", "**/uv.lock", "**/.nojekyll", "NOTICE"]
+path = ["**.md", "**.html", "**.csv", "**.ipynb", "**/uv.lock", "**/.nojekyll", "NOTICE", "src/mobydick/assets/banner.txt"]
 SPDX-FileCopyrightText = "2024-2026 Stefano Campanella"
 SPDX-License-Identifier = "Apache-2.0"
 

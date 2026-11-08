@@ -15,13 +15,22 @@
 import click
 from absl import flags
 
+from mobydick.banner import print_banner
 from mobydick.basis import compute_grid_basis_command
 from mobydick.downloader import compute_tendency_std, download, download_mask
 from mobydick.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
 from mobydick.training import train
 
 
-@click.group()
+class BannerGroup(click.Group):
+  """A command group that prints the banner before anything else: every subcommand, --help and usage errors."""
+
+  def main(self, *args, **kwargs):
+    print_banner()
+    return super().main(*args, **kwargs)
+
+
+@click.group(cls=BannerGroup)
 @click.option(
   "--grain-worker-profiling/--grain-no-worker-profiling",
   default=False,
@@ -45,6 +54,7 @@ def cli(
   grain_traceback_filtering: str,
   grain_debug_mode: bool,
 ):
+  """Moby-Dick: data preparation, meshes and training of deep-learning ocean circulation models."""
   # Grain reads absl flags, which raise if accessed before parsing (normally done by absl.app.run).
   flags.FLAGS.mark_as_parsed()
   flags.FLAGS.grain_enable_multiprocess_worker_profiling = grain_worker_profiling
