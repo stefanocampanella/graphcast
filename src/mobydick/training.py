@@ -31,7 +31,7 @@ from jax.sharding import NamedSharding
 from jax.sharding import PartitionSpec as P
 from pydantic import ValidationError
 
-from mobydick import cli_utils, dataloader_utils, orbax_utils, xarray_jax
+from mobydick import cli_utils, dataloader_utils, graph_statistics, orbax_utils, xarray_jax
 from mobydick import training_utils as trn_utils
 from mobydick.grain_utils import GRAIN_ENV_PREFIX, GrainRuntimeConfig
 from mobydick.training_config import TrainingConfig
@@ -138,6 +138,16 @@ def train(
   mesh_data = trn_utils.get_mesh(configs)
   grid = dataloader_utils.get_grid(configs.mask.path)
   grid_lat, grid_lon, grid_mask = grid
+  if configs.mesh.log_statistics and jax.process_index() == 0:
+    graph_statistics.log_summary(
+      graph_statistics.compute(
+        mesh_data,
+        grid,
+        graph_statistics.GraphStatisticsConfig(
+          radius_query_fraction_edge_length=configs.model.radius_query_fraction_edge_length, networkx=False
+        ),
+      )
+    )
   dataset = dataloader_utils.get_dataset(configs)
   task_config = dataloader_utils.get_task_config(configs, dataset)
   tendency_std = dataloader_utils.get_tendency_std(configs)

@@ -111,6 +111,11 @@ class MeshConfig(ApplicationConfig):
   path: str
   mesh_size_tag_name: str = "MeshSize"
   step: NonNegativeInt = Field(default=0, description="Mesh-size tag timestep")
+  log_statistics: bool = Field(
+    default=False,
+    description="Log statistics of the encoder, processor and decoder graphs at startup (process 0; without the "
+    "networkx metrics, see moby-dick graph-statistics)",
+  )
 
 
 class SourceConfig(ApplicationConfig):

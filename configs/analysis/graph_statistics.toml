@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+# Settings of moby-dick graph-statistics (mobydick.graph_statistics.GraphStatisticsConfig).
+# Encoder radius as a fraction of the mesh size: keep equal to model.radius_query_fraction_edge_length.
+radius_query_fraction_edge_length = 0.6
+# Path, clustering and centrality metrics with networkx, from this many sampled nodes (0: all nodes, exact but only
+# feasible for small graphs: betweenness and closeness take one search per node).
+networkx = true
+num_sources = 32
+seed = 0
+length_bin_width_km = 5.0
+quality_bins = 20
+kdtree_workers = 8

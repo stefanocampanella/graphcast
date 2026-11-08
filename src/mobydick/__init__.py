@@ -19,6 +19,7 @@ from mobydick.banner import print_banner
 from mobydick.basis import compute_grid_basis_command
 from mobydick.downloader import compute_tendency_std, download, download_mask
 from mobydick.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
+from mobydick.graph_statistics import graph_statistics_command
 from mobydick.training import train
 
 
@@ -70,6 +71,7 @@ cli.add_command(train)
 cli.add_command(make_ocean_mesh)
 cli.add_command(make_icosahedral_mesh)
 cli.add_command(compute_grid_basis_command)
+cli.add_command(graph_statistics_command)
 cli.add_command(download)
 cli.add_command(download_mask)
 cli.add_command(compute_tendency_std)
