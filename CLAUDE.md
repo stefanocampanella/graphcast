@@ -37,8 +37,17 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   output; `icosahedral_6.toml`, GraphCast's 6 refinements, gives 40,962 vertices, 327,660 directed edges, finest
   edges 110–132 km, 11.6 MB). Its `.msh`
   holds the finest triangles, the edges of all levels as line elements in the `multi_mesh_edges` physical group (line
-  elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. A tiny
-  model runs on it; it has not been trained yet.
+  elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. Trained
+  on 8 Nov 2026 against the ocean meshes (see "Icosahedral multi-mesh vs ocean mesh" below); the file is
+  `data/geometry/icosahedral_6.msh`.
+- Graph statistics: `moby-dick graph-statistics CONFIG.toml MESH MASK OUTPUT.json` (`graph_statistics.py`, settings
+  `configs/analysis/graph_statistics.toml`): for the encoder, processor and decoder edges, built as the model builds
+  them (a test checks they are equal), degrees and geodesic edge lengths; with networkx, density, degree histogram,
+  connectivity, diameter (2-sweep lower bound), average shortest path, clustering, betweenness and closeness on the
+  undirected graph's largest component (`num_sources` sampled nodes, 0 = exact); mesh nodes connected to unmasked grid
+  points and vice versa; triangle quality (aspect ratio, radius ratio, volume-length, angles). 10–12 min and 3–4 GB per
+  mesh on a login node with 32 sources (networkx is pure Python). `[mesh] log_statistics = true` logs the summary at
+  training startup on process 0, without networkx.
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -54,7 +63,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   tendency statistics with `--tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml`. See
   "Standardized anomaly stores" below.
 - Mesh study: `clusters/jupiter/slurm/mesh_study.sh [--account A] STUDY SEEDS MESH:MSG_STEPS[:EDGE_CHUNK_SIZE[:HH:MM:SS]]
-  ...` (demo_5000 on 8 nodes per case and seed, validation loss on held-out windows; jobs use the checkout's `src`).
+  ...` (demo_5000 on 8 nodes per case and seed, validation loss on held-out windows; jobs use the checkout's `src`;
+  MESH is a uniform mesh's size, `GEOMETRY_DIR/uniform_MESH.msh`, or another mesh file's name, `GEOMETRY_DIR/MESH.msh`).
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
   Everything runs at all 50 levels (`production_run.toml`, coarse mesh × 8 steps unless a tag says otherwise); cases
@@ -80,7 +90,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (453 tests, ~3.5 min on a login node, CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (465 tests, ~4 min on a login node, CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
@@ -330,6 +340,22 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
     resolution: sea-ice thickness −28 %, currents −14 % at 40 km × 16.
   - **Value:** at equal cost more steps beat a finer mesh (50 km × 16 beats 40 km × 12).
   - **Next:** 20–24 steps on 50 km and 35 km × 12.
+- Icosahedral multi-mesh vs ocean mesh (8 Nov 2026, `docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08`, detailed
+  version https://claude.ai/artifact/Bm8DGCiTHcJhL7k9AR5Lwg; jobs 2765280–2765287, 78 node-h):
+  - **Setup:** the mesh study's protocol (demo_5000, 2 seeds) on `icosahedral_6` × 16 (GraphCast) and × 8, 50 km × 16
+    and 120 km × 8, baselines rerun with the current code.
+  - **The ocean mesh wins:** validation loss 120 km × 8 0.0838, icosahedral × 8 0.0837, 50 km × 16 0.0752 (−10.2 %),
+    icosahedral × 16 0.0826 (−1.4 %), i.e. 9.8 % worse than 50 km × 16, a gap stable from step 2500.
+  - **Only `zos` gains** (−16.7 % against 50 km × 16, from edges up to 7,076 km: the processor's diameter is 14 hops,
+    against 448 on the 50 km mesh); the other targets are 10–31 % worse (sea-ice thickness +31 %). 23 % of the
+    icosahedral nodes are over land; its 31,371 ocean-connected nodes match the 120 km mesh, which it equals on local
+    fields. 8 → 16 steps gain only 1.3 % on it.
+  - **Cost:** icosahedral × 16 0.78 s per step and 55 GiB, against 1.40 s and 74 GiB.
+  - **Next:** long-range edges on the ocean mesh (hierarchy merged into the 50 km processor); icosahedral M7 for a
+    resolution-matched comparison.
+  - **The baselines are ~8 % better than in the mesh study** (120 km × 8 0.0907 → 0.0838, 50 km × 16 0.0818 → 0.0752;
+    same config and validation windows), most likely from the edge-direction fix of 6 Nov (`0473751`, not ablated):
+    do not compare runs from before 6 Nov with later ones.
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier raw-data images (deleted on 3 Nov 2026) (from
@@ -495,6 +521,12 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - **Descriptions** of all `configs/mesh/*.toml` match their fields (checked on 30 Oct 2026). The `lambrechts*`
   configs take the smaller of a shore-proximity and a bathymetry field; they said "uniform 300 km" before.
   `domain.sampling` in them is ignored (the shore-proximity field has its own).
+- **Coverage of the ocean points** (8 Nov 2026, `moby-dick graph-statistics`): the uniform meshes' domain leaves out the
+  Black Sea, so about 900 ocean points of the training mask (40–47° N, 27–42° E) are decoded from the vertices of the
+  nearest face in the Aegean, up to 1,232 km away, and are never encoder senders. In all, 2,222 (120 km) and 2,342
+  (50 km) ocean points have no encoder edge; the others are coastal points farther from every vertex than the local
+  radius (0.6 × target size). The icosahedral mesh covers every point. To fix: the Black Sea in the domain, or out of
+  the mask.
 
 ## Repository notes
 

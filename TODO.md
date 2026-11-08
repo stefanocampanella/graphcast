@@ -28,7 +28,17 @@
   decoder); the processor costs ~1.2 GiB per step at 50 km, ~2 GiB at 35-40 km (with chunks), 5.6-5.8 GiB on the
   fine mesh. **HIGH PRIORITY**
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
-* Add routines to check graph statistics (number of nodes, edges, degree, etc.). In particular, one should check that all grid nodes are connected to the processor. **HIGH PRIORITY** 
+* Bring the Black Sea into the ocean meshes' domain (or out of the training mask): `moby-dick graph-statistics` (8 Nov
+  2026) found ~900 of its ocean points decoded from Aegean vertices up to 1,232 km away and never encoded; 2,222
+  (120 km) / 2,342 (50 km) ocean points have no encoder edge in all. A per-node encoder radius from the longest
+  adjacent edge would also cover the coastal ones. **HIGH PRIORITY**
+* Long-range edges on the ocean mesh: merge a hierarchy of coarser ocean meshes into the 50 km processor, as the
+  icosahedral multi-mesh does; the multi-mesh improved `zos` by 16.7 % over 50 km × 16 (8 Nov 2026) while losing
+  10-31 % on the other targets for lack of ocean resolution. **HIGH PRIORITY**
+* Icosahedral M7 (163,842 nodes, ~55 km, ~125,000 ocean-connected) × 16 against 50 km × 16, to separate resolution
+  from coastline alignment. (Medium priority)
+* Ablate the edge-direction fix (`0473751`): the baselines improved by ~8 % between the mesh study (Oct 2026) and
+  8 Nov 2026 with the same config. (Medium priority)
 * Check that accumulated variables in ARCO-OCEAN are consistent (e.g. they use the (t-24h, t) convention). **HIGH PRIORITY**
 * Simplify `xarray_jax.py` with the Python array API standard: JAX arrays implement it, so xarray can hold them
   directly, without `JaxArrayWrapper`, `wrap`/`unwrap` or the wrapping in `apply_ufunc` (the custom constructors would
@@ -64,6 +74,11 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
+* Graph statistics (Nov 2026): `moby-dick graph-statistics` (nodes, edges, degrees, connectivity, paths, clustering,
+  centralities, edge lengths, encoder/decoder coverage of the ocean points, triangle quality); `[mesh] log_statistics`
+  logs a summary at training startup.
+* Icosahedral multi-mesh trained against the ocean meshes (Nov 2026): 9.8 % worse than 50 km × 16 at 16 steps, better
+  only for `zos` (`docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08`).
 * PGLE (Nov 2026): no gain. The train step is compiled ahead of time, which automatic PGLE skips; the "Found 0
   instructions" warnings came from one-operation modules. Called through jit, the step gets a full profile but is no
   faster on 1 or 4 nodes (120 km x 8), for ~25 s of startup. See `clusters/jupiter/.env`.

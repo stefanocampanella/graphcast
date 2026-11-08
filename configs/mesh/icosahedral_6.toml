@@ -15,4 +15,7 @@ license = """
   https://creativecommons.org/licenses/by-nc-sa/4.0/.
   """
 
+# Compared with the ocean meshes on 8 Nov 2026 (docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08): with 16 message
+# passing steps the validation loss is 9.8 % above that of the 50 km ocean mesh (sea surface height 16.7 % below, the
+# other targets 10-31 % above), at 0.78 s per step against 1.40 s.
 splits = 6

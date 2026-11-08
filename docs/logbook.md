@@ -1303,3 +1303,35 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   ty fails). Hook versions stay in `.pre-commit-config.yaml`. The split does not help against GitHub release-download
   outages (shellcheck-py and micromamba both download from GitHub releases).
 - If branch protection requires the old `checks` status, it has to be replaced with `lint`, `reuse` and `tests`.
+
+## 2026-11-08 14:45: icosahedral multi-mesh vs ocean mesh (branch `experiment/icosahedral-vs-ocean-mesh`)
+
+- **Request:** an experiment comparing performance and skill of the best ocean mesh setup with GraphCast's icosahedral
+  multi-mesh, long enough for a trend but shorter than a production run (the mesh study's 5000 steps), in a new branch.
+  Session directory `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd`.
+- **Setup:** `mesh_study.sh` accepts mesh files other than the uniform meshes; `data/geometry/icosahedral_6.msh` made
+  with `make-icosahedral-mesh configs/mesh/icosahedral_6.toml`. Cases icosahedral × 16 (GraphCast) and × 8, 50 km × 16
+  (`production_run.toml`) and 120 km × 8 (the mesh study's baseline), seeds 42 and 43, demo_5000 on 8 nodes; jobs
+  2765280–2765287 (`training2647`, 78.2 node-h, all completed). Report:
+  `docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08/REPORT.md`, detailed version
+  https://claude.ai/artifact/Bm8DGCiTHcJhL7k9AR5Lwg.
+- **Results** (validation loss at step 5000, mean of seeds): 120 km × 8 0.08382, icosahedral × 8 0.08371 (−0.1 %),
+  50 km × 16 0.07524 (−10.2 %), icosahedral × 16 0.08263 (−1.4 %): the icosahedral mesh is 9.8 % worse than 50 km at
+  16 steps, a gap stable from step 2500. It wins only `zos` (−16.7 % against 50 km × 16; reach: edges up to 7,076 km,
+  processor diameter 14 hops); the other eight targets are 10–31 % worse. 0.78 s per step and 55 GiB, against 1.40 s and
+  74 GiB.
+- **Graph statistics** (request at 15:30): new module `graph_statistics` and command `moby-dick graph-statistics CONFIG
+  MESH MASK OUTPUT.json` (`configs/analysis/graph_statistics.toml`): networkx structure (density, degrees,
+  connectivity, diameter, shortest paths, clustering, betweenness, closeness; sampled on large graphs), geodesic edge
+  lengths, mesh nodes connected to unmasked grid points and vice versa, triangle quality (aspect ratio, radius ratio,
+  volume-length, angles; Shewchuk 2002, https://scicomp.stackexchange.com/a/27095). `[mesh] log_statistics` logs a
+  summary at training startup (without networkx). 10–12 min per mesh on a login node, 3–4 GB.
+- **Insights:**
+  - 23 % of the icosahedral nodes are over land (no grid data); its ocean-connected nodes (31,371) are as many as the
+    120 km mesh's, and it equals that mesh on every local field.
+  - The ocean meshes leave the Black Sea out of their domain: about 900 ocean points in the mask are decoded from
+    Aegean vertices up to 1,232 km away and never encoded. In all, 2,222 (120 km) and 2,342 (50 km) ocean points have
+    no encoder edge; the icosahedral mesh covers all.
+  - The baselines are about 8 % better than in the mesh study (120 km × 8 0.09068 → 0.08382, 50 km × 16 0.08181 →
+    0.07524) with the same config and validation windows; most likely the edge-direction fix of 6 Nov (`0473751`), not
+    ablated. Results from before 6 Nov should not be mixed with later ones.
