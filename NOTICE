@@ -28,6 +28,7 @@ are recorded in the git history:
   src/mobydick/predictor_base.py
   src/mobydick/rollout.py
   src/mobydick/solar_radiation.py
+  src/mobydick/task.py
   src/mobydick/typed_graph.py
   src/mobydick/typed_graph_net.py
   src/mobydick/xarray_jax.py

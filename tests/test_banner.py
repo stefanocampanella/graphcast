@@ -64,6 +64,14 @@ def test_usage_errors_print_the_banner_too():
   assert "Moby-Dick" in result.stderr
 
 
+def test_shell_completion_prints_no_banner():
+  """Each TAB press of click's shell completion runs the program: a banner there would garble the prompt."""
+  env = {"_MOBY_DICK_COMPLETE": "bash_complete", "COMP_WORDS": "moby-dick tr", "COMP_CWORD": "1"}
+  result = CliRunner().invoke(cli, [], prog_name="moby-dick", env=env)
+  assert "train" in result.stdout
+  assert "Moby-Dick" not in result.stderr
+
+
 @pytest.mark.parametrize("variable", banner.RANK_VARIABLES)
 def test_only_the_first_process_prints(monkeypatch, capsys, variable):
   """Under a parallel launcher every process runs the command line: only rank 0 prints, or a 32-process training job

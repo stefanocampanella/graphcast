@@ -26,8 +26,9 @@ import sys
 DISTRIBUTION = "moby-dick"
 # Set to a non-empty value other than 0 to print no banner.
 NO_BANNER_VARIABLE = "MOBYDICK_NO_BANNER"
-# Ranks of the process in a parallel launch (Slurm, Open MPI, MPICH/PMI, torchrun-like launchers), checked in order.
-RANK_VARIABLES = ("SLURM_PROCID", "OMPI_COMM_WORLD_RANK", "PMI_RANK", "RANK")
+# Ranks of the process in a parallel launch (Slurm, Open MPI, MPICH/PMI), checked in order. Not the generic RANK, which
+# other tools leave in the environment.
+RANK_VARIABLES = ("SLURM_PROCID", "OMPI_COMM_WORLD_RANK", "PMI_RANK")
 
 
 def version() -> str:

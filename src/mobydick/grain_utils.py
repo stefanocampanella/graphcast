@@ -35,6 +35,8 @@ from pydantic import NonNegativeInt, PositiveInt, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 GRAIN_ENV_PREFIX = "MOBYDICK_GRAIN_"
+# The prefix before the project was renamed: a leftover setting would otherwise be ignored without notice.
+OLD_GRAIN_ENV_PREFIX = "GRAPHCAST_GRAIN_"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -72,6 +74,10 @@ class GrainRuntimeConfig(BaseSettings):
       for name in os.environ
       if name.upper().startswith(GRAIN_ENV_PREFIX) and name[len(GRAIN_ENV_PREFIX) :].lower() not in cls.model_fields
     )
+    old = sorted(name for name in os.environ if name.upper().startswith(OLD_GRAIN_ENV_PREFIX))
+    if old:
+      renamed = ", ".join(GRAIN_ENV_PREFIX + name[len(OLD_GRAIN_ENV_PREFIX) :] for name in old)
+      raise ValueError(f"Environment variables {', '.join(old)} are no longer read: rename them to {renamed}")
     if unknown:
       expected = ", ".join(GRAIN_ENV_PREFIX + field.upper() for field in cls.model_fields)
       raise ValueError(f"Unknown environment variables {', '.join(unknown)}; expected any of {expected}")

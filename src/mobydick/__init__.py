@@ -23,11 +23,15 @@ from mobydick.training import train
 
 
 class BannerGroup(click.Group):
-  """A command group that prints the banner before anything else: every subcommand, --help and usage errors."""
+  """A command group that prints the banner before parsing its arguments: every subcommand, --help and usage errors.
 
-  def main(self, *args, **kwargs):
-    print_banner()
-    return super().main(*args, **kwargs)
+  Shell completion makes contexts with resilient_parsing: no banner there, it would garble every completion.
+  """
+
+  def make_context(self, *args, **kwargs):
+    if not kwargs.get("resilient_parsing"):
+      print_banner()
+    return super().make_context(*args, **kwargs)
 
 
 @click.group(cls=BannerGroup)

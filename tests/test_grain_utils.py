@@ -41,6 +41,14 @@ def test_unknown_variables_are_rejected(monkeypatch):
     grain_utils.GrainRuntimeConfig()
 
 
+def test_variables_with_the_old_prefix_are_rejected(monkeypatch):
+  """A GRAPHCAST_GRAIN_* variable left from before the rename is an error naming its new name: ignored, it would let
+  training fall back to 0 workers, and --continue of a run saved with workers would not match its Grain state."""
+  monkeypatch.setenv("GRAPHCAST_GRAIN_NUM_WORKERS", "1")
+  with pytest.raises(pydantic.ValidationError, match="GRAPHCAST_GRAIN_NUM_WORKERS.*MOBYDICK_GRAIN_NUM_WORKERS"):
+    grain_utils.GrainRuntimeConfig()
+
+
 @pytest.mark.parametrize("num_workers", [0, 2])
 def test_options(num_workers):
   """Reader options always; multiprocessing options only with workers (0 disables mp_prefetch)."""

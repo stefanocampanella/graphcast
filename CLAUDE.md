@@ -80,7 +80,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (452 tests, ~3.5 min on a login node, CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (453 tests, ~3.5 min on a login node, CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in

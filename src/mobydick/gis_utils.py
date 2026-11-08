@@ -37,9 +37,9 @@
 # The proposed solution is to wrap a pyproj.Transformer object in a function that takes care of unpacking and
 # packing data. The only point where grid-defined data (using the ECMWF convention, i.e., lon wrapping at 180) and the
 # mesh-graph data (using standard one, i.e., lon in [-180, 180]) need to be consistent is when computing the grid2mesh
-# encoder and mesh2grid decoder graphs in mobydick/leviathan/model.py. These functions use a kd-tree search in cartesian (R^3)
-# coordinates, hence it is enough to ensure that the conversion to cartesian coordinates using is consistent in
-# mobydick/mesh_connectivity.py:_grid_lat_lon_to_coordinates.
+# encoder and mesh2grid decoder graphs in mobydick/leviathan/model.py. These functions use a kd-tree search in
+# cartesian (R^3) coordinates, hence it is enough to ensure that the conversion to cartesian coordinates using is
+# consistent in mobydick/mesh_connectivity.py:_grid_lat_lon_to_coordinates.
 #
 # In brief:
 #   - Grid data ALWAYS assumes EPSG:4326 with ECMWF convention.

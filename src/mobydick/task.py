@@ -1,3 +1,4 @@
+# SPDX-FileCopyrightText: 2023 DeepMind Technologies Limited
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -12,6 +13,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Contains GraphCast's TaskConfig (graphcast.py), moved here from model.py and modified by Stefano Campanella for the
+# ocean version of GraphCast; the changes are in the git history.
 """The task of a model: the variables it reads and predicts, shared by the data pipeline and every model."""
 
 import dataclasses

@@ -158,8 +158,9 @@ def get_predictor(
   loss_masks: xr.Dataset,
   diffs_stddev_by_level: xr.Dataset | None = None,
 ) -> Predictor:
-  """Wrap the model of `[model] architecture`, outermost first: Mask (per-variable loss masks) -> OutputNormalization (residuals divided by
-  diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) -> Bfloat16Cast."""
+  """Wrap the model of `[model] architecture`, outermost first: Mask (per-variable loss masks) -> OutputNormalization
+  (residuals divided by diffs_stddev_by_level) -> InputNormalization (only with mean_by_level or stddev_by_level) ->
+  Bfloat16Cast."""
   # Deeper one-step predictor, the model named by its settings.
   predictor = MODELS[model_config.architecture].predictor(
     _model_config=model_config,
