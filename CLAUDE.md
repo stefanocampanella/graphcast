@@ -82,7 +82,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   assumed. Every test has a docstring saying what it checks and why (the behaviour or the bug it guards against), not
   just restating its name. The `absltest` modules inherited from GraphCast were ported to pytest in Nov 2026.
 - Lint, format, types and licensing are pre-commit hooks (`.pre-commit-config.yaml`): `ruff check --fix` and `ruff
-  format` (**2-space indentation**, 120-column lines; the whole codebase was formatted in 5176406, listed in
+  format` (**2-space indentation**, 120-column lines; the whole codebase was formatted in b210470, listed in
   `.git-blame-ignore-revs`: `git config blame.ignoreRevsFile .git-blame-ignore-revs`), ShellCheck, `reuse lint` and
   ty. Run them in the image: `apptainer exec graphcast.sif pre-commit run --all-files` (the first run downloads the
   hook environments: login nodes only), or `pre-commit install` to run them on each commit. The ty hook uses the
@@ -469,15 +469,15 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   - `read_mesh` reused the views of meshes read before (`gmsh.open` keeps them), so reading a second mesh in the same
     process failed with a `KeyError`; it calls `gmsh.clear()` first.
 - **Naming:** uniform meshes are named by their target size in km (`uniform_120km` was `uniform_coarse` until 30 Oct
-  2026). `data/geometry/uniform_coarse.msh` is a symlink to `uniform_120km.msh` for the main checkout; remove it
-  after the PR is merged. Each `.msh` stores the size field it was made with (views `MeshSize` and one per field) and
+  2026; the `uniform_coarse.msh` and `uniform_fine.msh` symlinks to the new names were removed on 8 Nov 2026). Each
+  `.msh` stores the size field it was made with (views `MeshSize` and one per field) and
   the config's description. Measured median edge lengths match the targets: 117.8 km for 120 km, 34.9 for 35, 30.0
   for 30.
 - **The 25 km mesh** (`uniform_25km`, formerly `uniform_fine`, 704,078 nodes, 31 Jan 2026):
   - its stored size field is 25 km at every node, and its median edge is 25.0 km;
   - it was made from a config that was never committed: `uniform_fine.toml` asked for 30 km then, and for 35 km later,
     identical to `uniform_35km.toml` (its `domain.sampling` is ignored by the code). It was replaced on 30 Oct 2026 by
-    `uniform_25km.toml`; `data/geometry/uniform_fine.msh` is a symlink to `uniform_25km.msh` until the merge;
+    `uniform_25km.toml`;
   - node counts scale as 1/size², so 363,900 × (35/25)² ≈ 713,000;
   - its description (150 km), and that of the 120 km mesh, came from an outdated template; both `.msh` files keep it.
 - **Descriptions** of all `configs/mesh/*.toml` match their fields (checked on 30 Oct 2026). The `lambrechts*`

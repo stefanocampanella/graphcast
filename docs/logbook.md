@@ -1139,7 +1139,7 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 
 ## 2026-11-06 18:15: group 4 of the tests and code-quality PR (format, lint, stubs, licenses, ty)
 
-- **Commits:** `ruff format` of the whole codebase (5176406, listed in `.git-blame-ignore-revs`); ruff lint fixes
+- **Commits:** `ruff format` of the whole codebase (b210470, listed in `.git-blame-ignore-revs`); ruff lint fixes
   (literals, PEP 695 generics, `TypeError` for wrong argument types in `gis_utils.get_transform` and `xarray_jax`);
   type stubs in the dev group (`scipy-stubs ~= 1.18.1`, `pandas-stubs ~= 3.0.5`, `types-networkx`, `types-tqdm`,
   `botocore-stubs`, image `graphcast-g4.sif` built from the branch); ruff skips `notebooks/`.
@@ -1159,7 +1159,7 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Request:** why the PR dropped `SPDX-FileCopyrightText` (four formerly MIT files) and left configuration files
   without SPDX lines. Answer: the first to give one header form with DeepMind's `Copyright` line (REUSE accepts both),
   the second a scope I set (Python files only) without asking. Maintainer accepted the recommendation: full REUSE.
-- **Change** (fdc5713): `SPDX-FileCopyrightText` in every Python file (DeepMind's and the maintainer's); SPDX lines in
+- **Change** (929797e): `SPDX-FileCopyrightText` in every Python file (DeepMind's and the maintainer's); SPDX lines in
   TOML, YAML, shell, Slurm, .env, .gitignore and JUBE files; `REUSE.toml` for the rest; `LICENSES/` with Apache-2.0 and
   CC-BY-4.0. Images and animations are CC-BY-4.0 (maintainer), except the Argonne, GRC and OGS logos in the poster.
   `spack/templates/container/graphcast.def` turned out to be Spack's `singularity.def` with additions (Apache-2.0 OR
@@ -1173,7 +1173,7 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   both are sourced under `set -a`; 2 SC2126 (`grep -c`) in the JUBE run scripts, false positives as they count over
   several files; notes in `slurm/launch_jupyter.slurm` and `slurm/test_dask_mpi.slurm`, which sourced the removed
   `clusters/leonardo/` (the second also ran a missing script and had `mkdir -p DASK_MPI_LOG_DIR` without `$`).
-- **Change** (fb82934): both Leonardo scripts deleted (maintainer); the false positives suppressed with reasons.
+- **Change** (8b6a78f): both Leonardo scripts deleted (maintainer); the false positives suppressed with reasons.
   ShellCheck is clean. No `shfmt`: the scripts have one consistent style already.
 - **Next:** the `shellcheck-py` pre-commit hook in group 5, with a `files` pattern for `*.slurm`, `.env` and
   `*.sbatch.in` (pre-commit detects shell scripts without a `.sh` extension only by the shebang of executables).
@@ -1183,7 +1183,7 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Requests:** test `compute_basis` against scipy's `LinearNDInterpolator` (the draft interpolated in a stereographic
   projection) and measure its time and memory, to decide whether the basis can be computed on the fly for an
   interpolating decoder; say what bug `test_masking_index_maps` guards against; drop `cli_utils.Configs`.
-- **compute_basis** (03aa169): on a flat triangulation it equals `LinearNDInterpolator` on the same triangles (to
+- **compute_basis** (c4e027a): on a flat triangulation it equals `LinearNDInterpolator` on the same triangles (to
   1e-9); on the sphere it differs from the draft's stereographic interpolation by O(edge²), about 0.9 edge² for edges
   of 3.8–0.47°, far below the interpolation error. A prototype on the unit sphere gave 25 edge² at 0.24° edges:
   trimesh 5.2.0's `closest_point` compares squared distances of candidate faces with `tol.merge` (1e-8, absolute),
@@ -1201,9 +1201,9 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   Mesh to mesh: 50 km at the 25 km vertices 15.3 s, 1.72 GiB; 120 km at the 50 km vertices 3.4 s. The matrix is 18.5
   MiB (3 float32 weights and int32 indices per point). Same query as the decoder edges (closest face with trimesh), so
   an interpolating decoder could build the basis instead of those edges at no extra startup cost; no file needed.
-- **Masking test** (dd5d552): the docstring names the fix (4e3be30) and that only the unused `unmasked_to_masked` was
+- **Masking test** (bd16994): the docstring names the fix (b8286ea) and that only the unused `unmasked_to_masked` was
   affected.
-- **Configs** (ca2eec2): removed with its test; `spilhaus.ipynb` and `forward.ipynb` use `read_configs` with the
+- **Configs** (4e09373): removed with its test; `spilhaus.ipynb` and `forward.ipynb` use `read_configs` with the
   schemas (not re-run); `forward.ipynb` also uses removed APIs and needs a total rewrite (TODO.md).
 - **Benchmark slip:** the first runs imported the image's installed package (no `PYTHONPATH=src`) and did not call
   `gmsh.initialize()`, which `read_mesh`'s callers do; not a bug of the code.
@@ -1224,8 +1224,23 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - CLAUDE.md: the absltest, uv-fallback and "format only new modules" notes replaced by the hooks, ty invocation and CI.
 - **CI runs** (7 Nov 2026, after the maintainer granted the token the Workflows permission):
   1. 42390949291: the environment did not solve, as conda-forge's GDAL 3.13.1 builds all need PROJ >= 9.8.1: PROJ is
-     no longer pinned (c74539c); CI gets GDAL 3.13.1 / PROJ 9.8.1, pyproj 3.8.0 / PROJ 9.8.1.
+     no longer pinned (253a40b); CI gets GDAL 3.13.1 / PROJ 9.8.1, pyproj 3.8.0 / PROJ 9.8.1.
   2. 42391097167: the newer PyPI releases (pandas 3.1.1, pydantic 2.14.3, jax 0.12.0.1; the image has 3.0.5, 2.13.5,
      0.11.1.dev) gave 16 test failures (`DatetimeIndex.dayofyear` deprecated, turned into errors by the warning
-     filter) and 5 ty diagnostics (`default_factory` optional, `tree_map_cast` dtypes): fixed in 0cb21b4.
+     filter) and 5 ty diagnostics (`default_factory` optional, `tree_map_cast` dtypes): fixed in b0bae10.
   3. 42391894372: green in 5 min 54 s, 441 passed, coverage 93.37 %.
+
+## 2026-11-08 08:35: cleanup after merging PR 3
+
+- **Request:** remove the leftovers of PR 3 and replace the Apptainer image.
+- **Commit hashes:** PR 3 was merged by rebase, so its commits have new hashes on `develop`. `.git-blame-ignore-revs`
+  listed the format commit by its branch hash (5176406), so `git blame` no longer skipped it; it now lists b210470.
+  The hashes cited in CLAUDE.md, `test_masking_index_maps` and this logbook (82 commits, matched by subject) are
+  replaced by their copies on `develop`.
+- **Image:** rebuilt from `develop` 57da6c0 (`spack -e …/spack-env containerize` from the worktree, ~6 min), with the
+  type stubs; same jax 0.11.1.dev20260605, jaxlib, Orbax 0.12.4, Haiku and CUDA compat driver (615.71.09) as the
+  27 Oct image, GDAL 3.13.1 / PROJ 9.7.0. In it: 441 tests pass, coverage 93.37 %, all pre-commit hooks pass. No jobs
+  were running; the previous image is kept as `graphcast-2026-10-27.sif`. Not checked on a GPU (identical base).
+- **Removed:** the `data/geometry/uniform_coarse.msh` and `uniform_fine.msh` symlinks (nothing on `develop` uses the
+  old names), the worktree's test images `graphcast-g4.sif` and `graphcast-new.sif` (23 GB), and the session's
+  claude-work directory `b0a574fd-35c0-4f21-bc1c-92264af27375` (1.4 GB: scripts and logs of the experiments above).
