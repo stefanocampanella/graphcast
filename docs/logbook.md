@@ -1432,3 +1432,27 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   - 120 km / 50 km: 233 / 1,122 vertices, all poleward of 60° S (median 79° S), under Antarctic ice shelves outside
     the GLORYS mask: dead ends for paths between data nodes (0.0 % / 0.2 % longer; one 120 km vertex reaches the
     rest only through them). They still exchange messages with their neighbours.
+
+## 2026-11-11 21:00: seamsh refactoring kit (side quest of PR #7)
+
+- **Request:** prepare everything known about seamsh for a parallel session that will refactor the fork (tests,
+  pre-commit hooks, bug fixes, comments, self-documenting names; PR into its `develop`), with the end goal of meshing
+  disconnected domains (basins cut off by unresolved straits); include moby-dick's mesh files, a validation script
+  and a PR guide. No moby-dick code changes.
+- **Kit:** `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/seamsh-refactoring-kit{,.tar.gz}`: `PR_GUIDE.md`, `NOTES_seamsh.md`, `validation/validate_seamsh.py` (standalone: seamsh, gmsh,
+  GDAL, numpy, scipy; `coarsen` and `mesh` subcommands, probe basins, mesh statistics, comparison with a reference
+  mesh), `validation/make_references.sh` and `validation/reference/` (current seamsh), Natural Earth coastlines,
+  moby-dick's mesh code, configs, tests and CLAUDE.md excerpt.
+- **Findings** (fork `develop` `f1ab87d`, read in a clone in the session directory, and measured):
+  - The coarsening keeps only the water reachable from one seed (C `color_triangles`: flood fill across Delaunay edges
+    longer than the coarsening size). Lost basins with the 1:10m coastline: Black Sea, Sea of Azov at 10 km;
+    + Mediterranean, Baltic at 20 km; + Red Sea at 30 km; + White Sea at 50 km. Coarsening takes 3–11 s.
+  - Meshing builds one gmsh plane surface: the largest loop is the exterior, all others are holes; disconnected basins
+    need one surface per region.
+  - The 120 km mesh file holds 49,054 nodes in no triangle (59 %); 0 inverted triangles, one component, smallest
+    angle 7.2°. The standalone script reproduces moby-dick's `uniform_120km.msh` (vertices within 1.4e-9 m, same
+    triangles), in 14 s.
+  - Bugs and risks by reading: dead `get_cavity` with an allocation-size and an out-of-bounds bug, `getid3` calls
+    `exit(1)`, a leak in `extract_boundaries`, unchecked allocations, `np.random.seed(0)` on the global state, an
+    unbounded sampling loop, the `tri` view left in the model, a license inconsistency (GPLv3 text, LGPL headers);
+    details in the notes.

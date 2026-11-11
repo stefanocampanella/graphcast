@@ -535,6 +535,18 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - **Descriptions** of all `configs/mesh/*.toml` match their fields (checked on 30 Oct 2026). The `lambrechts*`
   configs take the smaller of a shore-proximity and a bathymetry field; they said "uniform 300 km" before.
   `domain.sampling` in them is ignored (the shore-proximity field has its own).
+- **seamsh limits the domain** (11 Nov 2026, read from the fork's `develop` at `f1ab87d` and measured with the
+  standalone `validate_seamsh.py`): `coarsen_boundaries` keeps only the water reachable from the single seed `x0`
+  (moby-dick: the stereographic origin, the North Pole) by a flood fill over a Delaunay triangulation of the coastline
+  samples that crosses only edges longer than the coarsening size, so basins behind narrower straits are dropped:
+  Black Sea and Sea of Azov at 10 km (all configs), plus the Mediterranean and Baltic at 20 km, the Red Sea at 30 km,
+  the White Sea at 50 km. `seamsh.gmsh.mesh` also builds one plane surface (largest loop exterior, all others holes),
+  so a second basin could not be meshed anyway. Natural Earth's coastline counts ice shelves as ocean. seamsh leaves
+  the unused coastline points as nodes in no triangle (49,054 of 83,061 at 120 km; `read_mesh` drops them). A
+  refactoring of seamsh (tests, hooks, fixes, several seeds and one surface per basin) is prepared in a separate PR to
+  the fork's `develop`: kit with PR guide, notes (bugs with line numbers), validation script, reference results, data
+  and moby-dick's mesh code in `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/seamsh-refactoring-kit{,.tar.gz}` (copy it out before this session's directory is deleted). The script reproduces
+  `uniform_120km.msh` exactly (vertices within 1.4e-9 m, same triangles).
 - **Processor edges go both ways since 11 Nov 2026:** `mesh_graph.faces_to_edges` (from GraphCast) gave each face's
   edges in one direction, which covers both only on a closed mesh. On the ocean meshes the coastline edges belong to
   one face, so they were one-way (3,612 of 194,040 edges at 120 km, 9,357 of 1,061,739 at 50 km): every model trained
