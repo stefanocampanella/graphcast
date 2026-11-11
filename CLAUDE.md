@@ -40,14 +40,19 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. Trained
   on 8 Nov 2026 against the ocean meshes (see "Icosahedral multi-mesh vs ocean mesh" below); the file is
   `data/geometry/icosahedral_6.msh`.
-- Graph statistics: `moby-dick graph-statistics CONFIG.toml MESH MASK OUTPUT.json` (`graph_statistics.py`, settings
-  `configs/analysis/graph_statistics.toml`): for the encoder, processor and decoder edges, built as the model builds
-  them (a test checks they are equal), degrees and geodesic edge lengths; with networkx, density, degree histogram,
-  connectivity, diameter (2-sweep lower bound), average shortest path, clustering, betweenness and closeness on the
-  undirected graph's largest component (`num_sources` sampled nodes, 0 = exact); mesh nodes connected to unmasked grid
-  points and vice versa; triangle quality (aspect ratio, radius ratio, volume-length, angles). 10–12 min and 3–4 GB per
-  mesh on a login node with 32 sources (networkx is pure Python). `[mesh] log_statistics = true` logs the summary at
-  training startup on process 0, without networkx.
+- Graph statistics: `moby-dick graph-statistics CONFIG.toml MASK OUTPUT.json MESH... [--networkx-backend B]`
+  (`graph_statistics.py`, settings `configs/analysis/graph_statistics.toml`): the graphs of a model on the grid of MASK
+  and one mesh or a hierarchy (MESH paths finest first), built as the model builds them (a test checks they are
+  equal): encoders grid → mesh 0 and mesh i−1 → mesh i, processors, decoders mesh i → mesh i−1 and mesh 0 → grid
+  (mesh-to-mesh graphs follow the grid's rules until hierarchical models define theirs). Every graph: nodes, edges,
+  geodesic edge lengths; encoders: degrees; decoders: the 3-edges-per-receiver check; processors: degrees, density,
+  one-way edges, connected components with, per component, the diameter (2-sweep lower bound) and shortest path
+  lengths from `num_sources` sampled nodes (0 = exact), and triangle quality (aspect ratio, radius ratio,
+  volume-length, angles, edge ratio); coverage of each pair of levels. Prints rich tables to stdout and writes every
+  quantity with a description to the JSON; the log has only sizes and timings. networkx runs only the processors'
+  path metrics: ~20 s per mesh on a login node (120 km, 50 km, icosahedral M6). `--networkx-backend cugraph` (or
+  networkx's `NETWORKX_BACKEND_PRIORITY`) would run them on the GPU with nx-cugraph, which is not in the image
+  (`nx-cugraph-cu13` 26.10 is 3.2 GB with its dependencies; untested).
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -347,7 +352,7 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   - **The ocean mesh wins:** validation loss 120 km × 8 0.0838, icosahedral × 8 0.0837, 50 km × 16 0.0752 (−10.2 %),
     icosahedral × 16 0.0826 (−1.4 %), i.e. 9.8 % worse than 50 km × 16, a gap stable from step 2500.
   - **Only `zos` gains** (−16.7 % against 50 km × 16, from edges up to 7,076 km: the processor's diameter is 14 hops,
-    against 448 on the 50 km mesh); the other targets are 10–31 % worse (sea-ice thickness +31 %). 23 % of the
+    against at least 515 on the 50 km mesh); the other targets are 10–31 % worse (sea-ice thickness +31 %). 23 % of the
     icosahedral nodes are over land; its 31,371 ocean-connected nodes match the 120 km mesh, which it equals on local
     fields. 8 → 16 steps gain only 1.3 % on it.
   - **Cost:** icosahedral × 16 0.78 s per step and 55 GiB, against 1.40 s and 74 GiB.
@@ -464,7 +469,8 @@ log) predicts GPU OOM before training starts.
 → the model of `[model] architecture` (`models.MODELS`; `Leviathan`, `leviathan/model.py`). Training is one-step; `autoregressive.py` / `rollout.py` handle multi-step.
 
 **Leviathan model** (`leviathan/model.py`, settings `leviathan/config.py`): grid ↔ mesh connectivity comes from `mesh_connectivity.py` (encoder edges by
-radius query, decoder edges by containing triangle, both restricted by the ocean mask). With
+radius query, decoder edges by containing triangle, both restricted by the ocean mask; the k-d tree query uses all
+cores since 11 Nov 2026, one thread before, with the same edges). With
 `model.connected_grid_nodes` only grid points that are encoder senders or decoder receivers become grid nodes;
 the decoder writes back only ocean (unmasked) points. Three `DeepTypedGraphNet`s (`deep_typed_graph_net.py`,
 built from `typed_graph_net.py` blocks on `typed_graph.TypedGraph`) form encoder (grid2mesh), processor

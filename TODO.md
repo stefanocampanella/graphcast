@@ -9,6 +9,10 @@
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
+  * The processor's boundary edges are one-way: `mesh_graph.faces_to_edges` gives each face's edges in one direction,
+    which is symmetric only on a closed mesh (GraphCast's sphere). On the ocean meshes 3,612 of 194,040 edges (120 km)
+    and 9,357 of 1,061,739 (50 km) have no reverse, so messages run around the coastline in one direction only
+    (`moby-dick graph-statistics`, 11 Nov 2026). Decide whether to add the reverse edges.
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
@@ -74,9 +78,9 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
-* Graph statistics (Nov 2026): `moby-dick graph-statistics` (nodes, edges, degrees, connectivity, paths, clustering,
-  centralities, edge lengths, encoder/decoder coverage of the ocean points, triangle quality); `[mesh] log_statistics`
-  logs a summary at training startup.
+* Graph statistics (Nov 2026): `moby-dick graph-statistics` (all graphs of one mesh or a hierarchy: nodes, edges,
+  degrees, edge lengths; processors: components, diameter, shortest paths, triangle quality; coverage of each pair of
+  levels), summary tables on stdout and a described JSON.
 * Icosahedral multi-mesh trained against the ocean meshes (Nov 2026): 9.8 % worse than 50 km × 16 at 16 steps, better
   only for `zos` (`docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08`).
 * PGLE (Nov 2026): no gain. The train step is compiled ahead of time, which automatic PGLE skips; the "Found 0

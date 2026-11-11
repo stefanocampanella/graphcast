@@ -1335,3 +1335,32 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   - The baselines are about 8 % better than in the mesh study (120 km × 8 0.09068 → 0.08382, 50 km × 16 0.08181 →
     0.07524) with the same config and validation windows; most likely the edge-direction fix of 6 Nov (`0473751`), not
     ablated. Results from before 6 Nov should not be mixed with later ones.
+
+## 2026-11-11 13:00: graph statistics reworked after review (PR #7)
+
+- **Request:** address the review of PR #7 (17 comments on the graph statistics module).
+- **Changes:**
+  - No statistics in training any more (`[mesh] log_statistics` removed): too slow, `moby-dick graph-statistics` only.
+  - Graphs of a mesh hierarchy (`graph-statistics CONFIG MASK OUTPUT.json MESH...`, finest first): encoders grid →
+    mesh 0 and mesh i−1 → mesh i, processors, decoders back down; mesh-to-mesh graphs use the grid's rules (new
+    `mesh_connectivity.get_points_to_mesh_edges`) until hierarchical models define theirs. Coverage per pair of levels.
+  - networkx only for the processors' path metrics, per connected component (no longer only the largest), from
+    `single_source_shortest_path_length` (implemented by nx-cugraph): diameter as the largest eccentricity of the
+    samples and of the node farthest from them, summary of the shortest path lengths. Dropped clustering, betweenness,
+    closeness. Encoders: degrees; decoders: the 3-edges-per-receiver check. Summaries: mean, std, min, quartiles, max;
+    angle summary over all angles.
+  - Output: rich tables on stdout, a description for every quantity in the JSON, only sizes and timings in the log.
+    `--networkx-backend` (or networkx's `NETWORKX_BACKEND_PRIORITY`) selects a backend; nx-cugraph is not in the image
+    (`nx-cugraph-cu13` 26.10 installs, 3.2 GB with its dependencies; running it here was not permitted, untested).
+  - `gis_utils`: `get_transform` (array in, array out) and `get_components_transform` (one array per coordinate)
+    replace `get_transform(..., pack_back=...)`, whose return type depended on the argument and the input.
+  - k-d tree queries use all cores by default (`workers=-1` in `mesh_connectivity`, `graph_pruning`, Leviathan): all
+    runs so far used 1 thread; the edges do not depend on it (test).
+- **Timing:** 21–44 s per mesh on a login node (120 km, icosahedral M6, 50 km), 51 s for 50 km + 120 km as a
+  hierarchy; it was 10–12 min with networkx on every graph.
+- **Insights:**
+  - The processor's boundary edges are one-way (`faces_to_edges` assumes a closed mesh): 3,612 of 194,040 edges (120
+    km) and 9,357 of 1,061,739 (50 km) have no reverse; the icosahedral mesh has none. TODO.
+  - The 50 km mesh's diameter is at least 515 hops (the networkx 2-sweep of 8 Nov gave 448); the report says "≥ 515".
+    The report's claim that 8 steps reach every node of the icosahedral mesh was wrong (median shortest path 8 hops,
+    diameter ≥ 14): corrected.

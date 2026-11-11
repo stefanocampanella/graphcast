@@ -12,7 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests of graph_statistics: the model's graphs, networkx metrics, coverage, edge lengths, triangle quality, CLI."""
+"""Tests of graph_statistics: the model's graphs (one mesh or a hierarchy), the statistics of each kind of graph,
+coverage, edge lengths, triangle quality, the CLI and its output."""
 
 import dataclasses
 import json
@@ -33,11 +34,28 @@ def _grid(ocean_below: float = 70.0) -> Grid:
   return Grid(lat=lat, lon=lon, mask=np.broadcast_to(lat[:, None] < ocean_below, (lat.size, lon.size)).copy())
 
 
-def _bipartite(senders, receivers, num_senders, num_receivers, same_nodes=False):
-  zeros_s, zeros_r = np.zeros(num_senders), np.zeros(num_receivers)
-  return graph_statistics.BipartiteGraph(
-    np.array(senders), np.array(receivers), num_senders, num_receivers, zeros_s, zeros_s, zeros_r, zeros_r, same_nodes
+def _graph(senders, receivers, num_senders, num_receivers, kind="encoder"):
+  senders_nodes = graph_statistics.NodeSet("a", np.zeros(num_senders), np.zeros(num_senders))
+  receiver_nodes = (
+    senders_nodes if kind == "processor" else graph_statistics.NodeSet("b", *np.zeros((2, num_receivers)))
   )
+  return graph_statistics.Graph("g", kind, np.array(senders), np.array(receivers), senders_nodes, receiver_nodes)
+
+
+def _quantities(entry: dict, path: str = "") -> list[str]:
+  """Paths of the quantities of a graph's or coverage entry's statistics that have no description."""
+  missing = []
+  for key, value in entry.items():
+    if key in ("kind", "senders", "receivers", "lower", "upper"):
+      continue
+    if key == "triangles":
+      missing += _quantities(value, f"{path}{key}.")
+    elif not isinstance(value, dict) or "description" not in value:
+      missing.append(f"{path}{key}")
+    elif key == "components":
+      for i, component in enumerate(value["value"]):
+        missing += _quantities(component, f"{path}{key}[{i}].")
+  return missing
 
 
 def test_graphs_equal_the_models(tiny_model):
@@ -56,80 +74,135 @@ def test_graphs_equal_the_models(tiny_model):
       _grid_mask=grid.mask,
       _mesh_data=tiny_model.mesh_data,
     )
-    captured["encoder"] = model._get_grid2mesh_edges()
-    captured["processor"] = model._get_mesh_edges()
-    captured["decoder"] = model._get_mesh2grid_edges()
+    captured["grid_to_mesh_0"] = model._get_grid2mesh_edges()
+    captured["mesh_0"] = model._get_mesh_edges()
+    captured["mesh_0_to_grid"] = model._get_mesh2grid_edges()
 
   hk.transform(build).init(None)
-  graphs, num_points = graph_statistics.model_graphs(
-    tiny_model.mesh_data, grid, config.radius_query_fraction_edge_length
+  graphs = graph_statistics.model_graphs([tiny_model.mesh_data], grid, config.radius_query_fraction_edge_length)
+  assert [(g.name, g.kind) for g in graphs] == [
+    ("grid_to_mesh_0", "encoder"),
+    ("mesh_0", "processor"),
+    ("mesh_0_to_grid", "decoder"),
+  ]
+  assert graphs[0].sender_nodes.size == grid.mask.sum()
+  for graph in graphs:
+    senders, receivers = captured[graph.name]
+    np.testing.assert_array_equal(graph.senders, senders, err_msg=graph.name)
+    np.testing.assert_array_equal(graph.receivers, receivers, err_msg=graph.name)
+
+
+def test_hierarchy_has_mesh_to_mesh_encoders_and_decoders():
+  """With N meshes there are N encoders, N processors and N decoders, in the order of the data flow; the mesh-to-mesh
+  encoder connects the finer vertices within the radius of each coarser vertex (brute force) and the decoder sends 3
+  edges to every finer vertex."""
+  meshes = [icosahedral_mesh.get_multi_mesh_data(splits) for splits in (2, 1)]
+  graphs = graph_statistics.model_graphs(meshes, _grid(), 0.6)
+  assert [g.name for g in graphs] == [
+    "grid_to_mesh_0",
+    "mesh_0_to_mesh_1",
+    "mesh_0",
+    "mesh_1",
+    "mesh_1_to_mesh_0",
+    "mesh_0_to_grid",
+  ]
+  encoder, decoder = graphs[1], graphs[4]
+  fine, coarse = (m.mesh_graph.vertices for m in meshes)
+  assert meshes[1].mesh_size is not None
+  within = np.linalg.norm(fine[:, None] - coarse[None], axis=-1) <= 0.6 * meshes[1].mesh_size[None]
+  assert set(zip(encoder.senders.tolist(), encoder.receivers.tolist(), strict=True)) == set(zip(*np.nonzero(within)))
+  assert decoder.sender_nodes.name == "mesh_1" and decoder.receiver_nodes.size == len(fine)
+  np.testing.assert_array_equal(np.bincount(decoder.receivers), 3)
+  results = graph_statistics.compute(meshes, _grid(), graph_statistics.GraphStatisticsConfig(num_sources=4))
+  assert [(c["lower"], c["upper"]) for c in results["coverage"]] == [("grid", "mesh_0"), ("mesh_0", "mesh_1")]
+  assert results["coverage"][1]["lower_in_both"]["percent"] == 100.0
+
+
+def test_summarize_gives_mean_std_and_quartiles():
+  """Summaries have the mean, standard deviation, minimum, quartiles and maximum; no values give NaN."""
+  summary = graph_statistics.summarize(np.arange(9.0))
+  assert list(summary) == ["mean", "std", "min", "p25", "p50", "p75", "max"]
+  assert [summary[k] for k in ("min", "p25", "p50", "p75", "max")] == [0, 2, 4, 6, 8]
+  assert summary["std"] == pytest.approx(np.sqrt(60 / 9))
+  assert np.isnan(graph_statistics.summarize(np.array([]))["mean"])
+
+
+def test_exact_path_statistics_match_networkx():
+  """With every node as a source the values are exact: on a cycle of 6 nodes the diameter is 3 and the mean shortest
+  path length equals networkx's average_shortest_path_length (1.8)."""
+  graph = nx.cycle_graph(6)
+  stats = graph_statistics.path_statistics(graph, list(range(6)), 0, np.random.default_rng(0))
+  assert stats["diameter"]["value"] == 3 and stats["diameter_exact"]["value"] and stats["sources"]["value"] == 6
+  path = stats["shortest_path_length"]
+  assert path["mean"] == pytest.approx(nx.average_shortest_path_length(graph)) == pytest.approx(1.8)
+  assert path["min"] == 1 and path["max"] == 3
+
+
+def test_sampled_diameter_is_a_two_sweep_lower_bound():
+  """From one source at the end of a path graph's middle, the farthest node is an end, whose eccentricity is the
+  diameter: the 2-sweep finds it although the source's own eccentricity is smaller."""
+  graph = nx.path_graph(11)
+
+  class Middle:
+    def choice(self, nodes, size, replace):
+      return np.array([5])
+
+  stats = graph_statistics.path_statistics(graph, list(range(11)), 1, Middle())  # ty: ignore[invalid-argument-type]
+  assert stats["diameter"]["value"] == 10 and not stats["diameter_exact"]["value"]
+  assert stats["shortest_path_length"]["max"] == 5
+
+
+def test_processor_statistics_per_component():
+  """Every component of more than one node gets its own path metrics (largest first); nodes without edges count as
+  isolated; one-way edges (the boundary of an open mesh) are counted."""
+  # A triangle (0-1-2) and a path (3-4-5-6), edges in both directions, and an isolated node 7.
+  undirected = [(0, 1), (1, 2), (2, 0), (3, 4), (4, 5), (5, 6)]
+  senders, receivers = zip(*(undirected + [(b, a) for a, b in undirected]), strict=True)
+  graph = _graph(senders, receivers, 8, 8, kind="processor")
+  stats = graph_statistics.processor_statistics(graph, 0, np.random.default_rng(0))
+  assert stats["connected_components"]["value"] == 3 and stats["isolated_nodes"]["value"] == 1
+  assert stats["edges_without_reverse"]["value"] == 0 and stats["density"]["value"] == pytest.approx(12 / 56)
+  components = stats["components"]["value"]
+  assert [c["nodes"]["value"] for c in components] == [4, 3]
+  assert [c["diameter"]["value"] for c in components] == [3, 1]
+  # Degree 0: node 7; 1: the path's ends; 2: the triangle and the path's middle.
+  assert stats["out_degree"]["nodes_by_degree"] == [1, 2, 5]
+  one_way = _graph(senders[:-1], receivers[:-1], 8, 8, kind="processor")
+  assert (
+    graph_statistics.processor_statistics(one_way, 0, np.random.default_rng(0))["edges_without_reverse"]["value"] == 1
   )
-  assert num_points == grid.mask.sum()
-  for name, (senders, receivers) in captured.items():
-    np.testing.assert_array_equal(graphs[name].senders, senders, err_msg=name)
-    np.testing.assert_array_equal(graphs[name].receivers, receivers, err_msg=name)
 
 
-def test_networkx_statistics_of_a_cycle_are_exact():
-  """On a directed cycle of 6 nodes in both directions every value is known: density 2·6/(6·5), degree 4 (in + out),
-  diameter 3, average shortest path (1+1+2+2+3)/5 = 1.8, no triangles, betweenness 0.2·... equal for all nodes, closeness
-  1/1.8."""
-  edges = [(i, (i + 1) % 6) for i in range(6)]
-  graph = nx.DiGraph(edges + [(b, a) for a, b in edges])
-  stats = graph_statistics.networkx_statistics(graph, num_sources=0)
-  assert stats["nodes"] == 6 and stats["edges"] == 12 and stats["directed"]
-  assert stats["density"] == pytest.approx(12 / 30)
-  assert stats["degree"]["mean"] == 4 and stats["degree"]["std"] == 0
-  assert stats["degree_histogram"][4] == 6
-  assert stats["connected"] and stats["strongly_connected"] and stats["sampled_nodes"] is None
-  assert stats["diameter"] == 3
-  assert stats["average_shortest_path"] == pytest.approx(1.8)
-  assert stats["average_clustering"] == 0
-  assert stats["average_closeness_centrality"] == pytest.approx(1 / 1.8)
-  assert stats["average_betweenness_centrality"] == pytest.approx(nx.betweenness_centrality(nx.cycle_graph(6))[0])
+def test_encoder_degrees_count_nodes_without_edges():
+  """Degrees include nodes without edges (zeros), so the mean is edges / nodes; the histogram counts nodes by degree."""
+  stats = graph_statistics.encoder_statistics(_graph([0, 0, 1], [2, 2, 2], 4, 3))
+  out_degree, in_degree = stats["sender_out_degree"], stats["receiver_in_degree"]
+  assert out_degree["mean"] == pytest.approx(3 / 4) and out_degree["min"] == 0
+  assert out_degree["nodes_by_degree"] == [2, 1, 1]
+  assert in_degree["max"] == 3 and in_degree["p50"] == 0
 
 
-def test_sampled_networkx_statistics_use_the_largest_component():
-  """With isolated nodes (mesh nodes over land without edges) the graph is not connected: path metrics come from the
-  largest component, and sampling gives the exact values on a vertex-transitive graph (a cycle)."""
-  graph = nx.DiGraph(nx.cycle_graph(10))
-  graph.add_nodes_from([10, 11])
-  stats = graph_statistics.networkx_statistics(graph, num_sources=4)
-  assert not stats["connected"] and stats["connected_components"] == 3 and stats["largest_component_nodes"] == 10
-  assert stats["sampled_nodes"] == 4
-  assert stats["diameter"] == 5
-  exact = nx.average_shortest_path_length(nx.cycle_graph(10))
-  assert stats["average_shortest_path"] == pytest.approx(exact)
+def test_decoder_checks_three_edges_per_receiver():
+  """A decoder sends exactly 3 edges to each receiver (the vertices of its face); a receiver with fewer is flagged."""
+  stats = graph_statistics.decoder_statistics(_graph([0, 1, 2, 1, 2, 3], [0, 0, 0, 1, 1, 1], 4, 2, kind="decoder"))
+  assert stats["expected_edges"]["value"] == stats["edges"]["value"] == 6
+  assert stats["three_edges_per_receiver"]["value"]
+  stats = graph_statistics.decoder_statistics(_graph([0, 1, 2, 1, 2], [0, 0, 0, 1, 1], 4, 2, kind="decoder"))
+  assert not stats["three_edges_per_receiver"]["value"]
 
 
-def test_to_networkx_numbers_receivers_after_senders():
-  """Two node sets become one graph without collisions: receiver i is node num_senders + i; one node set keeps its
-  numbering."""
-  graph = graph_statistics.to_networkx(_bipartite([0, 1, 1], [0, 0, 2], 2, 3))
-  assert graph.number_of_nodes() == 5 and set(graph.edges) == {(0, 2), (1, 2), (1, 4)}
-  same = graph_statistics.to_networkx(_bipartite([0, 1], [1, 0], 2, 2, same_nodes=True))
-  assert same.number_of_nodes() == 2 and set(same.edges) == {(0, 1), (1, 0)}
-
-
-def test_degree_statistics_count_nodes_without_edges():
-  """Degrees include nodes without edges (zeros), so the mean is edges / nodes."""
-  stats = graph_statistics.degree_statistics(_bipartite([0, 0, 1], [2, 2, 2], 4, 3))
-  assert stats["sender_out_degree"]["mean"] == pytest.approx(3 / 4) and stats["sender_out_degree"]["min"] == 0
-  assert stats["receiver_in_degree"]["max"] == 3 and stats["receiver_in_degree"]["median"] == 0
-
-
-def test_coverage_counts_mesh_nodes_and_grid_points():
-  """A mesh node counts as covered when it receives an encoder edge or sends a decoder edge; a grid point by encoder
-  and decoder separately."""
-  graphs = {
-    "encoder": _bipartite([0, 1], [0, 0], 3, 4),  # grid -> mesh
-    "decoder": _bipartite([1, 1, 1], [0, 1, 2], 4, 3),  # mesh -> grid
-  }
-  result = graph_statistics.coverage(graphs, num_mesh=4, num_points=3)
-  assert result["mesh_nodes_in_encoder"] == {"count": 1, "percent": 25.0}
-  assert result["mesh_nodes_in_decoder"]["count"] == 1 and result["mesh_nodes_in_either"]["count"] == 2
-  assert result["grid_points_in_encoder"]["count"] == 2 and result["grid_points_in_decoder"]["percent"] == 100.0
-  assert result["grid_points_in_both"]["count"] == 2
+def test_coverage_counts_nodes_of_both_levels():
+  """A coarser node counts as covered when it receives an encoder edge or sends a decoder edge; a finer node by encoder
+  and decoder separately, and in both."""
+  encoder = _graph([0, 1], [0, 0], 3, 4)  # lower (3 nodes) -> upper (4 nodes)
+  decoder = graph_statistics.Graph(
+    "d", "decoder", np.array([1, 1, 1]), np.array([0, 1, 2]), encoder.receiver_nodes, encoder.sender_nodes
+  )
+  result = graph_statistics.coverage(encoder, decoder)
+  assert result["upper_in_encoder"]["count"] == 1 and result["upper_in_encoder"]["percent"] == 25.0
+  assert result["upper_in_decoder"]["count"] == 1 and result["upper_in_either"]["count"] == 2
+  assert result["lower_in_encoder"]["count"] == 2 and result["lower_in_decoder"]["percent"] == 100.0
+  assert result["lower_in_both"]["count"] == 2
 
 
 def test_geodesic_lengths_on_the_ellipsoid():
@@ -143,14 +216,17 @@ def test_geodesic_lengths_on_the_ellipsoid():
 def test_triangle_quality_of_equilateral_and_degenerate_triangles():
   """An equilateral triangle scores 1 in every metric and has 60° angles; a sliver scores close to 0 (radius ratio,
   volume-length) or large (aspect ratio); reversing the orientation (normal towards the Earth's centre) makes the
-  volume-length metric negative."""
+  volume-length metric negative. `angle` has the three angles of every face."""
   r = 6.4e6
   vertices = np.array([[r, 0, 0], [r, 1e3, 0], [r, 5e2, 5e2 * np.sqrt(3)], [r, 5e2, 1.0]])
   faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 1]])
   quality = graph_statistics.triangle_quality(vertices, faces)
+  assert set(quality) == set(graph_statistics.TRIANGLE_QUALITY)
   for name in ("aspect_ratio", "radius_ratio", "volume_length", "edge_ratio"):
     assert quality[name][0] == pytest.approx(1.0), name
   assert quality["min_angle"][0] == pytest.approx(60.0) and quality["max_angle"][0] == pytest.approx(60.0)
+  assert quality["angle"].shape == (9,)
+  np.testing.assert_allclose(quality["angle"].reshape(3, 3).sum(1), 180.0)
   assert quality["area_km2"][0] == pytest.approx(np.sqrt(3) / 4)
   assert quality["radius_ratio"][1] < 0.01 and quality["volume_length"][1] < 0.01 and quality["aspect_ratio"][1] > 100
   assert quality["volume_length"][2] == pytest.approx(-1.0)
@@ -166,42 +242,45 @@ def test_icosahedral_triangles_are_nearly_equilateral():
   assert quality["min_angle"].min() > 45
 
 
-def test_cli_writes_the_statistics(mask_path, tmp_path, write_config):
-  """moby-dick graph-statistics reads the mask and a mesh file, and writes all sections; the icosahedral mesh covers
-  every unmasked point of the synthetic grid in the encoder and the decoder."""
+def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, write_config):
+  """moby-dick graph-statistics reads the mask and a mesh file, prints the summary tables to stdout and writes every
+  quantity with a description; the icosahedral mesh covers every unmasked point of the synthetic grid in the encoder
+  and the decoder. An existing output is kept."""
   from mobydick.geospatial_mesh_utils import write_multi_mesh
 
   mesh_path = tmp_path / "mesh.msh"
   write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(2), mesh_path)
   config = write_config({"num_sources": 8, "length_bin_width_km": 100.0})
   output = tmp_path / "stats.json"
-  arguments = [str(config), str(mesh_path), mask_path, str(output), "--log-level", "warning"]
+  arguments = [str(config), mask_path, str(output), str(mesh_path), "--log-level", "warning"]
   result = CliRunner().invoke(graph_statistics.graph_statistics_command, arguments)
   assert result.exit_code == 0, result.output
+  for title in ("Graphs", "Edge lengths", "Degrees", "Processors", "Coverage", "Triangle quality of mesh_0"):
+    assert title in result.output
   stats = json.loads(output.read_text())
-  assert set(stats) >= {"settings", "encoder", "processor", "decoder", "coverage", "triangles"}
-  assert stats["processor"]["networkx"]["nodes"] == 162 and stats["processor"]["networkx"]["connected"]
-  assert stats["coverage"]["grid_points_in_encoder"]["percent"] == 100.0
-  assert stats["coverage"]["grid_points_in_decoder"]["percent"] == 100.0
-  assert sum(stats["processor"]["edge_length_km"]["histogram"]["counts"]) == stats["processor"]["edges"]
-  assert stats["triangles"]["volume_length"]["inverted"] == 0
-  # An existing output is kept.
+  assert list(stats["graphs"]) == ["grid_to_mesh_0", "mesh_0", "mesh_0_to_grid"]
+  for name, entry in [*stats["graphs"].items(), *(("coverage", c) for c in stats["coverage"])]:
+    assert _quantities(entry) == [], name
+  processor = stats["graphs"]["mesh_0"]
+  assert processor["nodes"]["value"] == 162 and processor["connected_components"]["value"] == 1
+  assert stats["graphs"]["mesh_0_to_grid"]["three_edges_per_receiver"]["value"]
+  assert stats["coverage"][0]["lower_in_encoder"]["percent"] == 100.0
+  assert stats["coverage"][0]["lower_in_decoder"]["percent"] == 100.0
+  assert sum(processor["edge_length_km"]["histogram"]["counts"]) == processor["edges"]["value"]
+  assert processor["triangles"]["inverted"]["value"] == 0
   result = CliRunner().invoke(graph_statistics.graph_statistics_command, arguments)
   assert result.exit_code != 0 and "exists" in result.output
+
+
+def test_cli_rejects_an_unknown_networkx_backend(mask_path, tmp_path, write_config):
+  """A backend networkx does not know (e.g. cugraph without nx-cugraph installed) fails before any work."""
+  config = str(write_config({}))
+  arguments = [config, mask_path, str(tmp_path / "out.json"), config, "--networkx-backend", "nope"]
+  result = CliRunner().invoke(graph_statistics.graph_statistics_command, arguments)
+  assert result.exit_code != 0 and "nope" in result.output
 
 
 def test_unknown_settings_are_rejected():
   """A misspelt setting fails instead of being ignored."""
   with pytest.raises(ValueError, match="num_source"):
     graph_statistics.GraphStatisticsConfig.model_validate({"num_source": 3})
-
-
-def test_compute_without_networkx_logs_a_summary(tiny_model, caplog):
-  """The training log path (networkx off) computes every other section and logs one line per graph."""
-  config = graph_statistics.GraphStatisticsConfig(networkx=False)
-  results = graph_statistics.compute(tiny_model.mesh_data, _grid(), config)
-  assert "networkx" not in results["processor"]
-  with caplog.at_level("INFO", logger="mobydick.graph_statistics"):
-    graph_statistics.log_summary(results)
-  messages = [record.getMessage() for record in caplog.records]
-  assert [m.split(":")[0] for m in messages] == ["encoder", "processor", "decoder", "coverage", "triangles"]

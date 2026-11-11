@@ -30,7 +30,8 @@ Detailed version with charts: https://claude.ai/artifact/Bm8DGCiTHcJhL7k9AR5Lwg
 - **At equal resolution the meshes are equal:** icosahedral × 8 and 120 km × 8 differ by 0.1 %. 23 % of the icosahedral
   nodes are over land, which leaves about as many ocean-connected nodes (31,371) as the 120 km mesh (33,781).
 - **8 → 16 steps gain little on the multi-mesh** (1.3 %, against 2.5–3.8 % on the ocean meshes in the mesh study): its
-  processor's diameter is 14 hops, so 8 steps already reach everywhere.
+  median shortest path is 8 hops (diameter ≥ 14), so 8 steps already connect at least half of the node pairs, against
+  a median of 101 hops on the 120 km mesh and 229 on the 50 km mesh.
 - Every run has its lowest validation loss at the last step (no overfitting); icosahedral × 16 has the largest
   validation–training gap.
 
@@ -68,7 +69,7 @@ usi 0.1059, vsi 0.0950.
 |---|---|---|---|
 | processor nodes / directed edges | 34,007 / 194,040 | 181,325 / 1,061,739 | 40,962 / 327,660 |
 | edge length, median (min–max) | 118 km (17–173) | 50 km (7–74) | 126 km (110–7,076) |
-| diameter / average shortest path (hops) | 233 / 99.4 | 448 / 229.2 | 14 / 7.8 |
+| diameter / average shortest path (hops) | ≥ 233 / 99.4 | ≥ 515 / 229.2 | ≥ 14 / 7.8 |
 | average clustering | 0.417 | 0.395 | 0.415 |
 | average betweenness / closeness | 2.8e-3 / 0.010 | 1.3e-3 / 0.0044 | 1.7e-4 / 0.130 |
 | mesh nodes connected to ocean points | 99.3 % | 99.4 % | 76.6 % |
@@ -79,8 +80,9 @@ usi 0.1059, vsi 0.0950.
 | smallest / largest angle | 7.2° / 163.8° | 14.8° / 143.9° | 53.7° / 72.3° |
 
 The ocean meshes' interiors are slightly more regular than the icosahedron, with slivers along the coastline; triangle
-quality does not explain the skill gap. The diameter is networkx's 2-sweep lower bound; path metrics are on the largest
-connected component of the undirected graph.
+quality does not explain the skill gap. Path metrics are from 32 sampled nodes on the undirected graph (one connected
+component each); the diameter is a lower bound, the largest eccentricity of the samples and of the node farthest from
+them (11 Nov 2026; networkx's 2-sweep gave 448 for 50 km on 8 Nov).
 
 ## Side findings
 
