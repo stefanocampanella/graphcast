@@ -22,7 +22,13 @@ import xarray as xr
 from osgeo import gdal
 
 from mobydick import gis_utils, icosahedral_mesh
-from mobydick.gis_utils import cartesian_crs, cartesian_unit_sphere_crs, equirectangular_crs, get_transform
+from mobydick.gis_utils import (
+  cartesian_crs,
+  cartesian_unit_sphere_crs,
+  equirectangular_crs,
+  get_components_transform,
+  get_transform,
+)
 
 
 @pytest.mark.parametrize("crs", [cartesian_unit_sphere_crs, cartesian_crs], ids=["unit_sphere", "wgs84"])
@@ -48,27 +54,30 @@ def test_points_off_the_surface_warn(crs, scale):
     get_transform(crs, equirectangular_crs)(vertices)
 
 
-def test_transform_round_trip_of_tuples_and_arrays():
-  """Longitude-latitude pairs go to Earth-centred coordinates and back, given as tuples or as arrays (the coordinate
-  axis last); packed back into an array only for arrays and when asked."""
+def test_transform_round_trip_of_arrays_and_components():
+  """Longitude-latitude pairs go to Earth-centred coordinates and back: `get_transform` always takes and returns one
+  array with the coordinates on the last axis (also with more leading axes), `get_components_transform` one array per
+  coordinate, and both agree."""
   lon, lat = np.array([0.0, 90.0, -45.0]), np.array([0.0, 45.0, -30.0])
   to_cartesian = get_transform(equirectangular_crs, cartesian_crs)
-  to_lat_lon = get_transform(cartesian_crs, equirectangular_crs, pack_back=False)
 
   xyz = to_cartesian(np.stack([lon, lat], axis=-1))
   assert isinstance(xyz, np.ndarray) and xyz.shape == (3, 3)
   np.testing.assert_allclose(xyz[0], [6_378_137.0, 0.0, 0.0], atol=1e-6)
-  back = to_lat_lon(tuple(xyz.T))
-  assert isinstance(back, tuple)
-  np.testing.assert_allclose(back, (lon, lat), atol=1e-9)
-  np.testing.assert_allclose(to_cartesian((lon, lat)), tuple(xyz.T))
+  back = get_transform(cartesian_crs, equirectangular_crs)(xyz.reshape(1, 3, 3))
+  assert back.shape == (1, 3, 2)
+  np.testing.assert_allclose(back[0], np.stack([lon, lat], axis=-1), atol=1e-9)
+  components = get_components_transform(cartesian_crs, equirectangular_crs)(tuple(xyz.T))
+  assert isinstance(components, tuple) and len(components) == 2
+  np.testing.assert_allclose(components, (lon, lat), atol=1e-9)
+  np.testing.assert_allclose(get_components_transform(equirectangular_crs, cartesian_crs)((lon, lat)), tuple(xyz.T))
 
 
 def test_transform_rejects_wrong_coordinates():
   to_cartesian = get_transform(equirectangular_crs, cartesian_crs)
   with pytest.raises(AssertionError, match="Expected 2 coordinates"):
     to_cartesian(np.zeros((4, 3)))
-  with pytest.raises(TypeError, match="tuple or a numpy array"):
+  with pytest.raises(TypeError, match="numpy array"):
     to_cartesian([[0.0, 0.0]])  # ty: ignore[invalid-argument-type]  # the wrong type under test
 
 

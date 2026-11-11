@@ -200,12 +200,8 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
-  transformer = get_transform(
-    cartesian_unit_sphere_crs if unit_sphere else cartesian_crs,
-    equirectangular_crs,
-    pack_back=False,
-  )
-  longitudes, latitudes = transformer(graph.vertices)
+  transformer = get_transform(cartesian_unit_sphere_crs if unit_sphere else cartesian_crs, equirectangular_crs)
+  longitudes, latitudes = transformer(graph.vertices).T
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.
   vertices = (latitudes, longitudes)

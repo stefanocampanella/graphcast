@@ -132,7 +132,7 @@ def model_graphs(mesh_data: MeshData, grid: Grid, radius_query_fraction: float, 
   num_points = int(flat_mask.sum())
   grid_lon, grid_lat = np.meshgrid(grid.lon, grid.lat)
   grid_lat, grid_lon = grid_lat.reshape(-1)[flat_mask], grid_lon.reshape(-1)[flat_mask]
-  mesh_lon, mesh_lat = get_transform(cartesian_crs, equirectangular_crs, pack_back=False)(mesh.vertices)
+  mesh_lon, mesh_lat = get_transform(cartesian_crs, equirectangular_crs)(mesh.vertices).T
   num_mesh = len(mesh.vertices)
   graphs = {
     "encoder": BipartiteGraph(

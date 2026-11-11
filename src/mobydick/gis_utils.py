@@ -60,7 +60,7 @@
 # these CRS objects from short strings in config files.
 import warnings
 from collections.abc import Callable
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 import numpy as np
 import xarray as xr
@@ -70,7 +70,6 @@ from pyproj import Transformer
 FloatingPoint = np.float32 | np.float64 | float
 GDFloatingPoint = int
 CoordinatesTuple = tuple[np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray, np.ndarray]
-Coordinates = np.ndarray | CoordinatesTuple
 
 _stereographic_wkt = """
 PROJCRS["unknown",
@@ -219,13 +218,12 @@ CRSRegistry = {
 }
 
 
-def get_transform(
-  source: CoordinateReferenceSystem,
-  destination: CoordinateReferenceSystem,
-  pack_back=True,
-  **kwargs,
-) -> Callable[[Coordinates], Any]:  # an array, or a tuple of arrays without pack_back
-  """Gets a function that transforms coordinates from one projection to another."""
+def get_components_transform(
+  source: CoordinateReferenceSystem, destination: CoordinateReferenceSystem, **kwargs
+) -> Callable[[CoordinatesTuple], CoordinatesTuple]:
+  """Gets a function that transforms coordinates from one reference system to another, given and returned as one array
+  per coordinate (e.g. `lon, lat`). A destination without elevation (e.g. longitude and latitude) drops it, warning if
+  it is not zero (points off the surface)."""
   transformer = Transformer.from_crs(source, destination)
   assert transformer.source_crs is not None and transformer.target_crs is not None
   num_coords_in = len(transformer.source_crs.axis_info)
@@ -234,39 +232,38 @@ def get_transform(
   ellipsoid = transformer.source_crs.ellipsoid
   elevation_tolerance = 1e-6 * (ellipsoid.semi_major_metre if ellipsoid is not None else 1.0)
 
-  def wrapped(coordinates: Coordinates) -> Coordinates:
-    # We assume that the coordinate dimension is the last one.
-    if isinstance(coordinates, tuple):
-      assert len(coordinates) == num_coords_in, f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
-      if len(coordinates) == 2:
-        xx, yy = coordinates
-        zz = np.zeros_like(xx)
-      else:
-        xx, yy, zz = coordinates
-    elif isinstance(coordinates, np.ndarray):
-      assert coordinates.shape[-1] == num_coords_in, (
-        f"Expected {num_coords_in} coordinates, got {coordinates.shape[-1]}"
-      )
-      if coordinates.shape[-1] == 2:
-        xx = coordinates[..., 0]
-        yy = coordinates[..., 1]
-        zz = np.zeros_like(xx)
-      else:
-        xx = coordinates[..., 0]
-        yy = coordinates[..., 1]
-        zz = coordinates[..., 2]
+  def wrapped(coordinates: CoordinatesTuple) -> CoordinatesTuple:
+    assert len(coordinates) == num_coords_in, f"Expected {num_coords_in} coordinates, got {len(coordinates)}"
+    if len(coordinates) == 2:
+      xx, yy = coordinates
+      zz = np.zeros_like(xx)
     else:
-      raise TypeError(f"Coordinates must be a tuple or a numpy array, got {type(coordinates)}")
+      xx, yy, zz = coordinates
     result = transformer.transform(xx=xx, yy=yy, zz=zz, inplace=False, **kwargs)
     assert len(result) >= num_coords_out, f"Expected {num_coords_out} coordinates, got {len(result)}"
     # We don't use elevation, in case of conversion to equirectangular projection drop it.
     if len(result) == 3 and num_coords_out == 2:
       if not np.allclose(result[2], 0.0, rtol=0.0, atol=elevation_tolerance):
         warnings.warn(f"Expected elevation to be zero, got {result[2]}")
-      result = result[0], result[1]
-    if isinstance(coordinates, np.ndarray) and pack_back:
-      result = np.stack(result, axis=-1)
-    return result
+      return np.asarray(result[0]), np.asarray(result[1])
+    return tuple(np.asarray(r) for r in result)  # ty: ignore[invalid-return-type]  # two or three arrays
+
+  return wrapped
+
+
+def get_transform(
+  source: CoordinateReferenceSystem, destination: CoordinateReferenceSystem, **kwargs
+) -> Callable[[np.ndarray], np.ndarray]:
+  """Gets a function that transforms coordinates from one reference system to another, given and returned as one array
+  with the coordinates along the last axis ([..., n] to [..., m]); `get_components_transform` takes and returns one
+  array per coordinate."""
+  transform = get_components_transform(source, destination, **kwargs)
+
+  def wrapped(coordinates: np.ndarray) -> np.ndarray:
+    if not isinstance(coordinates, np.ndarray):
+      raise TypeError(f"Coordinates must be a numpy array, got {type(coordinates)}")
+    components = tuple(np.moveaxis(coordinates, -1, 0))
+    return np.stack(transform(components), axis=-1)
 
   return wrapped
 
