@@ -44,7 +44,7 @@ dependencies = [
     # Without a lower bound, pip resolves botocore[crt] to a version aiobotocore rejects and falls back to s3fs 0.4
     "s3fs >= 2026.9.0",
     "scipy",
-    "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
+    "seamsh@git+https://github.com/stefanocampanella/seamsh.git@develop",
     "tensorboard",
     "tensorflow >= 2.21.0",
     "tqdm",
