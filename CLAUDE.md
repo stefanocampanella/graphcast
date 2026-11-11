@@ -557,8 +557,16 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
     (radius ~15 km against a 0.25° grid, i.e. a mesh finer than the grid), but the processor updates every vertex at
     every step (`_run_mesh_gnn` has no node mask; their encoder state is the embedding of their position) and 99.3 %
     of the vertices send decoder edges. Such a vertex starts without data and holds its neighbours' after one step:
-    it costs one step of reach there, not coverage. Only vertices in neither graph (0.6 % at 25 km, 0.7 % at 120 km,
-    23 % on the icosahedral mesh: land) are idle relays.
+    it costs one step of reach there, not coverage.
+  - Vertices in neither the encoder nor the decoder never exchange data with the grid but are full processor nodes:
+    they receive and pass on messages at every step. Measured (11 Nov 2026, `relay_nodes.py` in the session
+    directory, shortest paths between the other nodes from 32 sources, with and without them): on the icosahedral
+    mesh they are the 9,591 land vertices (23 %), and they are needed as relays: without them 20 % of the paths
+    between data-carrying nodes get longer (mean × 1.032), across continents. On the ocean meshes they are the 233
+    (120 km) and 1,122 (50 km) vertices poleward of 60° S, median 79° S, i.e. under Antarctic ice shelves outside
+    the GLORYS mask: dead ends, with no path between data-carrying nodes through them (one 120 km vertex is connected
+    to the rest only through them; at 50 km 0.2 % of the paths get longer); they still exchange messages with their
+    neighbours.
 
 ## Repository notes
 

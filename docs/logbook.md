@@ -1420,3 +1420,15 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   coastline edges and the encoder radius from the longest triangle edge: study `edge_fixes`, jobs 2841380–2841383
   (`training2647`), code of this branch (808fba5). Compare with jobs 2765280–2765287 (validation loss, per variable,
   XLA memory, step time).
+
+## 2026-11-11 20:00: processor nodes outside the encoder and the decoder
+
+- **Question (maintainer):** are the mesh nodes with neither encoder nor decoder edges not needed as intermediates of
+  the processor's message passing? I had called them idle relays.
+- **Answer:** they are full processor nodes, so yes in general; measured with `relay_nodes.py` (shortest paths between
+  the data-carrying nodes from 32 sources, with and without them):
+  - icosahedral M6: 9,591 land vertices (23 %); without them the data nodes stay connected (long edges), but 20 % of
+    the paths get longer, mean path × 1.032: they relay across continents.
+  - 120 km / 50 km: 233 / 1,122 vertices, all poleward of 60° S (median 79° S), under Antarctic ice shelves outside
+    the GLORYS mask: dead ends for paths between data nodes (0.0 % / 0.2 % longer; one 120 km vertex reaches the
+    rest only through them). They still exchange messages with their neighbours.
