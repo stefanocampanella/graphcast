@@ -222,8 +222,10 @@ def get_components_transform(
   source: CoordinateReferenceSystem, destination: CoordinateReferenceSystem, **kwargs
 ) -> Callable[[CoordinatesTuple], CoordinatesTuple]:
   """Gets a function that transforms coordinates from one reference system to another, given and returned as one array
-  per coordinate (e.g. `lon, lat`). A destination without elevation (e.g. longitude and latitude) drops it, warning if
-  it is not zero (points off the surface)."""
+  per coordinate, in the axis order of each reference system: x, y, z for the Earth-centred ones, longitude then
+  latitude (x then y) for `equirectangular_crs`. A destination without elevation (e.g. longitude and latitude) drops
+  it, warning if it is not zero (points off the surface). For latitude and longitude in the codebase's (lat, lon)
+  order, use `cartesian_to_lat_lon` and `lat_lon_to_cartesian`."""
   transformer = Transformer.from_crs(source, destination)
   assert transformer.source_crs is not None and transformer.target_crs is not None
   num_coords_in = len(transformer.source_crs.axis_info)
@@ -255,8 +257,9 @@ def get_transform(
   source: CoordinateReferenceSystem, destination: CoordinateReferenceSystem, **kwargs
 ) -> Callable[[np.ndarray], np.ndarray]:
   """Gets a function that transforms coordinates from one reference system to another, given and returned as one array
-  with the coordinates along the last axis ([..., n] to [..., m]); `get_components_transform` takes and returns one
-  array per coordinate."""
+  with the coordinates along the last axis ([..., n] to [..., m]), in the axis order of each reference system (see
+  `get_components_transform`: longitude before latitude); `get_components_transform` takes and returns one array per
+  coordinate."""
   transform = get_components_transform(source, destination, **kwargs)
 
   def wrapped(coordinates: np.ndarray) -> np.ndarray:
@@ -266,6 +269,21 @@ def get_transform(
     return np.stack(transform(components), axis=-1)
 
   return wrapped
+
+
+def cartesian_to_lat_lon(vertices: np.ndarray, unit_sphere: bool = False) -> tuple[np.ndarray, np.ndarray]:
+  """Latitudes and longitudes in degrees, in this order, of points in Earth-centred coordinates [..., 3] (metres on
+  the WGS84 ellipsoid, `cartesian_crs`, or the unit sphere); longitudes in [-180, 180]."""
+  source = cartesian_unit_sphere_crs if unit_sphere else cartesian_crs
+  lon, lat, *_ = get_components_transform(source, equirectangular_crs)(tuple(np.moveaxis(vertices, -1, 0)))
+  return lat, lon
+
+
+def lat_lon_to_cartesian(lat: np.ndarray, lon: np.ndarray, unit_sphere: bool = False) -> np.ndarray:
+  """Earth-centred coordinates [..., 3] (metres on the WGS84 ellipsoid, `cartesian_crs`, or the unit sphere) of points
+  on the surface given by latitudes and longitudes in degrees."""
+  destination = cartesian_unit_sphere_crs if unit_sphere else cartesian_crs
+  return np.stack(get_components_transform(equirectangular_crs, destination)((lon, lat)), axis=-1)
 
 
 def wrap_longitude(da: xr.DataArray, longitude_dim: str = "lon"):

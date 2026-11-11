@@ -49,7 +49,9 @@ from mobydick import (
   typed_graph,
   xarray_jax,
 )
-from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
+from mobydick.gis_utils import (
+  cartesian_to_lat_lon,
+)
 from mobydick.leviathan import model_utils
 from mobydick.leviathan.model_utils import Embedder
 from mobydick.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
@@ -410,8 +412,7 @@ class Leviathan(hk.Module, predictor_base.Predictor):
     self._boundary_nodes_mask = self._mesh_graph.boundary
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
 
-    cartesian2latlon = get_transform(cartesian_crs, equirectangular_crs)
-    mesh_nodes_lon, mesh_nodes_lat = cartesian2latlon(self._mesh_graph.vertices).T
+    mesh_nodes_lat, mesh_nodes_lon = cartesian_to_lat_lon(self._mesh_graph.vertices)
 
     # Convert to f32 to ensure the lat/lon features aren't in f64.
     self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)

@@ -31,10 +31,7 @@ import numpy as np
 from mobydick import typed_graph
 from mobydick.gis_utils import (
   _cartesian_wkt,
-  cartesian_crs,
-  cartesian_unit_sphere_crs,
-  equirectangular_crs,
-  get_transform,
+  cartesian_to_lat_lon,
 )
 
 
@@ -203,8 +200,7 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
-  transformer = get_transform(cartesian_unit_sphere_crs if unit_sphere else cartesian_crs, equirectangular_crs)
-  longitudes, latitudes = transformer(graph.vertices).T
+  latitudes, longitudes = cartesian_to_lat_lon(graph.vertices, unit_sphere=unit_sphere)
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.
   vertices = (latitudes, longitudes)

@@ -26,7 +26,9 @@ import numpy.typing as npt
 import scipy
 import trimesh
 
-from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
+from mobydick.gis_utils import (
+  lat_lon_to_cartesian,
+)
 from mobydick.mesh_graph import Mesh, TriangleMesh, faces_to_edges
 from mobydick.typed_graph import (
   Context,
@@ -50,9 +52,7 @@ def _grid_lat_lon_to_coordinates(grid_latitude: np.ndarray, grid_longitude: np.n
   lon = np.where(lon > 180, lon - 360, lon)
   lon = lon.reshape(-1)
   lat = lat.reshape(-1)
-  lonlat_coordinates = np.stack([lon, lat], axis=-1)
-  transform = get_transform(equirectangular_crs, cartesian_crs)
-  cartesian_coordinates = transform(lonlat_coordinates)
+  cartesian_coordinates = lat_lon_to_cartesian(lat, lon)
   cartesian_coordinates = cartesian_coordinates.reshape(num_lon, num_lat, 3)
   cartesian_coordinates = cartesian_coordinates.transpose(1, 0, 2)
   return cartesian_coordinates
