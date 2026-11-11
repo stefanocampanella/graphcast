@@ -75,6 +75,11 @@ moby-dick = "mobydick:cli"
 [project.urls]
 Homepage = "https://github.com/stefanocampanella/moby-dick"
 
+[project.optional-dependencies]
+# networkx's GPU backend (CUDA 13) for the path metrics of moby-dick graph-statistics:
+# set NETWORKX_BACKEND_PRIORITY=cugraph.
+graph-gpu = ["nx-cugraph-cu13"]
+
 [dependency-groups]
 dev = [
     "coverage[toml] >= 7.17",

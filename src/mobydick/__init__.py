@@ -19,7 +19,7 @@ from mobydick.banner import print_banner
 from mobydick.basis import compute_grid_basis_command
 from mobydick.downloader import compute_tendency_std, download, download_mask
 from mobydick.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
-from mobydick.graph_statistics import graph_statistics_command
+from mobydick.graph_statistics.cli import graph_statistics_command
 from mobydick.training import train
 
 
