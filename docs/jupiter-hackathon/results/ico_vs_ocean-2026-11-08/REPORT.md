@@ -94,7 +94,11 @@ it.
   outside the uniform meshes' domain: the decoder takes their predictions from Aegean vertices up to 1,232 km away, and
   the encoder never reads them (895 of the 120 km mesh's 2,222 points without encoder edges). The other missing points
   are coastal (Chile, Greenland, British Columbia), farther from every vertex than the local encoder radius. It affects
-  every model trained on the ocean meshes, but is too small (0.13 % of ocean points) to change this comparison.
+  every model trained on the ocean meshes, but is too small (0.13 % of ocean points) to change this comparison. Since
+  11 Nov the mesh configs refine the coastline coarsening and the mesh at the Bosporus, Dardanelles and Kerch Strait
+  (`point_refinement` fields): the regenerated meshes include the Black Sea and Sea of Azov in one connected ocean;
+  ocean points without encoder edges 1,222 → 276 (120 km) and 1,725 → 798 (50 km), longest decoder edge 1,286 →
+  245 km and 1,231 → 194 km.
 - **The baselines improved by about 8 % since the mesh study** (120 km × 8: 0.09068 → 0.08382; 50 km × 16: 0.08181 →
   0.07524), with the same config, protocol and validation windows. The most likely cause is the edge-direction fix of
   6 Nov (`0473751`, azimuth features were meaningless before); not ablated. The ranking is unchanged (50 km × 16 vs
@@ -112,7 +116,7 @@ it.
   11 Nov and fixed: 3,612 of 194,040 processor edges at 120 km, 9,357 of 1,061,739 at 50 km; the icosahedral mesh is
   closed and unaffected), and the encoder radius was 0.6 × the target size, leaving 1,129 (120 km) and 820 (50 km)
   ocean points inside coastal triangles without encoder edges (now 0.6 × the longest triangle edge at each vertex),
-  so the ocean results may change; 5000 steps and two seeds; one-step loss, not rollout skill (large-scale `zos` errors may weigh more in
+  a rerun of both ocean cases with the fixes (11 Nov, jobs 2841380–2841383) changed the validation loss by −0.10 % (120 km × 8) and −0.39 % (50 km × 16), within the seed spread, so the comparison stands; 5000 steps and two seeds; one-step loss, not rollout skill (large-scale `zos` errors may weigh more in
   rollouts); no tuning for the multi-mesh (radius 0.6 × mesh size, latent 512).
 
 Files: `summary_cases.csv`, `summary_runs.csv`, `curves.csv` (validation loss every 250 steps per run). Scripts, logs and

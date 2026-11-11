@@ -1486,3 +1486,10 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   behind a 22 km channel kept only with the refinement).
 - **Meshes and graph statistics:** see CLAUDE.md (Meshes); comparison in `strait_meshes_comparison.json` in the
   session directory. Not yet done: copy the meshes to `data/geometry`, update the report and the artifact.
+
+## 2026-11-12 09:00: rerun of the ocean cases with the edge fixes
+
+- Rerun with both fixes (two-way edges, encoder radius from the longest triangle edge; meshes without the Black Sea; study `edge_fixes`, jobs 2841380–2841383, 46 node-h): validation loss 120 km × 8 0.08382 → 0.08373 (−0.10 %), 50 km × 16 0.07524 → 0.07494 (−0.39 %), within the seed spread (0.04–0.40 %), every variable within ±1.1 %; XLA memory +1.1 GiB (120 km, 54.9 GiB) and +0.8 GiB (50 km, 74.8 GiB); step time +8 % / +3.5 %, within the run-to-run variation. No measurable effect on skill.
+- Per variable (50 km × 16): zos −0.9 %, thetao −0.4 %, so −0.2 %, uo/vo −0.3 %, siconc −0.7 %, sithick −1.1 %,
+  usi/vsi +0.4 %. Script `compare_edge_fixes.py`, tables `edge_fixes_runs.csv`, `edge_fixes_curves.csv` in the session
+  directory.

@@ -100,7 +100,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (465 tests, ~4 min on a login node, CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (480 tests, ~5 min on a login node, CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
@@ -573,7 +573,7 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   one face, so they were one-way (3,612 of 194,040 edges at 120 km, 9,357 of 1,061,739 at 50 km): every model trained
   on ocean meshes before then, including the mesh study and the icosahedral comparison, passed messages along the
   coast in one direction only. Their reverses are now appended (`.msh` files unchanged: edges are rebuilt from the
-  faces when read); the effect on skill has not been measured.
+  faces when read). Rerun with both fixes (two-way edges, encoder radius from the longest triangle edge; meshes without the Black Sea; study `edge_fixes`, jobs 2841380–2841383, 46 node-h): validation loss 120 km × 8 0.08382 → 0.08373 (−0.10 %), 50 km × 16 0.07524 → 0.07494 (−0.39 %), within the seed spread (0.04–0.40 %), every variable within ±1.1 %; XLA memory +1.1 GiB (120 km, 54.9 GiB) and +0.8 GiB (50 km, 74.8 GiB); step time +8 % / +3.5 %, within the run-to-run variation. No measurable effect on skill.
 - **Coverage of the ocean points** (8 Nov 2026, `moby-dick graph-statistics`): the uniform meshes' domain leaves out the
   Black Sea, so about 900 ocean points of the training mask (40–47° N, 27–42° E) are decoded from the vertices of the
   nearest face in the Aegean, up to 1,232 km away, and are never encoder senders. In all, 2,222 (120 km) and 2,342

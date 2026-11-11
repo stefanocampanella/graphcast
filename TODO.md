@@ -9,9 +9,6 @@
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
-  * Measure the effect of the two-way coastline edges and of the encoder radius from the longest triangle edge (both
-    11 Nov 2026): rerun 50 km × 16 and 120 km × 8 of the icosahedral comparison (demo_5000, 2 seeds, ~45 node-h) and
-    compare with the runs of 8 Nov; check the XLA memory of 50 km × 16 (5–8 % more encoder edges).
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
@@ -78,7 +75,8 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
-* One-way coastline edges in the processor (Nov 2026): `faces_to_edges` now appends the reverses of boundary edges.
+* One-way coastline edges in the processor (Nov 2026): `faces_to_edges` now appends the reverses of boundary edges;
+  with the encoder radius from the longest triangle edge, no measurable effect on skill (jobs 2841380–2841383).
 * Graph statistics (Nov 2026): `moby-dick graph-statistics` (all graphs of one mesh or a hierarchy: nodes, edges,
   degrees, edge lengths; processors: components, diameter, shortest paths, triangle quality; coverage of each pair of
   levels), summary tables on stdout and a described JSON.
