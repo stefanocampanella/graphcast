@@ -9,8 +9,9 @@
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
-  * Measure the effect of the two-way coastline edges (fixed 11 Nov 2026, `faces_to_edges`): rerun 50 km × 16 and
-    120 km × 8 of the icosahedral comparison (demo_5000, 2 seeds, ~45 node-h) and compare with the runs of 8 Nov.
+  * Measure the effect of the two-way coastline edges and of the encoder radius from the longest triangle edge (both
+    11 Nov 2026): rerun 50 km × 16 and 120 km × 8 of the icosahedral comparison (demo_5000, 2 seeds, ~45 node-h) and
+    compare with the runs of 8 Nov; check the XLA memory of 50 km × 16 (5–8 % more encoder edges).
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
@@ -32,8 +33,9 @@
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
 * Bring the Black Sea into the ocean meshes' domain (or out of the training mask): `moby-dick graph-statistics` (8 Nov
   2026) found ~900 of its ocean points decoded from Aegean vertices up to 1,232 km away and never encoded; 2,222
-  (120 km) / 2,342 (50 km) ocean points have no encoder edge in all. A per-node encoder radius from the longest
-  adjacent edge would also cover the coastal ones. **HIGH PRIORITY**
+  (120 km) / 2,342 (50 km) ocean points had no encoder edge in all. The per-vertex radius from the longest triangle
+  edge (11 Nov 2026) covers every point inside a triangle; 1,222 (120 km) / 1,725 (50 km) remain, all outside the
+  mesh domain (the Black Sea and coastal channels such as Tierra del Fuego). **HIGH PRIORITY**
 * Long-range edges on the ocean mesh: merge a hierarchy of coarser ocean meshes into the 50 km processor, as the
   icosahedral multi-mesh does; the multi-mesh improved `zos` by 16.7 % over 50 km × 16 (8 Nov 2026) while losing
   10-31 % on the other targets for lack of ocean resolution. **HIGH PRIORITY**

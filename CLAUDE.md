@@ -475,7 +475,10 @@ log) predicts GPU OOM before training starts.
 
 **Leviathan model** (`leviathan/model.py`, settings `leviathan/config.py`): grid ↔ mesh connectivity comes from `mesh_connectivity.py` (encoder edges by
 radius query, decoder edges by containing triangle, both restricted by the ocean mask; the k-d tree query uses all
-cores since 11 Nov 2026, one thread before, with the same edges). With
+cores since 11 Nov 2026, one thread before, with the same edges). The encoder radius at each mesh vertex is
+`radius_query_fraction_edge_length` × the longest triangle edge at the vertex (`mesh_graph.longest_incident_edges`,
+since 11 Nov 2026; before, × the mesh size field, i.e. the target size, which left ocean points inside coastal
+triangles without encoder edges; GraphCast uses the longest edge of the whole mesh). With
 `model.connected_grid_nodes` only grid points that are encoder senders or decoder receivers become grid nodes;
 the decoder writes back only ocean (unmasked) points. Three `DeepTypedGraphNet`s (`deep_typed_graph_net.py`,
 built from `typed_graph_net.py` blocks on `typed_graph.TypedGraph`) form encoder (grid2mesh), processor
@@ -541,9 +544,16 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - **Coverage of the ocean points** (8 Nov 2026, `moby-dick graph-statistics`): the uniform meshes' domain leaves out the
   Black Sea, so about 900 ocean points of the training mask (40–47° N, 27–42° E) are decoded from the vertices of the
   nearest face in the Aegean, up to 1,232 km away, and are never encoder senders. In all, 2,222 (120 km) and 2,342
-  (50 km) ocean points have no encoder edge; the others are coastal points farther from every vertex than the local
-  radius (0.6 × target size). The icosahedral mesh covers every point. To fix: the Black Sea in the domain, or out of
-  the mask.
+  (50 km) ocean points had no encoder edge; the others were coastal points farther from every vertex than the local
+  radius (0.6 × target size): 1,129 (120 km), 820 (50 km), 616 (25 km) inside a triangle, the rest outside the mesh.
+  The icosahedral mesh covers every point. Since 11 Nov 2026 the radius is 0.6 × the longest triangle edge at each
+  vertex, which reaches every point inside a triangle (5–8 % more encoder edges): 1,222 (120 km), 1,725 (50 km) and
+  3,099 (25 km) points remain without encoder edges, all outside the mesh domain: the Black Sea (936) and coastal
+  channels and ice-shelf fronts (e.g. Tierra del Fuego, the Weddell Sea). A radius of 1.0 × the longest edge leaves
+  993 / 1,191 / 1,546 for 2.9 × the encoder edges. Mesh hierarchies: finer vertices without encoder edges to the
+  coarser mesh went from 260 to 2 (50 → 120 km) and 802 to 8 (25 → 50 km), the rest outside the coarser mesh.
+  On the 25 km mesh, 6–8 % of the vertices receive no grid point (radius ~15 km against a 0.25° grid). To fix the
+  rest: the Black Sea and the coastal gaps in the domain, or out of the mask.
 
 ## Repository notes
 

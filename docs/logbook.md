@@ -1384,3 +1384,27 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `centrality_identity.py`).
 - **Open:** the mesh study and the icosahedral comparison trained with one-way coastline edges; the effect of the fix
   is not measured (TODO: rerun 50 km × 16 and 120 km × 8, ~45 node-h).
+
+## 2026-11-11 18:30: encoder radius from the longest triangle edge (PR #7)
+
+- **Request:** check whether the encoder radius at a mesh vertex from its longest edge, instead of the mesh size,
+  fixes the grid points without encoder edges (apart from the Black Sea) and the same gaps between meshes of a
+  hierarchy; if so, include it.
+- **Check** (`radius_rules.py`, `radius_rules.out` in the session directory; points without encoder edges, and
+  whether they lie inside a mesh triangle by radial projection):
+
+  | Mesh | 0.6 × mesh size (before) | 0.6 × longest incident edge | 1.0 × longest incident edge |
+  |---|---|---|---|
+  | 120 km | 2,222 (1,129 inside a triangle) | 1,222 (0 inside; Black Sea 936) | 993 (0 inside), 2.9 × edges |
+  | 50 km | 2,342 (820 inside) | 1,725 (0 inside) | 1,191 (0 inside) |
+  | 25 km | 3,697 (616 inside) | 3,099 (0 inside) | 1,546 (0 inside) |
+  | icosahedral M6 | 0 | 0 (5 % fewer edges) | 0 |
+  | 50 → 120 km (finer vertices) | 260 (all inside) | 2 (outside) | 0 |
+  | 25 → 50 km | 802 (all inside) | 8 (outside) | 0 |
+
+  Encoder edges grow by 5.5 % (120 km) and 7.6 % (50 km). The remaining points are outside the mesh domain: the
+  Black Sea and coastal channels or ice-shelf fronts (Tierra del Fuego, the Weddell Sea).
+- **Change:** `mesh_graph.longest_incident_edges` (from the triangles only, not a multi-mesh's coarser edges); the
+  model's and graph-statistics' radius is `radius_query_fraction_edge_length` × it. The mesh size field is no longer
+  needed by the model. New tests: coverage of every point on an irregular closed mesh, the radius of the model.
+- **Not measured:** the effect on skill and on GPU memory (TODO, with the two-way edges rerun).

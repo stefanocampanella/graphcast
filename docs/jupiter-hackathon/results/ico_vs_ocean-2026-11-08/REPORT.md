@@ -110,7 +110,9 @@ it.
   comparison; the Black Sea in the mesh domain (or out of the mask); an ablation of the edge-direction fix.
 - **Caveats:** the ocean meshes' coastline edges were one-way in these runs (a bug found by the graph statistics on
   11 Nov and fixed: 3,612 of 194,040 processor edges at 120 km, 9,357 of 1,061,739 at 50 km; the icosahedral mesh is
-  closed and unaffected), so the ocean results may change; 5000 steps and two seeds; one-step loss, not rollout skill (large-scale `zos` errors may weigh more in
+  closed and unaffected), and the encoder radius was 0.6 × the target size, leaving 1,129 (120 km) and 820 (50 km)
+  ocean points inside coastal triangles without encoder edges (now 0.6 × the longest triangle edge at each vertex),
+  so the ocean results may change; 5000 steps and two seeds; one-step loss, not rollout skill (large-scale `zos` errors may weigh more in
   rollouts); no tuning for the multi-mesh (radius 0.6 × mesh size, latent 512).
 
 Files: `summary_cases.csv`, `summary_runs.csv`, `curves.csv` (validation loss every 250 steps per run). Scripts, logs and
