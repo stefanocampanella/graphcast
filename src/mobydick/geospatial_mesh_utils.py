@@ -384,9 +384,10 @@ def read_mesh(
   # Flat arrays of size 2 * num_lines.
   boundary_node_tags = np.concatenate(boundary_node_tags) if boundary_node_tags else np.empty((0,), dtype=int)
 
-  # Meshes produced with seamsh might contain isolated points. Their existence, number and location are determined by
-  # the resolution of the shapefile containing the coastlines, and the target mesh size used when coarsening the
-  # coastlines. Here we remove those points: the mesh is valid only if all nodes are used by at least one element.
+  # Meshes produced with seamsh contain nodes that belong to no triangle: the outlines of islands smaller than the
+  # mesh size (they survive the coastline coarsening, but gmsh triangulates the sea over them, so they are not holes).
+  # 743 of 34,750 nodes at 120 km (632 islands of 1-3 nodes, up to ~100 km across), 655 of 181,980 at 50 km (Nov 2026).
+  # Here we remove them: the mesh is valid only if all nodes are used by at least one element.
 
   # Get valid nodes, i.e., those belonging to a triangle by querying all triangular elements (type=2).
   triangle_tags, triangle_node_tags = gmsh.model.mesh.get_elements_by_type(2)
@@ -421,6 +422,8 @@ def read_mesh(
 
   # Node coords have the same order as in node_tags, so we can filter them directly.
   node_mask = np.isin(node_tags, valid_node_tags)
+  if num_dropped := int((~node_mask).sum()):
+    logger.info(f"Dropped {num_dropped} of {len(node_mask)} nodes in no triangle (outlines of islands not meshed)")
   node_tags = node_tags[node_mask]  # [num_valid_node_tags]
   node_coords = node_coords[node_mask, :]  # [num_valid_node_tags, 3]
 

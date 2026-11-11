@@ -1456,3 +1456,24 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
     `exit(1)`, a leak in `extract_boundaries`, unchecked allocations, `np.random.seed(0)` on the global state, an
     unbounded sampling loop, the `tri` view left in the model, a license inconsistency (GPLv3 text, LGPL headers);
     details in the notes.
+
+## 2026-11-11 22:00: nodes in no triangle, mesh parameters, keeping the Black Sea
+
+- **Requests:** log the nodes `read_mesh` drops; other findings worth a code change; whether the coastline and mesh
+  parameters are reasonable; parameters for one connected ocean including the Black Sea and Sea of Azov.
+- **Correction:** the kit's figure of 49,054 nodes in no triangle at 120 km was gmsh's in-memory model (a node on
+  every geometry point of the coarsened coastline), not the file. The files hold 743 of 34,750 (120 km) and 655 of
+  181,980 (50 km): outlines of islands smaller than the mesh size (632 at 120 km, 1–3 nodes, up to ~100 km across:
+  Kurils, Solomons, Canaries, Gotland, Shetland), whose sea is triangulated over them. Kit notes, guide, script (now
+  measuring the written file) and references corrected.
+- **Change:** `read_mesh` logs "Dropped N of M nodes in no triangle (outlines of islands not meshed)"; test with a
+  hand-built mesh holding a small island outline.
+- **Keeping the Black Sea** (`strait_experiment.py`, `strait_geometry.py`, `strait_hops.py` in the kit): the 1:10m
+  coastline keeps the straits open (Bosporus 1.09 km, Dardanelles 2.36 km, Kerch 2.51 km). Coarsening refined to
+  0.1–2 km at the strait centres but growing 0.2 km/km does not connect them (the straits are 30–60 km long); 0.25–0.5
+  km growing ≤ 0.05 km/km does. With a mesh size of 1–3 km at the straits (growth 0.3): one component, all basins;
+  120 km: 34,449 (3 km) or 34,621 (1 km) used nodes against 34,007; 50 km: 182,174 against 181,325; smallest angles
+  unchanged. The Black Sea is then 47–61 hops from the Aegean. A 30 km coastline with nine straits refined keeps every
+  basin but gives a 2.5° smallest angle at 120 km.
+- **Parameters:** the 10 km coastline coarsening, smoothness 0.3 and uniform fields are reasonable; the only gap is
+  the Black Sea, which needs a coarsening size field (configs have one number) and a size field refined around points.

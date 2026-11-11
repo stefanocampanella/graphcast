@@ -541,12 +541,25 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   samples that crosses only edges longer than the coarsening size, so basins behind narrower straits are dropped:
   Black Sea and Sea of Azov at 10 km (all configs), plus the Mediterranean and Baltic at 20 km, the Red Sea at 30 km,
   the White Sea at 50 km. `seamsh.gmsh.mesh` also builds one plane surface (largest loop exterior, all others holes),
-  so a second basin could not be meshed anyway. Natural Earth's coastline counts ice shelves as ocean. seamsh leaves
-  the unused coastline points as nodes in no triangle (49,054 of 83,061 at 120 km; `read_mesh` drops them). A
+  so a second basin could not be meshed anyway. Natural Earth's coastline counts ice shelves as ocean. Mesh files
+  hold nodes in no triangle: the outlines of islands smaller than the mesh size, which survive the coarsening but are
+  covered by triangles (743 of 34,750 nodes at 120 km, 632 islands up to ~100 km across; 655 of 181,980 at 50 km);
+  `read_mesh` drops them and logs how many (since 11 Nov 2026). A
   refactoring of seamsh (tests, hooks, fixes, several seeds and one surface per basin) is prepared in a separate PR to
   the fork's `develop`: kit with PR guide, notes (bugs with line numbers), validation script, reference results, data
   and moby-dick's mesh code in `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/seamsh-refactoring-kit{,.tar.gz}` (copy it out before this session's directory is deleted). The script reproduces
   `uniform_120km.msh` exactly (vertices within 1.4e-9 m, same triangles).
+- **The Black Sea can be kept with today's seamsh** (11 Nov 2026, `strait_experiment.py` in the kit): the 1:10m
+  coastline keeps the straits open (narrowest gaps: Bosporus 1.09 km, Dardanelles 2.36 km, Kerch 2.51 km). A
+  coarsening size of 0.25–0.5 km at the three straits growing by at most 0.05 km per km to 10 km (they are 30–60 km
+  long: faster growth closes them again), and a mesh size of 1–3 km there growing 0.3 km per km to the base size, give
+  one connected ocean with the Black Sea and Sea of Azov: at 120 km 34,449 used nodes with 3 km (34,007 today),
+  34,621 with 1 km; at 50 km +849 nodes with 1 km; smallest angles unchanged (7.2° at 120 km, 15.0° at 50 km),
+  shortest edges 1.4 km / 0.9 km, meshing time unchanged. moby-dick's configs cannot express it yet:
+  `coarsen_boundaries.mesh_size` is one number and there is no size field refined around points. For the processor
+  the Black Sea stays a separate basin: 47–61 hops from the Aegean through the strait elements, more than any
+  `gnn_msg_steps`; what changes is that its ocean points get mesh vertices. A coarser coastline (30 km) with nine
+  straits refined keeps every basin but lowers the smallest angle at 120 km to 2.5°: 10 km stays the better choice.
 - **Processor edges go both ways since 11 Nov 2026:** `mesh_graph.faces_to_edges` (from GraphCast) gave each face's
   edges in one direction, which covers both only on a closed mesh. On the ocean meshes the coastline edges belong to
   one face, so they were one-way (3,612 of 194,040 edges at 120 km, 9,357 of 1,061,739 at 50 km): every model trained

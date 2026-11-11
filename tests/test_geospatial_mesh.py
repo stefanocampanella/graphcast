@@ -138,6 +138,42 @@ def test_read_mesh_data_with_unsorted_node_tags(tmp_path):
   np.testing.assert_array_equal(read.mesh_size, mesh_size[nearest])
 
 
+def test_nodes_in_no_triangle_are_dropped_and_logged(tmp_path, caplog):
+  """seamsh meshes keep the outlines of islands smaller than the mesh size as boundary lines whose nodes are in no
+  triangle (the sea is triangulated over the island). Reading drops those nodes, says how many, and keeps the triangles'
+  vertices only; the dropped outline is not part of the boundary."""
+  graph = icosahedral_mesh.get_multi_mesh_data(1).mesh_graph
+  num_nodes = len(graph.vertices)
+  tags = np.arange(num_nodes) + 1
+  # A small triangular island near the first vertex, slightly above the surface.
+  island = graph.vertices[0] * 1.001 + np.array([[0.0, 1e4, 0.0], [0.0, 0.0, 1e4], [0.0, 1e4, 1e4]])
+  island_tags = num_nodes + 1 + np.arange(3)
+  path = tmp_path / "island.msh"
+  gmsh.initialize()
+  gmsh.clear()
+  gmsh.model.add("island")
+  gmsh.model.set_attribute("Projection", ["WKT", graph.spatial_reference_system])
+  surface = gmsh.model.add_discrete_entity(2)
+  gmsh.model.mesh.add_nodes(2, surface, tags, graph.vertices.reshape(-1))
+  gmsh.model.mesh.add_elements_by_type(surface, 2, [], tags[graph.faces].reshape(-1))
+  curve = gmsh.model.add_discrete_entity(1)
+  gmsh.model.mesh.add_nodes(1, curve, island_tags, island.reshape(-1))
+  gmsh.model.mesh.add_elements_by_type(curve, 1, [], island_tags[[0, 1, 1, 2, 2, 0]])
+  gmsh.model.add_physical_group(2, [surface], name="mesh")
+  gmsh.model.add_physical_group(1, [curve], name="Coastline")
+  gmsh.write(str(path))
+
+  with caplog.at_level("INFO", logger="mobydick.geospatial_mesh_utils"):
+    mesh, _ = read_mesh(path, mesh_size_tag_name=None)
+
+  assert [r.getMessage() for r in caplog.records if r.getMessage().startswith("Dropped")] == [
+    f"Dropped 3 of {num_nodes + 3} nodes in no triangle (outlines of islands not meshed)"
+  ]
+  assert len(mesh.vertices) == num_nodes
+  np.testing.assert_array_equal(np.unique(mesh.faces), np.arange(num_nodes))
+  assert mesh.boundary is not None and not mesh.boundary.any()
+
+
 @pytest.fixture
 def icosahedral_file(tmp_path) -> pathlib.Path:
   path = tmp_path / "icosahedral.msh"
