@@ -15,8 +15,10 @@
 """Tests of the settings of the ocean mesh generator (mesh_config.py), of the shipped mesh configs, and of
 moby-dick make-ocean-mesh on a synthetic coastline (a ring at 70°S, meshed with a coarse uniform field)."""
 
+import itertools
 import pathlib
 
+import networkx as nx
 import numpy as np
 import pytest
 from click.testing import CliRunner
@@ -25,7 +27,14 @@ from pydantic import ValidationError
 
 from mobydick import cli_utils
 from mobydick.geospatial_mesh import make_ocean_mesh
-from mobydick.geospatial_mesh_utils import read_mesh_data
+from mobydick.geospatial_mesh_utils import PointRefinementField, read_mesh_data
+from mobydick.gis_utils import (
+  cartesian_crs,
+  cartesian_to_lat_lon,
+  get_transform,
+  lat_lon_to_cartesian,
+  stereographic_crs,
+)
 from mobydick.mesh_config import (
   IcosahedralMeshConfig,
   MeshGenerationConfig,
@@ -41,6 +50,9 @@ MINIMAL = {
   "coarsen_boundaries": {"mesh_size": 200_000.0},
   "fields": [{"name": "uniform", "value": 1_000_000.0}],
 }
+
+
+REFINEMENT = {"name": "point_refinement", "points": [[41.12, 29.07]], "size": 250.0, "growth": 0.02}
 
 
 def _settings(**changes) -> dict:
@@ -64,10 +76,15 @@ def test_shipped_configs_are_valid(path):
   """Every shipped ocean mesh config validates, and a uniform config's name and description give its value in km."""
   configs = cli_utils.read_configs(path, schema=MeshGenerationConfig)
   if path.name.startswith("uniform_") and path.stem.endswith("km"):
-    (field,) = configs.fields
+    (field,) = [field for field in configs.fields if field.name == "uniform"]
     km = int(path.stem.removeprefix("uniform_").removesuffix("km"))
-    assert field.name == "uniform" and field.value == km * 1000
+    assert field.value == km * 1000
     assert f"value of {km} km" in " ".join(configs.description.split())
+  # Every ocean mesh keeps the Black Sea: coarsening and mesh size refined at the Turkish straits and Kerch.
+  for fields in (configs.coarsen_boundaries.fields, configs.fields):
+    (refinement,) = [field for field in fields if field.name == "point_refinement"]
+    assert len(refinement.points) == 3
+  assert "Black Sea" in configs.description
 
 
 @pytest.mark.parametrize("path", sorted(MESH_CONFIGS.glob("icosahedral_*.toml")), ids=lambda path: path.name)
@@ -94,6 +111,14 @@ def test_shipped_icosahedral_configs_are_valid(path):
     (_settings(coarsen_boundaries={"mesh_size": 0.0}), "greater than 0"),
     (_settings(coarsen_boundaries={"mesh_size": 1.0, "x0_projection": "mercator"}), "x0_projection"),
     (_settings(gmsh={"algorithm": 0}), "greater than or equal to 1"),
+    (
+      _settings(
+        coarsen_boundaries={"mesh_size": 1.0, "fields": [{**REFINEMENT, "points": [[95.0, 0.0]]}]},
+      ),
+      "latitude",
+    ),
+    (_settings(coarsen_boundaries={"mesh_size": 1.0, "fields": [{**REFINEMENT, "points": []}]}), "at least 1"),
+    (_settings(coarsen_boundaries={"mesh_size": 1.0, "fields": [REFINEMENT, REFINEMENT]}), "repeated"),
   ],
 )
 def test_invalid_settings(settings, message):
@@ -191,6 +216,87 @@ def test_make_ocean_mesh(coastline):
   senders, receivers = faces_to_edges(graph.faces)
   np.testing.assert_array_equal(graph.edges[0], senders)
   np.testing.assert_array_equal(graph.edges[1], receivers)
+
+
+def test_point_refinement_field():
+  """The size is `size` at a point and grows by `growth` per metre of distance from the nearest point, whether the
+  points are given in Earth-centred or stereographic coordinates (seamsh uses the latter, moby-dick the former)."""
+  field = PointRefinementField(points=[(0.0, 0.0), (0.0, 90.0)], size=250.0, growth=0.02)
+  # At the first point, 0.9° east of it, and 0.9° west of the second point (the nearest one).
+  at = lat_lon_to_cartesian(np.array([0.0, 0.0, 0.0]), np.array([0.0, 0.9, 89.1]))
+  sizes = field.mesh_size_3d(at, cartesian_crs)
+  chord = np.linalg.norm(at[1] - at[0])  # ~100 km
+  np.testing.assert_allclose(sizes, [250.0, 250.0 + 0.02 * chord, 250.0 + 0.02 * chord], rtol=1e-6)
+  stereographic = get_transform(cartesian_crs, stereographic_crs)(at)
+  np.testing.assert_allclose(field.mesh_size_3d(stereographic, stereographic_crs), sizes, rtol=1e-6)
+
+
+@pytest.fixture
+def channel_coastline(tmp_path) -> pathlib.Path:
+  """The 70°S ring (the ocean's outer boundary in the North Pole stereographic plane) and a continent at the equator
+  (lon 0-40, lat ±20) holding an inland sea (lon 15-25, lat ±5) joined to the ocean by a channel 0.2° (22 km) wide
+  along the equator from lon 25 to 40, all as Natural Earth-like coastline lines."""
+  srs = osr.SpatialReference()
+  srs.ImportFromEPSG(4326)
+  srs.SetAxisMappingStrategy(osr.OAMS_TRADITIONAL_GIS_ORDER)
+  source = ogr.GetDriverByName("ESRI Shapefile").CreateDataSource(str(tmp_path / "coast.shp"))
+  layer = source.CreateLayer("coast", srs, ogr.wkbLineString)
+  layer.CreateField(ogr.FieldDefn("featurecla", ogr.OFTString))
+  ring = [(float(lon), COAST_LATITUDE) for lon in np.append(np.arange(-180.0, 180.0, 5.0), -180.0)]
+  continent = [(40, 0.1), (40, 20), (0, 20), (0, -20), (40, -20), (40, -0.1), (25, -0.1), (25, -5), (15, -5), (15, 5)]
+  continent += [(25, 5), (25, 0.1), (40, 0.1)]
+
+  def densified(points, step=0.5):
+    # Points every `step` degrees at most, as a real coastline has.
+    out = []
+    for (x0, y0), (x1, y1) in itertools.pairwise(points):
+      n = max(1, int(np.ceil(max(abs(x1 - x0), abs(y1 - y0)) / step)))
+      out += [(x0 + (x1 - x0) * i / n, y0 + (y1 - y0) * i / n) for i in range(n)]
+    return out + [points[-1]]
+
+  for points in (ring, densified(continent)):
+    line = ogr.Geometry(ogr.wkbLineString)
+    for lon, lat in points:
+      line.AddPoint_2D(float(lon), float(lat))
+    feature = ogr.Feature(layer.GetLayerDefn())
+    feature.SetField("featurecla", "Coastline")
+    feature.SetGeometry(line)
+    layer.CreateFeature(feature)
+  source = None  # Closes and writes the shapefile.
+  return tmp_path
+
+
+@pytest.mark.parametrize("refined", [False, True], ids=["channel_closed", "channel_refined"])
+def test_a_narrow_channel_needs_refinement_to_keep_the_sea_behind_it(channel_coastline, refined):
+  """A coarsening size larger than a channel's width closes it, and the sea behind it is not meshed; refining the
+  coarsening size and the mesh size at the channel (point_refinement, as for the Bosporus) keeps the sea in the one
+  connected mesh."""
+  channel = '[{name = "point_refinement", points = [[0.0, 32.5]], size = 5_000.0, growth = 0.01}]'
+  extra = f"fields = {channel}\n" if refined else ""
+  config = channel_coastline / "mesh.toml"
+  config.write_text(
+    "[gmsh]\nverbosity = 0\n"
+    '[domain]\nfilepath = "coast.shp"\ncurve_type = "polyline"\n'
+    f"[coarsen_boundaries]\nmesh_size = 200_000.0\n{extra}"
+    '[[fields]]\nname = "uniform"\nvalue = 300_000.0\n'
+    + (
+      '[[fields]]\nname = "point_refinement"\npoints = [[0.0, 32.5]]\nsize = 10_000.0\ngrowth = 0.3\n'
+      if refined
+      else ""
+    )
+  )
+  output = channel_coastline / "mesh.msh"
+  result = CliRunner().invoke(
+    make_ocean_mesh, [str(config), str(output), "--data-path", str(channel_coastline), "--log-level", "warning"]
+  )
+  assert result.exit_code == 0, result.output
+  graph = read_mesh_data(output, gmsh_verbosity=0).mesh_graph
+  lat, lon = cartesian_to_lat_lon(graph.vertices)
+  in_sea = (np.abs(lat) < 4.5) & (lon > 15.5) & (lon < 24.5)
+  assert in_sea.any() == refined
+  if refined:
+    # One mesh: the sea is connected to the ocean through the channel.
+    assert nx.number_connected_components(nx.Graph(zip(*graph.edges, strict=True))) == 1
 
 
 def test_make_ocean_mesh_refuses_existing_output(coastline):

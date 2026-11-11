@@ -1477,3 +1477,12 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   basin but gives a 2.5° smallest angle at 120 km.
 - **Parameters:** the 10 km coastline coarsening, smoothness 0.3 and uniform fields are reasonable; the only gap is
   the Black Sea, which needs a coarsening size field (configs have one number) and a size field refined around points.
+
+## 2026-11-11 23:00: strait refinement in the mesh configs
+
+- **Change:** `point_refinement` size field (size at points growing with distance), `coarsen_boundaries.fields`
+  (coarsening size = minimum of `mesh_size` and the fields; without fields exactly as before), all ocean configs
+  refined at the Bosporus, Dardanelles and Kerch Strait; tests (field values, validation, a synthetic inland sea
+  behind a 22 km channel kept only with the refinement).
+- **Meshes and graph statistics:** see CLAUDE.md (Meshes); comparison in `strait_meshes_comparison.json` in the
+  session directory. Not yet done: copy the meshes to `data/geometry`, update the report and the artifact.

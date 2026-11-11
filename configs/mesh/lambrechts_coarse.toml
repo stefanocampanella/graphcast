@@ -7,6 +7,8 @@ description = """
   from 100 km at the coast to 200 km at 500 km or farther, and one growing with the square root \
   of the depth, from 100 km to 500 km between its 10th and 90th percentiles. \
   Coastlines are coarsened to 10 km. \
+  The mesh size and the coastline coarsening are refined at the Bosporus, the Dardanelles and the Kerch Strait \
+  (3 km and 250 m there), so that the Black Sea and the Sea of Azov are part of the ocean. \
   All units are meters. \
   The code used the seamsh Python package by Jonathan Lambrechts \
   and a description of the algorithm can be found at \
@@ -34,6 +36,15 @@ curve_type = "bspline"
 [coarsen_boundaries]
 mesh_size = 10_000.0
 
+# The Bosporus (narrowest ~1.1 km in this coastline), the Dardanelles (~2.4 km) and the Kerch Strait (~2.5 km) close at
+# a 10 km coarsening, and with them the Black Sea and the Sea of Azov. 250 m at their centres, growing by 0.02 m per m
+# (the straits are 30-60 km long: faster growth closes their ends), keeps them open.
+[[coarsen_boundaries.fields]]
+name = "point_refinement"
+points = [[41.12, 29.07], [40.20, 26.40], [45.30, 36.55]]  # Bosporus, Dardanelles, Kerch Strait (latitude, longitude)
+size = 250.0
+growth = 0.02
+
 # For bathymetry and its hessian fields, Lambrecths et al use 25 km as a minimum mesh size,
 # and 30 for the shore proximity criterium. However, this would result in a mesh too fine for our purposes.
 [[fields]]
@@ -55,3 +66,11 @@ q_low = 0.1
 q_high = 0.9
 size_min = 100_000.0
 size_max = 500_000.0
+
+# Elements about as wide as the straits, so that gmsh can mesh them (the coarsening keeps them open): 3 km at their
+# centres, growing by 0.3 m per m up to the size of the other fields.
+[[fields]]
+name = "point_refinement"
+points = [[41.12, 29.07], [40.20, 26.40], [45.30, 36.55]]  # Bosporus, Dardanelles, Kerch Strait (latitude, longitude)
+size = 3_000.0
+growth = 0.3

@@ -55,9 +55,24 @@ class DomainConfig(ApplicationConfig):
 
 
 class CoarsenBoundariesConfig(ApplicationConfig):
+  """Coarsening of the coastline (seamsh.geometry.coarsen_boundaries): the coastline is resampled at the minimum of
+  `mesh_size` and `fields`, and only the water reachable from `x0` is kept. The water spreads across a gap between two
+  shores only where the gap is wider than this size: straits narrower than it close, and the basins behind them are
+  lost (e.g. the Black Sea at 10 km), unless a field refines the size there."""
+
   mesh_size: PositiveFloat = Field(description="Size the coastline is coarsened to, in meters")
+  fields: list["FieldConfig"] = Field(
+    default_factory=list, description="Further size fields (e.g. point_refinement at straits), combined by the minimum"
+  )
   x0: tuple[float, float] = Field(default=(0.0, 0.0), description="A point inside the domain (the ocean)")
   x0_projection: CRSName = "stereographic"
+
+  @model_validator(mode="after")
+  def check_field_names(self) -> Self:
+    names = [field.name for field in self.fields]
+    if duplicates := sorted({name for name in names if names.count(name) > 1}):
+      raise ValueError(f"Each coarsening field type may appear once, repeated: {duplicates}")
+    return self
 
 
 class _BoundedFieldConfig(ApplicationConfig):
@@ -128,10 +143,35 @@ class BathymetryHessianFieldConfig(_RasterFieldConfig):
   filter_kwargs: dict[str, Any] | None = None
 
 
+class PointRefinementFieldConfig(ApplicationConfig):
+  """`size` at the points, growing by `growth` meters per meter of distance from the nearest one (straight line
+  through the Earth, close to the distance on the surface near the points). Combined with the other fields by the
+  minimum, it refines only around the points, e.g. at straits narrower than the other fields' size."""
+
+  name: Literal["point_refinement"]
+  points: list[tuple[float, float]] = Field(min_length=1, description="(latitude, longitude) of the points, degrees")
+  size: PositiveFloat = Field(description="Size at the points, in meters")
+  growth: NonNegativeFloat = Field(description="Growth of the size with the distance from the nearest point (m/m)")
+
+  @model_validator(mode="after")
+  def check_points(self) -> Self:
+    for lat, lon in self.points:
+      if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 360.0):
+        raise ValueError(f"point ({lat}, {lon}) is not a (latitude, longitude) in degrees")
+    return self
+
+
 FieldConfig = Annotated[
-  UniformFieldConfig | ShoreProximityFieldConfig | BathymetryFieldConfig | BathymetryHessianFieldConfig,
+  UniformFieldConfig
+  | ShoreProximityFieldConfig
+  | BathymetryFieldConfig
+  | BathymetryHessianFieldConfig
+  | PointRefinementFieldConfig,
   Field(discriminator="name"),
 ]
+
+
+CoarsenBoundariesConfig.model_rebuild()
 
 
 class MeshGenerationConfig(ApplicationConfig):

@@ -549,6 +549,14 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   the fork's `develop`: kit with PR guide, notes (bugs with line numbers), validation script, reference results, data
   and moby-dick's mesh code in `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/seamsh-refactoring-kit{,.tar.gz}` (copy it out before this session's directory is deleted). The script reproduces
   `uniform_120km.msh` exactly (vertices within 1.4e-9 m, same triangles).
+- **Black Sea in the configs (11 Nov 2026):** every ocean config refines the coarsening
+  (`[[coarsen_boundaries.fields]]`, 250 m, growth 0.02) and the mesh (`[[fields]]`, 3 km, growth 0.3) with the
+  `point_refinement` field at the Bosporus, Dardanelles and Kerch Strait. Regenerated uniform meshes (not yet copied to
+  `data/geometry`): `$FSCRATCH/graphcast/data/geometry_straits_2026-11-11` (442 MB). One component each; ocean points
+  without encoder edges 1,222 → 276 (120 km), 1,725 → 798 (50 km); longest decoder edge 1,286 → 245 km (120 km),
+  1,231 → 194 km (50 km); nodes +417 (120 km), +656 (50 km); shortest edge 1.1–1.6 km; smallest angle 50 km 14.8° →
+  7.8°, 85 km 7.8° → 4.6°, others unchanged. Path scaling over the ten meshes: L = 0.695 · N^0.480 (within 2.2 %),
+  L × edge 11,200–12,400 km, diameter ≥ 2.82 · N^0.44.
 - **The Black Sea can be kept with today's seamsh** (11 Nov 2026, `strait_experiment.py` in the kit): the 1:10m
   coastline keeps the straits open (narrowest gaps: Bosporus 1.09 km, Dardanelles 2.36 km, Kerch 2.51 km). A
   coarsening size of 0.25–0.5 km at the three straits growing by at most 0.05 km per km to 10 km (they are 30–60 km

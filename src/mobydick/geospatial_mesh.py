@@ -150,6 +150,8 @@ def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, d
     configs.coarsen_boundaries.mesh_size,
     x0=configs.coarsen_boundaries.x0,
     x0_projection_name=configs.coarsen_boundaries.x0_projection,
+    fields=configs.coarsen_boundaries.fields,
+    prefix=data_path,
   )
   mesh_size = CompositeMeshSizeField(configs.fields, prefix=data_path)
   seamsh.gmsh.mesh(boundary, mesh_size, output_srs=CRSRegistry["cartesian"], smoothness=configs.mesh.smoothness)

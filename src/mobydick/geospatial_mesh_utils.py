@@ -41,6 +41,7 @@ from mobydick.gis_utils import (
   CRSRegistry,
   cartesian_crs,
   get_transform,
+  lat_lon_to_cartesian,
   stereographic_crs,
   xarray_to_gdal_raster,
 )
@@ -310,12 +311,43 @@ class BathymetryHessianField(RasterField):
     return hessian_matrix_norm
 
 
-FieldName = Literal["constant", "shore_proximity", "bathymetry", "bathymetry_hessian"]
+class PointRefinementField(StereoMeshSizeField):
+  """Size `size` at the points, growing by `growth` per unit of distance from the nearest point (chord distance in
+  Earth-centred coordinates). Used, combined with other fields by the minimum, to resolve straits narrower than the
+  other fields' size: the coastline coarsening closes a strait narrower than its size, and gmsh needs elements about
+  as wide as the strait to mesh it."""
+
+  def __init__(self, points: list[tuple[float, float]], size: float, growth: float):
+    self.size = size
+    self.growth = growth
+    lat, lon = np.asarray(points, dtype=np.float64).T
+    self.points = lat_lon_to_cartesian(lat, lon)  # [num_points, 3], metres
+
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    projection_crs = CoordinateReferenceSystem.from_osr(projection)
+    if not cartesian_crs.IsSame(projection_crs):
+      x = get_transform(projection_crs, cartesian_crs)(np.asarray(x))
+    distance = np.min(np.linalg.norm(np.asarray(x)[:, None, :3] - self.points[None], axis=-1), axis=1)
+    return self.size + self.growth * distance
+
+
+class MinimumField(StereoMeshSizeField):
+  """The minimum of several fields."""
+
+  def __init__(self, fields: Iterable[StereoMeshSizeField]):
+    self.fields = list(fields)
+
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields])
+
+
+FieldName = Literal["uniform", "shore_proximity", "bathymetry", "bathymetry_hessian", "point_refinement"]
 FieldsRegistry = {
   "uniform": UniformField,
   "shore_proximity": BoundaryProximityField,
   "bathymetry": BathymetryField,
   "bathymetry_hessian": BathymetryHessianField,
+  "point_refinement": PointRefinementField,
 }
 
 
@@ -474,12 +506,19 @@ def coarsen_boundaries(
   mesh_size: float,
   x0: tuple[float, float] = (0.0, 0.0),
   x0_projection_name: CRSName = "stereographic",
+  fields: Iterable[FieldConfig] = (),
+  prefix: pathlib.Path | None = None,
 ):
-  """Creates a new Domain with the same projection and coarsened boundaries."""
+  """Creates a new Domain with the same projection and coarsened boundaries: resampled at the minimum of `mesh_size`
+  and `fields` (file paths relative to prefix), keeping the water reachable from x0 (see
+  mesh_config.CoarsenBoundariesConfig)."""
   x0_projection = CRSRegistry[x0_projection_name]
-  mesh_size_f = UniformField(mesh_size)
-  coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
-  return coarse
+  fields = list(fields)
+  # Without fields, exactly the uniform size used before fields were configurable (the meshes are reproducible).
+  size: StereoMeshSizeField = UniformField(mesh_size)
+  if fields:
+    size = MinimumField([size, CompositeMeshSizeField(fields, prefix=prefix)])
+  return seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=size)
 
 
 def read_mesh_data(
