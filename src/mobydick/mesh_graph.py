@@ -172,11 +172,18 @@ def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   assert faces.shape[-1] == 3
   senders = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
   receivers = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
-  # One integer per directed edge; a face edge without its reverse among the face edges is a boundary edge.
+  # Find the face edges whose reverse is not among the face edges: those are the boundary edges.
+  # Each directed edge (s, r) is encoded as the single integer s * num_nodes + r. With 0 <= s, r < num_nodes the
+  # encoding is one-to-one (s and r are its quotient and remainder by num_nodes), so comparing integers compares
+  # edges, and `np.isin` checks all edges at once (sorting, O(E log E)) instead of a Python loop over pairs.
+  # `forward` holds the codes of the face edges, `backward` the code of each edge's reverse (r, s).
+  # int64: num_nodes**2 overflows int32 above 46,340 nodes (the 25 km mesh has 704,078, i.e. ~5e11).
   num_nodes = int(faces.max(initial=-1)) + 1
   forward = senders.astype(np.int64) * num_nodes + receivers
   backward = receivers.astype(np.int64) * num_nodes + senders
+  # True for edge k when its reverse is missing, i.e. edge k belongs to one face only.
   boundary = ~np.isin(backward, forward)
+  # Append the reverses (receiver -> sender) after the face edges, which keep their positions.
   return np.concatenate([senders, receivers[boundary]]), np.concatenate([receivers, senders[boundary]])
 
 

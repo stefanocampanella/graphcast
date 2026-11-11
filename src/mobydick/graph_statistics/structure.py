@@ -120,7 +120,9 @@ def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generato
   num_nodes = graph.sender_nodes.size
   num_edges = len(graph.senders)
   degree = np.bincount(graph.senders, minlength=num_nodes)
-  # One integer per directed edge, to find the edges whose reverse is missing.
+  # Edges whose reverse is missing, as in `mesh_graph.faces_to_edges`: each directed edge (s, r) is encoded as the
+  # integer s * num_nodes + r (one-to-one for node indices below num_nodes; int64 against overflow), `backward` holds
+  # the code of each edge's reverse, and `np.isin` finds the reverses absent from `forward` in one vectorized step.
   forward = graph.senders.astype(np.int64) * num_nodes + graph.receivers
   backward = graph.receivers.astype(np.int64) * num_nodes + graph.senders
   undirected = nx.Graph()
