@@ -24,6 +24,7 @@ import xarray as xr
 
 from mobydick import icosahedral_mesh
 from mobydick.leviathan.model import Leviathan, ModelConfig, TaskConfig, _check_rollout_inputs
+from mobydick.mesh_graph import longest_incident_edges
 
 
 def _task(input_variables: tuple[str, ...]) -> TaskConfig:
@@ -58,14 +59,15 @@ def test_time_dependent_inputs_that_are_not_rolled_out_fail():
     _check_rollout_inputs(_inputs(), _task(("thetao", "deptho", "swh")))
 
 
-def test_a_mesh_without_mesh_size_is_rejected():
-  """The encoder's query radius is a fraction of the mesh size: a mesh without one fails with a clear error (it was a
-  TypeError multiplying None)."""
+def test_the_encoder_radius_follows_the_triangle_edges():
+  """The encoder's query radius at each mesh vertex is 0.6 × its longest triangle edge, not the mesh size field (which
+  is not needed any more: a mesh without one builds), so the radius adapts to stretched coastal triangles."""
   mesh_data = dataclasses.replace(icosahedral_mesh.get_multi_mesh_data(1), mesh_size=None)
   model_config = ModelConfig(latent_size=4, gnn_msg_steps=1, hidden_layers=1, radius_query_fraction_edge_length=0.6)
+  radius = {}
 
   def build():
-    Leviathan(
+    model = Leviathan(
       _model_config=model_config,
       _task_config=_task(("thetao", "2t")),
       _grid_lat=np.array([-10.0, 10.0]),
@@ -73,9 +75,11 @@ def test_a_mesh_without_mesh_size_is_rejected():
       _grid_mask=None,
       _mesh_data=mesh_data,
     )
+    radius["model"] = model._query_radius
 
-  with pytest.raises(ValueError, match="mesh size"):
-    hk.transform(build).init(None)
+  hk.transform(build).init(None)
+  mesh = mesh_data.mesh_graph
+  np.testing.assert_allclose(radius["model"], 0.6 * longest_incident_edges(mesh.vertices, mesh.faces))
 
 
 def test_forcings_without_grid_dimensions(tiny_model):

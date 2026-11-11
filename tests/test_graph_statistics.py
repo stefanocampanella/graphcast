@@ -28,6 +28,7 @@ from mobydick import icosahedral_mesh
 from mobydick.dataloader_utils import Grid
 from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, structure
 from mobydick.leviathan.model import Leviathan
+from mobydick.mesh_graph import longest_incident_edges
 
 
 def _grid(ocean_below: float = 70.0) -> Grid:
@@ -93,8 +94,8 @@ def test_graphs_equal_the_models(tiny_model):
 
 def test_hierarchy_has_mesh_to_mesh_encoders_and_decoders():
   """With N meshes there are N encoders, N processors and N decoders, in the order of the data flow; the mesh-to-mesh
-  encoder connects the finer vertices within the radius of each coarser vertex (brute force) and the decoder sends 3
-  edges to every finer vertex."""
+  encoder connects the finer vertices within the radius of each coarser vertex (0.6 × its longest triangle edge, brute
+  force) and the decoder sends 3 edges to every finer vertex."""
   meshes = [icosahedral_mesh.get_multi_mesh_data(splits) for splits in (2, 1)]
   built = graphs.model_graphs(meshes, _grid(), 0.6)
   assert [g.name for g in built] == [
@@ -107,8 +108,9 @@ def test_hierarchy_has_mesh_to_mesh_encoders_and_decoders():
   ]
   encoder, decoder = built[1], built[4]
   fine, coarse = (m.mesh_graph.vertices for m in meshes)
-  assert meshes[1].mesh_size is not None
-  within = np.linalg.norm(fine[:, None] - coarse[None], axis=-1) <= 0.6 * meshes[1].mesh_size[None]
+  coarse_mesh = meshes[1].mesh_graph
+  radius = 0.6 * longest_incident_edges(coarse_mesh.vertices, coarse_mesh.faces)
+  within = np.linalg.norm(fine[:, None] - coarse[None], axis=-1) <= radius[None]
   assert set(zip(encoder.senders.tolist(), encoder.receivers.tolist(), strict=True)) == set(zip(*np.nonzero(within)))
   assert decoder.sender_nodes.name == "mesh_1" and decoder.receiver_nodes.size == len(fine)
   np.testing.assert_array_equal(np.bincount(decoder.receivers), 3)

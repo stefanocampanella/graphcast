@@ -187,6 +187,32 @@ def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   return np.concatenate([senders, receivers[boundary]]), np.concatenate([receivers, senders[boundary]])
 
 
+def longest_incident_edges(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+  """Length of the longest triangle edge at each vertex (straight line, in the units of `vertices`; 0 for a vertex in
+  no face).
+
+  The encoder's radius at each mesh vertex is a fraction of it (`radius_query_fraction_edge_length`). Only the
+  triangles count, not a multi-mesh's coarser edges. A point inside a triangle is never farther from a vertex than
+  that vertex's longest edge in the triangle (the farthest point of a triangle from a vertex is another vertex), and
+  with the fraction 0.6 every point inside a triangle of the ocean meshes and of the icosahedral mesh reaches at
+  least one vertex (checked on the 120, 50 and 25 km meshes and icosahedral M6, Nov 2026). The mesh size field the
+  radius used before is the target size, smaller than the actual edges along coastlines, where it left points
+  inside triangles without encoder edges (1,129 at 120 km).
+
+  Args:
+    vertices: Coordinates [num_vertices, 3].
+    faces: Vertex indices [num_faces, 3].
+  """
+  senders, receivers = faces_to_edges(faces)
+  lengths = np.linalg.norm(vertices[senders] - vertices[receivers], axis=-1)
+  longest = np.zeros(len(vertices), dtype=lengths.dtype)
+  # Every edge counts for both its vertices (each edge appears in both directions, so one side would do; both are
+  # kept so that the result does not depend on that).
+  np.maximum.at(longest, senders, lengths)
+  np.maximum.at(longest, receivers, lengths)
+  return longest
+
+
 def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
   """Transforms directed edges to undirected edges by using standard ordering of vertices.
 

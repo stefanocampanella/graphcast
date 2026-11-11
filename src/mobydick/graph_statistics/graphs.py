@@ -16,8 +16,8 @@
 
 The edges come from the `mesh_connectivity` functions the model uses, so the statistics describe the graphs it trains
 on (`tests/test_graph_statistics.py` checks it for one mesh):
-- grid -> mesh 0: radius query from the unmasked grid points to the mesh vertices (radius: a fraction of the mesh
-  size at each vertex);
+- grid -> mesh 0: radius query from the unmasked grid points to the mesh vertices (radius: a fraction of the
+  longest triangle edge at each vertex, `mesh_graph.longest_incident_edges`);
 - mesh i-1 -> mesh i: the same radius query from the vertices of the finer mesh;
 - processors: the mesh's edges (`MeshGraph.edges`: every face edge in both directions, or the multi-mesh's edges);
 - mesh i -> mesh i-1 and mesh 0 -> grid: from the 3 vertices of the coarser face containing each receiver.
@@ -34,7 +34,7 @@ import numpy as np
 from mobydick import mesh_connectivity
 from mobydick.dataloader_utils import Grid
 from mobydick.gis_utils import cartesian_to_lat_lon
-from mobydick.mesh_graph import MeshData, MeshGraph
+from mobydick.mesh_graph import MeshData, MeshGraph, longest_incident_edges
 
 GraphKind = Literal["encoder", "processor", "decoder"]
 
@@ -84,9 +84,8 @@ def model_graphs(meshes: Sequence[MeshData], grid: Grid, radius_query_fraction: 
   encoders, processors, decoders = [], [], []
   for level, mesh_data in enumerate(meshes):
     mesh = mesh_data.mesh_graph
-    if mesh_data.mesh_size is None:
-      raise ValueError(f"mesh {level} has no mesh size: the encoder radius is a fraction of it")
-    radius = radius_query_fraction * mesh_data.mesh_size
+    # The radius of the receiving mesh's vertices, as in Leviathan.
+    radius = radius_query_fraction * longest_incident_edges(mesh.vertices, mesh.faces)
     nodes = NodeSet(f"mesh_{level}", *cartesian_to_lat_lon(np.asarray(mesh.vertices)))
     if lower_mesh is None:
       # The grid level: the model's own encoder and decoder functions.

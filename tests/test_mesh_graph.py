@@ -99,6 +99,14 @@ def test_faces_to_edges_of_open_and_closed_meshes_go_both_ways():
   assert len(edges) == len(senders) and all((b, a) in edges for a, b in edges)
 
 
+def test_longest_incident_edges():
+  """Each vertex gets the length of its longest triangle edge (straight line): here a 3-4-5 right triangle; a vertex in
+  no triangle gets 0 (edges outside the triangles, like a multi-mesh's coarser edges, do not count)."""
+  vertices = np.array([[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [0.0, 4.0, 0.0], [10.0, 10.0, 10.0]])
+  longest = mesh_graph.longest_incident_edges(vertices, np.array([[0, 1, 2]]))
+  np.testing.assert_allclose(longest, [4.0, 5.0, 5.0, 0.0])
+
+
 def _octahedron(radius: float = 1.0) -> mesh_graph.TriangleMesh:
   """Vertices at the poles and on the equator at longitudes 0, 90, 180, 270."""
   vertices = radius * np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], dtype=float)
