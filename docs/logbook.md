@@ -1408,3 +1408,15 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   model's and graph-statistics' radius is `radius_query_fraction_edge_length` × it. The mesh size field is no longer
   needed by the model. New tests: coverage of every point on an irregular closed mesh, the radius of the model.
 - **Not measured:** the effect on skill and on GPU memory (TODO, with the two-way edges rerun).
+
+## 2026-11-11 19:30: mesh vertices without grid points; rerun of the ocean cases with both fixes
+
+- **Side finding corrected:** I had reported that 6–8 % of the 25 km mesh's vertices receive no grid point as a
+  problem. They are still updated at every processor step (no node mask in `_run_mesh_gnn`; their encoder state is the
+  embedding of their position) and 99.3 % of the 25 km vertices send decoder edges, so their state is used. They
+  start without data and hold their neighbours' after one step: one step of reach lost there, not coverage. Only
+  vertices in neither the encoder nor the decoder (0.6 % at 25 km; 23 % of the icosahedral mesh, over land) are idle.
+- **Rerun** of 50 km × 16 and 120 km × 8 (demo_5000, seeds 42 and 43, the protocol of 8 Nov) with the two-way
+  coastline edges and the encoder radius from the longest triangle edge: study `edge_fixes`, jobs 2841380–2841383
+  (`training2647`), code of this branch (808fba5). Compare with jobs 2765280–2765287 (validation loss, per variable,
+  XLA memory, step time).

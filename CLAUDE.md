@@ -552,8 +552,13 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   channels and ice-shelf fronts (e.g. Tierra del Fuego, the Weddell Sea). A radius of 1.0 × the longest edge leaves
   993 / 1,191 / 1,546 for 2.9 × the encoder edges. Mesh hierarchies: finer vertices without encoder edges to the
   coarser mesh went from 260 to 2 (50 → 120 km) and 802 to 8 (25 → 50 km), the rest outside the coarser mesh.
-  On the 25 km mesh, 6–8 % of the vertices receive no grid point (radius ~15 km against a 0.25° grid). To fix the
-  rest: the Black Sea and the coastal gaps in the domain, or out of the mask.
+  To fix the rest: the Black Sea and the coastal gaps in the domain, or out of the mask.
+  - Mesh vertices without encoder edges are not lost: on the 25 km mesh 7.8 % of the vertices receive no grid point
+    (radius ~15 km against a 0.25° grid, i.e. a mesh finer than the grid), but the processor updates every vertex at
+    every step (`_run_mesh_gnn` has no node mask; their encoder state is the embedding of their position) and 99.3 %
+    of the vertices send decoder edges. Such a vertex starts without data and holds its neighbours' after one step:
+    it costs one step of reach there, not coverage. Only vertices in neither graph (0.6 % at 25 km, 0.7 % at 120 km,
+    23 % on the icosahedral mesh: land) are idle relays.
 
 ## Repository notes
 
