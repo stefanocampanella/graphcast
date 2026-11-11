@@ -40,19 +40,24 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. Trained
   on 8 Nov 2026 against the ocean meshes (see "Icosahedral multi-mesh vs ocean mesh" below); the file is
   `data/geometry/icosahedral_6.msh`.
-- Graph statistics: `moby-dick graph-statistics CONFIG.toml MASK OUTPUT.json MESH... [--networkx-backend B]`
-  (`graph_statistics.py`, settings `configs/analysis/graph_statistics.toml`): the graphs of a model on the grid of MASK
-  and one mesh or a hierarchy (MESH paths finest first), built as the model builds them (a test checks they are
-  equal): encoders grid → mesh 0 and mesh i−1 → mesh i, processors, decoders mesh i → mesh i−1 and mesh 0 → grid
-  (mesh-to-mesh graphs follow the grid's rules until hierarchical models define theirs). Every graph: nodes, edges,
-  geodesic edge lengths; encoders: degrees; decoders: the 3-edges-per-receiver check; processors: degrees, density,
-  one-way edges, connected components with, per component, the diameter (2-sweep lower bound) and shortest path
-  lengths from `num_sources` sampled nodes (0 = exact), and triangle quality (aspect ratio, radius ratio,
-  volume-length, angles, edge ratio); coverage of each pair of levels. Prints rich tables to stdout and writes every
-  quantity with a description to the JSON; the log has only sizes and timings. networkx runs only the processors'
-  path metrics: ~20 s per mesh on a login node (120 km, 50 km, icosahedral M6). `--networkx-backend cugraph` (or
-  networkx's `NETWORKX_BACKEND_PRIORITY`) would run them on the GPU with nx-cugraph, which is not in the image
-  (`nx-cugraph-cu13` 26.10 is 3.2 GB with its dependencies; untested).
+- Graph statistics: `moby-dick graph-statistics CONFIG.toml MASK OUTPUT.json MESH...` (package
+  `mobydick.graph_statistics`: `config`, `graphs`, `structure`, `geometry`, `quantities`, `report`, `cli`; settings
+  `configs/analysis/graph_statistics.toml`): the graphs of a model on the grid of MASK and one mesh or a hierarchy
+  (MESH paths finest first), built as the model builds them (a test checks they are equal): encoders grid → mesh 0
+  and mesh i−1 → mesh i, processors, decoders mesh i → mesh i−1 and mesh 0 → grid (mesh-to-mesh graphs follow the
+  grid's rules until hierarchical models define theirs). Every graph: nodes, edges, geodesic edge lengths; encoders:
+  degrees; decoders: the 3-edges-per-receiver check; processors: degrees, density, one-way edges, connected
+  components with, per component, the diameter (2-sweep lower bound) and shortest path lengths from `num_sources`
+  sampled nodes (0 = exact), and triangle quality (aspect ratio, radius ratio, volume-length, angles, edge ratio);
+  coverage of each pair of levels. Prints rich tables to stdout and writes every quantity with a description to the
+  JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
+  (25 km) per mesh on a login node. networkx's `NETWORKX_BACKEND_PRIORITY=cugraph` would run them on the GPU with
+  nx-cugraph (`pip install .[graph-gpu]`, 3.2 GB with its dependencies; not in the image, untested).
+  - **Path metrics scale with the mesh** (11 Nov 2026, all uniform meshes, 32 sources): the mean shortest path is
+    L = 0.517 · N^0.504 hops (N nodes, within 2.3 % on every mesh), i.e. L × median edge length ≈ 11,400–11,900 km at
+    every resolution; diameter ≥ 1.37 · N^0.49 (233 hops at 120 km, 515 at 50 km, 1,034 at 25 km). Average
+    betweenness is exactly (L − 1)/(N − 2) and closeness ≈ 1/L (checked with exact networkx values on small
+    meshes), so both scale as N^−0.5 and were dropped. The icosahedral M6 multi-mesh: L = 7.8, diameter ≥ 14.
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -527,6 +532,12 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - **Descriptions** of all `configs/mesh/*.toml` match their fields (checked on 30 Oct 2026). The `lambrechts*`
   configs take the smaller of a shore-proximity and a bathymetry field; they said "uniform 300 km" before.
   `domain.sampling` in them is ignored (the shore-proximity field has its own).
+- **Processor edges go both ways since 11 Nov 2026:** `mesh_graph.faces_to_edges` (from GraphCast) gave each face's
+  edges in one direction, which covers both only on a closed mesh. On the ocean meshes the coastline edges belong to
+  one face, so they were one-way (3,612 of 194,040 edges at 120 km, 9,357 of 1,061,739 at 50 km): every model trained
+  on ocean meshes before then, including the mesh study and the icosahedral comparison, passed messages along the
+  coast in one direction only. Their reverses are now appended (`.msh` files unchanged: edges are rebuilt from the
+  faces when read); the effect on skill has not been measured.
 - **Coverage of the ocean points** (8 Nov 2026, `moby-dick graph-statistics`): the uniform meshes' domain leaves out the
   Black Sea, so about 900 ocean points of the training mask (40–47° N, 27–42° E) are decoded from the vertices of the
   nearest face in the Aegean, up to 1,232 km away, and are never encoder senders. In all, 2,222 (120 km) and 2,342

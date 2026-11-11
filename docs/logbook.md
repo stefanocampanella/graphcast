@@ -1364,3 +1364,23 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   - The 50 km mesh's diameter is at least 515 hops (the networkx 2-sweep of 8 Nov gave 448); the report says "≥ 515".
     The report's claim that 8 steps reach every node of the icosahedral mesh was wrong (median shortest path 8 hops,
     diameter ≥ 14): corrected.
+
+## 2026-11-11 16:30: second review of PR #7 — one-way coastline edges fixed, graph statistics split
+
+- **Request:** fix the one-way coastline edges (a bug), split and comment the graph statistics module, show the latest
+  findings in the report artifact; review comments on `get_transform`'s axis order, the backend option, and whether
+  betweenness and closeness follow a scaling law.
+- **Changes:**
+  - `mesh_graph.faces_to_edges` appends the reverse of every boundary edge (closed meshes unchanged); all uniform
+    meshes now have 0 one-way edges (120 km: 194,040 → 197,652 edges).
+  - `gis_utils.cartesian_to_lat_lon` / `lat_lon_to_cartesian` return and take (lat, lon), replacing the transposes and
+    longitude-first unpacking at the call sites; the transforms document their axis order.
+  - `mobydick.graph_statistics` is a package (`config`, `graphs`, `structure`, `geometry`, `quantities`, `report`,
+    `cli`); `--networkx-backend` dropped for networkx's `NETWORKX_BACKEND_PRIORITY`; extra `graph-gpu` (nx-cugraph).
+- **Scaling** (all ten uniform meshes, after the fix, 28–147 s each on a login node): mean shortest path L = 0.517 ·
+  N^0.504 hops (within 2.3 %), L × median edge length 11,400–11,900 km at every resolution; diameter ≥ 1.37 · N^0.49.
+  Exact networkx values on icosahedral meshes and open patches: average betweenness = (L − 1)/(N − 2) to 6 digits,
+  closeness within 3 % of 1/L. Scripts and CSV in the session directory (`scaling.py`, `scaling.csv`,
+  `centrality_identity.py`).
+- **Open:** the mesh study and the icosahedral comparison trained with one-way coastline edges; the effect of the fix
+  is not measured (TODO: rerun 50 km × 16 and 120 km × 8, ~45 node-h).

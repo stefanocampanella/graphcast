@@ -9,10 +9,8 @@
 * Implement optimization using autoregressive steps/noise injection. **HIGH PRIORITY**
 * Retrain with higher resolution mesh. **HIGH PRIORITY**
 * Use a different GNN to encode processor mesh boundaries, exclude boundaries from processor message-passing steps. **HIGH PRIORITY**.
-  * The processor's boundary edges are one-way: `mesh_graph.faces_to_edges` gives each face's edges in one direction,
-    which is symmetric only on a closed mesh (GraphCast's sphere). On the ocean meshes 3,612 of 194,040 edges (120 km)
-    and 9,357 of 1,061,739 (50 km) have no reverse, so messages run around the coastline in one direction only
-    (`moby-dick graph-statistics`, 11 Nov 2026). Decide whether to add the reverse edges.
+  * Measure the effect of the two-way coastline edges (fixed 11 Nov 2026, `faces_to_edges`): rerun 50 km × 16 and
+    120 km × 8 of the icosahedral comparison (demo_5000, 2 seeds, ~45 node-h) and compare with the runs of 8 Nov.
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
@@ -78,6 +76,7 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
+* One-way coastline edges in the processor (Nov 2026): `faces_to_edges` now appends the reverses of boundary edges.
 * Graph statistics (Nov 2026): `moby-dick graph-statistics` (all graphs of one mesh or a hierarchy: nodes, edges,
   degrees, edge lengths; processors: components, diameter, shortest paths, triangle quality; coverage of each pair of
   levels), summary tables on stdout and a described JSON.

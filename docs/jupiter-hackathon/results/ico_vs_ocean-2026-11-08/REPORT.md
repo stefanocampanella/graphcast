@@ -84,6 +84,10 @@ quality does not explain the skill gap. Path metrics are from 32 sampled nodes o
 component each); the diameter is a lower bound, the largest eccentricity of the samples and of the node farthest from
 them (11 Nov 2026; networkx's 2-sweep gave 448 for 50 km on 8 Nov).
 
+Across all uniform meshes (11 Nov, after the edge fix) the mean shortest path follows L = 0.517 · N^0.504 hops, a
+constant ≈ 11,500 km in distance; average betweenness ((L − 1)/(N − 2) exactly) and closeness (≈ 1/L) follow from
+it.
+
 ## Side findings
 
 - **The ocean meshes leave out the Black Sea.** About 900 GLORYS ocean points (40–47° N, 27–42° E) are in the mask but
@@ -104,7 +108,9 @@ them (11 Nov 2026; networkx's 2-sweep gave 448 for 50 km on 8 Nov).
 - **Next:** long-range edges on the ocean mesh (hierarchy of coarser ocean meshes merged into the 50 km processor, as
   the multi-mesh does); icosahedral M7 (163,842 nodes, ~55 km, ~125,000 ocean-connected) for a resolution-matched
   comparison; the Black Sea in the mesh domain (or out of the mask); an ablation of the edge-direction fix.
-- **Caveats:** 5000 steps and two seeds; one-step loss, not rollout skill (large-scale `zos` errors may weigh more in
+- **Caveats:** the ocean meshes' coastline edges were one-way in these runs (a bug found by the graph statistics on
+  11 Nov and fixed: 3,612 of 194,040 processor edges at 120 km, 9,357 of 1,061,739 at 50 km; the icosahedral mesh is
+  closed and unaffected), so the ocean results may change; 5000 steps and two seeds; one-step loss, not rollout skill (large-scale `zos` errors may weigh more in
   rollouts); no tuning for the multi-mesh (radius 0.6 × mesh size, latent 512).
 
 Files: `summary_cases.csv`, `summary_runs.csv`, `curves.csv` (validation loss every 250 steps per run). Scripts, logs and
