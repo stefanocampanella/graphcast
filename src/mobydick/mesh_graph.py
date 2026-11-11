@@ -156,28 +156,31 @@ def merge_meshes(mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
 
 
 def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-  """Transforms polygonal faces to sender and receiver indices.
+  """Transforms triangular faces to sender and receiver indices, every edge in both directions.
 
-  It does so by transforming every face into N_i edges. Such if the triangular
-  face has indices [0, 1, 2], three edges are added 0->1, 1->2, and 2->0.
-
-  If all faces have consistent orientation, and the surface represented by the
-  faces is closed, then every edge in a polygon with a certain orientation
-  is also part of another polygon with the opposite orientation. In this
-  situation, the edges returned by the method are always bidirectional.
+  Each face [a, b, c] gives the edges a->b, b->c and c->a (first edges of all faces, then second, then third).
+  With consistently oriented faces, an interior edge is shared by two faces that traverse it in opposite directions,
+  so both directions are already there. A boundary edge belongs to one face only (e.g. along the coastline of an
+  ocean mesh), so its reverse is appended after the face edges. On a closed mesh (GraphCast's sphere) there are no
+  boundary edges and the result is the 3 * num_faces face edges, as in GraphCast. Before Nov 2026 the reverses were
+  missing, so messages ran along the boundary of open meshes in one direction only.
 
   Args:
      faces: Integer array of shape [num_faces, 3]. Contains node indices
         adjacent to each face.
   Returns:
-     Tuple with sender/receiver indices, each of shape [num_edges=num_faces*3].
-
+     Tuple with sender/receiver indices, each of shape [num_edges], num_edges = 3 * num_faces + boundary edges.
   """
   assert faces.ndim == 2
   assert faces.shape[-1] == 3
   senders = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
   receivers = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
-  return senders, receivers
+  # One integer per directed edge; a face edge without its reverse among the face edges is a boundary edge.
+  num_nodes = int(faces.max(initial=-1)) + 1
+  forward = senders.astype(np.int64) * num_nodes + receivers
+  backward = receivers.astype(np.int64) * num_nodes + senders
+  boundary = ~np.isin(backward, forward)
+  return np.concatenate([senders, receivers[boundary]]), np.concatenate([receivers, senders[boundary]])
 
 
 def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:

@@ -68,11 +68,13 @@ def test_graph_defaults_to_earth_centred_coordinates():
 
 
 def test_faces_to_edges():
-  """Each face gives its three directed edges, in the documented order: first edges of all faces, then second, …"""
+  """Each face gives its three directed edges, in the documented order: first edges of all faces, then second, …;
+  the reverses of edges that belong to one face only (here all of them: two separate triangles) follow."""
   faces = np.array([[0, 1, 2], [3, 4, 5]])
 
   # This also documents the order of the edges returned by the method.
-  expected_edges = np.array([[0, 1], [3, 4], [1, 2], [4, 5], [2, 0], [5, 3]])
+  face_edges = np.array([[0, 1], [3, 4], [1, 2], [4, 5], [2, 0], [5, 3]])
+  expected_edges = np.concatenate([face_edges, face_edges[:, ::-1]])
   expected_senders = expected_edges[:, 0]
   expected_receivers = expected_edges[:, 1]
 
@@ -80,6 +82,21 @@ def test_faces_to_edges():
 
   np.testing.assert_array_equal(senders, expected_senders)
   np.testing.assert_array_equal(receivers, expected_receivers)
+
+
+def test_faces_to_edges_of_open_and_closed_meshes_go_both_ways():
+  """On an open mesh (two triangles sharing an edge, like a coastline's last faces) the boundary edges get their
+  reverse, so every edge goes both ways: messages can run along the boundary in both directions (they could not
+  before Nov 2026). A closed mesh keeps exactly its 3 * num_faces face edges, as in GraphCast."""
+  senders, receivers = mesh_graph.faces_to_edges(np.array([[0, 1, 2], [0, 2, 3]]))
+  edges = set(zip(senders.tolist(), receivers.tolist(), strict=True))
+  assert len(edges) == len(senders) == 10  # 5 undirected edges, the shared one 0-2 once per direction
+  assert all((b, a) in edges for a, b in edges)
+  octahedron = _octahedron()
+  senders, receivers = mesh_graph.faces_to_edges(octahedron.faces)
+  assert len(senders) == 3 * len(octahedron.faces)
+  edges = set(zip(senders.tolist(), receivers.tolist(), strict=True))
+  assert len(edges) == len(senders) and all((b, a) in edges for a, b in edges)
 
 
 def _octahedron(radius: float = 1.0) -> mesh_graph.TriangleMesh:
