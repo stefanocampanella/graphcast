@@ -251,7 +251,7 @@ class Leviathan(hk.Module, predictor_base.Predictor):
   _grid_lat: np.ndarray
   _grid_lon: np.ndarray
   _grid_mask: np.ndarray
-  _kdtree_workers: int = 1
+  _kdtree_workers: int = -1
   _remat: bool = False
   _policy: Callable[..., bool] | None = None
   _prevent_cse: bool = False

@@ -115,6 +115,23 @@ def test_radius_query_indices(grid, partial_mask, masked, varying):
   np.testing.assert_array_equal(np.unique(grid_senders), valid)
 
 
+def test_radius_query_does_not_depend_on_the_workers():
+  """The k-d tree query uses all cores by default: the edges, and their order, are the same with one thread, so the
+  default does not change the model's graphs."""
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(3)
+  assert mesh_data.mesh_size is not None
+  points = icosahedral_mesh.get_multi_mesh_graph(4).vertices
+  edges = [
+    mesh_connectivity.get_points_to_mesh_edges(
+      senders_position=points, receivers_mesh=mesh_data.mesh_graph, radius=0.6 * mesh_data.mesh_size, workers=workers
+    )
+    for workers in (1, -1)
+  ]
+  assert edges[0][0].size > 0
+  for one_thread, all_cores in zip(*edges, strict=True):
+    np.testing.assert_array_equal(one_thread, all_cores)
+
+
 @pytest.mark.parametrize("masked", [False, True], ids=["full_mask", "partial_mask"])
 def test_get_mesh_to_grid_edges(grid, partial_mask, masked):
   """Decoder edges: each valid grid point receives 3 edges from the vertices of a mesh face containing it (seen from the

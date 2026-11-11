@@ -65,7 +65,7 @@ def radius_query_indices(
   mesh: Mesh,
   radius: float | np.ndarray,
   mask: np.ndarray | None = None,
-  workers: int = 1,
+  workers: int = -1,
 ) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
@@ -76,6 +76,7 @@ def radius_query_indices(
     radius: Radius of connectivity (straight line, metres), one for all mesh vertices or one per vertex
       [num_mesh_vertices]: the balls are centred on the mesh vertices.
     mask: Boolean mask of shape [num_lat_points, num_lon_points]: only unmasked grid points are connected.
+    workers: Threads of the k-d tree query (-1: all cores); the edges do not depend on it.
 
   Returns:
     tuple with `grid_senders` and `mesh_receivers` indicating edges from the
@@ -91,30 +92,51 @@ def radius_query_indices(
   mask = mask.reshape([-1])
   # [num_grid_points=num_lat_points * num_lon_points, 3]
   grid_positions = _grid_lat_lon_to_coordinates(grid_latitude, grid_longitude).reshape([-1, 3])
-  # [num_mesh_points, 3]
-  mesh_positions = mesh.vertices
   # [num_valid_grid_points=sum(mask)]
   valid_grid_positions = grid_positions[mask]
-
-  # NOTICE:
-  #   1. the number of grid points per mesh point is not constant, so `query_ball_point` return an array of lists,
-  #     rather than a 2d array,
-  #   2. the ball is in 3D space, so the distances are not geodesic,
-  #   3. if radius is a number, then building a KDTree of grid points and querying mesh nodes is the same
-  #     as building a KDTree of mesh nodes and querying grid points: for varying radius this is not the case,
-  #   4. the original implementation was more readable, but unfeasible for large grids/meshes.
-  kd_tree = scipy.spatial.cKDTree(valid_grid_positions)
-  # [num_grid_points, num_mesh_points_per_grid_point (variable)]
-  # noinspection PyTypeChecker
-  query_indices = kd_tree.query_ball_point(x=mesh_positions, r=radius, workers=workers)
+  valid_grid_senders, mesh_receivers = get_points_to_mesh_edges(
+    senders_position=valid_grid_positions, receivers_mesh=mesh, radius=radius, workers=workers
+  )
   _, masked_to_unmasked_fn = get_masking_indices_fns(mask)
   # noinspection PyTypeChecker
-  grid_senders = np.concatenate(list(map(masked_to_unmasked_fn, query_indices)), axis=0).astype(int)
-  mesh_receivers = np.repeat(
-    np.arange(mesh_positions.shape[0], dtype=int),
-    np.fromiter(map(len, query_indices), dtype=int),  # ty: ignore[invalid-argument-type]  # an array of lists
-  )
+  grid_senders: np.ndarray = masked_to_unmasked_fn(valid_grid_senders)
   return grid_senders, mesh_receivers
+
+
+def get_points_to_mesh_edges(
+  *, senders_position: np.ndarray, receivers_mesh: Mesh, radius: float | np.ndarray, workers: int = -1
+) -> tuple[np.ndarray, np.ndarray]:
+  """Returns edges from the points to the mesh vertices within `radius` of them (straight line).
+
+  Args:
+    senders_position: Array of points in R3 [num_points, 3], in the coordinates of the mesh.
+    receivers_mesh: Mesh object.
+    radius: Radius of connectivity, one for all mesh vertices or one per vertex [num_mesh_vertices]: the balls are
+      centred on the mesh vertices.
+    workers: Threads of the k-d tree query (-1: all cores); the edges do not depend on it.
+
+  Returns:
+    senders (indices into the points), receivers (indices into the mesh vertices), sorted by receiver, then sender.
+  """
+  # NOTICE:
+  #   1. the number of points per mesh vertex is not constant, so `query_ball_point` return an array of lists,
+  #     rather than a 2d array,
+  #   2. the ball is in 3D space, so the distances are not geodesic,
+  #   3. if radius is a number, then building a KDTree of the points and querying mesh nodes is the same
+  #     as building a KDTree of mesh nodes and querying the points: for varying radius this is not the case,
+  #   4. the original implementation was more readable, but unfeasible for large grids/meshes.
+  kd_tree = scipy.spatial.cKDTree(senders_position)
+  # [num_mesh_vertices, num_points_per_mesh_vertex (variable)], each list sorted (several query points).
+  # noinspection PyTypeChecker
+  query_indices = kd_tree.query_ball_point(x=receivers_mesh.vertices, r=radius, workers=workers)
+  counts = np.fromiter(
+    map(len, query_indices),  # ty: ignore[invalid-argument-type]  # an array of lists
+    dtype=int,
+    count=len(query_indices),
+  )
+  senders = np.concatenate([np.asarray(indices, dtype=int) for indices in query_indices])
+  receivers = np.repeat(np.arange(len(query_indices), dtype=int), counts)
+  return senders, receivers
 
 
 def get_mesh_to_grid_edges(
