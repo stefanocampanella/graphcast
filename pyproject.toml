@@ -44,7 +44,8 @@ dependencies = [
     # Without a lower bound, pip resolves botocore[crt] to a version aiobotocore rejects and falls back to s3fs 0.4
     "s3fs >= 2026.9.0",
     "scipy",
-    "seamsh@git+https://github.com/stefanocampanella/seamsh.git@graphcast",
+    # The fork (upstream, on PyPI, is other code): install from a release tag, see the fork's doc/fork.rst.
+    "seamsh@git+https://github.com/stefanocampanella/seamsh.git@v0.6.0+fork",
     "tensorboard",
     "tensorflow >= 2.21.0",
     "tqdm",

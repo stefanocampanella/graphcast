@@ -419,12 +419,12 @@ def read_mesh(
   # Flat arrays of size 2 * num_lines.
   boundary_node_tags = np.concatenate(boundary_node_tags) if boundary_node_tags else np.empty((0,), dtype=int)
 
-  # Meshes produced with seamsh (fork https://github.com/stefanocampanella/seamsh, branch develop at f1ab87d, checked
-  # on 11 Nov 2026) contain nodes that belong to no triangle: the outlines of islands smaller than the mesh size (they
-  # survive the coastline coarsening, but gmsh triangulates the sea over them, so they are not holes). 743 of 34,750
-  # nodes at 120 km (632 islands of 1-3 nodes, up to ~100 km across), 655 of 181,980 at 50 km. The model needs a mesh
-  # whose every node is in a triangle (a node in none would be in no edge), so they are removed here; expected in
-  # seamsh meshes, hence logged as information, not as a warning. A later seamsh may not write them.
+  # Meshes produced with seamsh up to the fork's develop at f1ab87d (checked on 11 Nov 2026) contain nodes that belong
+  # to no triangle: the outlines of islands smaller than the mesh size (they survive the coastline coarsening, but gmsh
+  # triangulates the sea over them, so they are not holes). 743 of 34,750 nodes at 120 km (632 islands of 1-3 nodes, up
+  # to ~100 km across), 655 of 181,980 at 50 km. seamsh v0.6.0+fork (the pinned version) leaves them out of the file.
+  # The model needs a mesh whose every node is in a triangle (a node in none would be in no edge), so they are removed
+  # here, for meshes made with older versions; expected there, hence logged as information, not as a warning.
 
   # Get valid nodes, i.e., those belonging to a triangle by querying all triangular elements (type=2).
   triangle_tags, triangle_node_tags = gmsh.model.mesh.get_elements_by_type(2)
