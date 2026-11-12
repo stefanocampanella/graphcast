@@ -1493,3 +1493,13 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - Per variable (50 km × 16): zos −0.9 %, thetao −0.4 %, so −0.2 %, uo/vo −0.3 %, siconc −0.7 %, sithick −1.1 %,
   usi/vsi +0.4 %. Script `compare_edge_fixes.py`, tables `edge_fixes_runs.csv`, `edge_fixes_curves.csv` in the session
   directory.
+
+## 2026-11-12 10:00: meshes with the Black Sea in data/geometry
+
+- **Request:** replace the meshes in `data/geometry` and delete the duplicate PR replies.
+- **Meshes:** the ten `uniform_*km.msh` moved to `data/geometry/previous_2026-10/` and replaced by the meshes
+  regenerated with the strait refinement (byte-identical copies of `$FSCRATCH/graphcast/data/geometry_straits_2026-11-11`;
+  no job was queued). The new files are a third smaller: the old ones held the mesh twice (writer bug fixed on 30 Oct).
+  `lambrechts*.msh` and `icosahedral_6.msh` are unchanged (the `lambrechts` configs have the refinement, their meshes
+  were not regenerated).
+- **Duplicate replies:** already deleted (no thread of PR #7 has two identical replies).

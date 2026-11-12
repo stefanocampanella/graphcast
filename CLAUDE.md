@@ -551,8 +551,11 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   `uniform_120km.msh` exactly (vertices within 1.4e-9 m, same triangles).
 - **Black Sea in the configs (11 Nov 2026):** every ocean config refines the coarsening
   (`[[coarsen_boundaries.fields]]`, 250 m, growth 0.02) and the mesh (`[[fields]]`, 3 km, growth 0.3) with the
-  `point_refinement` field at the Bosporus, Dardanelles and Kerch Strait. Regenerated uniform meshes (not yet copied to
-  `data/geometry`): `$FSCRATCH/graphcast/data/geometry_straits_2026-11-11` (442 MB). One component each; ocean points
+  `point_refinement` field at the Bosporus, Dardanelles and Kerch Strait. The ten `data/geometry/uniform_*km.msh` were
+  replaced with meshes regenerated from these configs on 12 Nov 2026 (also in
+  `$FSCRATCH/graphcast/data/geometry_straits_2026-11-11`); the previous ones (without the Black Sea, written before the
+  30 Oct writer fix: mesh stored twice) are in `data/geometry/previous_2026-10/`. Runs from before 12 Nov used the
+  previous meshes. One component each; ocean points
   without encoder edges 1,222 → 276 (120 km), 1,725 → 798 (50 km); longest decoder edge 1,286 → 245 km (120 km),
   1,231 → 194 km (50 km); nodes +417 (120 km), +656 (50 km); shortest edge 1.1–1.6 km; smallest angle 50 km 14.8° →
   7.8°, 85 km 7.8° → 4.6°, others unchanged. Path scaling over the ten meshes: L = 0.695 · N^0.480 (within 2.2 %),
