@@ -121,6 +121,13 @@ def _leviathan(tiny_model, mask=None, **options):
   )
 
 
+# Two equivalent computations in float32 (scanned or unrolled processor, more or fewer grid nodes) compile to different
+# operation orders, and runners with other CPUs reduce in other orders: predictions of order 0.1-1 then differ by a few
+# 1e-6 (CI, Nov 2026: 3e-6 on 0.0435, relative 7e-5, in 1 of 384 values, on some runs only). A real difference (wrong or
+# swapped parameters, missing nodes) is of order 1.
+FLOAT32_RTOL, FLOAT32_ATOL = 1e-4, 1e-5
+
+
 @pytest.mark.parametrize("options", [{"_remat": True}, {"_edge_chunk_size": 50}], ids=["remat", "edge_chunks"])
 def test_scan_and_unrolled_processor_are_interchangeable(tiny_model, options):
   """The scanned and unrolled processors (and with rematerialization or edge chunks) have the same parameters and give
@@ -133,7 +140,7 @@ def test_scan_and_unrolled_processor_are_interchangeable(tiny_model, options):
 
   expected = unrolled.apply(params, None, inputs, targets, forcings)
   actual = scanned.apply(params, None, inputs, targets, forcings)
-  np.testing.assert_allclose(actual["zos"].data, expected["zos"].data, rtol=1e-5, atol=1e-6)
+  np.testing.assert_allclose(actual["zos"].data, expected["zos"].data, rtol=FLOAT32_RTOL, atol=FLOAT32_ATOL)
 
 
 def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
@@ -159,7 +166,7 @@ def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
 
   expected = np.asarray(everything.apply(params, None, inputs, targets, forcings)["zos"].data)
   actual = np.asarray(connected.apply(params, None, inputs, targets, forcings)["zos"].data)
-  np.testing.assert_allclose(actual[..., mask], expected[..., mask], rtol=1e-5, atol=1e-6)
+  np.testing.assert_allclose(actual[..., mask], expected[..., mask], rtol=FLOAT32_RTOL, atol=FLOAT32_ATOL)
   np.testing.assert_array_equal(actual[..., ~mask], 0.0)
 
 
