@@ -1568,3 +1568,19 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Training** (study `ico_vs_ocean_v060`, 75.5 node-h): 120 km × 8 0.08333, icosahedral × 8 0.08381, 50 km × 16
   0.07464, icosahedral × 16 0.08262; icosahedral × 16 is 10.7 % worse than 50 km × 16, −16.0 % on `zos`. Ocean cases
   −0.6 / −0.8 % since 8 Nov, icosahedral unchanged. Report section and CSVs added.
+
+## 2026-11-13 08:00: mesh quality in the artifact; Lambrechts vs uniform meshes
+
+- **Requests:** show the change of mesh quality with seamsh v0.6.0+fork in the artifact; test the performance and
+  skill of Lambrechts meshes of different sizes against uniform meshes.
+- **Quality** (`quality_compare.py`): table and chart of the ten uniform meshes before/after in the artifact; the bulk
+  improves at every size (25th percentile of the smallest angle per face +1°, faces with volume-length < 0.8 −3 to
+  −20 %), the 6–52 worst faces (< 0.5) do not.
+- **Meshes:** `lambrechts_mini`, `lambrechts_coarse`, `lambrechts` regenerated with seamsh v0.6.0+fork (job 2867811,
+  11,786 / 23,424 / 115,671 nodes, one component each) and installed in `data/geometry` (previous in
+  `previous_2026-11-12/`); new configs `uniform_200km` (13,743 nodes), `uniform_150km` (22,960) to match their node
+  counts.
+- **Training** (study `lambrechts_vs_uniform`, jobs 2868109–2868124, 146.6 node-h, × 16, two seeds): uniform meshes on
+  valid loss = 0.153 · N^−0.060 (within 0.6 %); Lambrechts meshes above it by +1.1 %, +1.5 % and +9.7 % (full mesh:
+  0.0837, worse than uniform 120 km × 16 at 0.0820; −4.7 % on `zos`, +10 to +18 % on temperature, salinity and
+  currents). Report `docs/jupiter-hackathon/results/lambrechts_vs_uniform-2026-11-13`.

@@ -376,6 +376,13 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   - **The baselines are ~8 % better than in the mesh study** (120 km × 8 0.0907 → 0.0838, 50 km × 16 0.0818 → 0.0752;
     same config and validation windows), most likely from the edge-direction fix of 6 Nov (`0473751`, not ablated):
     do not compare runs from before 6 Nov with later ones.
+- Lambrechts vs uniform meshes (13 Nov 2026, `docs/jupiter-hackathon/results/lambrechts_vs_uniform-2026-11-13`; study
+  `lambrechts_vs_uniform`, 146.6 node-h): the protocol of the mesh study at 16 message passing steps, seamsh
+  v0.6.0+fork meshes. Uniform meshes (200 to 50 km, new configs `uniform_200km`, `uniform_150km`) follow valid loss =
+  0.153 · N^−0.060 within 0.6 %. The coast- and depth-refined `lambrechts*` meshes are worse at equal node count:
+  mini +1.1 %, coarse +1.5 %, full `lambrechts` (116k nodes, 25–30 km on shelves and coasts, up to ~200 km offshore)
+  +9.7 %, i.e. 10.6 % worse than uniform 60 km at the same step time, and worse than uniform 120 km × 16; only `zos`
+  gains (−4.7 %), currents and sea-ice thickness lose 14–18 %. The uniform 50 km × 16 stays the configuration to use.
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier raw-data images (deleted on 3 Nov 2026) (from
