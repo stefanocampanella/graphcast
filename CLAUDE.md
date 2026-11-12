@@ -137,7 +137,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   whose `pyproject.toml` and `src/` the image should contain (a worktree works with
   `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`, as long as that environment was created from the
   current `spack.yaml`: it keeps a copy, and the template is `container/moby-dick.def` since the rename); the build
-  takes ~6 min on a login node. Previous images are kept as `moby-dick-YYYY-MM-DD.sif` (before the rename
+  takes ~6 min on a login node (40 min when the login node is busy, as on 12 Nov 2026: the current image, with
+  seamsh v0.6.0+fork, was built then; the previous one is `moby-dick-2026-11-08.sif`). Previous images are kept as `moby-dick-YYYY-MM-DD.sif` (before the rename
   `graphcast-YYYY-MM-DD.sif`, which install the package as `graphcast`: with sources from `PYTHONPATH` they need
   `python -m mobydick`, and their `graphcast` command runs the old installed code). Past commands are in
   `~/.bash_eternal_history`.
@@ -368,6 +369,10 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
   - **Cost:** icosahedral × 16 0.78 s per step and 55 GiB, against 1.40 s and 74 GiB.
   - **Next:** long-range edges on the ocean mesh (hierarchy merged into the 50 km processor); icosahedral M7 for a
     resolution-matched comparison.
+  - **Rerun on 12 Nov 2026** (current code and meshes: two-way edges, new encoder radius, Black Sea, seamsh
+    v0.6.0+fork; study `ico_vs_ocean_v060`, jobs 2864519–2864527, 75.5 node-h): 120 km × 8 0.0833, icosahedral × 8
+    0.0838, 50 km × 16 0.0746, icosahedral × 16 0.0826: icosahedral × 16 is 10.7 % worse than 50 km × 16, better only
+    for `zos` (−16.0 %); the ocean cases gained 0.6–0.8 % since 8 Nov, the icosahedral ones nothing.
   - **The baselines are ~8 % better than in the mesh study** (120 km × 8 0.0907 → 0.0838, 50 km × 16 0.0818 → 0.0752;
     same config and validation windows), most likely from the edge-direction fix of 6 Nov (`0473751`, not ablated):
     do not compare runs from before 6 Nov with later ones.
@@ -556,15 +561,23 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   `uniform_120km.msh` exactly (vertices within 1.4e-9 m, same triangles).
 - **Black Sea in the configs (11 Nov 2026):** every ocean config refines the coarsening
   (`[[coarsen_boundaries.fields]]`, 250 m, growth 0.02) and the mesh (`[[fields]]`, 3 km, growth 0.3) with the
-  `point_refinement` field at the Bosporus, Dardanelles and Kerch Strait. The ten `data/geometry/uniform_*km.msh` were
-  replaced with meshes regenerated from these configs on 12 Nov 2026 (also in
-  `$FSCRATCH/graphcast/data/geometry_straits_2026-11-11`); the previous ones (without the Black Sea, written before the
-  30 Oct writer fix: mesh stored twice) are in `data/geometry/previous_2026-10/`. Runs from before 12 Nov used the
-  previous meshes. One component each; ocean points
-  without encoder edges 1,222 → 276 (120 km), 1,725 → 798 (50 km); longest decoder edge 1,286 → 245 km (120 km),
-  1,231 → 194 km (50 km); nodes +417 (120 km), +656 (50 km); shortest edge 1.1–1.6 km; smallest angle 50 km 14.8° →
-  7.8°, 85 km 7.8° → 4.6°, others unchanged. Path scaling over the ten meshes: L = 0.695 · N^0.480 (within 2.2 %),
-  L × edge 11,200–12,400 km, diameter ≥ 2.82 · N^0.44.
+  `point_refinement` field at the Bosporus, Dardanelles and Kerch Strait.
+- **Meshes made with seamsh v0.6.0+fork (12 Nov 2026):** `pyproject.toml` pins the fork's release tag (its
+  `doc/fork.rst`: moby-dick's calls run unchanged; `mesh` optimises the triangles by default, so meshes differ; files
+  hold no node outside the triangles; `x0` may be several seeds). The ten `data/geometry/uniform_*km.msh` are
+  regenerated from the configs with it (copies in `$FSCRATCH/graphcast/data/geometry_seamsh060_2026-11-12`, with their
+  graph statistics); the previous generations are in `data/geometry/previous_2026-11-12/` (seamsh `f1ab87d`, with the
+  straits) and `data/geometry/previous_2026-10/` (without the Black Sea, mesh stored twice). Runs from before 12 Nov used
+  the older meshes. Against seamsh `f1ab87d` with the same configs: one component each, the Black Sea and Sea of Azov
+  in; triangles better on the whole (25th percentile of the smallest angle per face +1° at every size, median
+  volume-length up), smallest angle better at 85, 70, 50, 30 and 25 km (25 km 5.4° → 9.0°), slightly worse at 100, 40
+  and 35 km (100 km 3.7° → 3.4°); 2–3 % fewer encoder edges; ocean points without encoder edges within ±5 % (120 km
+  287, 50 km 774, 25 km 2,157; none inside a triangle; 2–9 in the Black Sea box), longest decoder edge 261 km (120 km),
+  196 km (50 km); no node dropped when reading. Path scaling over the ten meshes: L = 0.542 · N^0.501 (within 3.1 %),
+  L × edge 11,300–12,200 km, diameter ≥ 2.65 · N^0.45. The strait elements carry no grid point but are the only link to
+  the Black Sea, Azov and Marmara: without the nodes in neither encoder nor decoder, 4 % of the paths between
+  data-carrying nodes break at 120 km (0.3 % at 50 km); the Black Sea is 45 (120 km) and 48 (50 km) hops from the
+  Aegean. Mesh-to-mesh encoder 50 → 120 km: 6 finer vertices without edges, all outside the coarser mesh.
 - **The Black Sea can be kept with today's seamsh** (11 Nov 2026, `strait_experiment.py` in the kit): the 1:10m
   coastline keeps the straits open (narrowest gaps: Bosporus 1.09 km, Dardanelles 2.36 km, Kerch 2.51 km). A
   coarsening size of 0.25–0.5 km at the three straits growing by at most 0.05 km per km to 10 km (they are 30–60 km

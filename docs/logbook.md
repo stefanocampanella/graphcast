@@ -1550,3 +1550,21 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
     when geodesic distances are introduced.
   - The comment on the nodes in no triangle names the seamsh commit (fork `develop` `f1ab87d`, 11 Nov 2026) and says
     why they are dropped and why the log is informational.
+
+## 2026-11-12 22:00: seamsh v0.6.0+fork: pin, image, meshes, reruns
+
+- **Request:** pin seamsh to v0.6.0+fork (merged PR in the fork), rebuild the image, rerun every investigation of the
+  report artifact with it; the changes the fork's documentation suggests for moby-dick go to a later PR (TODO).
+- **Image:** rebuilt from this branch (Spack environment unchanged; ~40 min on a busy login node), seamsh 0.6.0+fork at
+  `3c9304c` with gmsh 4.12.1; installed as `moby-dick.sif` with approval, previous image `moby-dick-2026-11-08.sif`.
+  486 tests pass with it (compute node, 3 min).
+- **Meshes:** the ten uniform meshes regenerated (job 2864195) and installed in `data/geometry` with approval (previous
+  in `data/geometry/previous_2026-11-12/`); details in CLAUDE.md (Meshes). Same structure, better triangles on the
+  whole, 2–3 % fewer encoder edges, no node outside the triangles.
+- **Checks** (job 2864533): encoder radius (no ocean point inside a triangle without encoder edges), nodes outside the
+  encoder and decoder (now needed: the strait elements carry no grid point and are the only link to the Black Sea, Azov
+  and Marmara, 4 % of the paths at 120 km break without them), hops through the straits (45 / 48), path scaling
+  (L = 0.542 · N^0.501).
+- **Training** (study `ico_vs_ocean_v060`, 75.5 node-h): 120 km × 8 0.08333, icosahedral × 8 0.08381, 50 km × 16
+  0.07464, icosahedral × 16 0.08262; icosahedral × 16 is 10.7 % worse than 50 km × 16, −16.0 % on `zos`. Ocean cases
+  −0.6 / −0.8 % since 8 Nov, icosahedral unchanged. Report section and CSVs added.

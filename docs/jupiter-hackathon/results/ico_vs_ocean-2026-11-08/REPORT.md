@@ -16,6 +16,29 @@ Detailed version with charts: https://claude.ai/artifact/Bm8DGCiTHcJhL7k9AR5Lwg
 - **Baselines rerun:** both are about 8 % better than in the mesh study (see side findings), so its numbers are not
   comparable with these.
 
+## Rerun of 12 Nov 2026 (current code, seamsh v0.6.0+fork meshes)
+
+All eight runs repeated with the same protocol (study `ico_vs_ocean_v060`, jobs 2864519–2864527, 75.5 node-h) after
+the changes of PR #7: two-way coastline edges, encoder radius from the longest triangle edge, the Black Sea and Sea of
+Azov in the ocean meshes (strait refinement), and meshes regenerated with seamsh v0.6.0+fork (optimised triangles).
+
+| Case | Valid loss, 8 Nov | 12 Nov | Change | Seed spread (12 Nov) | Step (s) | XLA GiB |
+|---|---|---|---|---|---|---|
+| 120 km × 8 | 0.08382 | 0.08333 | −0.6 % | 0.22 % | 0.538 | 54.4 |
+| icosahedral × 8 | 0.08371 | 0.08381 | +0.1 % | 0.14 % | 0.581 | 55.0 |
+| 50 km × 16 | 0.07524 | **0.07464** | −0.8 % | 0.04 % | 1.403 | 74.8 |
+| icosahedral × 16 | 0.08263 | 0.08262 | 0.0 % | 0.34 % | 0.744 | 53.2 |
+
+- **The conclusions stand.** Icosahedral × 16 is 10.7 % worse than 50 km × 16 (9.8 % on 8 Nov) and better only for
+  `zos` (−16.0 %, was −16.7 %); the other targets are 10–33 % worse (sea-ice thickness +32.7 %). Icosahedral × 8
+  equals 120 km × 8 within 0.6 %.
+- **The ocean meshes gained 0.6–0.8 %**, the icosahedral mesh nothing: the gain comes from the ocean-mesh changes
+  (the edge fixes alone gave −0.1 % and −0.4 % on 11 Nov, within the seed spread; the rest from the Black Sea and the
+  regenerated meshes, not separated).
+- Files: `summary_cases_2026-11-12.csv`, `summary_runs_2026-11-12.csv`, `curves_2026-11-12.csv`.
+
+The tables below are the runs of 8 Nov.
+
 ## Validation loss at step 5000 (mean of two seeds)
 
 | Case | Valid loss | vs 120 km × 8 | Seed spread | Valid at 2500 | Valid − train | Step (s) | XLA GiB | Node-h (2 runs) |
