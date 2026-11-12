@@ -1503,3 +1503,18 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `lambrechts*.msh` and `icosahedral_6.msh` are unchanged (the `lambrechts` configs have the refinement, their meshes
   were not regenerated).
 - **Duplicate replies:** already deleted (no thread of PR #7 has two identical replies).
+
+## 2026-11-12 11:00: license audit of the dependencies
+
+- **Request:** check the license of every dependency and find inconsistencies and licensing problems (e.g. GPL code
+  requiring the Apache code to be redistributed as GPL). No code changes.
+- **Method:** metadata (License-Expression, License, classifiers) of the 224 Python distributions in the image
+  (`licenses/scan_licenses.py`, `licenses.csv`, `direct_deps.txt` in the session directory), Spack libraries and their
+  linkage (`ldd`), Ubuntu copyright files, the seamsh sources, the mesh configs and the README.
+- **Findings** (details in CLAUDE.md, Repository notes): gmsh (GPL-2.0-or-later) and seamsh (GPL-3.0; LGPL headers
+  contradicted by the bundled gmsh code) are the only copyleft direct dependencies and are loaded by every command, so
+  a distributed image is a GPL-3.0 combined work, which also loads proprietary NVIDIA libraries (gray area); the
+  repository itself is fine under Apache-2.0. Mesh files are CC BY-NC-SA without a reason from their inputs, the
+  `lambrechts` meshes lack the Copernicus attribution, and data attributions and a weights license are missing.
+  Everything else is permissive or dynamically linked LGPL. Missing metadata: namex and transformer_engine ship
+  Apache-2.0 texts; nsys-jax (NVIDIA, base image) has none.

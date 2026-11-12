@@ -620,6 +620,33 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
     GraphCast is copied into another file. `spack/templates/container/moby-dick.def` is Spack's Singularity template
     (Apache-2.0 OR MIT), modified.
   - The license grants no rights to DeepMind's, Google's or GraphCast's names (§6), hence the rename to Moby-Dick.
+  - **Dependencies** (audit of 12 Nov 2026, the image's 224 Python distributions and the Spack libraries; tables in
+    `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/licenses/`; not legal advice):
+    - All direct dependencies are permissive (Apache-2.0, BSD, MIT, PSF-like; tqdm MPL-2.0 AND MIT, file-level
+      copyleft, fine unmodified) **except gmsh** (GPL-2.0-or-later with the Gmsh exception, Ubuntu `python3-gmsh`)
+      **and seamsh** (GPL-3.0: README, `COPYING.txt`, classifier; its file headers say LGPL-3.0-or-later, but
+      `libseamsh.so` compiles gmsh's `polymesh.c`, GPL-2.0-or-later, so it cannot be LGPL as a whole).
+    - Apache-2.0 code may be combined with GPL-3.0 code (one-way compatible; gmsh's "or later" allows GPL-3.0), so
+      moby-dick's own files stay Apache-2.0 and the repository (which contains no GPL code) is fine. But every
+      `moby-dick` command loads gmsh and seamsh (`mobydick/__init__.py` imports `geospatial_mesh`; training reads
+      `.msh` files with gmsh): distributing moby-dick *together with* them (e.g. `moby-dick.sif`, or a bundle) is
+      distributing a combined work under GPL-3.0 terms (source of everything, no further restrictions). The same
+      process also loads proprietary NVIDIA libraries (CUDA, cuDNN, CUTLASS DSL, through jaxlib), whose terms GPL-3.0
+      does not allow in a combined work unless they count as System Libraries: a gray area. Running on JUPITER is not
+      distribution; publishing the image would be. Remedy if needed (code change, not done): gmsh and seamsh as an
+      optional `meshing` extra, imported lazily, and `.msh` files read without gmsh (e.g. meshio, MIT), so that
+      training never loads GPL code.
+    - Native libraries: GDAL, PROJ MIT; GEOS LGPL-2.1 (dynamically linked: fine); gcc runtime GPL with the runtime
+      exception; Spack's and Ubuntu's readline (GPL-3.0) are not linked by GDAL; OpenCASCADE (with gmsh) LGPL-2.1.
+    - The base image `nvcr.io/nvidia/jax` is governed by the NVIDIA Software License Agreement and Product-Specific
+      Terms for AI Products (`/workspace/license.txt`): check them before sharing `moby-dick.sif` outside the project.
+      The `graph-gpu` extra (nx-cugraph, Apache-2.0) pulls proprietary CUDA libraries.
+    - Mesh files are declared CC BY-NC-SA 4.0 in every mesh config (perhaps copied from GraphCast's weights license),
+      although their inputs need neither NC nor SA (Natural Earth is public domain; GLORYS bathymetry, used by the
+      `lambrechts*` meshes, is under the Copernicus Marine licence, which allows commercial use with attribution, and
+      that attribution is missing from their license text). Trained model weights have no declared license, and the
+      README does not state the data attributions (Copernicus Marine for GLORYS and WAVERYS, C3S for ERA5, CEMS for
+      GloFAS) needed when distributing weights, predictions or derived data. Decisions for the maintainer.
 <!-- REUSE-IgnoreEnd -->
 - Do not commit `moby-dick.sif`, `moby-dick.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.
