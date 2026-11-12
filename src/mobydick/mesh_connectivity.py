@@ -120,7 +120,8 @@ def get_points_to_mesh_edges(
   # NOTICE:
   #   1. the number of points per mesh vertex is not constant, so `query_ball_point` return an array of lists,
   #     rather than a 2d array,
-  #   2. the ball is in 3D space, so the distances are not geodesic,
+  #   2. the ball is in 3D space, so the distances are not geodesic (CHORD DISTANCE: geodesic distances are planned;
+  #      change the radius in mesh_graph.longest_incident_edges together with this query),
   #   3. if radius is a number, then building a KDTree of the points and querying mesh nodes is the same
   #     as building a KDTree of mesh nodes and querying the points: for varying radius this is not the case,
   #   4. the original implementation was more readable, but unfeasible for large grids/meshes.

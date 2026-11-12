@@ -1530,3 +1530,23 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   vectorized index mapping in `mesh_connectivity`; `CompositeMeshSizeField` derives from `MinimumField`; a missing test
   docstring; no cluster name in `icosahedral_6.toml`. Edge counts unchanged for the meshes in use (icosahedral M6
   327,660; 120 km 199,720). 484 tests pass.
+
+## 2026-11-12 16:00: third review of PR #7
+
+- **Comments addressed:**
+  - No path prefixes: `make-ocean-mesh` lost `--data-path`, the fields and the domain take their paths as they are,
+    and the mesh configs use container paths (`/data/geometry/...`; `lambrechts*` bathymetry at `/data/bathymetry/...`).
+  - The coastline coarsening takes size fields in full generality: `[[coarsen_boundaries.fields]]` (minimum of the
+    fields) replaces `coarsen_boundaries.mesh_size`; every config has a uniform 10 km field there (plus the strait
+    refinement). A single uniform field gives exactly the previous coarsening.
+  - `CoarsenBoundariesConfig` defined after `FieldConfig` (no forward reference and `model_rebuild`); the check of
+    unique field types, now shared, explains why (fields are kept by type name, a repeated type would replace the
+    first silently).
+  - Edge codes are uint64 (one-to-one up to 2**32 nodes), with an error beyond that or for indices outside
+    [0, num_nodes) instead of wrapping around.
+  - Chord distance: quantified in `PointRefinementField` (shorter than the geodesic by ~d³/(24 R²): 0.08 % at 500 km,
+    beyond which every refinement has reached its base size) and marked "CHORD DISTANCE" in
+    `mesh_graph.longest_incident_edges` and `mesh_connectivity.get_points_to_mesh_edges`, which must change together
+    when geodesic distances are introduced.
+  - The comment on the nodes in no triangle names the seamsh commit (fork `develop` `f1ab87d`, 11 Nov 2026) and says
+    why they are dropped and why the log is informational.

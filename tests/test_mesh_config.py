@@ -45,9 +45,10 @@ from mobydick.mesh_graph import faces_to_edges
 
 MESH_CONFIGS = pathlib.Path(__file__).parents[1] / "configs" / "mesh"
 COAST_LATITUDE = -70.0
+UNIFORM_COARSENING = {"name": "uniform", "value": 200_000.0}
 MINIMAL = {
   "domain": {"filepath": "coast.shp"},
-  "coarsen_boundaries": {"mesh_size": 200_000.0},
+  "coarsen_boundaries": {"fields": [UNIFORM_COARSENING]},
   "fields": [{"name": "uniform", "value": 1_000_000.0}],
 }
 
@@ -84,6 +85,10 @@ def test_shipped_configs_are_valid(path):
   for fields in (configs.coarsen_boundaries.fields, configs.fields):
     (refinement,) = [field for field in fields if field.name == "point_refinement"]
     assert len(refinement.points) == 3
+  (coarsening,) = [field for field in configs.coarsen_boundaries.fields if field.name == "uniform"]
+  assert coarsening.value == 10_000.0
+  # Paths are container paths, used as they are.
+  assert configs.domain.filepath.startswith("/data/")
   assert "Black Sea" in configs.description
 
 
@@ -108,17 +113,21 @@ def test_shipped_icosahedral_configs_are_valid(path):
     (_settings(fields=[{"name": "uniform", "value": -1.0}]), "greater than 0"),
     (_settings(fields=[{"name": "uniform", "value": 1.0}, {"name": "uniform", "value": 2.0}]), "repeated"),
     (_settings(view_tag_name="uniform"), "also the name of a field"),
-    (_settings(coarsen_boundaries={"mesh_size": 0.0}), "greater than 0"),
-    (_settings(coarsen_boundaries={"mesh_size": 1.0, "x0_projection": "mercator"}), "x0_projection"),
+    (_settings(coarsen_boundaries={"fields": []}), "at least 1"),
+    (_settings(coarsen_boundaries={"fields": [{"name": "uniform", "value": 0.0}]}), "greater than 0"),
+    (
+      _settings(coarsen_boundaries={"fields": [UNIFORM_COARSENING], "x0_projection": "mercator"}),
+      "x0_projection",
+    ),
     (_settings(gmsh={"algorithm": 0}), "greater than or equal to 1"),
     (
       _settings(
-        coarsen_boundaries={"mesh_size": 1.0, "fields": [{**REFINEMENT, "points": [[95.0, 0.0]]}]},
+        coarsen_boundaries={"fields": [UNIFORM_COARSENING, {**REFINEMENT, "points": [[95.0, 0.0]]}]},
       ),
       "latitude",
     ),
-    (_settings(coarsen_boundaries={"mesh_size": 1.0, "fields": [{**REFINEMENT, "points": []}]}), "at least 1"),
-    (_settings(coarsen_boundaries={"mesh_size": 1.0, "fields": [REFINEMENT, REFINEMENT]}), "repeated"),
+    (_settings(coarsen_boundaries={"fields": [{**REFINEMENT, "points": []}]}), "at least 1"),
+    (_settings(coarsen_boundaries={"fields": [REFINEMENT, REFINEMENT]}), "repeated"),
   ],
 )
 def test_invalid_settings(settings, message):
@@ -152,12 +161,13 @@ def test_invalid_field_settings(field, message):
 
 
 def test_field_arguments():
-  """A field's keyword arguments exclude its name, and its file path is placed under the data path."""
-  field = ShoreProximityFieldConfig.model_validate({**SHORE, "field_max": 500_000.0, "size_min": 1.0, "size_max": 2.0})
-  arguments = field_arguments(field, pathlib.Path("/data"))
+  """A field's keyword arguments exclude its name, and its file path is used as it is (a container path)."""
+  field = ShoreProximityFieldConfig.model_validate(
+    {**SHORE, "filepath": "/data/geometry/coast.shp", "field_max": 500_000.0, "size_min": 1.0, "size_max": 2.0}
+  )
+  arguments = field_arguments(field)
   assert "name" not in arguments
-  assert arguments["filepath"] == pathlib.Path("/data/coast.shp")
-  assert field_arguments(field)["filepath"] == "coast.shp"
+  assert arguments["filepath"] == "/data/geometry/coast.shp"
 
 
 @pytest.fixture
@@ -185,8 +195,8 @@ def _write_config(path: pathlib.Path, extra: str = "") -> pathlib.Path:
   path.write_text(
     'description = "A test mesh"\nlicense = "A test license"\n'
     "[gmsh]\nverbosity = 0\n"
-    '[domain]\nfilepath = "coast.shp"\ncurve_type = "polyline"\n'
-    "[coarsen_boundaries]\nmesh_size = 200_000.0\n"
+    f'[domain]\nfilepath = "{path.parent / "coast.shp"}"\ncurve_type = "polyline"\n'
+    '[[coarsen_boundaries.fields]]\nname = "uniform"\nvalue = 200_000.0\n'
     '[[fields]]\nname = "uniform"\nvalue = 1_000_000.0\n' + extra
   )
   return path
@@ -196,9 +206,7 @@ def test_make_ocean_mesh(coastline):
   """The CLI meshes the ocean north of the coastline and stores the description and the mesh size at every node."""
   config = _write_config(coastline / "mesh.toml")
   output = coastline / "out" / "mesh.msh"
-  result = CliRunner().invoke(
-    make_ocean_mesh, [str(config), str(output), "--data-path", str(coastline), "--log-level", "warning"]
-  )
+  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--log-level", "warning"])
   assert result.exit_code == 0, result.output
   mesh_data = read_mesh_data(output, gmsh_verbosity=0)
   vertices = mesh_data.mesh_graph.vertices
@@ -271,13 +279,13 @@ def test_a_narrow_channel_needs_refinement_to_keep_the_sea_behind_it(channel_coa
   """A coarsening size larger than a channel's width closes it, and the sea behind it is not meshed; refining the
   coarsening size and the mesh size at the channel (point_refinement, as for the Bosporus) keeps the sea in the one
   connected mesh."""
-  channel = '[{name = "point_refinement", points = [[0.0, 32.5]], size = 5_000.0, growth = 0.01}]'
-  extra = f"fields = {channel}\n" if refined else ""
+  channel = '{name = "point_refinement", points = [[0.0, 32.5]], size = 5_000.0, growth = 0.01}'
+  coarsening = '{name = "uniform", value = 200_000.0}' + (f", {channel}" if refined else "")
   config = channel_coastline / "mesh.toml"
   config.write_text(
     "[gmsh]\nverbosity = 0\n"
-    '[domain]\nfilepath = "coast.shp"\ncurve_type = "polyline"\n'
-    f"[coarsen_boundaries]\nmesh_size = 200_000.0\n{extra}"
+    f'[domain]\nfilepath = "{channel_coastline / "coast.shp"}"\ncurve_type = "polyline"\n'
+    f"[coarsen_boundaries]\nfields = [{coarsening}]\n"
     '[[fields]]\nname = "uniform"\nvalue = 300_000.0\n'
     + (
       '[[fields]]\nname = "point_refinement"\npoints = [[0.0, 32.5]]\nsize = 10_000.0\ngrowth = 0.3\n'
@@ -286,9 +294,7 @@ def test_a_narrow_channel_needs_refinement_to_keep_the_sea_behind_it(channel_coa
     )
   )
   output = channel_coastline / "mesh.msh"
-  result = CliRunner().invoke(
-    make_ocean_mesh, [str(config), str(output), "--data-path", str(channel_coastline), "--log-level", "warning"]
-  )
+  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--log-level", "warning"])
   assert result.exit_code == 0, result.output
   graph = read_mesh_data(output, gmsh_verbosity=0).mesh_graph
   lat, lon = cartesian_to_lat_lon(graph.vertices)
@@ -304,7 +310,7 @@ def test_make_ocean_mesh_refuses_existing_output(coastline):
   config = _write_config(coastline / "mesh.toml")
   output = coastline / "mesh.msh"
   output.write_text("existing")
-  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--data-path", str(coastline)])
+  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output)])
   assert result.exit_code != 0 and "--overwrite" in result.output
   assert output.read_text() == "existing"
 
@@ -313,7 +319,7 @@ def test_invalid_config_is_a_click_error(coastline):
   """Invalid settings are reported as a CLI error before anything is meshed or written."""
   config = _write_config(coastline / "mesh.toml", extra="unknown = 1\n")
   output = coastline / "mesh.msh"
-  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--data-path", str(coastline)])
+  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output)])
   assert result.exit_code != 0 and "Invalid configuration" in result.output
   assert not output.exists()
 
@@ -326,9 +332,11 @@ SHORE_FIELD = (
 
 def _mesh(coastline: pathlib.Path, name: str, extra: str = "") -> pathlib.Path:
   """Mesh the synthetic coastline with the test settings (plus extra TOML), into coastline / name.msh."""
+  # Paths are used as they are: the shapefile by its absolute path.
+  extra = extra.replace('"coast.shp"', f'"{coastline / "coast.shp"}"')
   config = _write_config(coastline / f"{name}.toml", extra=extra)
   output = coastline / f"{name}.msh"
-  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output), "--data-path", str(coastline)])
+  result = CliRunner().invoke(make_ocean_mesh, [str(config), str(output)])
   assert result.exit_code == 0, result.output
   return output
 

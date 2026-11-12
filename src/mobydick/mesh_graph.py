@@ -185,15 +185,26 @@ def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
   return senders[keep], receivers[keep]
 
 
+# Largest number of nodes whose edge codes fit in uint64: num_nodes**2 <= 2**64.
+MAX_NODES_FOR_EDGE_CODES = 2**32
+
+
 def directed_edge_codes(senders: np.ndarray, receivers: np.ndarray, num_nodes: int) -> np.ndarray:
-  """One integer per directed edge (s, r): s * num_nodes + r.
+  """One integer per directed edge (s, r): s * num_nodes + r, as uint64.
 
   With 0 <= s, r < num_nodes the encoding is one-to-one (s and r are its quotient and remainder by num_nodes), so
   comparing integers compares edges, and numpy set operations (`np.isin`, `np.unique`: sorting, O(E log E)) handle all
-  edges at once instead of a Python loop over pairs. int64: num_nodes**2 overflows int32 above 46,340 nodes (the 25 km
-  mesh has 704,078, i.e. ~5e11).
+  edges at once instead of a Python loop over pairs. The largest code is num_nodes**2 - 1: uint64 holds it up to
+  2**32 (~4.3 billion) nodes (the 25 km mesh has 704,078); beyond, or with indices outside [0, num_nodes), the codes
+  would wrap around and merge different edges, so that is an error.
   """
-  return np.asarray(senders, dtype=np.int64) * num_nodes + np.asarray(receivers, dtype=np.int64)
+  senders, receivers = np.asarray(senders), np.asarray(receivers)
+  if not 0 <= num_nodes <= MAX_NODES_FOR_EDGE_CODES:
+    raise ValueError(f"{num_nodes} nodes: edge codes need 0 <= num_nodes <= {MAX_NODES_FOR_EDGE_CODES}")
+  for name, indices in (("sender", senders), ("receiver", receivers)):
+    if indices.size and (indices.min() < 0 or indices.max() >= num_nodes):
+      raise ValueError(f"{name} indices must be in [0, {num_nodes}), got [{indices.min()}, {indices.max()}]")
+  return senders.astype(np.uint64) * np.uint64(num_nodes) + receivers.astype(np.uint64)
 
 
 def reverse_is_missing(senders: np.ndarray, receivers: np.ndarray, num_nodes: int) -> np.ndarray:
@@ -220,6 +231,10 @@ def longest_incident_edges(vertices: np.ndarray, faces: np.ndarray) -> np.ndarra
     faces: Vertex indices [num_faces, 3].
   """
   senders, receivers = faces_to_edges(faces)
+  # CHORD DISTANCE (straight line through the Earth), as the encoder's radius query (mesh_connectivity.
+  # get_points_to_mesh_edges, a k-d tree in Earth-centred coordinates) and the triangles themselves: the two must use
+  # the same metric. Using geodesic distances instead (planned) means changing both; at the mesh sizes in use the chord
+  # is shorter than the geodesic by about d³ / (24 R²): 0.0003 % at 120 km.
   lengths = np.linalg.norm(vertices[senders] - vertices[receivers], axis=-1)
   longest = np.zeros(len(vertices), dtype=lengths.dtype)
   # Every edge counts for both its vertices (each edge appears in both directions, so one side would do; both are

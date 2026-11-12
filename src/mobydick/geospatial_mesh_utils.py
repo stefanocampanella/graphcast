@@ -327,6 +327,11 @@ class PointRefinementField(StereoMeshSizeField):
     projection_crs = CoordinateReferenceSystem.from_osr(projection)
     if not cartesian_crs.IsSame(projection_crs):
       x = get_transform(projection_crs, cartesian_crs)(np.asarray(x))
+    # CHORD DISTANCE (straight line through the Earth), not geodesic. A chord of geodesic length d on a sphere of
+    # radius R is shorter by about d³ / (24 R²): 0.003 % at 100 km, 0.08 % at 500 km, beyond which every refinement in
+    # the configs has reached its base size ((10 km - 250 m) / 0.02 = 490 km; (120 km - 3 km) / 0.3 = 390 km). The
+    # ellipsoid changes this by less (flattening 1/298). The geodesic (pyproj.Geod.inv) would cost a call per point
+    # and refinement point for no visible difference. See also mesh_graph.longest_incident_edges.
     distance = np.min(np.linalg.norm(np.asarray(x)[:, None, :3] - self.points[None], axis=-1), axis=1)
     return self.size + self.growth * distance
 
@@ -354,11 +359,11 @@ FieldsRegistry = {
 class CompositeMeshSizeField(MinimumField):
   """The minimum of the fields of a config, by name (`fields`: each is also written as a view of the mesh)."""
 
-  def __init__(self, fields_config: Iterable[FieldConfig], prefix: pathlib.Path | None = None):
-    """Build each field from its validated settings (mesh_config); file paths are relative to prefix, if given."""
+  def __init__(self, fields_config: Iterable[FieldConfig]):
+    """Build each field from its validated settings (mesh_config)."""
     fields = {}
     for config in fields_config:
-      arguments = field_arguments(config, prefix)
+      arguments = field_arguments(config)
       logger.info("Creating field %s with config %s.", config.name, arguments)
       fields[config.name] = FieldsRegistry[config.name](**arguments)
     self.fields = fields
@@ -414,10 +419,12 @@ def read_mesh(
   # Flat arrays of size 2 * num_lines.
   boundary_node_tags = np.concatenate(boundary_node_tags) if boundary_node_tags else np.empty((0,), dtype=int)
 
-  # Meshes produced with seamsh contain nodes that belong to no triangle: the outlines of islands smaller than the
-  # mesh size (they survive the coastline coarsening, but gmsh triangulates the sea over them, so they are not holes).
-  # 743 of 34,750 nodes at 120 km (632 islands of 1-3 nodes, up to ~100 km across), 655 of 181,980 at 50 km (Nov 2026).
-  # Here we remove them: the mesh is valid only if all nodes are used by at least one element.
+  # Meshes produced with seamsh (fork https://github.com/stefanocampanella/seamsh, branch develop at f1ab87d, checked
+  # on 11 Nov 2026) contain nodes that belong to no triangle: the outlines of islands smaller than the mesh size (they
+  # survive the coastline coarsening, but gmsh triangulates the sea over them, so they are not holes). 743 of 34,750
+  # nodes at 120 km (632 islands of 1-3 nodes, up to ~100 km across), 655 of 181,980 at 50 km. The model needs a mesh
+  # whose every node is in a triangle (a node in none would be in no edge), so they are removed here; expected in
+  # seamsh meshes, hence logged as information, not as a warning. A later seamsh may not write them.
 
   # Get valid nodes, i.e., those belonging to a triangle by querying all triangular elements (type=2).
   triangle_tags, triangle_node_tags = gmsh.model.mesh.get_elements_by_type(2)
@@ -501,21 +508,15 @@ def load_domain(path: pathlib.Path, physical_name_field: str = "featurecla", cur
 
 def coarsen_boundaries(
   domain: seamsh.geometry.Domain,
-  mesh_size: float,
+  fields: Iterable[FieldConfig],
   x0: tuple[float, float] = (0.0, 0.0),
   x0_projection_name: CRSName = "stereographic",
-  fields: Iterable[FieldConfig] = (),
-  prefix: pathlib.Path | None = None,
 ):
-  """Creates a new Domain with the same projection and coarsened boundaries: resampled at the minimum of `mesh_size`
-  and `fields` (file paths relative to prefix), keeping the water reachable from x0 (see
-  mesh_config.CoarsenBoundariesConfig)."""
+  """Creates a new Domain with the same projection and coarsened boundaries: resampled at the minimum of `fields`,
+  keeping the water reachable from x0 (see mesh_config.CoarsenBoundariesConfig). A single uniform field gives exactly
+  the coarsening of the configs with one size (the minimum of one field is that field)."""
   x0_projection = CRSRegistry[x0_projection_name]
-  fields = list(fields)
-  # Without fields, exactly the uniform size used before fields were configurable (the meshes are reproducible).
-  size: StereoMeshSizeField = UniformField(mesh_size)
-  if fields:
-    size = MinimumField([size, CompositeMeshSizeField(fields, prefix=prefix)])
+  size = CompositeMeshSizeField(fields)
   return seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=size)
 
 

@@ -22,7 +22,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 
 - CLI (`src/mobydick/__init__.py`, click; every command first prints the banner `src/mobydick/assets/banner.txt` to
   stderr, on rank 0 only, `MOBYDICK_NO_BANNER=1` to silence it; `python -m mobydick` works too): `moby-dick train CONFIG.toml OUTPUT TRAIN_CKPT`,
-  `moby-dick make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `moby-dick compute-grid-basis MESH MASK OUTPUT.npz`
+  `moby-dick make-ocean-mesh CONFIG.toml OUTPUT.msh` (mesh from `configs/mesh/*.toml`; their paths are container
+  paths, as in the training configs: run it in the image with the data mounted, e.g. `apptainer exec --bind
+  data/geometry:/data/geometry moby-dick.sif python -m mobydick make-ocean-mesh configs/mesh/uniform_120km.toml
+  /data/geometry/uniform_120km.msh`; the `lambrechts*` configs also need the bathymetry at `/data/bathymetry`; the
+  coastline coarsening is the minimum of `[[coarsen_boundaries.fields]]`, like the mesh size of `[[fields]]`; there is
+  no `--data-path` since 12 Nov 2026), `moby-dick compute-grid-basis MESH MASK OUTPUT.npz`
   (draft: linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the
   decoder faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of
   another mesh for the planned interpolating decoder and hierarchical meshes; on a flat mesh it equals scipy's
@@ -100,7 +105,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (484 tests, ~4 min on a login node, CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (486 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
@@ -566,8 +571,7 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
   long: faster growth closes them again), and a mesh size of 1–3 km there growing 0.3 km per km to the base size, give
   one connected ocean with the Black Sea and Sea of Azov: at 120 km 34,449 used nodes with 3 km (34,007 today),
   34,621 with 1 km; at 50 km +849 nodes with 1 km; smallest angles unchanged (7.2° at 120 km, 15.0° at 50 km),
-  shortest edges 1.4 km / 0.9 km, meshing time unchanged. moby-dick's configs cannot express it yet:
-  `coarsen_boundaries.mesh_size` is one number and there is no size field refined around points. For the processor
+  shortest edges 1.4 km / 0.9 km, meshing time unchanged (now in the configs: see the bullet above). For the processor
   the Black Sea stays a separate basin: 47–61 hops from the Aegean through the strait elements, more than any
   `gnn_msg_steps`; what changes is that its ocean points get mesh vertices. A coarser coastline (30 km) with nine
   straits refined keeps every basin but lowers the smallest angle at 120 km to 2.5°: 10 km stays the better choice.

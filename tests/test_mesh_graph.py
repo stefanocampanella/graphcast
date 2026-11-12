@@ -117,6 +117,21 @@ def test_faces_to_edges_keeps_each_edge_once_with_a_flipped_face():
   assert edges[:2] == [(0, 1), (1, 2)]
 
 
+def test_directed_edge_codes_refuse_overflow_and_bad_indices():
+  """Edge codes are uint64 and one-to-one up to 2**32 nodes; more nodes, or indices outside [0, num_nodes), would wrap
+  around and merge different edges, so they are errors instead."""
+  codes = mesh_graph.directed_edge_codes(np.array([0, 2]), np.array([1, 0]), 3)
+  assert codes.dtype == np.uint64 and codes.tolist() == [1, 6]
+  big = mesh_graph.MAX_NODES_FOR_EDGE_CODES
+  assert mesh_graph.directed_edge_codes(np.array([big - 1]), np.array([big - 1]), big)[0] == np.uint64(2**64 - 1)
+  with pytest.raises(ValueError, match="num_nodes"):
+    mesh_graph.directed_edge_codes(np.array([0]), np.array([0]), big + 1)
+  with pytest.raises(ValueError, match="sender"):
+    mesh_graph.directed_edge_codes(np.array([-1]), np.array([0]), 3)
+  with pytest.raises(ValueError, match="receiver"):
+    mesh_graph.directed_edge_codes(np.array([0]), np.array([3]), 3)
+
+
 def _octahedron(radius: float = 1.0) -> mesh_graph.TriangleMesh:
   """Vertices at the poles and on the equator at longitudes 0, 90, 180, 270."""
   vertices = radius * np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], dtype=float)

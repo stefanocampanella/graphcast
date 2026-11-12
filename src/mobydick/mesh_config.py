@@ -14,7 +14,6 @@
 # limitations under the License.
 """Validated settings of the mesh generators (moby-dick make-ocean-mesh and make-icosahedral-mesh)."""
 
-import pathlib
 from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeFloat, NonNegativeInt, PositiveFloat, model_validator
@@ -41,7 +40,8 @@ class MesherConfig(ApplicationConfig):
 
 
 class DomainConfig(ApplicationConfig):
-  """Coastline shapefile bounding the ocean, its curve names and type; paths are relative to --data-path."""
+  """Coastline shapefile bounding the ocean, its curve names and type. Paths, here and in the fields, are used as they
+  are: container paths (e.g. /data/geometry/...), the data being mounted there, as in the training configs."""
 
   filepath: str
   physical_name_field: str = "featurecla"
@@ -51,27 +51,6 @@ class DomainConfig(ApplicationConfig):
   def check_shapefile(self) -> Self:
     if not self.filepath.endswith(".shp"):
       raise ValueError(f"domain.filepath must be a shapefile (.shp), got {self.filepath}")
-    return self
-
-
-class CoarsenBoundariesConfig(ApplicationConfig):
-  """Coarsening of the coastline (seamsh.geometry.coarsen_boundaries): the coastline is resampled at the minimum of
-  `mesh_size` and `fields`, and only the water reachable from `x0` is kept. The water spreads across a gap between two
-  shores only where the gap is wider than this size: straits narrower than it close, and the basins behind them are
-  lost (e.g. the Black Sea at 10 km), unless a field refines the size there."""
-
-  mesh_size: PositiveFloat = Field(description="Size the coastline is coarsened to, in meters")
-  fields: list["FieldConfig"] = Field(
-    default_factory=list, description="Further size fields (e.g. point_refinement at straits), combined by the minimum"
-  )
-  x0: tuple[float, float] = Field(default=(0.0, 0.0), description="A point inside the domain (the ocean)")
-  x0_projection: CRSName = "stereographic"
-
-  @model_validator(mode="after")
-  def check_field_names(self) -> Self:
-    names = [field.name for field in self.fields]
-    if duplicates := sorted({name for name in names if names.count(name) > 1}):
-      raise ValueError(f"Each coarsening field type may appear once, repeated: {duplicates}")
     return self
 
 
@@ -171,7 +150,30 @@ FieldConfig = Annotated[
 ]
 
 
-CoarsenBoundariesConfig.model_rebuild()
+def _check_unique_field_types(fields: list[FieldConfig], what: str) -> None:
+  """Each field type at most once: the fields are kept by type name (`CompositeMeshSizeField.fields`; for the mesh,
+  each is also written as a view named after it), so a second field of a type would silently replace the first."""
+  names = [field.name for field in fields]
+  if duplicates := sorted({name for name in names if names.count(name) > 1}):
+    raise ValueError(f"Each {what} field type may appear once, repeated: {duplicates}")
+
+
+class CoarsenBoundariesConfig(ApplicationConfig):
+  """Coarsening of the coastline (seamsh.geometry.coarsen_boundaries): the coastline is resampled at the minimum of
+  `fields`, and only the water reachable from `x0` is kept. The water spreads across a gap between two shores only
+  where the gap is wider than this size: straits narrower than it close, and the basins behind them are lost (e.g. the
+  Black Sea at 10 km), unless a field refines the size there."""
+
+  fields: list[FieldConfig] = Field(
+    min_length=1, description="Size fields (e.g. uniform 10 km, point_refinement at straits), combined by the minimum"
+  )
+  x0: tuple[float, float] = Field(default=(0.0, 0.0), description="A point inside the domain (the ocean)")
+  x0_projection: CRSName = "stereographic"
+
+  @model_validator(mode="after")
+  def check_field_names(self) -> Self:
+    _check_unique_field_types(self.fields, "coarsening")
+    return self
 
 
 class MeshGenerationConfig(ApplicationConfig):
@@ -189,11 +191,9 @@ class MeshGenerationConfig(ApplicationConfig):
 
   @model_validator(mode="after")
   def check_field_names(self) -> Self:
+    _check_unique_field_types(self.fields, "mesh")
     # Each field is also written as a view named after it.
-    names = [field.name for field in self.fields]
-    if duplicates := sorted({name for name in names if names.count(name) > 1}):
-      raise ValueError(f"Each field type may appear once, repeated: {duplicates}")
-    if self.view_tag_name in names:
+    if self.view_tag_name in [field.name for field in self.fields]:
       raise ValueError(f"view_tag_name {self.view_tag_name!r} is also the name of a field")
     return self
 
@@ -208,9 +208,6 @@ class IcosahedralMeshConfig(ApplicationConfig):
   view_tag_name: str = Field(default="MeshSize", description="Name of the view holding the mesh size at the nodes")
 
 
-def field_arguments(field: BaseModel, prefix: pathlib.Path | None = None) -> dict[str, Any]:
-  """Keyword arguments of a field's class (geospatial_mesh_utils.FieldsRegistry), with filepath under prefix."""
-  arguments = field.model_dump(exclude={"name"})
-  if prefix is not None and "filepath" in arguments:
-    arguments["filepath"] = prefix / arguments["filepath"]
-  return arguments
+def field_arguments(field: BaseModel) -> dict[str, Any]:
+  """Keyword arguments of a field's class (geospatial_mesh_utils.FieldsRegistry)."""
+  return field.model_dump(exclude={"name"})

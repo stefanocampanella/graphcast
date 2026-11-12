@@ -29,12 +29,14 @@ license = """
 smoothness = 0.3
 
 [domain]
-filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
+filepath = "/data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
 
-[coarsen_boundaries]
-mesh_size = 10_000.0
+# Coastline coarsening: the minimum of the fields.
+[[coarsen_boundaries.fields]]
+name = "uniform"
+value = 10_000.0
 
 # The Bosporus (narrowest ~1.1 km in this coastline), the Dardanelles (~2.4 km) and the Kerch Strait (~2.5 km) close at
 # a 10 km coarsening, and with them the Black Sea and the Sea of Azov. 250 m at their centres, growing by 0.02 m per m
@@ -49,7 +51,7 @@ growth = 0.02
 # and 30 for the shore proximity criterium. However, this would result in a mesh too fine for our purposes.
 [[fields]]
 name = "shore_proximity"
-filepath = "data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
+filepath = "/data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
 physical_name_field = "featurecla"
 curve_type = "bspline"
 sampling = 5_000.0
@@ -60,7 +62,7 @@ size_max = 200_000.0
 
 [[fields]]
 name = "bathymetry"
-filepath = "data/dataset/glorys12_static_res-0p0625_levels-10"
+filepath = "/data/bathymetry/glorys12_static_res-0p0625_levels-10"
 var_name = "deptho"
 q_low = 0.1
 q_high = 0.9
@@ -73,7 +75,7 @@ size_max = 500_000.0
 #
 # [[fields]]
 # name = "bathymetry_hessian"
-# filepath = "data/dataset/glorys12_static_res-0p0625_levels-10.zip"
+# filepath = "/data/bathymetry/glorys12_static_res-0p0625_levels-10.zip"
 # var_name = "deptho"
 # q_low = 0.1
 # q_high = 0.9
