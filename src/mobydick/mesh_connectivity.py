@@ -97,9 +97,8 @@ def radius_query_indices(
   valid_grid_senders, mesh_receivers = get_points_to_mesh_edges(
     senders_position=valid_grid_positions, receivers_mesh=mesh, radius=radius, workers=workers
   )
-  _, masked_to_unmasked_fn = get_masking_indices_fns(mask)
-  # noinspection PyTypeChecker
-  grid_senders: np.ndarray = masked_to_unmasked_fn(valid_grid_senders)
+  # Index among the unmasked points -> index in the flattened grid (vectorized; millions of edges at 25-50 km).
+  grid_senders = np.flatnonzero(mask)[valid_grid_senders]
   return grid_senders, mesh_receivers
 
 
@@ -167,9 +166,8 @@ def get_mesh_to_grid_edges(
   mesh_senders, valid_grid_receivers = get_mesh_to_points_edges(
     senders_mesh=mesh, receivers_position=valid_grid_positions
   )
-  _, masked_to_unmasked_fn = get_masking_indices_fns(grid_mask)
-  # noinspection PyTypeChecker
-  grid_receivers: np.ndarray = masked_to_unmasked_fn(valid_grid_receivers)
+  # Index among the unmasked points -> index in the flattened grid (vectorized).
+  grid_receivers = np.flatnonzero(grid_mask)[valid_grid_receivers]
 
   return mesh_senders, grid_receivers
 

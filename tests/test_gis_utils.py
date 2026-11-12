@@ -90,6 +90,8 @@ def test_lat_lon_helpers_use_the_lat_lon_order(unit_sphere):
 
 
 def test_transform_rejects_wrong_coordinates():
+  """Coordinates of the wrong dimension (3 for a 2-axis system) or of the wrong type (a list, not an array) fail with a
+  clear error instead of transforming garbage."""
   to_cartesian = get_transform(equirectangular_crs, cartesian_crs)
   with pytest.raises(AssertionError, match="Expected 2 coordinates"):
     to_cartesian(np.zeros((4, 3)))

@@ -1518,3 +1518,15 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `lambrechts` meshes lack the Copernicus attribution, and data attributions and a weights license are missing.
   Everything else is permissive or dynamically linked LGPL. Missing metadata: namex and transformer_engine ship
   Apache-2.0 texts; nsys-jax (NVIDIA, base image) has none.
+
+## 2026-11-12 13:00: fixes from the code review of PR #7
+
+- **Request:** fix the findings of `/code-review high 7` except the checkpoint warning (no production run yet).
+- **Changes:** graph-statistics' encoder radius described as the model's (longest triangle edge); JSON written before
+  the tables, with NaN and infinities as null (strict JSON); tables print "-" for a processor without components and
+  for graphs without receivers; volume-length histogram over [-1, 1] (inverted faces counted); `faces_to_edges` keeps
+  each directed edge once (a flipped face gave an edge and its reverse twice), with shared helpers
+  `directed_edge_codes` / `reverse_is_missing` also used by the statistics, which now count duplicate edges;
+  vectorized index mapping in `mesh_connectivity`; `CompositeMeshSizeField` derives from `MinimumField`; a missing test
+  docstring; no cluster name in `icosahedral_6.toml`. Edge counts unchanged for the meshes in use (icosahedral M6
+  327,660; 120 km 199,720). 484 tests pass.

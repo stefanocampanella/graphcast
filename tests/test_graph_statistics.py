@@ -16,17 +16,20 @@
 coverage, edge lengths, triangle quality, the CLI and its output."""
 
 import dataclasses
+import io
 import json
+from typing import Any
 
 import haiku as hk
 import networkx as nx
 import numpy as np
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from mobydick import icosahedral_mesh
 from mobydick.dataloader_utils import Grid
-from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, structure
+from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, report, structure
 from mobydick.leviathan.model import Leviathan
 from mobydick.mesh_graph import longest_incident_edges
 
@@ -39,7 +42,9 @@ def _grid(ocean_below: float = 70.0) -> Grid:
 def _graph(senders, receivers, num_senders, num_receivers, kind="encoder"):
   senders_nodes = graphs.NodeSet("a", np.zeros(num_senders), np.zeros(num_senders))
   receiver_nodes = senders_nodes if kind == "processor" else graphs.NodeSet("b", *np.zeros((2, num_receivers)))
-  return graphs.Graph("g", kind, np.array(senders), np.array(receivers), senders_nodes, receiver_nodes)
+  return graphs.Graph(
+    "g", kind, np.array(senders, dtype=int), np.array(receivers, dtype=int), senders_nodes, receiver_nodes
+  )
 
 
 def _quantities(entry: dict, path: str = "") -> list[str]:
@@ -168,8 +173,52 @@ def test_processor_statistics_per_component():
   assert [c["diameter"]["value"] for c in components] == [3, 1]
   # Degree 0: node 7; 1: the path's ends; 2: the triangle and the path's middle.
   assert stats["out_degree"]["nodes_by_degree"] == [1, 2, 5]
+  assert stats["duplicate_edges"]["value"] == 0
+  duplicated = _graph((*senders, 0), (*receivers, 1), 8, 8, kind="processor")
+  assert graph_statistics_duplicates(duplicated) == 1
   one_way = _graph(senders[:-1], receivers[:-1], 8, 8, kind="processor")
   assert structure.processor_statistics(one_way, 0, np.random.default_rng(0))["edges_without_reverse"]["value"] == 1
+
+
+def graph_statistics_duplicates(graph) -> int:
+  return structure.processor_statistics(graph, 0, np.random.default_rng(0))["duplicate_edges"]["value"]
+
+
+def test_summary_tables_handle_graphs_without_paths_or_receivers():
+  """A processor whose nodes are all isolated (no component to measure paths on) and an encoder with no receiver
+  nodes print "-" instead of failing after the statistics were computed."""
+  processor = _graph([], [], 3, 3, kind="processor")
+  encoder = _graph([], [], 4, 0)
+  processor_stats = structure.processor_statistics(processor, 0, np.random.default_rng(0))
+  assert processor_stats["components"]["value"] == []
+  stats: dict[str, Any] = {
+    "g": {"kind": "processor", **processor_stats},
+    "e": {"kind": "encoder", **structure.encoder_statistics(encoder)},
+  }
+  buffer = io.StringIO()
+  console = Console(file=buffer, width=200)
+  console.print(report.graphs_table(stats))
+  console.print(report.processors_table(stats))
+  assert "-" in buffer.getvalue()
+
+
+def test_json_output_has_no_nan_or_infinity():
+  """JSON has no NaN or Infinity: they are written as null (e.g. the summary of no values, the aspect ratio of a
+  degenerate triangle), so strict parsers read the output."""
+  value = {"a": float("nan"), "b": [1.0, float("inf"), {"c": -float("inf")}], "d": 2}
+  assert cli.finite_or_null(value) == {"a": None, "b": [1.0, None, {"c": None}], "d": 2}
+
+
+def test_volume_length_histogram_counts_inverted_faces():
+  """The volume-length histogram spans [-1, 1], so inverted faces (negative values) are counted: its counts add up to
+  the faces."""
+  mesh = icosahedral_mesh.get_multi_mesh_data(1).mesh_graph
+  faces = np.asarray(mesh.faces).copy()
+  faces[:3] = faces[:3, ::-1]  # Three inverted faces.
+  flipped = dataclasses.replace(mesh, faces=faces)
+  triangles = geometry.triangle_statistics(flipped, 20)
+  assert triangles["inverted"]["value"] == 3
+  assert sum(triangles["volume_length"]["histogram"]["counts"]) == len(faces)
 
 
 def test_encoder_degrees_count_nodes_without_edges():
@@ -256,7 +305,11 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   assert result.exit_code == 0, result.output
   for title in ("Graphs", "Edge lengths", "Degrees", "Processors", "Coverage", "Triangle quality of mesh_0"):
     assert title in result.output
-  stats = json.loads(output.read_text())
+
+  def reject(constant):
+    raise ValueError(f"{constant} is not JSON")
+
+  stats = json.loads(output.read_text(), parse_constant=reject)
   assert list(stats["graphs"]) == ["grid_to_mesh_0", "mesh_0", "mesh_0_to_grid"]
   for name, entry in [*stats["graphs"].items(), *(("coverage", c) for c in stats["coverage"])]:
     assert _quantities(entry) == [], name

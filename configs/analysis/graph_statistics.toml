@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # Settings of moby-dick graph-statistics (mobydick.graph_statistics.GraphStatisticsConfig).
-# Encoder radius as a fraction of the mesh size: keep equal to model.radius_query_fraction_edge_length.
+# Encoder radius as a fraction of the longest triangle edge at each mesh vertex: keep equal to the training config's
+# model.radius_query_fraction_edge_length.
 radius_query_fraction_edge_length = 0.6
 # Shortest paths of the processors from this many sampled nodes per connected component (0: all nodes, exact but only
 # feasible for small graphs: one breadth-first search per node).

@@ -27,7 +27,9 @@ from mobydick.graph_statistics.quantities import SUMMARY_KEYS
 
 
 def _format(value: Any) -> str:
-  """Integers with thousands separators, floats with 4 significant digits."""
+  """Integers with thousands separators, floats with 4 significant digits, missing values as "-"."""
+  if value is None:
+    return "-"
   if isinstance(value, bool):
     return "yes" if value else "no"
   if isinstance(value, int):
@@ -62,7 +64,8 @@ def graphs_table(graphs: dict[str, Any]) -> Table:
     else:
       senders, receivers = stats["sender_nodes"]["value"], stats["receiver_nodes"]["value"]
     edges = stats["edges"]["value"]
-    table.add_row(name, stats["kind"], _format(senders), _format(receivers), _format(edges), f"{edges / receivers:.2f}")
+    per_receiver = f"{edges / receivers:.2f}" if receivers else "-"
+    table.add_row(name, stats["kind"], _format(senders), _format(receivers), _format(edges), per_receiver)
   return table
 
 
@@ -83,13 +86,19 @@ def processors_table(graphs: dict[str, Any]) -> Table:
   for name, stats in graphs.items():
     if stats["kind"] != "processor":
       continue
+    structure = [
+      _format(stats[key]["value"])
+      for key in ("density", "edges_without_reverse", "connected_components", "isolated_nodes")
+    ]
+    if not stats["components"]["value"]:  # No component of more than one node: no paths.
+      table.add_row(name, *structure, *("-",) * 6)
+      continue
     largest = stats["components"]["value"][0]
     path = largest["shortest_path_length"]
     bound = "" if largest["diameter_exact"]["value"] else " (≥)"
     table.add_row(
       name,
-      *(_format(stats[key]["value"]) for key in ("density", "edges_without_reverse")),
-      *(_format(stats[key]["value"]) for key in ("connected_components", "isolated_nodes")),
+      *structure,
       _format(largest["nodes"]["value"]),
       f"{largest['diameter']['value']}{bound}",
       _format(largest["sources"]["value"]),

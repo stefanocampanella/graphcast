@@ -111,7 +111,8 @@ def triangle_statistics(mesh: MeshGraph, bins: int) -> dict[str, Any]:
   quality = triangle_quality(np.asarray(mesh.vertices, np.float64), np.asarray(mesh.faces))
   histogram_bins = {
     "radius_ratio": np.linspace(0.0, 1.0, bins + 1),
-    "volume_length": np.linspace(0.0, 1.0, bins + 1),
+    # Negative for inverted faces: over [-1, 1], so that the counts add up to the faces.
+    "volume_length": np.linspace(-1.0, 1.0, 2 * bins + 1),
     "angle": np.linspace(0.0, 180.0, bins + 1),
   }
   result = {

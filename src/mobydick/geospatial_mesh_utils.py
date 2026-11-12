@@ -334,11 +334,11 @@ class PointRefinementField(StereoMeshSizeField):
 class MinimumField(StereoMeshSizeField):
   """The minimum of several fields."""
 
-  def __init__(self, fields: Iterable[StereoMeshSizeField]):
-    self.fields = list(fields)
+  def __init__(self, components: Iterable[StereoMeshSizeField]):
+    self.components = list(components)
 
   def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
-    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields])
+    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.components])
 
 
 FieldName = Literal["uniform", "shore_proximity", "bathymetry", "bathymetry_hessian", "point_refinement"]
@@ -351,8 +351,8 @@ FieldsRegistry = {
 }
 
 
-class CompositeMeshSizeField(StereoMeshSizeField):
-  """Stereographic mesh size field which takes the minimum of other fields."""
+class CompositeMeshSizeField(MinimumField):
+  """The minimum of the fields of a config, by name (`fields`: each is also written as a view of the mesh)."""
 
   def __init__(self, fields_config: Iterable[FieldConfig], prefix: pathlib.Path | None = None):
     """Build each field from its validated settings (mesh_config); file paths are relative to prefix, if given."""
@@ -362,9 +362,7 @@ class CompositeMeshSizeField(StereoMeshSizeField):
       logger.info("Creating field %s with config %s.", config.name, arguments)
       fields[config.name] = FieldsRegistry[config.name](**arguments)
     self.fields = fields
-
-  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
-    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
+    super().__init__(fields.values())
 
 
 # TODO: update implementation to save boundary elements into TriangleMesh, and read reference system from mesh file and

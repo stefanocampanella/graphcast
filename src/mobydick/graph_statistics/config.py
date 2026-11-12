@@ -23,7 +23,9 @@ class GraphStatisticsConfig(BaseModel):
   model_config = ConfigDict(extra="forbid")
 
   radius_query_fraction_edge_length: PositiveFloat = Field(
-    default=0.6, description="Encoder radius as a fraction of the mesh size, as model.radius_query_fraction_edge_length"
+    default=0.6,
+    description="Encoder radius as a fraction of the longest triangle edge at each mesh vertex, as the model's "
+    "radius_query_fraction_edge_length: keep it equal to the training config's",
   )
   num_sources: NonNegativeInt = Field(
     default=32,
@@ -33,5 +35,7 @@ class GraphStatisticsConfig(BaseModel):
   seed: int = Field(default=0, description="Seed of the sampled nodes")
   length_bin_width_km: PositiveFloat = Field(default=5.0, description="Width of the edge length histogram bins")
   quality_bins: PositiveInt = Field(
-    default=20, description="Bins of the triangle quality histograms (over [0, 1], angles over [0°, 180°])"
+    default=20,
+    description="Bins of the triangle quality histograms per unit (radius ratio over [0, 1], volume-length over "
+    "[-1, 1] with twice as many, angles over [0°, 180°])",
   )

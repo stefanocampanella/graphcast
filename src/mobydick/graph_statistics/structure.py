@@ -34,6 +34,7 @@ import numpy as np
 
 from mobydick.graph_statistics.graphs import Graph
 from mobydick.graph_statistics.quantities import degree_summary, described, fraction, summarize
+from mobydick.mesh_graph import directed_edge_codes, reverse_is_missing
 
 
 def node_counts(graph: Graph) -> dict[str, Any]:
@@ -120,11 +121,7 @@ def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generato
   num_nodes = graph.sender_nodes.size
   num_edges = len(graph.senders)
   degree = np.bincount(graph.senders, minlength=num_nodes)
-  # Edges whose reverse is missing, as in `mesh_graph.faces_to_edges`: each directed edge (s, r) is encoded as the
-  # integer s * num_nodes + r (one-to-one for node indices below num_nodes; int64 against overflow), `backward` holds
-  # the code of each edge's reverse, and `np.isin` finds the reverses absent from `forward` in one vectorized step.
-  forward = graph.senders.astype(np.int64) * num_nodes + graph.receivers
-  backward = graph.receivers.astype(np.int64) * num_nodes + graph.senders
+  codes = directed_edge_codes(graph.senders, graph.receivers, num_nodes)
   undirected = nx.Graph()
   undirected.add_nodes_from(range(num_nodes))
   undirected.add_edges_from(zip(graph.senders.tolist(), graph.receivers.tolist(), strict=True))
@@ -139,7 +136,12 @@ def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generato
     "edges_without_reverse": described(
       "Directed edges whose reverse is missing (0 since mesh_graph.faces_to_edges adds the reverses of boundary "
       "edges, Nov 2026)",
-      int((~np.isin(forward, backward)).sum()),
+      int(reverse_is_missing(graph.senders, graph.receivers, num_nodes).sum()),
+    ),
+    "duplicate_edges": described(
+      "Directed edges that repeat an earlier one (0 since mesh_graph.faces_to_edges keeps each edge once, Nov 2026; "
+      "a duplicate counts twice in the sum of messages)",
+      int(len(codes) - len(np.unique(codes))),
     ),
     "out_degree": described("Edges sent per node", degree_summary(degree)),
     "connected_components": described("Connected components of the undirected graph", len(components)),

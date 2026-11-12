@@ -107,6 +107,16 @@ def test_longest_incident_edges():
   np.testing.assert_allclose(longest, [4.0, 5.0, 5.0, 0.0])
 
 
+def test_faces_to_edges_keeps_each_edge_once_with_a_flipped_face():
+  """Two faces running their shared edge in the same direction (a flipped face) give it once and its reverse once,
+  not twice each, which would make messages across it count double; edge order is that of first appearance."""
+  senders, receivers = mesh_graph.faces_to_edges(np.array([[0, 1, 2], [0, 1, 3]]))
+  edges = list(zip(senders.tolist(), receivers.tolist(), strict=True))
+  assert len(edges) == len(set(edges)) == 10
+  assert all((b, a) in edges for a, b in edges)
+  assert edges[:2] == [(0, 1), (1, 2)]
+
+
 def _octahedron(radius: float = 1.0) -> mesh_graph.TriangleMesh:
   """Vertices at the poles and on the equator at longitudes 0, 90, 180, 270."""
   vertices = radius * np.array([[0, 0, 1], [1, 0, 0], [0, 1, 0], [-1, 0, 0], [0, -1, 0], [0, 0, -1]], dtype=float)

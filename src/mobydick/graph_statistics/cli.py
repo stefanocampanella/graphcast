@@ -17,6 +17,7 @@
 import contextlib
 import json
 import logging
+import math
 import pathlib
 import time
 from collections.abc import Generator, Sequence
@@ -37,6 +38,18 @@ from mobydick.graph_statistics.report import print_summary
 from mobydick.mesh_graph import MeshData
 
 logger = logging.getLogger(__name__)
+
+
+def finite_or_null(value: Any) -> Any:
+  """`value` with NaN and infinite floats replaced by None (null in JSON, which has no NaN or Infinity): e.g. the
+  summary of no values, or the aspect ratio of a degenerate triangle."""
+  if isinstance(value, dict):
+    return {key: finite_or_null(item) for key, item in value.items()}
+  if isinstance(value, list | tuple):
+    return [finite_or_null(item) for item in value]
+  if isinstance(value, float) and not math.isfinite(value):
+    return None
+  return value
 
 
 @contextlib.contextmanager
@@ -124,8 +137,9 @@ def graph_statistics_command(
     meshes = [read_mesh_data(path) for path in mesh_paths]
     grid = get_grid(mask_path)
   results = compute(meshes, grid, config)
-  print_summary(results, Console())
+  # The JSON first: the results are kept even if printing fails.
   output_path.parent.mkdir(parents=True, exist_ok=True)
   output = {"meshes": [str(path) for path in mesh_paths], "mask": str(mask_path), "settings": config.model_dump()}
-  output_path.write_text(json.dumps({**output, **results}, indent=1))
+  output_path.write_text(json.dumps(finite_or_null({**output, **results}), indent=1, allow_nan=False))
   logger.info(f"Wrote {output_path}")
+  print_summary(results, Console())
