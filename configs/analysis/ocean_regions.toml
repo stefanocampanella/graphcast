@@ -2,16 +2,133 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
 # SPDX-License-Identifier: CC-BY-NC-SA-4.0
 
-# Regions of moby-dick graph-statistics (configs/analysis/graph_statistics.toml reads them through region_files),
-# adapted from the IHO Sea Areas:
+# Ocean regions for the basin connectivity of moby-dick graph-statistics (mobydick.graph_statistics.RegionsConfig),
+# passed to the command next to its settings (configs/analysis/graph_statistics.toml names the pairs it measures).
+#
+# Each [[regions]] table is the set of grid nodes inside any of its polygons of (longitude, latitude) vertices in
+# degrees (longitudes in [-180, 180], not crossing the antimeridian; straight edges on a longitude-latitude map). The
+# polygons follow the coasts loosely, over land where possible: land has no grid nodes. Regions may overlap (the Aegean
+# is part of the Mediterranean). The comment above each region says where it comes from.
+#
+# This file is partly based on the IHO Sea Areas:
 #   Flanders Marine Institute (2018). IHO Sea Areas, version 3. Available online at https://www.marineregions.org/,
 #   https://doi.org/10.14284/323. Licensed under CC BY-NC-SA 4.0 (https://creativecommons.org/licenses/by-nc-sa/4.0/).
-# This file is licensed under the same terms (non-commercial, share-alike). Changes made to the IHO areas (13 Nov
-# 2026): each area grown by 0.3° to take in the coastal grid points of the 0.25° training mask outside its detailed
-# coastline, the other IHO areas (the seas across the straits) removed, simplified to 2 % of the square root of its
-# area (at least 0.12°), vertices rounded to 0.01°; ocean regions near a strait are an IHO area within a box; the Gulf
-# of Boothia is clipped as described below, and the Bohol Sea (drawn, in graph_statistics.toml) is removed from the
-# Sulu Sea.
+# The regions marked "IHO area" are adapted from it (13 Nov 2026): each area grown by 0.3° to take in the coastal grid
+# points of the 0.25° training mask outside its detailed coastline, the other IHO areas (the seas across the straits)
+# removed, simplified to 2 % of the square root of its area (at least 0.12°), vertices rounded to 0.01°; ocean regions
+# near a strait are an IHO area within a box; the Gulf of Boothia is clipped as described there, and the Bohol Sea is
+# removed from the Sulu Sea. The other regions are drawn after the documented position of straits and coasts. The file
+# as a whole is licensed under CC BY-NC-SA 4.0 (non-commercial, share-alike), the license of its IHO-based part.
+
+# Regions drawn on 13 Nov 2026 for the first basin connections.
+# The Mediterranean without the Sea of Marmara and the Black Sea (east boundary through the Gallipoli peninsula and
+# Anatolia), west of the Strait of Gibraltar (5.5° W) and without the Bay of Biscay.
+[[regions]]
+name = "Mediterranean Sea"
+polygons = [[
+  [-5.5, 30.0], [36.8, 30.0], [36.8, 37.2], [27.0, 39.6], [26.3, 40.25], [25.9, 41.4], [14.0, 47.0], [3.0, 44.0],
+  [-1.0, 42.0], [-5.5, 37.5],
+]]
+
+[[regions]]
+name = "Gulf of Cadiz and off Portugal"
+polygons = [[[-15.0, 33.0], [-6.2, 33.0], [-6.2, 39.5], [-15.0, 39.5]]]
+
+# The Black Sea north of the Bosporus, without the Sea of Azov (north of the Kerch Strait, 45.3° N east of 34.7° E).
+[[regions]]
+name = "Black Sea"
+polygons = [[
+  [27.3, 42.6], [28.0, 41.3], [29.15, 41.25], [29.3, 41.05], [33.0, 40.9], [42.0, 40.7], [42.0, 45.3], [34.7, 45.3],
+  [34.7, 46.9], [27.3, 46.9],
+]]
+
+[[regions]]
+name = "Sea of Azov"
+polygons = [[[34.7, 45.4], [39.6, 45.4], [39.6, 47.5], [34.7, 47.5]]]
+
+[[regions]]
+name = "Aegean Sea"
+polygons = [[[22.5, 36.3], [26.0, 36.3], [26.0, 40.0], [24.0, 41.0], [22.5, 41.0]]]
+
+# North of the Bab-el-Mandeb (12.6° N), with the Gulfs of Suez and Aqaba.
+[[regions]]
+name = "Red Sea"
+polygons = [[[32.0, 12.6], [43.45, 12.6], [43.45, 30.5], [32.0, 30.5]]]
+
+[[regions]]
+name = "Gulf of Aden"
+polygons = [[[44.5, 10.5], [51.0, 10.5], [51.0, 14.5], [44.5, 14.5]]]
+
+# West of the Strait of Hormuz (56.2° E).
+[[regions]]
+name = "Persian Gulf"
+polygons = [[[47.5, 23.0], [56.2, 23.0], [56.2, 30.5], [47.5, 30.5]]]
+
+[[regions]]
+name = "Gulf of Oman"
+polygons = [[[57.0, 22.0], [61.5, 22.0], [61.5, 25.5], [57.0, 25.5]]]
+
+# East of the Danish straits (12.9° E), with the Gulfs of Bothnia, Finland and Riga; the north-west boundary runs over
+# Sweden.
+[[regions]]
+name = "Baltic Sea"
+polygons = [[[12.9, 53.5], [30.5, 53.5], [30.5, 66.0], [20.5, 66.0], [16.5, 60.5], [12.9, 57.5]]]
+
+[[regions]]
+name = "North Sea"
+polygons = [[[-1.0, 53.0], [7.0, 53.0], [7.0, 58.0], [-1.0, 58.0]]]
+
+# North of the line from Cabo San Lucas to Mazatlán (23.05° N); the west boundary runs along the spine of Baja
+# California, so the Pacific coast of the peninsula is outside.
+[[regions]]
+name = "Gulf of California"
+polygons = [[
+  [-109.6, 23.05], [-104.5, 23.05], [-104.5, 25.0], [-110.0, 32.5], [-115.2, 32.5], [-115.3, 30.0], [-113.6, 28.0],
+  [-111.8, 25.8], [-110.2, 23.9],
+]]
+
+[[regions]]
+name = "Eastern tropical Pacific off the Gulf of California"
+polygons = [[[-112.0, 17.0], [-106.0, 17.0], [-106.0, 22.0], [-112.0, 22.0]]]
+
+# With James Bay, without Foxe Basin and Hudson Strait.
+[[regions]]
+name = "Hudson Bay"
+polygons = [[[-95.5, 51.0], [-76.5, 51.0], [-76.5, 62.3], [-80.0, 63.6], [-95.5, 64.0]]]
+
+[[regions]]
+name = "Labrador Sea"
+polygons = [[[-60.0, 54.0], [-52.0, 54.0], [-52.0, 61.0], [-60.0, 61.0]]]
+
+
+# drawn: Melville Peninsula (west), Baffin Island (north, east), Southampton Island and Foxe Peninsula (south, 65° N),
+# without the Fury and Hecla Strait.
+[[regions]]
+name = "Foxe Basin"
+polygons = [
+  [[-86.5, 65.0], [-72.0, 65.0], [-72.0, 70.6], [-81.5, 70.6], [-81.5, 69.6], [-84.5, 68.5], [-86.5, 66.8]],
+]
+
+# drawn: east of the Rion Strait (21.8° E), without the Saronic Gulf east of the Isthmus of Corinth.
+[[regions]]
+name = "Gulf of Corinth"
+polygons = [
+  [[21.8, 38.0], [23.25, 38.05], [23.25, 38.5], [21.8, 38.5]],
+]
+
+# drawn: south of the Tablazo Strait (10.5° N).
+[[regions]]
+name = "Lake Maracaibo"
+polygons = [
+  [[-72.3, 8.9], [-70.8, 8.9], [-70.8, 10.5], [-72.3, 10.5]],
+]
+
+# drawn: between Negros and the Zamboanga Peninsula (123° E) and the Surigao Strait (125.45° E).
+[[regions]]
+name = "Bohol Sea"
+polygons = [
+  [[123.0, 8.15], [125.45, 8.15], [125.45, 10.1], [123.0, 10.1]],
+]
 
 # IHO area Sea of Marmara.
 [[regions]]

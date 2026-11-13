@@ -334,15 +334,20 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
       "num_sources": 8,
       "length_bin_width_km": 100.0,
       "squashed": {"num_sources": 16, "max_steps_to_connect": 8},
-      "regions": [
-        {"name": "west", "polygons": [[[-180.0, -90.0], [0.0, -90.0], [0.0, 90.0], [-180.0, 90.0]]]},
-        {"name": "east", "polygons": [[[0.0, -90.0], [180.0, -90.0], [180.0, 90.0], [0.0, 90.0]]]},
-      ],
       "basin_connections": [{"basin": "west", "ocean": "east"}],
     }
   )
+  regions_path = write_config(
+    {
+      "regions": [
+        {"name": "west", "polygons": [[[-180.0, -90.0], [0.0, -90.0], [0.0, 90.0], [-180.0, 90.0]]]},
+        {"name": "east", "polygons": [[[0.0, -90.0], [180.0, -90.0], [180.0, 90.0], [0.0, 90.0]]]},
+      ]
+    },
+    name="regions.toml",
+  )
   output = tmp_path / "stats.json"
-  arguments = [str(config_path), str(output), "--log-level", "warning"]
+  arguments = [str(config_path), str(regions_path), str(output), "--log-level", "warning"]
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code == 0, result.output
   titles = [
@@ -635,38 +640,41 @@ def test_nodes_in_both_regions_count_for_the_basin():
     assert overlapping[key] == separate[key]
 
 
-def test_basin_connections_refer_to_defined_regions():
-  """A basin connection naming an undefined region, two regions with the same name and a vertex outside the
-  longitude and latitude ranges are rejected when the settings are read."""
+def test_regions_file_is_validated(tmp_path, write_config):
+  """The regions file holds only [[regions]], with unique names and vertices within the longitude and latitude
+  ranges, and every basin connection of the settings names regions of it: otherwise reading fails before any
+  computation."""
   square = [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]
-  with pytest.raises(ValueError, match="undefined region 'b'"):
-    _config([1], regions=[{"name": "a", "polygons": square}], basin_connections=[{"basin": "a", "ocean": "b"}])
-  with pytest.raises(ValueError, match="unique"):
-    _config([1], regions=[{"name": "a", "polygons": square}, {"name": "a", "polygons": square}])
-  with pytest.raises(ValueError, match="longitude"):
-    _config([1], regions=[{"name": "a", "polygons": [[[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]}])
-
-
-def test_region_files_add_their_regions(tmp_path, write_config):
-  """Regions of `region_files` (relative to the settings file, e.g. under another license) are added to the settings'
-  own, so connections can refer to them; a region file holds only [[regions]], and names stay unique across files."""
-  square = [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]
-  write_config({"regions": [{"name": "b", "polygons": square}]}, name="more.toml")
-  settings = {
-    "mask": "/mask",
-    "meshes": [{"path": "/m.msh", "message_passing_steps": 1}],
-    "region_files": ["more.toml"],
-    "regions": [{"name": "a", "polygons": square}],
-    "basin_connections": [{"basin": "a", "ocean": "b"}],
-  }
-  read = cli.read_settings(write_config(settings))
-  assert [region.name for region in read.regions] == ["a", "b"]
-  write_config({"regions": [{"name": "a", "polygons": square}]}, name="more.toml")
+  settings = write_config(
+    {
+      "mask": "/mask",
+      "meshes": [{"path": "/m.msh", "message_passing_steps": 1}],
+      "basin_connections": [{"basin": "a", "ocean": "b"}],
+    }
+  )
+  both = write_config({"regions": [{"name": "a", "polygons": square}, {"name": "b", "polygons": square}]}, "r.toml")
+  config_read, regions_read = cli.read_settings(settings, both)
+  assert [region.name for region in regions_read.regions] == ["a", "b"] and len(config_read.basin_connections) == 1
+  only_a = write_config({"regions": [{"name": "a", "polygons": square}]}, "a.toml")
+  with pytest.raises(click.ClickException, match=r"not in .*a.toml: \['b'\]"):
+    cli.read_settings(settings, only_a)
+  twice = write_config({"regions": [{"name": "a", "polygons": square}] * 2}, "twice.toml")
   with pytest.raises(click.ClickException, match="unique"):
-    cli.read_settings(write_config(settings))
-  write_config({"regions": [{"name": "b", "polygons": square}], "seed": 1}, name="more.toml")
+    cli.read_settings(settings, twice)
+  outside = write_config({"regions": [{"name": "a", "polygons": [[[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]}]}, "o.toml")
+  with pytest.raises(click.ClickException, match="longitude"):
+    cli.read_settings(settings, outside)
+  extra = write_config({"regions": [{"name": "a", "polygons": square}], "seed": 1}, "extra.toml")
   with pytest.raises(click.ClickException, match="seed"):
-    cli.read_settings(write_config(settings))
+    cli.read_settings(settings, extra)
+
+
+def test_compute_rejects_connections_without_regions():
+  """`compute` called without the regions that the basin connections name fails at once, before any statistics."""
+  meshes = [icosahedral_mesh.get_multi_mesh_data(1)]
+  settings = _config([1], basin_connections=[{"basin": "a", "ocean": "b"}])
+  with pytest.raises(ValueError, match="undefined regions"):
+    cli.compute(meshes, _grid(), settings)
 
 
 def test_unknown_settings_are_rejected():
@@ -689,9 +697,9 @@ def test_input_paths_must_be_absolute():
 
 
 def test_shipped_settings_are_valid():
-  """configs/analysis/graph_statistics.toml validates with its region file (iho_regions.toml): its top-level keys come
+  """configs/analysis/graph_statistics.toml and ocean_regions.toml validate together: the settings' top-level keys come
   before the [[meshes]] tables (keys after a table header belong to the table), and every connection's regions exist."""
-  path = pathlib.Path(__file__).parents[1] / "configs" / "analysis" / "graph_statistics.toml"
-  settings = cli.read_settings(path)
+  directory = pathlib.Path(__file__).parents[1] / "configs" / "analysis"
+  settings, regions_read = cli.read_settings(directory / "graph_statistics.toml", directory / "ocean_regions.toml")
   assert settings.meshes[0].message_passing_steps == 16 and settings.radius_query_fraction_edge_length == 0.6
-  assert len(settings.basin_connections) == 30 and len(settings.regions) == 42  # 19 here, 23 in iho_regions.toml
+  assert len(settings.basin_connections) == 30 and len(regions_read.regions) == 42

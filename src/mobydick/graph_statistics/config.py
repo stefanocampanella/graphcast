@@ -12,8 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Settings of moby-dick graph-statistics: the inputs (mask and meshes, absolute paths as in the training configs),
-the settings of the statistics, and the regions whose connectivity is measured."""
+"""Settings of moby-dick graph-statistics: the inputs (mask and meshes, absolute paths as in the training configs) and
+the settings of the statistics (`GraphStatisticsConfig`), and the ocean regions of the basin connectivity
+(`RegionsConfig`, a file of its own: regions may be derived from data under other licenses)."""
 
 import pathlib
 from typing import Annotated, Self
@@ -96,16 +97,34 @@ class RegionConfig(BaseModel):
     return polygons
 
 
-class RegionsFileConfig(BaseModel):
-  """A file of `region_files`: only [[regions]] tables."""
+class RegionsConfig(BaseModel):
+  """The regions file given to moby-dick graph-statistics: [[regions]] tables only, with unique names."""
 
   model_config = ConfigDict(extra="forbid")
 
-  regions: list[RegionConfig] = Field(min_length=1, description="Regions, added to those of the settings")
+  regions: list[RegionConfig] = Field(default=[], description="Regions referred to by basin_connections")
+
+  @model_validator(mode="after")
+  def _names_are_unique(self) -> Self:
+    names = [region.name for region in self.regions]
+    if len(set(names)) != len(names):
+      raise ValueError(f"region names must be unique: {names}")
+    return self
+
+  def polygons(self) -> dict[str, list[list[tuple[float, float]]]]:
+    """The polygons of every region, by name."""
+    return {region.name: region.polygons for region in self.regions}
+
+
+def undefined_regions(config: "GraphStatisticsConfig", regions: RegionsConfig) -> list[str]:
+  """Names used by `config.basin_connections` that `regions` does not define, in order of first use."""
+  defined = {region.name for region in regions.regions}
+  used = (name for connection in config.basin_connections for name in (connection.basin, connection.ocean))
+  return list(dict.fromkeys(name for name in used if name not in defined))
 
 
 class BasinConnectionConfig(BaseModel):
-  """A semi-enclosed basin or inner sea and the nearby ocean it opens to, both names of `regions`."""
+  """A semi-enclosed basin or inner sea and the nearby ocean it opens to, both names of regions of the regions file."""
 
   model_config = ConfigDict(extra="forbid")
 
@@ -142,25 +161,10 @@ class GraphStatisticsConfig(BaseModel):
   squashed: SquashedGraphConfig = Field(
     default_factory=SquashedGraphConfig, description="The squashed grid-to-grid graph"
   )
-  region_files: list[pathlib.Path] = Field(
-    default=[],
-    description="TOML files of more [[regions]] (RegionsFileConfig), relative to the directory of the settings file: "
-    "e.g. regions derived from data under another license; `cli.read_settings` adds them to `regions`",
-  )
-  regions: list[RegionConfig] = Field(default=[], description="Regions referred to by basin_connections")
   basin_connections: list[BasinConnectionConfig] = Field(
-    default=[], description="Pairs of a basin and its nearby ocean whose connectivity in the squashed graph is measured"
+    default=[],
+    description="Pairs of a basin and its nearby ocean whose connectivity in the squashed graph is measured, by the "
+    "names of regions of the regions file",
   )
 
   _mask_is_absolute = field_validator("mask")(_absolute)
-
-  @model_validator(mode="after")
-  def _regions_are_defined(self) -> Self:
-    names = [region.name for region in self.regions]
-    if len(set(names)) != len(names):
-      raise ValueError(f"region names must be unique: {names}")
-    for connection in self.basin_connections:
-      for name in (connection.basin, connection.ocean):
-        if name not in names:
-          raise ValueError(f"basin connection refers to an undefined region {name!r}")
-    return self

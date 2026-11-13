@@ -45,7 +45,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. Trained
   on 8 Nov 2026 against the ocean meshes (see "Icosahedral multi-mesh vs ocean mesh" below); the file is
   `data/geometry/icosahedral_6.msh`.
-- Graph statistics: `moby-dick graph-statistics CONFIG.toml OUTPUT.json` (package
+- Graph statistics: `moby-dick graph-statistics CONFIG.toml REGIONS.toml OUTPUT.json` (package
   `mobydick.graph_statistics`: `config`, `graphs`, `structure`, `geometry`, `squashed`, `quantities`, `report`, `cli`;
   `configs/analysis/graph_statistics.toml`, the production model: `mask` and `[[meshes]]` with `path` and
   `message_passing_steps` each, finest first, absolute container paths as in the training configs, so run it in the
@@ -66,9 +66,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   each step is x ← x OR P x, so L steps give (I + P)^L = I + P + … + P^L, the nodes within at most L hops; the
   adjacency I + D (I + P)^L E is never formed), and the horizon, the geodesic length of its edges (at most
   `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver; basin
-  connectivity (`[[regions]]`, a list of polygons of (longitude, latitude) vertices each, also from the TOML files of
-  `region_files`, relative to the settings file, e.g. `iho_regions.toml` under CC BY-NC-SA 4.0; `[[basin_connections]]`,
-  basin and nearby ocean, nodes in both counting for the basin: exact shares of each region's nodes linked to the other, from one column per region marking all its
+  connectivity (`[[basin_connections]]` of the settings, basin and nearby ocean by name, nodes in both counting for
+  the basin; the regions are in REGIONS.toml, `configs/analysis/ocean_regions.toml`, `RegionsConfig`: `[[regions]]`
+  with a name and a list of polygons of (longitude, latitude) vertices each, CC BY-NC-SA 4.0 as partly based on IHO
+  data; the command checks that every connection names regions of it): exact shares of each region's nodes linked to the other, from one column per region marking all its
   nodes, and the fewest steps on every mesh linking them, by bisection up to `max_steps_to_connect`). Prints rich tables to stdout and writes every quantity with a description to the
   JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
   (25 km) per mesh on a login node; all statistics of a mesh, squashed graphs (1,024 grid nodes, 8 and 16 steps)
@@ -704,10 +705,12 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
     - The base image `nvcr.io/nvidia/jax` is governed by the NVIDIA Software License Agreement and Product-Specific
       Terms for AI Products (`/workspace/license.txt`): check them before sharing `moby-dick.sif` outside the project.
       The `graph-gpu` extra (nx-cugraph, Apache-2.0) pulls proprietary CUDA libraries.
-    - `configs/analysis/iho_regions.toml` (graph-statistics regions adapted from the IHO Sea Areas v3, Flanders Marine
-      Institute 2018, https://doi.org/10.14284/323) is CC BY-NC-SA 4.0 like its source (non-commercial, share-alike;
-      `LICENSES/CC-BY-NC-SA-4.0.txt`), kept apart from the Apache-2.0 `graph_statistics.toml`, which reads it
-      through `region_files`. Marine Regions products are CC BY only since 2019: check a dataset's own record.
+    - `configs/analysis/ocean_regions.toml` (all ocean regions of graph-statistics, passed to the command as an
+      argument) is partly adapted from the IHO Sea Areas v3 (Flanders Marine Institute 2018,
+      https://doi.org/10.14284/323, CC BY-NC-SA 4.0), so the whole file is CC BY-NC-SA 4.0 (non-commercial,
+      share-alike; `LICENSES/CC-BY-NC-SA-4.0.txt`), with the attribution, the changes and each region's source in
+      it; the settings (`graph_statistics.toml`) stay Apache-2.0. Marine Regions products are CC BY only since 2019:
+      check a dataset's own record.
     - Mesh files are declared CC BY-NC-SA 4.0 in every mesh config (perhaps copied from GraphCast's weights license),
       although their inputs need neither NC nor SA (Natural Earth is public domain; GLORYS bathymetry, used by the
       `lambrechts*` meshes, is under the Copernicus Marine licence, which allows commercial use with attribution, and

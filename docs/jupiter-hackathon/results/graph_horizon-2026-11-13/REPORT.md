@@ -100,7 +100,7 @@ Regions: the first 8 pairs were drawn by hand; 22 pairs were added for the Sea o
 Maracaibo, the Sea of Japan, Baffin Bay, the White Sea, the Gulf of Corinth, the Indonesian throughflow seas (Java,
 Bali, Flores, Banda), the Canadian Arctic Archipelago (Gulf of Boothia and Prince Regent Inlet, Foxe Basin) and the
 Philippine inland seas (Sulu, Bohol), one pair per opening. Their polygons come from the IHO Sea Areas of Marine Regions
-(Flanders Marine Institute (2018), IHO Sea Areas, version 3, https://www.marineregions.org/, https://doi.org/10.14284/323, CC BY-NC-SA 4.0; the adapted polygons are in `configs/analysis/iho_regions.toml` under the same license: grown by 0.3°
+(Flanders Marine Institute (2018), IHO Sea Areas, version 3, https://www.marineregions.org/, https://doi.org/10.14284/323, CC BY-NC-SA 4.0; all regions are in `configs/analysis/ocean_regions.toml`, under the same license: grown by 0.3°
 for the coastal grid points, the neighbouring IHO seas removed, simplified), or are drawn
 after the documented position of their straits where IHO defines no area (Gulf of Corinth, Lake Maracaibo, Bohol Sea,
 Foxe Basin). Maps of all pairs on the training mask: https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq. The 0.25° mask

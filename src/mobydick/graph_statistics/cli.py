@@ -31,7 +31,7 @@ from rich.console import Console
 from mobydick import cli_utils
 from mobydick.dataloader_utils import Grid, get_grid
 from mobydick.graph_statistics import geometry, regions, squashed, structure
-from mobydick.graph_statistics.config import GraphStatisticsConfig, RegionsFileConfig
+from mobydick.graph_statistics.config import GraphStatisticsConfig, RegionsConfig, undefined_regions
 from mobydick.graph_statistics.graphs import Graph, model_graphs
 from mobydick.graph_statistics.quantities import described, histogram, summarize
 from mobydick.graph_statistics.report import print_summary
@@ -61,14 +61,13 @@ def _timed(message: str) -> Generator[None]:
   logger.info(f"{message} in {time.perf_counter() - start:.1f} s")
 
 
-def read_settings(path: pathlib.Path) -> GraphStatisticsConfig:
-  """The settings of `path`, with the regions of its `region_files` (relative to its directory) added to its own."""
-  raw = cli_utils.read_configs(path)
-  regions = list(raw.get("regions", []))
-  for file in raw.get("region_files", []):
-    extra = cli_utils.read_configs(path.parent / file, schema=RegionsFileConfig)
-    regions += [region.model_dump() for region in extra.regions]
-  return cli_utils.read_configs(path, schema=GraphStatisticsConfig, inject={"regions": regions})
+def read_settings(config_path: pathlib.Path, regions_path: pathlib.Path) -> tuple[GraphStatisticsConfig, RegionsConfig]:
+  """The settings and the regions, checking that every basin connection names regions of the regions file."""
+  config = cli_utils.read_configs(config_path, schema=GraphStatisticsConfig)
+  regions = cli_utils.read_configs(regions_path, schema=RegionsConfig)
+  if missing := undefined_regions(config, regions):
+    raise click.ClickException(f"Basin connections of {config_path} refer to regions not in {regions_path}: {missing}")
+  return config, regions
 
 
 def graph_statistics(graph: Graph, config: GraphStatisticsConfig, rng: np.random.Generator) -> dict[str, Any]:
@@ -97,11 +96,17 @@ def graph_statistics(graph: Graph, config: GraphStatisticsConfig, rng: np.random
   return stats
 
 
-def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfig) -> dict[str, Any]:
+def compute(
+  meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfig, regions_config: RegionsConfig | None = None
+) -> dict[str, Any]:
   """The statistics of every graph (by name, in data-flow order), the coverage of every pair of levels and the
-  squashed grid-to-grid graph; `meshes` are those of `config.meshes`, read."""
+  squashed grid-to-grid graph, and the connectivity of the basins of `config.basin_connections` (regions from
+  `regions_config`); `meshes` are those of `config.meshes`, read."""
   if len(meshes) != len(config.meshes):
     raise ValueError(f"{len(meshes)} meshes for {len(config.meshes)} entries of the settings")
+  regions_config = regions_config or RegionsConfig()
+  if missing := undefined_regions(config, regions_config):
+    raise ValueError(f"Basin connections refer to undefined regions: {missing}")
   with _timed(f"Built the graphs of {len(meshes)} mesh(es)"):
     graphs = model_graphs(meshes, grid, config.radius_query_fraction_edge_length)
   # One generator for all components of all processors: the sampled sources depend only on the seed.
@@ -125,7 +130,7 @@ def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfi
       graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng
     )
   grid_nodes = graphs[0].sender_nodes
-  polygons = {region.name: region.polygons for region in config.regions}
+  polygons = regions_config.polygons()
   operations = squashed.graph_operations(graphs)
   results["basin_connections"] = []
   for connection in config.basin_connections:
@@ -150,33 +155,37 @@ def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfi
 
 @click.command("graph-statistics")
 @click.argument("config_path", type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False))
+@click.argument("regions_path", type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False))
 @click.argument("output_path", type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True))
 @click.option("--overwrite/--no-overwrite", default=False, help="Whether to overwrite existing outputs", is_flag=True)
 @cli_utils.LOG_LEVEL_OPTION
 def graph_statistics_command(
   config_path: pathlib.Path,
+  regions_path: pathlib.Path,
   output_path: pathlib.Path,
   overwrite: bool = False,
   log_level: str = "info",
 ):
   """Statistics of the graphs of the model described by CONFIG_PATH: its mask (written by moby-dick download-mask)
   and meshes (one, or a hierarchy, finest first) with their message passing steps, and the settings of the
-  statistics. Prints a summary and writes every value, with its description, to OUTPUT_PATH (JSON). The environment variable NETWORKX_BACKEND_PRIORITY selects a
-  networkx backend for the path metrics (e.g. cugraph, with the graph-gpu extra)."""
+  statistics. REGIONS_PATH holds the ocean regions that the basin connections of CONFIG_PATH name. Prints a summary
+  and writes every value, with its description, to OUTPUT_PATH (JSON). The environment variable
+  NETWORKX_BACKEND_PRIORITY selects a networkx backend for the path metrics (e.g. cugraph, with the graph-gpu
+  extra)."""
   from mobydick.geospatial_mesh_utils import read_mesh_data
 
   cli_utils.configure_logging(log_level)
-  config = read_settings(config_path)
+  config, regions_config = read_settings(config_path, regions_path)
   if output_path.exists() and not overwrite:
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {config!r}, networkx backend priority {nx.config.backend_priority}")
   with _timed(f"Read {len(config.meshes)} mesh(es) and the mask"):
     meshes = [read_mesh_data(mesh.path) for mesh in config.meshes]
     grid = get_grid(config.mask)
-  results = compute(meshes, grid, config)
+  results = compute(meshes, grid, config, regions_config)
   # The JSON first: the results are kept even if printing fails.
   output_path.parent.mkdir(parents=True, exist_ok=True)
-  output = {"settings": config.model_dump(mode="json")}
+  output = {"settings": config.model_dump(mode="json"), "regions_file": str(regions_path)}
   output_path.write_text(json.dumps(finite_or_null({**output, **results}), indent=1, allow_nan=False))
   logger.info(f"Wrote {output_path}")
   print_summary(results, Console())

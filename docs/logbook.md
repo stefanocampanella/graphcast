@@ -1694,3 +1694,15 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   (CC BY-NC-SA 4.0, attribution and changes in its header, `LICENSES/CC-BY-NC-SA-4.0.txt`), read through the new
   setting `region_files` (`cli.read_settings` adds their regions before validation); `graph_statistics.toml` keeps the
   drawn regions and stays Apache-2.0. Same 42 regions and 30 connections, so the results are unchanged.
+
+## 2026-11-13 21:00: the regions file is an argument of graph-statistics
+
+- **Request:** `iho_regions.toml`, read through the relative `region_files`, broke the rule of absolute paths in the
+  configs; pass the regions file to `graph-statistics` as an argument instead, with all regions (drawn and IHO-derived)
+  in it, released under the right license and saying that it is partly based on IHO data.
+- **Change:** `moby-dick graph-statistics CONFIG.toml REGIONS.toml OUTPUT.json`; `configs/analysis/ocean_regions.toml`
+  holds the 42 regions (`RegionsConfig`: `[[regions]]` only, unique names), CC BY-NC-SA 4.0 with the IHO attribution,
+  the changes made and each region's source in its header and comments; the settings keep the 30
+  `[[basin_connections]]` and lose `regions` and `region_files`; `cli.read_settings` reads both files and fails if a
+  connection names a region the regions file lacks (`compute` checks it too, before any statistics). The JSON records
+  the regions file. Same regions and connections: results unchanged.
