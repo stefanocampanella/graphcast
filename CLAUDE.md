@@ -66,7 +66,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   each step is x ← x OR P x, so L steps give (I + P)^L = I + P + … + P^L, the nodes within at most L hops; the
   adjacency I + D (I + P)^L E is never formed), and the horizon, the geodesic length of its edges (at most
   `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver; basin
-  connectivity (`[[regions]]`, a list of polygons of (longitude, latitude) vertices each, and `[[basin_connections]]`,
+  connectivity (`[[regions]]`, a list of polygons of (longitude, latitude) vertices each, also from the TOML files of
+  `region_files`, relative to the settings file, e.g. `iho_regions.toml` under CC BY-NC-SA 4.0; `[[basin_connections]]`,
   basin and nearby ocean, nodes in both counting for the basin: exact shares of each region's nodes linked to the other, from one column per region marking all its
   nodes, and the fewest steps on every mesh linking them, by bisection up to `max_steps_to_connect`). Prints rich tables to stdout and writes every quantity with a description to the
   JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
@@ -89,13 +90,13 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
     loss: resolution, not reach, limits the skill today, except for `zos`.
   - **Basin connectivity** (13 Nov 2026, job 2883258, same report): the Black Sea is cut off from the Aegean in every
     uniform-mesh model: 28–30 steps link them on every mesh from 200 to 25 km (the 3 km elements of the refined
-    straits and Marmara set the hops, not the base size); icosahedral M6 1 step, 50 km + 120 km hierarchy 14–15. The
+    straits and Marmara set the hops, not the base size); icosahedral M6 1 step, 50 km + 120 km hierarchy 14–15 on each of its two meshes (28–30 in all). The
     Sea of Azov is linked to the Black Sea directly (0–1). Distance-limited: Hudson Bay–Labrador Sea 6 / 21 / 41 steps
     and Baltic–North Sea 2 / 9 / 18 at 200 / 50 / 25 km (at 50 km × 16 Hudson Bay is cut off, 0.1 % of the Baltic
     reaches the North Sea); the Mediterranean, Red Sea, Persian Gulf and Gulf of California connect within 0–6 steps.
     30 connections since 13 Nov 2026 (job 2884014): 22 added for the Sea of Marmara, Seto Inland Sea, Lake Maracaibo,
     Sea of Japan, Baffin Bay, White Sea, Gulf of Corinth, the Indonesian throughflow seas, Gulf of Boothia, Foxe Basin
-    and the Sulu and Bohol Seas, one per opening, polygons from the IHO Sea Areas of Marine Regions (CC BY 4.0, grown
+    and the Sulu and Bohol Seas, one per opening, polygons from the IHO Sea Areas v3 of Marine Regions (CC BY-NC-SA 4.0: in their own file, grown
     0.3°, neighbours removed, simplified) or drawn after the documented straits; maps in
     https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq. Lake Maracaibo (2 grid points) and the Gulf of Corinth (8) are
     outside the mesh domain (no encoder edges, decoded from the neighbouring gulf); Gulf of Boothia–Foxe Basin needs
@@ -143,7 +144,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (509 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (510 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
@@ -703,6 +704,10 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
     - The base image `nvcr.io/nvidia/jax` is governed by the NVIDIA Software License Agreement and Product-Specific
       Terms for AI Products (`/workspace/license.txt`): check them before sharing `moby-dick.sif` outside the project.
       The `graph-gpu` extra (nx-cugraph, Apache-2.0) pulls proprietary CUDA libraries.
+    - `configs/analysis/iho_regions.toml` (graph-statistics regions adapted from the IHO Sea Areas v3, Flanders Marine
+      Institute 2018, https://doi.org/10.14284/323) is CC BY-NC-SA 4.0 like its source (non-commercial, share-alike;
+      `LICENSES/CC-BY-NC-SA-4.0.txt`), kept apart from the Apache-2.0 `graph_statistics.toml`, which reads it
+      through `region_files`. Marine Regions products are CC BY only since 2019: check a dataset's own record.
     - Mesh files are declared CC BY-NC-SA 4.0 in every mesh config (perhaps copied from GraphCast's weights license),
       although their inputs need neither NC nor SA (Natural Earth is public domain; GLORYS bathymetry, used by the
       `lambrechts*` meshes, is under the Copernicus Marine licence, which allows commercial use with attribution, and

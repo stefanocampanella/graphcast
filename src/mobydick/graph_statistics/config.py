@@ -96,6 +96,14 @@ class RegionConfig(BaseModel):
     return polygons
 
 
+class RegionsFileConfig(BaseModel):
+  """A file of `region_files`: only [[regions]] tables."""
+
+  model_config = ConfigDict(extra="forbid")
+
+  regions: list[RegionConfig] = Field(min_length=1, description="Regions, added to those of the settings")
+
+
 class BasinConnectionConfig(BaseModel):
   """A semi-enclosed basin or inner sea and the nearby ocean it opens to, both names of `regions`."""
 
@@ -133,6 +141,11 @@ class GraphStatisticsConfig(BaseModel):
   )
   squashed: SquashedGraphConfig = Field(
     default_factory=SquashedGraphConfig, description="The squashed grid-to-grid graph"
+  )
+  region_files: list[pathlib.Path] = Field(
+    default=[],
+    description="TOML files of more [[regions]] (RegionsFileConfig), relative to the directory of the settings file: "
+    "e.g. regions derived from data under another license; `cli.read_settings` adds them to `regions`",
   )
   regions: list[RegionConfig] = Field(default=[], description="Regions referred to by basin_connections")
   basin_connections: list[BasinConnectionConfig] = Field(

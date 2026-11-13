@@ -100,7 +100,8 @@ Regions: the first 8 pairs were drawn by hand; 22 pairs were added for the Sea o
 Maracaibo, the Sea of Japan, Baffin Bay, the White Sea, the Gulf of Corinth, the Indonesian throughflow seas (Java,
 Bali, Flores, Banda), the Canadian Arctic Archipelago (Gulf of Boothia and Prince Regent Inlet, Foxe Basin) and the
 Philippine inland seas (Sulu, Bohol), one pair per opening. Their polygons come from the IHO Sea Areas of Marine Regions
-(CC BY 4.0: grown by 0.3° for the coastal grid points, the neighbouring IHO seas removed, simplified), or are drawn
+(Flanders Marine Institute (2018), IHO Sea Areas, version 3, https://www.marineregions.org/, https://doi.org/10.14284/323, CC BY-NC-SA 4.0; the adapted polygons are in `configs/analysis/iho_regions.toml` under the same license: grown by 0.3°
+for the coastal grid points, the neighbouring IHO seas removed, simplified), or are drawn
 after the documented position of their straits where IHO defines no area (Gulf of Corinth, Lake Maracaibo, Bohol Sea,
 Foxe Basin). Maps of all pairs on the training mask: https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq. The 0.25° mask
 resolves the smallest basins poorly: Lake Maracaibo has 2 grid points, the Gulf of Corinth 8, the Sea of Marmara 35,
@@ -141,8 +142,9 @@ The production configuration, 50 km × 16 (shares of each region's nodes linked 
 | Bohol Sea → Sulu Sea | 62 / 478 | 100.0 % | 100.0 % | 100.0 % | 100.0 % |
 | Bohol Sea → Philippine Sea east of the Surigao Strait | 62 / 103 | 100.0 % | 100.0 % | 100.0 % | 100.0 % |
 
-Fewest message passing steps on every mesh that link the basin and the ocean (basin → ocean / ocean → basin when they
-differ; –: not linked within 128 steps), with 16 steps on the configured mesh(es) for the other columns:
+Fewest message passing steps that link the basin and the ocean (basin → ocean / ocean → basin when they differ; –:
+not linked within 128 steps). The same number runs on every mesh: in the 50+120 km column, n means n steps on each of
+the hierarchy's two meshes, 2n in all:
 
 | Basin → ocean | 200 km | 120 km | 85 km | 50 km | 40 km | 25 km | ico M6 | 50+120 km |
 |---|---|---|---|---|---|---|---|---|

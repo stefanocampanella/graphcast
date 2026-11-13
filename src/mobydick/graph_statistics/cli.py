@@ -31,7 +31,7 @@ from rich.console import Console
 from mobydick import cli_utils
 from mobydick.dataloader_utils import Grid, get_grid
 from mobydick.graph_statistics import geometry, regions, squashed, structure
-from mobydick.graph_statistics.config import GraphStatisticsConfig
+from mobydick.graph_statistics.config import GraphStatisticsConfig, RegionsFileConfig
 from mobydick.graph_statistics.graphs import Graph, model_graphs
 from mobydick.graph_statistics.quantities import described, histogram, summarize
 from mobydick.graph_statistics.report import print_summary
@@ -59,6 +59,16 @@ def _timed(message: str) -> Generator[None]:
   start = time.perf_counter()
   yield
   logger.info(f"{message} in {time.perf_counter() - start:.1f} s")
+
+
+def read_settings(path: pathlib.Path) -> GraphStatisticsConfig:
+  """The settings of `path`, with the regions of its `region_files` (relative to its directory) added to its own."""
+  raw = cli_utils.read_configs(path)
+  regions = list(raw.get("regions", []))
+  for file in raw.get("region_files", []):
+    extra = cli_utils.read_configs(path.parent / file, schema=RegionsFileConfig)
+    regions += [region.model_dump() for region in extra.regions]
+  return cli_utils.read_configs(path, schema=GraphStatisticsConfig, inject={"regions": regions})
 
 
 def graph_statistics(graph: Graph, config: GraphStatisticsConfig, rng: np.random.Generator) -> dict[str, Any]:
@@ -156,7 +166,7 @@ def graph_statistics_command(
   from mobydick.geospatial_mesh_utils import read_mesh_data
 
   cli_utils.configure_logging(log_level)
-  config = cli_utils.read_configs(config_path, schema=GraphStatisticsConfig)
+  config = read_settings(config_path)
   if output_path.exists() and not overwrite:
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {config!r}, networkx backend priority {nx.config.backend_priority}")

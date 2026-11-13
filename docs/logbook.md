@@ -1681,3 +1681,16 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   and Hecla Strait closed); Indonesian seas–Pacific 12, Baffin Bay–Labrador Sea 20; the Sea of Marmara links to both
   its neighbours in 1–2 steps (the Black Sea's 29 are spent inside it); most other new pairs meet at wide openings
   (0 steps), so their shares matter more than the steps. The 0.25° mask turns narrow islands (Cebu, Bohol) into ocean.
+
+## 2026-11-13 20:00: hierarchy steps per mesh; license of the IHO-derived regions
+
+- **Requests:** fix the two open points: the hierarchy's fewest steps (14–15) read as a total, and the license of the
+  regions derived from the IHO Sea Areas.
+- **Wording:** report, CLAUDE.md and artifact say that the hierarchy's 14–15 steps are on each of its two meshes (28–30
+  in all, as on one mesh: both contain the refined straits).
+- **License:** the IHO Sea Areas v3 (Flanders Marine Institute (2018), IHO Sea Areas, version 3, https://www.marineregions.org/, https://doi.org/10.14284/323, CC BY-NC-SA 4.0) are CC BY-NC-SA 4.0 according to their dataset record (marineinfo.org
+  dataset 5444), not CC BY 4.0 as the entry of 18:30 says (Marine Regions products are CC BY only since 2019). Asked
+  the maintainer, who chose a separate file: the 23 adapted regions are in `configs/analysis/iho_regions.toml`
+  (CC BY-NC-SA 4.0, attribution and changes in its header, `LICENSES/CC-BY-NC-SA-4.0.txt`), read through the new
+  setting `region_files` (`cli.read_settings` adds their regions before validation); `graph_statistics.toml` keeps the
+  drawn regions and stays Apache-2.0. Same 42 regions and 30 connections, so the results are unchanged.

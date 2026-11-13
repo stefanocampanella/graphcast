@@ -21,6 +21,7 @@ import json
 import pathlib
 from typing import Any
 
+import click
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -646,6 +647,28 @@ def test_basin_connections_refer_to_defined_regions():
     _config([1], regions=[{"name": "a", "polygons": [[[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]}])
 
 
+def test_region_files_add_their_regions(tmp_path, write_config):
+  """Regions of `region_files` (relative to the settings file, e.g. under another license) are added to the settings'
+  own, so connections can refer to them; a region file holds only [[regions]], and names stay unique across files."""
+  square = [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]
+  write_config({"regions": [{"name": "b", "polygons": square}]}, name="more.toml")
+  settings = {
+    "mask": "/mask",
+    "meshes": [{"path": "/m.msh", "message_passing_steps": 1}],
+    "region_files": ["more.toml"],
+    "regions": [{"name": "a", "polygons": square}],
+    "basin_connections": [{"basin": "a", "ocean": "b"}],
+  }
+  read = cli.read_settings(write_config(settings))
+  assert [region.name for region in read.regions] == ["a", "b"]
+  write_config({"regions": [{"name": "a", "polygons": square}]}, name="more.toml")
+  with pytest.raises(click.ClickException, match="unique"):
+    cli.read_settings(write_config(settings))
+  write_config({"regions": [{"name": "b", "polygons": square}], "seed": 1}, name="more.toml")
+  with pytest.raises(click.ClickException, match="seed"):
+    cli.read_settings(write_config(settings))
+
+
 def test_unknown_settings_are_rejected():
   """A misspelt setting fails instead of being ignored."""
   with pytest.raises(ValueError, match="num_source"):
@@ -666,11 +689,9 @@ def test_input_paths_must_be_absolute():
 
 
 def test_shipped_settings_are_valid():
-  """configs/analysis/graph_statistics.toml validates: its top-level keys come before the [[meshes]] tables (keys after
-  a table header belong to the table)."""
-  from mobydick import cli_utils
-
+  """configs/analysis/graph_statistics.toml validates with its region file (iho_regions.toml): its top-level keys come
+  before the [[meshes]] tables (keys after a table header belong to the table), and every connection's regions exist."""
   path = pathlib.Path(__file__).parents[1] / "configs" / "analysis" / "graph_statistics.toml"
-  settings = cli_utils.read_configs(path, schema=config.GraphStatisticsConfig)
+  settings = cli.read_settings(path)
   assert settings.meshes[0].message_passing_steps == 16 and settings.radius_query_fraction_edge_length == 0.6
-  assert len(settings.basin_connections) == 30 and len(settings.regions) == 42
+  assert len(settings.basin_connections) == 30 and len(settings.regions) == 42  # 19 here, 23 in iho_regions.toml
