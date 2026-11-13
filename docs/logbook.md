@@ -1640,3 +1640,22 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   passes: on a triangle mesh with edges both ways, P^2 contains I (there and back) and P (around a triangle), so P^L
   already holds every node within L hops for L >= 2, and at L = 1 the encoder reaches neighbouring vertices together.
   The OR is still the right rule in general (one-way graphs, bipartite ones); the path-graph test catches it.
+
+## 2026-11-13 16:00: connectivity of semi-enclosed basins and inner seas
+
+- **Request:** measure the connectivity in the squashed graph between semi-enclosed basins (Mediterranean, Black Sea)
+  and inner seas (Gulf of California) and the nearby open ocean, in the report of `graph-statistics`, configurable in
+  its TOML.
+- **Code:** `[[regions]]` (name, polygon of (longitude, latitude) vertices; module `graph_statistics.regions`,
+  matplotlib's point-in-polygon on longitudes brought to [-180, 180)) and `[[basin_connections]]` (basin, ocean) in the
+  settings, names checked; `squashed.propagate` (a block whose columns mark sets of nodes: the union of their reaches),
+  `steps_to_connect` (bisection over the steps on every mesh, up to `squashed.max_steps_to_connect`, default 128),
+  `basin_connectivity` (exact shares of each region's nodes linked to the other, both directions); a report table. The
+  committed config pairs 8 basins with their ocean (Mediterranean, Black Sea, Sea of Azov, Red Sea, Persian Gulf,
+  Baltic, Gulf of California, Hudson Bay); the polygons were checked on maps of the training mask. Tests: polygons
+  (longitude wrap), shares and fewest steps against the dense matrix product (one mesh and a hierarchy), validation of
+  the region names. 508 tests pass (booster node).
+- **Results** (job 2883258, all meshes × 8 and 16 steps, 5.4 min; report section): the Black Sea needs 28–30 steps to
+  reach the Aegean on every uniform mesh (the refined straits), so it is cut off in all models trained so far since
+  12 Nov; Hudson Bay and the Baltic are cut off or barely linked at 50 km × 16 (21 and 9 steps needed); the other basins
+  connect within 0–6 steps. TODO item added.

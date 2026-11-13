@@ -33,7 +33,7 @@ from rich.console import Console
 
 from mobydick import icosahedral_mesh, xarray_jax
 from mobydick.dataloader_utils import Grid
-from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, report, squashed, structure
+from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, regions, report, squashed, structure
 from mobydick.leviathan.model import Leviathan, ModelConfig, TaskConfig
 from mobydick.mesh_graph import longest_incident_edges
 
@@ -56,7 +56,7 @@ def _quantities(entry: dict, path: str = "") -> list[str]:
   """Paths of the quantities of a graph's or coverage entry's statistics that have no description."""
   missing = []
   for key, value in entry.items():
-    if key in ("kind", "senders", "receivers", "lower", "upper"):
+    if key in ("kind", "senders", "receivers", "lower", "upper", "basin", "ocean"):
       continue
     if key == "triangles":
       missing += _quantities(value, f"{path}{key}.")
@@ -332,14 +332,28 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
       "meshes": [{"path": str(mesh_path), "message_passing_steps": 1}],
       "num_sources": 8,
       "length_bin_width_km": 100.0,
-      "squashed": {"num_sources": 16},
+      "squashed": {"num_sources": 16, "max_steps_to_connect": 8},
+      "regions": [
+        {"name": "west", "polygon": [[-180.0, -90.0], [0.0, -90.0], [0.0, 90.0], [-180.0, 90.0]]},
+        {"name": "east", "polygon": [[0.0, -90.0], [180.0, -90.0], [180.0, 90.0], [0.0, 90.0]]},
+      ],
+      "basin_connections": [{"basin": "west", "ocean": "east"}],
     }
   )
   output = tmp_path / "stats.json"
   arguments = [str(config_path), str(output), "--log-level", "warning"]
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code == 0, result.output
-  titles = ["Graphs", "Edge lengths", "Degrees", "Processors", "Distances", "Coverage", "Squashed"]
+  titles = [
+    "Graphs",
+    "Edge lengths",
+    "Degrees",
+    "Processors",
+    "Distances",
+    "Coverage",
+    "Squashed",
+    "Basin connectivity",
+  ]
   for title in [*titles, "Triangle quality of mesh_0"]:
     assert title in result.output
 
@@ -349,7 +363,8 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   stats = json.loads(output.read_text(), parse_constant=reject)
   assert list(stats["graphs"]) == ["grid_to_mesh_0", "mesh_0", "mesh_0_to_grid"]
   entries = [*stats["graphs"].items(), *(("coverage", c) for c in stats["coverage"])]
-  for name, entry in [*entries, ("squashed", stats["squashed"])]:
+  basins = [("basin_connections", b) for b in stats["basin_connections"]]
+  for name, entry in [*entries, ("squashed", stats["squashed"]), *basins]:
     assert _quantities(entry) == [], name
   processor = stats["graphs"]["mesh_0"]
   assert processor["nodes"]["value"] == 162 and processor["connected_components"]["value"] == 1
@@ -360,6 +375,8 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   assert processor["triangles"]["inverted"]["value"] == 0
   assert stats["squashed"]["message_passing_steps"]["value"] == [1] and stats["squashed"]["out_degree"]["max"] > 0
   assert stats["settings"]["meshes"][0]["path"] == str(mesh_path)
+  (halves,) = stats["basin_connections"]
+  assert halves["basin"] == "west" and halves["basin_nodes"]["value"] > 0 and halves["ocean_nodes"]["value"] > 0
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code != 0 and "exists" in result.output
 
@@ -560,6 +577,59 @@ def test_distances_compare_paths_along_the_mesh_with_geodesics():
   assert bent["path_length_km"]["max"] > bent["geodesic_distance_km"]["max"]
 
 
+def test_regions_are_the_nodes_inside_their_polygons():
+  """A node is in a region when its (longitude, latitude) is inside the polygon, with longitudes 0–360 of the grid
+  brought to -180–180 as the polygons' (350° is -10°)."""
+  nodes = graphs.NodeSet("grid", np.array([35.0, 35.0, 35.0, 50.0, 35.0]), np.array([350.0, -10.0, 10.0, 350.0, 5.0]))
+  inside = regions.in_polygon(nodes, [(-15.0, 30.0), (-5.0, 30.0), (-5.0, 40.0), (-15.0, 40.0)])
+  np.testing.assert_array_equal(inside, [True, True, False, False, False])
+  triangle = regions.in_polygon(nodes, [(0.0, 30.0), (20.0, 30.0), (0.0, 50.0)])
+  np.testing.assert_array_equal(triangle, [False, False, True, False, True])
+
+
+@pytest.mark.parametrize(("splits", "steps"), [((2,), [1]), ((2, 1), [1, 1])])
+def test_basin_connectivity_matches_the_matrix_product(splits, steps):
+  """The shares of each region's nodes linked to the other equal those of the squashed adjacency (dense matrix
+  product), and the fewest steps that connect the regions are the smallest n whose adjacency with n steps on every
+  mesh links them, in each direction; regions too far apart for the largest number of steps tried give None."""
+  grid = _grid()
+  built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(s) for s in splits], grid, 0.6)
+  nodes = built[0].sender_nodes
+  basin = (nodes.lat < -50) & (nodes.lon < 100)  # Far south.
+  ocean = (nodes.lat > 40) & (nodes.lon > 200)  # Far north, on the other side.
+  stats = squashed.basin_connectivity(built, steps, "south", basin, "north", ocean, max_steps=8)
+  adjacency = _reach_matrix(built, steps)  # Receivers × senders.
+  assert stats["basin_nodes_reaching_ocean"]["count"] == adjacency[np.ix_(ocean, basin)].any(axis=0).sum()
+  assert stats["ocean_nodes_reached_from_basin"]["count"] == adjacency[np.ix_(ocean, basin)].any(axis=1).sum()
+  assert stats["ocean_nodes_reaching_basin"]["count"] == adjacency[np.ix_(basin, ocean)].any(axis=0).sum()
+  assert stats["basin_nodes_reached_from_ocean"]["count"] == adjacency[np.ix_(basin, ocean)].any(axis=1).sum()
+
+  def fewest(sources, targets):
+    for n in range(9):
+      if _reach_matrix(built, [n] * len(splits))[np.ix_(targets, sources)].any():
+        return n
+    return None
+
+  expected = fewest(basin, ocean)
+  assert expected is not None and expected >= 1  # Not connected without message passing.
+  assert stats["steps_basin_to_ocean"]["value"] == expected
+  assert stats["steps_ocean_to_basin"]["value"] == fewest(ocean, basin)
+  too_few = squashed.basin_connectivity(built, steps, "south", basin, "north", ocean, max_steps=expected - 1)
+  assert too_few["steps_basin_to_ocean"]["value"] is None
+
+
+def test_basin_connections_refer_to_defined_regions():
+  """A basin connection naming an undefined region, two regions with the same name and a vertex outside the
+  longitude and latitude ranges are rejected when the settings are read."""
+  square = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]
+  with pytest.raises(ValueError, match="undefined region 'b'"):
+    _config([1], regions=[{"name": "a", "polygon": square}], basin_connections=[{"basin": "a", "ocean": "b"}])
+  with pytest.raises(ValueError, match="unique"):
+    _config([1], regions=[{"name": "a", "polygon": square}, {"name": "a", "polygon": square}])
+  with pytest.raises(ValueError, match="longitude"):
+    _config([1], regions=[{"name": "a", "polygon": [[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]}])
+
+
 def test_unknown_settings_are_rejected():
   """A misspelt setting fails instead of being ignored."""
   with pytest.raises(ValueError, match="num_source"):
@@ -587,3 +657,4 @@ def test_shipped_settings_are_valid():
   path = pathlib.Path(__file__).parents[1] / "configs" / "analysis" / "graph_statistics.toml"
   settings = cli_utils.read_configs(path, schema=config.GraphStatisticsConfig)
   assert settings.meshes[0].message_passing_steps == 16 and settings.radius_query_fraction_edge_length == 0.6
+  assert len(settings.basin_connections) == 8 and len(settings.regions) == 15

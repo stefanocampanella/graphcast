@@ -86,3 +86,56 @@ length of the squashed graph's edges (self-loops left out), at most 4,096 per se
 - **Horizon and skill:** at 16 steps, uniform meshes from 200 to 50 km lose horizon (1,837 → 495 km) while their
   validation loss improves by 14 % (Lambrechts study), and the icosahedral M6 × 16 (global horizon) is 10.7 % worse
   than 50 km × 16 except on `zos` (−16 %): resolution, not reach, limits the skill today, except for sea surface height.
+
+## Connectivity of semi-enclosed basins and inner seas
+
+`graph-statistics` measures, for each pair of a basin and the nearby ocean it opens to (`[[basin_connections]]` and
+`[[regions]]` of `configs/analysis/graph_statistics.toml`, polygons in longitude and latitude, checked on a map of the
+training mask), the links of the squashed graph between the two regions. The values are exact: a column marking every
+node of a region propagates the union of their reaches, forward and backward. The fewest message passing steps (the
+same on every mesh) that link the regions come from a bisection over the steps, up to 128. Same job and cases as above
+(`basins.csv`: every mesh, 8 and 16 steps).
+
+The production configuration, 50 km × 16 (shares of each region's nodes linked to the other region):
+
+| Basin → ocean | Nodes | Basin nodes reaching the ocean | Ocean nodes reached | Ocean nodes reaching the basin | Basin nodes reached |
+|---|---|---|---|---|---|
+| Mediterranean Sea → Gulf of Cadiz and off Portugal | 4,497 / 807 | 6.5 % | 82.9 % | 80.2 % | 6.2 % |
+| Black Sea → Aegean Sea | 821 / 225 | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| Sea of Azov → Black Sea | 85 / 821 | 100.0 % | 19.1 % | 23.5 % | 100.0 % |
+| Red Sea → Gulf of Aden | 741 / 320 | 27.7 % | 85.3 % | 90.0 % | 28.7 % |
+| Persian Gulf → Gulf of Oman | 401 / 206 | 63.1 % | 100.0 % | 99.0 % | 66.1 % |
+| Baltic Sea → North Sea | 1,121 / 637 | 0.1 % | 59.0 % | 55.1 % | 0.1 % |
+| Gulf of California → Eastern tropical Pacific off the Gulf of California | 323 / 500 | 69.7 % | 100.0 % | 100.0 % | 68.1 % |
+| Hudson Bay → Labrador Sea | 2,207 / 896 | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+
+Fewest message passing steps on every mesh that link the basin and the ocean (basin → ocean / ocean → basin when they
+differ):
+
+| Basin | 200 km | 120 km | 85 km | 50 km | 40 km | 25 km | ico M6 | 50+120 km |
+|---|---|---|---|---|---|---|---|---|
+| Mediterranean Sea | 0 | 0 | 0 | 1 | 1 / 2 | 2 | 0 | 0 |
+| Black Sea | 29 / 28 | 30 / 29 | 30 / 29 | 29 | 29 / 28 | 30 | 1 | 14 / 15 |
+| Sea of Azov | 0 / 1 | 0 / 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Red Sea | 0 / 1 | 1 | 1 / 2 | 3 / 2 | 3 | 6 | 1 / 0 | 1 / 0 |
+| Persian Gulf | 0 | 0 / 1 | 0 / 3 | 4 | 3 | 6 | 0 / 1 | 0 / 1 |
+| Baltic Sea | 2 | 4 / 3 | 5 | 9 | 12 / 11 | 18 / 17 | 1 / 2 | 3 / 2 |
+| Gulf of California | 0 | 1 / 0 | 1 | 2 | 3 / 2 | 5 | 0 | 0 |
+| Hudson Bay | 6 | 9 / 8 | 13 | 21 | 26 | 41 / 40 | 2 | 6 |
+
+- **The Black Sea is cut off in every uniform-mesh model.** Linking it to the Aegean takes 28–30 steps on every mesh
+  from 200 to 25 km: the hops go through the elements of the Turkish straits and the Sea of Marmara, refined to 3 km
+  (growing by 0.3 km per km), so their number does not depend on the base mesh size. With 8 or 16 steps no Black Sea
+  input reaches the Aegean and no Aegean input reaches the Black Sea. The Black Sea and the Sea of Azov are linked
+  directly (0–1 steps: the Kerch Strait is short and the encoder radius spans it). The icosahedral multi-mesh needs 1
+  step; the 50 km + 120 km hierarchy 14–15 (both meshes contain the refined straits), with 1–8 % of the nodes linked at
+  16 steps.
+- **Distance-limited basins:** Hudson Bay and the Baltic are far, in hops, from their open ocean (through Hudson
+  Strait, some 700 km long, and the Danish straits): the fewest steps grow as the mesh gets finer (Hudson Bay 6 at 200 km,
+  21 at 50 km, 41 at 25 km; the Baltic 2, 9, 18). At 50 km × 16 Hudson Bay is cut off from the Labrador Sea, and only
+  the Baltic nodes next to the straits (0.1 %) reach the North Sea.
+- **Open basins:** the Mediterranean, the Red Sea, the Persian Gulf and the Gulf of California connect within 0–6 steps
+  on every mesh; the shares measure how far into each region the links go (e.g. at 50 km × 16, 28 % of the Red Sea
+  nodes reach the Gulf of Aden, 63 % of the Persian Gulf nodes the Gulf of Oman).
+- **Fixes to consider:** a coarser refinement of the straits (sizes of 10–20 km instead of 3 km, if they still keep the
+  straits open), long-range edges across the straits, or a hierarchy with more steps on the coarse mesh.

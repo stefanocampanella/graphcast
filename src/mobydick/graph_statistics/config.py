@@ -12,12 +12,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Settings of moby-dick graph-statistics: the inputs (mask and meshes, absolute paths as in the training configs)
-and the settings of the statistics."""
+"""Settings of moby-dick graph-statistics: the inputs (mask and meshes, absolute paths as in the training configs),
+the settings of the statistics, and the regions whose connectivity is measured."""
 
 import pathlib
+from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveFloat, PositiveInt, field_validator
+from pydantic import (
+  BaseModel,
+  ConfigDict,
+  Field,
+  NonNegativeInt,
+  PositiveFloat,
+  PositiveInt,
+  field_validator,
+  model_validator,
+)
 
 
 def _absolute(path: pathlib.Path) -> pathlib.Path:
@@ -53,10 +63,45 @@ class SquashedGraphConfig(BaseModel):
     default=4096,
     description="Edges per sampled node whose geodesic length is computed (sampled when it has more)",
   )
+  max_steps_to_connect: NonNegativeInt = Field(
+    default=128,
+    description="Largest number of message passing steps (on every mesh) tried when searching the fewest steps that "
+    "connect a basin and its ocean",
+  )
   batch_size: PositiveInt = Field(
     default=64,
     description="Sources propagated together (columns of the dense blocks: memory grows as batch_size × grid nodes)",
   )
+
+
+class RegionConfig(BaseModel):
+  """A named region of the ocean: the grid nodes inside a polygon of (longitude, latitude) vertices."""
+
+  model_config = ConfigDict(extra="forbid")
+
+  name: str = Field(min_length=1, description="Name of the region, unique")
+  polygon: list[tuple[float, float]] = Field(
+    min_length=3,
+    description="Vertices (longitude, latitude) in degrees, longitudes in [-180, 180]; the polygon closes by itself "
+    "and must not cross the antimeridian",
+  )
+
+  @field_validator("polygon")
+  @classmethod
+  def _within_bounds(cls, polygon: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    for lon, lat in polygon:
+      if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
+        raise ValueError(f"vertex ({lon}, {lat}) is not a (longitude, latitude) in [-180, 180] x [-90, 90]")
+    return polygon
+
+
+class BasinConnectionConfig(BaseModel):
+  """A semi-enclosed basin or inner sea and the nearby ocean it opens to, both names of `regions`."""
+
+  model_config = ConfigDict(extra="forbid")
+
+  basin: str = Field(description="Region of the basin, e.g. the Black Sea")
+  ocean: str = Field(description="Region of the nearby ocean, e.g. the Aegean Sea")
 
 
 class GraphStatisticsConfig(BaseModel):
@@ -88,5 +133,20 @@ class GraphStatisticsConfig(BaseModel):
   squashed: SquashedGraphConfig = Field(
     default_factory=SquashedGraphConfig, description="The squashed grid-to-grid graph"
   )
+  regions: list[RegionConfig] = Field(default=[], description="Regions referred to by basin_connections")
+  basin_connections: list[BasinConnectionConfig] = Field(
+    default=[], description="Pairs of a basin and its nearby ocean whose connectivity in the squashed graph is measured"
+  )
 
   _mask_is_absolute = field_validator("mask")(_absolute)
+
+  @model_validator(mode="after")
+  def _regions_are_defined(self) -> Self:
+    names = [region.name for region in self.regions]
+    if len(set(names)) != len(names):
+      raise ValueError(f"region names must be unique: {names}")
+    for connection in self.basin_connections:
+      for name in (connection.basin, connection.ocean):
+        if name not in names:
+          raise ValueError(f"basin connection refers to an undefined region {name!r}")
+    return self

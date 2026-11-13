@@ -17,6 +17,7 @@
 Each function reads the results of `cli.compute` (the JSON content) and builds one table; the JSON holds every value.
 """
 
+import math
 from typing import Any
 
 from rich.console import Console
@@ -148,6 +149,35 @@ def squashed_table(entry: dict[str, Any]) -> Table:
   return grid
 
 
+def basins_table(entries: list[dict[str, Any]], steps: list[int]) -> Table:
+  """Connectivity of each basin and its nearby ocean in the squashed graph: shares of the nodes of each region linked
+  to the other, and the fewest steps that link them."""
+  columns = ["basin", "ocean", "basin nodes", "ocean nodes", "basin → ocean: basin nodes", "ocean nodes reached"]
+  columns += ["ocean → basin: ocean nodes", "basin nodes reached", "steps basin → ocean", "steps ocean → basin"]
+  title = f"Basin connectivity, squashed graph with {', '.join(map(str, steps))} steps (fewest steps: on every mesh)"
+  table = _table(title, columns, left=2)
+  for entry in entries:
+    shares = [
+      entry[key]["percent"]
+      for key in (
+        "basin_nodes_reaching_ocean",
+        "ocean_nodes_reached_from_basin",
+        "ocean_nodes_reaching_basin",
+        "basin_nodes_reached_from_ocean",
+      )
+    ]
+    table.add_row(
+      entry["basin"],
+      entry["ocean"],
+      _format(entry["basin_nodes"]["value"]),
+      _format(entry["ocean_nodes"]["value"]),
+      *("-" if share is None or math.isnan(share) else f"{share:.1f} %" for share in shares),
+      _format(entry["steps_basin_to_ocean"]["value"]),
+      _format(entry["steps_ocean_to_basin"]["value"]),
+    )
+  return table
+
+
 def coverage_table(coverage: list[dict[str, Any]], graphs: dict[str, Any]) -> Table:
   """Percentages of the nodes of each level connected to the other level, with the number of nodes left out."""
   keys = ["lower_in_encoder", "lower_in_decoder", "lower_in_both", "upper_in_encoder", "upper_in_decoder"]
@@ -167,8 +197,8 @@ def coverage_table(coverage: list[dict[str, Any]], graphs: dict[str, Any]) -> Ta
 
 
 def print_summary(results: dict[str, Any], console: Console) -> None:
-  """All tables: graphs, edge lengths, degrees, processors, distances, coverage, squashed graphs, then the triangle
-  quality of each processor."""
+  """All tables: graphs, edge lengths, degrees, processors, distances, coverage, squashed graph, basin connectivity,
+  then the triangle quality of each processor."""
   graphs = results["graphs"]
   console.print(graphs_table(graphs))
   console.print(summary_table("Edge lengths (km)", [(name, stats["edge_length_km"]) for name, stats in graphs.items()]))
@@ -177,6 +207,8 @@ def print_summary(results: dict[str, Any], console: Console) -> None:
   console.print(distances_table(graphs))
   console.print(coverage_table(results["coverage"], graphs))
   console.print(squashed_table(results["squashed"]))
+  if results["basin_connections"]:
+    console.print(basins_table(results["basin_connections"], results["squashed"]["message_passing_steps"]["value"]))
   for name, stats in graphs.items():
     if stats["kind"] == "processor":
       triangles = stats["triangles"]

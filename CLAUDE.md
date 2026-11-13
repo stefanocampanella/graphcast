@@ -65,7 +65,10 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   propagating boolean indicator blocks through the boolean sparse matrices (scipy's boolean products are OR of ANDs;
   each step is x ← x OR P x, so L steps give (I + P)^L = I + P + … + P^L, the nodes within at most L hops; the
   adjacency I + D (I + P)^L E is never formed), and the horizon, the geodesic length of its edges (at most
-  `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver. Prints rich tables to stdout and writes every quantity with a description to the
+  `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver; basin
+  connectivity (`[[regions]]`, polygons of (longitude, latitude) vertices, and `[[basin_connections]]`, basin and
+  nearby ocean: exact shares of each region's nodes linked to the other, from one column per region marking all its
+  nodes, and the fewest steps on every mesh linking them, by bisection up to `max_steps_to_connect`). Prints rich tables to stdout and writes every quantity with a description to the
   JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
   (25 km) per mesh on a login node; all statistics of a mesh, squashed graphs (1,024 grid nodes, 8 and 16 steps)
   included: 53 s (200 km) to 6.7 min (25 km) on a booster node. networkx's `NETWORKX_BACKEND_PRIORITY=cugraph` would run them on the GPU with
@@ -84,6 +87,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
     623 km; icosahedral M6 × 16: every grid point (78 % with 8 steps, mean 8,770 km); 50 km + 120 km × 16 (V-cycle):
     5.9 %, 1,604 km. Uniform meshes × 16 from 200 to 50 km lose horizon (1,837 → 495 km) and gain 14 % in validation
     loss: resolution, not reach, limits the skill today, except for `zos`.
+  - **Basin connectivity** (13 Nov 2026, job 2883258, same report): the Black Sea is cut off from the Aegean in every
+    uniform-mesh model: 28–30 steps link them on every mesh from 200 to 25 km (the 3 km elements of the refined
+    straits and Marmara set the hops, not the base size); icosahedral M6 1 step, 50 km + 120 km hierarchy 14–15. The
+    Sea of Azov is linked to the Black Sea directly (0–1). Distance-limited: Hudson Bay–Labrador Sea 6 / 21 / 41 steps
+    and Baltic–North Sea 2 / 9 / 18 at 200 / 50 / 25 km (at 50 km × 16 Hudson Bay is cut off, 0.1 % of the Baltic
+    reaches the North Sea); the Mediterranean, Red Sea, Persian Gulf and Gulf of California connect within 0–6 steps.
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -126,7 +135,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (504 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (508 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in

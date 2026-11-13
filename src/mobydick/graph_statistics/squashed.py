@@ -71,6 +71,15 @@ The horizon is the geodesic length of the squashed graph's edges, estimated from
 most `max_targets` of its receivers (sampled when it reaches more) weighted by its out-degree / the receivers
 measured, so each edge counts once. The mean distance per sampled sender and per sampled receiver describe single
 grid nodes (domain of influence and receptive field).
+
+Basins
+------
+`basin_connectivity` measures how a semi-enclosed basin or inner sea (the Black Sea, the Gulf of California) is
+connected to the nearby ocean, two regions of grid nodes (`regions`). A column marking every node of a region
+propagates the union of their reaches, so the values are exact with one column per region and direction: the shares
+of basin nodes whose input reaches the ocean, of ocean nodes depending on the basin, and the reverse. The fewest steps
+that connect them (`steps_to_connect`, the same steps on every mesh) come from a bisection over the steps: reach only
+grows with them.
 """
 
 import dataclasses
@@ -110,18 +119,26 @@ def _operation(graph: Graph) -> Operation:
   return Operation(graph.name, graph.sender_nodes.name, graph.receiver_nodes.name, matrix, matrix.T.tocsr())
 
 
-def schedule(graphs: Sequence[Graph], steps: Sequence[int]) -> list[Operation]:
+def graph_operations(graphs: Sequence[Graph]) -> dict[str, Operation]:
+  """The operation of every graph, by name: build them once when several schedules use them."""
+  return {graph.name: _operation(graph) for graph in graphs}
+
+
+def schedule(
+  graphs: Sequence[Graph], steps: Sequence[int], operations: dict[str, Operation] | None = None
+) -> list[Operation]:
   """The operations of a forward pass in V-cycle order: each encoder (finest first) followed by `steps[i]` message
-  passing steps on its mesh i, then the decoders (coarsest first); `graphs` are those of `graphs.model_graphs`."""
-  encoders = [g for g in graphs if g.kind == "encoder"]
-  processors = [g for g in graphs if g.kind == "processor"]
-  decoders = [g for g in graphs if g.kind == "decoder"]
-  operations = []
+  passing steps on its mesh i, then the decoders (coarsest first); `graphs` are those of `graphs.model_graphs`, and
+  `operations` those of `graph_operations` (built here if not given)."""
+  operations = operations or graph_operations(graphs)
+  encoders = [operations[g.name] for g in graphs if g.kind == "encoder"]
+  processors = [operations[g.name] for g in graphs if g.kind == "processor"]
+  decoders = [operations[g.name] for g in graphs if g.kind == "decoder"]
+  forward = []
   for encoder, processor, mesh_steps in zip(encoders, processors, steps, strict=True):
-    operations.append(_operation(encoder))
     # The same matrix for every step: the list holds references, not copies.
-    operations += [_operation(processor)] * mesh_steps
-  return operations + [_operation(decoder) for decoder in decoders]
+    forward += [encoder, *[processor] * mesh_steps]
+  return forward + decoders
 
 
 def node_sizes(graphs: Sequence[Graph]) -> dict[str, int]:
@@ -135,8 +152,19 @@ def reach(
   """Boolean (len(nodes), sizes[level]) array: row k marks the nodes of `level` that node `nodes[k]` of `level` reaches
   through `operations` (forward), or that reach it (backward). Every node reaches itself."""
   # One column per source node: sparse boolean matrix × dense boolean block.
-  state = {name: np.zeros((size, len(nodes)), dtype=bool) for name, size in sizes.items()}
-  state[level][nodes, np.arange(len(nodes))] = True
+  start = np.zeros((sizes[level], len(nodes)), dtype=bool)
+  start[nodes, np.arange(len(nodes))] = True
+  return np.ascontiguousarray(propagate(operations, sizes, level, start, backward).T)
+
+
+def propagate(
+  operations: Sequence[Operation], sizes: dict[str, int], level: str, start: np.ndarray, backward: bool = False
+) -> np.ndarray:
+  """Boolean (sizes[level], k) block: column c marks the nodes of `level` reached from (forward), or reaching
+  (backward), any node marked in column c of `start`, a (sizes[level], k) block. A column marking a set of nodes gives
+  the union of their reaches: the reach of a whole region in one product per operation."""
+  state = {name: np.zeros((size, start.shape[1]), dtype=bool) for name, size in sizes.items()}
+  state[level] = start.copy()
   for operation in reversed(operations) if backward else operations:
     if backward:
       source, target, matrix = operation.target, operation.source, operation.transpose
@@ -144,7 +172,7 @@ def reach(
       source, target, matrix = operation.source, operation.target, operation.matrix
     # The product is computed before the OR, so a processor step (source = target) uses the state before the step.
     state[target] |= matrix @ state[source]
-  return np.ascontiguousarray(state[level].T)
+  return state[level]
 
 
 def _distances_km(nodes: NodeSet, node: int, others: np.ndarray) -> np.ndarray:
@@ -237,5 +265,88 @@ def squashed_statistics(
     "receiver_mean_distance_km": described(
       "Mean geodesic distance from each sampled receiver to the grid nodes reaching it (km): receptive field",
       summarize(np.asarray(receiver_means)),
+    ),
+  }
+
+
+def steps_to_connect(
+  graphs: Sequence[Graph],
+  operations: dict[str, Operation],
+  sources: np.ndarray,
+  targets: np.ndarray,
+  max_steps: int,
+) -> int | None:
+  """The fewest message passing steps (the same on every mesh) with which the input at some grid node of `sources`
+  reaches the output at some grid node of `targets` (boolean masks over the grid nodes), or None if `max_steps` are not
+  enough. Reach grows with the steps (each step ORs into the state), so a bisection finds it."""
+  grid = next(g.sender_nodes for g in graphs if g.kind == "encoder")
+  sizes = node_sizes(graphs)
+  num_meshes = sum(g.kind == "processor" for g in graphs)
+
+  def connected(steps: int) -> bool:
+    forward = schedule(graphs, [steps] * num_meshes, operations)
+    return bool(np.any(propagate(forward, sizes, grid.name, sources[:, None])[:, 0] & targets))
+
+  if not (sources.any() and targets.any() and connected(max_steps)):
+    return None
+  # Invariant: not connected with `low` steps (-1: none tried), connected with `high`.
+  low, high = -1, max_steps
+  while high - low > 1:
+    middle = (low + high) // 2
+    low, high = (low, middle) if connected(middle) else (middle, high)
+  return high
+
+
+def basin_connectivity(
+  graphs: Sequence[Graph],
+  steps: Sequence[int],
+  basin_name: str,
+  basin: np.ndarray,
+  ocean_name: str,
+  ocean: np.ndarray,
+  max_steps: int,
+  operations: dict[str, Operation] | None = None,
+) -> dict[str, Any]:
+  """Connectivity of a basin and its nearby ocean (boolean masks over the grid nodes) in the squashed graph with
+  `steps[i]` message passing steps on mesh i: exact values, from the union of each region (one column each, forward
+  and backward), and the fewest steps that connect them in each direction."""
+  operations = operations or graph_operations(graphs)
+  grid = next(g.sender_nodes for g in graphs if g.kind == "encoder")
+  sizes = node_sizes(graphs)
+  forward = schedule(graphs, steps, operations)
+  regions = np.column_stack([basin, ocean])
+  # Columns: from the basin, from the ocean; forward: the nodes they reach, backward: the nodes reaching them.
+  reached = propagate(forward, sizes, grid.name, regions)
+  reaching = propagate(forward, sizes, grid.name, regions, backward=True)
+
+  def share(selected: np.ndarray, region: np.ndarray) -> dict[str, float]:
+    return fraction(selected[region]) if region.any() else {"count": 0, "percent": float("nan")}
+
+  return {
+    "basin": basin_name,
+    "ocean": ocean_name,
+    "basin_nodes": described("Grid nodes in the basin region", int(basin.sum())),
+    "ocean_nodes": described("Grid nodes in the ocean region", int(ocean.sum())),
+    "basin_nodes_reaching_ocean": described(
+      "Basin nodes whose input reaches the output at some ocean node", share(reaching[:, 1], basin)
+    ),
+    "ocean_nodes_reached_from_basin": described(
+      "Ocean nodes whose output depends on the input at some basin node", share(reached[:, 0], ocean)
+    ),
+    "ocean_nodes_reaching_basin": described(
+      "Ocean nodes whose input reaches the output at some basin node", share(reaching[:, 0], ocean)
+    ),
+    "basin_nodes_reached_from_ocean": described(
+      "Basin nodes whose output depends on the input at some ocean node", share(reached[:, 1], basin)
+    ),
+    "steps_basin_to_ocean": described(
+      f"Fewest message passing steps on every mesh for an input in the basin to reach an output in the ocean (null: "
+      f"more than {max_steps})",
+      steps_to_connect(graphs, operations, basin, ocean, max_steps),
+    ),
+    "steps_ocean_to_basin": described(
+      f"Fewest message passing steps on every mesh for an input in the ocean to reach an output in the basin (null: "
+      f"more than {max_steps})",
+      steps_to_connect(graphs, operations, ocean, basin, max_steps),
     ),
   }

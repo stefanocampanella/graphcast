@@ -54,6 +54,10 @@
   (120 km) / 2,342 (50 km) ocean points had no encoder edge in all. The per-vertex radius from the longest triangle
   edge (11 Nov 2026) covers every point inside a triangle; 1,222 (120 km) / 1,725 (50 km) remain, all outside the
   mesh domain (the Black Sea and coastal channels such as Tierra del Fuego). **HIGH PRIORITY**
+  Since 12 Nov 2026 the Black Sea is in the meshes, but it is cut off from the Aegean in every model with fewer than
+  28–30 message passing steps, whatever the mesh size (13 Nov 2026, basin connectivity of `graph-statistics`): the
+  3 km elements of the refined straits and Marmara cost the hops. Try coarser strait refinement (10–20 km, if the
+  coastline still keeps the straits open), long-range edges across the straits, or a hierarchy.
 * Long-range edges on the ocean mesh: merge a hierarchy of coarser ocean meshes into the 50 km processor, as the
   icosahedral multi-mesh does; the multi-mesh improved `zos` by 16.7 % over 50 km × 16 (8 Nov 2026) while losing
   10-31 % on the other targets for lack of ocean resolution. **HIGH PRIORITY**
