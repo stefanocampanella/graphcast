@@ -18,6 +18,7 @@ coverage, edge lengths, triangle quality, the CLI and its output."""
 import dataclasses
 import io
 import json
+import pathlib
 from typing import Any
 
 import haiku as hk
@@ -64,24 +65,31 @@ def _quantities(entry: dict, path: str = "") -> list[str]:
   return missing
 
 
-def _reach_matrix(built: list[graphs.Graph], steps: int) -> np.ndarray:
-  """The squashed graph's dense boolean adjacency (receivers × senders) for one mesh or two, from the formula of a
-  V-cycle written out by hand: I + D0 [(I + P0)^L + D1 (I + P1)^L E1 (I + P0)^L] E0."""
-  dense = {g.name: squashed.adjacency(g).toarray() > 0 for g in built}
+def _reach_matrix(built: list[graphs.Graph], steps: list[int]) -> np.ndarray:
+  """The squashed graph's dense boolean adjacency (receivers × senders) for one mesh or two, from the formula of the
+  V-cycle written out by hand (numpy's product of boolean matrices is OR of ANDs):
+  I + D0 [(I + P0)^L0 + D1 (I + P1)^L1 E1 (I + P0)^L0] E0."""
+  dense = {g.name: squashed.adjacency(g).toarray() for g in built}
 
-  def steps_on(name):
-    size = dense[name].shape[0]
-    power = np.eye(size, dtype=bool)
-    for _ in range(steps):
-      power = (power.astype(int) @ (np.eye(size, dtype=bool) | dense[name]).astype(int)) > 0
-    return power.astype(int)
+  def steps_on(name, count):
+    identity = np.eye(dense[name].shape[0], dtype=bool)
+    power = identity
+    for _ in range(count):
+      power = power @ (identity | dense[name])
+    return power
 
-  e0, d0 = dense["grid_to_mesh_0"].astype(int), dense["mesh_0_to_grid"].astype(int)
-  inner = steps_on("mesh_0")
+  e0, d0 = dense["grid_to_mesh_0"], dense["mesh_0_to_grid"]
+  inner = steps_on("mesh_0", steps[0])
   if "mesh_1" in dense:
-    e1, d1 = dense["mesh_0_to_mesh_1"].astype(int), dense["mesh_1_to_mesh_0"].astype(int)
-    inner = inner + d1 @ steps_on("mesh_1") @ e1 @ steps_on("mesh_0")
-  return (np.eye(e0.shape[1], dtype=int) + d0 @ inner @ e0) > 0
+    e1, d1 = dense["mesh_0_to_mesh_1"], dense["mesh_1_to_mesh_0"]
+    inner = inner | d1 @ steps_on("mesh_1", steps[1]) @ e1 @ steps_on("mesh_0", steps[0])
+  return np.eye(e0.shape[1], dtype=bool) | d0 @ inner @ e0
+
+
+def _config(steps: list[int], **settings) -> config.GraphStatisticsConfig:
+  """Settings for `cli.compute` on meshes already read (the paths are not opened)."""
+  meshes = [{"path": f"/mesh_{level}.msh", "message_passing_steps": s} for level, s in enumerate(steps)]
+  return config.GraphStatisticsConfig.model_validate({"mask": "/mask", "meshes": meshes, **settings})
 
 
 def test_graphs_equal_the_models(tiny_model):
@@ -140,7 +148,7 @@ def test_hierarchy_has_mesh_to_mesh_encoders_and_decoders():
   assert set(zip(encoder.senders.tolist(), encoder.receivers.tolist(), strict=True)) == set(zip(*np.nonzero(within)))
   assert decoder.sender_nodes.name == "mesh_1" and decoder.receiver_nodes.size == len(fine)
   np.testing.assert_array_equal(np.bincount(decoder.receivers), 3)
-  results = cli.compute(meshes, _grid(), config.GraphStatisticsConfig(num_sources=4))
+  results = cli.compute(meshes, _grid(), _config([2, 1], num_sources=4, squashed={"num_sources": 8}))
   assert [(c["lower"], c["upper"]) for c in results["coverage"]] == [("grid", "mesh_0"), ("mesh_0", "mesh_1")]
   assert results["coverage"][1]["lower_in_both"]["percent"] == 100.0
 
@@ -316,10 +324,16 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   mesh_path = tmp_path / "mesh.msh"
   write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(2), mesh_path)
   config_path = write_config(
-    {"num_sources": 8, "length_bin_width_km": 100.0, "squashed": {"message_passing_steps": [1], "num_sources": 16}}
+    {
+      "mask": mask_path,
+      "meshes": [{"path": str(mesh_path), "message_passing_steps": 1}],
+      "num_sources": 8,
+      "length_bin_width_km": 100.0,
+      "squashed": {"num_sources": 16},
+    }
   )
   output = tmp_path / "stats.json"
-  arguments = [str(config_path), mask_path, str(output), str(mesh_path), "--log-level", "warning"]
+  arguments = [str(config_path), str(output), "--log-level", "warning"]
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code == 0, result.output
   titles = ["Graphs", "Edge lengths", "Degrees", "Processors", "Distances", "Coverage", "Squashed"]
@@ -332,7 +346,7 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   stats = json.loads(output.read_text(), parse_constant=reject)
   assert list(stats["graphs"]) == ["grid_to_mesh_0", "mesh_0", "mesh_0_to_grid"]
   entries = [*stats["graphs"].items(), *(("coverage", c) for c in stats["coverage"])]
-  for name, entry in [*entries, *(("squashed", s) for s in stats["squashed"])]:
+  for name, entry in [*entries, ("squashed", stats["squashed"])]:
     assert _quantities(entry) == [], name
   processor = stats["graphs"]["mesh_0"]
   assert processor["nodes"]["value"] == 162 and processor["connected_components"]["value"] == 1
@@ -341,17 +355,20 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   assert stats["coverage"][0]["lower_in_decoder"]["percent"] == 100.0
   assert sum(processor["edge_length_km"]["histogram"]["counts"]) == processor["edges"]["value"]
   assert processor["triangles"]["inverted"]["value"] == 0
-  assert stats["squashed"][0]["message_passing_steps"]["value"] == 1 and stats["squashed"][0]["out_degree"]["max"] > 0
+  assert stats["squashed"]["message_passing_steps"]["value"] == [1] and stats["squashed"]["out_degree"]["max"] > 0
+  assert stats["settings"]["meshes"][0]["path"] == str(mesh_path)
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code != 0 and "exists" in result.output
 
 
-@pytest.mark.parametrize("splits", [(1,), (2, 1)])
-@pytest.mark.parametrize("steps", [0, 1, 2])
+@pytest.mark.parametrize(
+  ("splits", "steps"), [((1,), [0]), ((1,), [1]), ((1,), [2]), ((2, 1), [1, 2]), ((2, 1), [2, 0]), ((2, 1), [0, 1])]
+)
 def test_squashed_reach_equals_the_matrix_product(splits, steps):
-  """Propagating indicator vectors through the operations gives the columns (forward) and rows (backward) of the
-  squashed graph's adjacency, computed independently as a product of dense matrices, for one mesh and a hierarchy of
-  two: every grid node reaches itself, and the backward pass is the transpose of the forward one."""
+  """Propagating boolean indicator vectors through the operations gives the columns (forward) and rows (backward) of
+  the squashed graph's adjacency, computed independently as a product of dense matrices, for one mesh and a V-cycle
+  on two meshes with different steps: every grid node reaches itself, and the backward pass is the transpose of the
+  forward one."""
   built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(s) for s in splits], _grid(), 0.6)
   expected = _reach_matrix(built, steps)
   operations, sizes = squashed.schedule(built, steps), squashed.node_sizes(built)
@@ -366,9 +383,9 @@ def test_squashed_statistics_are_exact_with_every_node_sampled():
   pairs it links; batches of any size give the same values."""
   grid = _grid()
   built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(1)], grid, 0.6)
-  adjacency = _reach_matrix(built, 1) & ~np.eye(built[0].sender_nodes.size, dtype=bool)
+  adjacency = _reach_matrix(built, [1]) & ~np.eye(built[0].sender_nodes.size, dtype=bool)
   nodes = np.arange(adjacency.shape[0])
-  stats = squashed.squashed_statistics(built, 1, nodes, 10_000, 5, np.random.default_rng(0))
+  stats = squashed.squashed_statistics(built, [1], nodes, 10_000, 5, np.random.default_rng(0))
   assert stats["edges"]["value"] == pytest.approx(adjacency.sum())
   assert stats["out_degree"]["mean"] == pytest.approx(adjacency.sum(axis=0).mean())
   assert stats["in_degree"]["max"] == adjacency.sum(axis=1).max()
@@ -377,8 +394,44 @@ def test_squashed_statistics_are_exact_with_every_node_sampled():
   lengths = geometry.geodesic_lengths(lat[senders], lon[senders], lat[receivers], lon[receivers]) / 1000
   assert stats["horizon_km"]["mean"] == pytest.approx(lengths.mean())
   assert stats["horizon_km"]["max"] == pytest.approx(lengths.max())
-  other_batch = squashed.squashed_statistics(built, 1, nodes, 10_000, 64, np.random.default_rng(0))
+  other_batch = squashed.squashed_statistics(built, [1], nodes, 10_000, 64, np.random.default_rng(0))
   assert other_batch["horizon_km"] == stats["horizon_km"]
+  # Per receiver: the mean distance to its senders (a column of the adjacency).
+  receiver_means = [
+    geometry.geodesic_lengths(np.full(len(s), lat[r]), np.full(len(s), lon[r]), lat[s], lon[s]).mean() / 1000
+    for r, s in ((r, np.flatnonzero(adjacency[r])) for r in nodes)
+    if len(s)
+  ]
+  assert stats["receiver_mean_distance_km"]["mean"] == pytest.approx(np.mean(receiver_means))
+
+
+def test_message_passing_steps_reach_every_node_within_that_many_hops():
+  """L steps reach the nodes within at most L hops, not only those exactly L hops away: each step ORs the
+  neighbours into the state, so (I + P)^L = I + P + ... + P^L. On a path graph 0-1-2-3-4, two steps from node 0 reach
+  nodes 0, 1 and 2, and backward from node 4 nodes 2, 3 and 4."""
+  undirected = [(0, 1), (1, 2), (2, 3), (3, 4)]
+  senders, receivers = zip(*(undirected + [(b, a) for a, b in undirected]), strict=True)
+  path = _graph(senders, receivers, 5, 5, kind="processor")
+  operations = [squashed._operation(path)] * 2
+  reached = squashed.reach(operations, {"a": 5}, "a", np.array([0, 4]))
+  np.testing.assert_array_equal(reached, [[1, 1, 1, 0, 0], [0, 0, 1, 1, 1]])
+  np.testing.assert_array_equal(
+    squashed.reach(operations, {"a": 5}, "a", np.array([4]), backward=True), [[0, 0, 1, 1, 1]]
+  )
+
+
+def test_hierarchy_keeps_the_paths_of_the_finer_mesh():
+  """On the way up the V-cycle each decoder ORs the coarser mesh's result into the finer mesh's state (skip
+  connections, as in a U-Net), so the squashed graph of a hierarchy contains that of its finest mesh alone with the
+  same steps: the paths that never leave mesh 0 still count."""
+  grid = _grid()
+  meshes = [icosahedral_mesh.get_multi_mesh_data(s) for s in (2, 1)]
+  hierarchy = graphs.model_graphs(meshes, grid, 0.6)
+  single = graphs.model_graphs(meshes[:1], grid, 0.6)
+  nodes = np.arange(hierarchy[0].sender_nodes.size)
+  with_coarse = squashed.reach(squashed.schedule(hierarchy, [1, 1]), squashed.node_sizes(hierarchy), "grid", nodes)
+  alone = squashed.reach(squashed.schedule(single, [1]), squashed.node_sizes(single), "grid", nodes)
+  assert np.all(with_coarse | ~alone) and with_coarse.sum() > alone.sum()
 
 
 def test_sampled_horizon_weights_senders_by_their_out_degree():
@@ -386,8 +439,8 @@ def test_sampled_horizon_weights_senders_by_their_out_degree():
   an estimate of the mean over all edges (not over senders): close to the exact value on a fine icosahedral mesh."""
   built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(2)], _grid(), 0.6)
   nodes = np.arange(built[0].sender_nodes.size)
-  exact = squashed.squashed_statistics(built, 2, nodes, 10_000, 64, np.random.default_rng(0))
-  sampled = squashed.squashed_statistics(built, 2, nodes, 8, 64, np.random.default_rng(0))
+  exact = squashed.squashed_statistics(built, [2], nodes, 10_000, 64, np.random.default_rng(0))
+  sampled = squashed.squashed_statistics(built, [2], nodes, 8, 64, np.random.default_rng(0))
   assert sampled["measured_edges"]["value"] < exact["measured_edges"]["value"]
   assert sampled["horizon_km"]["mean"] == pytest.approx(exact["horizon_km"]["mean"], rel=0.05)
 
@@ -420,4 +473,27 @@ def test_distances_compare_paths_along_the_mesh_with_geodesics():
 def test_unknown_settings_are_rejected():
   """A misspelt setting fails instead of being ignored."""
   with pytest.raises(ValueError, match="num_source"):
-    config.GraphStatisticsConfig.model_validate({"num_source": 3})
+    _config([1], num_source=3)
+
+
+def test_input_paths_must_be_absolute():
+  """The mask and mesh paths are absolute (container paths, as in the training configs): a relative path would depend
+  on the directory the command runs from."""
+  with pytest.raises(ValueError, match="not an absolute path"):
+    config.GraphStatisticsConfig.model_validate(
+      {"mask": "mask", "meshes": [{"path": "/m.msh", "message_passing_steps": 1}]}
+    )
+  with pytest.raises(ValueError, match="not an absolute path"):
+    config.GraphStatisticsConfig.model_validate(
+      {"mask": "/mask", "meshes": [{"path": "m.msh", "message_passing_steps": 1}]}
+    )
+
+
+def test_shipped_settings_are_valid():
+  """configs/analysis/graph_statistics.toml validates: its top-level keys come before the [[meshes]] tables (keys after
+  a table header belong to the table)."""
+  from mobydick import cli_utils
+
+  path = pathlib.Path(__file__).parents[1] / "configs" / "analysis" / "graph_statistics.toml"
+  settings = cli_utils.read_configs(path, schema=config.GraphStatisticsConfig)
+  assert settings.meshes[0].message_passing_steps == 16 and settings.radius_query_fraction_edge_length == 0.6

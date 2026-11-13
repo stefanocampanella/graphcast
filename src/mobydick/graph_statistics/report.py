@@ -122,27 +122,30 @@ def distances_table(graphs: dict[str, Any]) -> Table:
   return table
 
 
-def squashed_table(entries: list[dict[str, Any]]) -> Table:
-  """The squashed grid-to-grid graphs: estimated edges, degrees (other grid nodes reached by a sender / reaching a
-  receiver) and horizon (geodesic edge lengths)."""
-  columns = ["steps", "nodes", "sampled", "edges (est.)", "density", "out-degree mean", "out-degree max"]
-  columns += ["in-degree mean", "no out-edges", "horizon mean km", "horizon p50 km", "horizon max km"]
-  table = _table("Squashed grid-to-grid graphs (self-loops left out)", columns)
-  for entry in entries:
-    horizon = entry["horizon_km"]
-    table.add_row(
-      _format(entry["message_passing_steps"]["value"]),
-      _format(entry["nodes"]["value"]),
-      _format(entry["sampled_nodes"]["value"]),
-      _format(entry["edges"]["value"]),
-      _format(entry["density"]["value"]),
-      _format(entry["out_degree"]["mean"]),
-      _format(entry["out_degree"]["max"]),
-      _format(entry["in_degree"]["mean"]),
-      f"{entry['senders_without_edges']['percent']:.2f} %",
-      *(_format(horizon[key]) for key in ("mean", "p50", "max")),
-    )
-  return table
+def squashed_table(entry: dict[str, Any]) -> Table:
+  """The squashed grid-to-grid graph: estimated edges, degrees (other grid nodes reached by a sender / reaching a
+  receiver) and horizon (geodesic edge lengths), with the mean distance per sender and per receiver."""
+  steps = ", ".join(str(s) for s in entry["message_passing_steps"]["value"])
+  table = _table(f"Squashed grid-to-grid graph, {steps} steps (self-loops left out)", ["quantity", "value"])
+  table.add_row(
+    "grid nodes (sampled)", f"{_format(entry['nodes']['value'])} ({_format(entry['sampled_nodes']['value'])})"
+  )
+  table.add_row("edges (estimated)", _format(entry["edges"]["value"]))
+  table.add_row("density", _format(entry["density"]["value"]))
+  table.add_row("senders without edges", f"{entry['senders_without_edges']['percent']:.2f} %")
+  table.add_row("receivers without edges", f"{entry['receivers_without_edges']['percent']:.2f} %")
+  rows = [
+    ("out-degree (domain of influence)", entry["out_degree"]),
+    ("in-degree (receptive field)", entry["in_degree"]),
+    ("horizon: edge lengths (km)", entry["horizon_km"]),
+    ("mean distance per sender (km)", entry["sender_mean_distance_km"]),
+    ("mean distance per receiver (km)", entry["receiver_mean_distance_km"]),
+  ]
+  summaries = summary_table("Squashed graph: degrees and distances", rows)
+  grid = Table.grid()
+  grid.add_row(table)
+  grid.add_row(summaries)
+  return grid
 
 
 def coverage_table(coverage: list[dict[str, Any]], graphs: dict[str, Any]) -> Table:
@@ -173,8 +176,7 @@ def print_summary(results: dict[str, Any], console: Console) -> None:
   console.print(processors_table(graphs))
   console.print(distances_table(graphs))
   console.print(coverage_table(results["coverage"], graphs))
-  if results["squashed"]:
-    console.print(squashed_table(results["squashed"]))
+  console.print(squashed_table(results["squashed"]))
   for name, stats in graphs.items():
     if stats["kind"] == "processor":
       triangles = stats["triangles"]

@@ -12,27 +12,46 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Settings of moby-dick graph-statistics."""
+"""Settings of moby-dick graph-statistics: the inputs (mask and meshes, absolute paths as in the training configs)
+and the settings of the statistics."""
 
-from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveFloat, PositiveInt
+import pathlib
+
+from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveFloat, PositiveInt, field_validator
 
 
-class SquashedGraphConfig(BaseModel):
-  """Settings of the squashed grid-to-grid graphs (`squashed`)."""
+def _absolute(path: pathlib.Path) -> pathlib.Path:
+  if not path.is_absolute():
+    raise ValueError(f"{path} is not an absolute path")
+  return path
+
+
+class MeshLevelConfig(BaseModel):
+  """One mesh of the model, with its processor's message passing steps."""
 
   model_config = ConfigDict(extra="forbid")
 
-  message_passing_steps: list[PositiveInt] = Field(
-    default=[],
-    description="One squashed graph per entry, with this many message passing steps on every mesh (none: no squashed "
-    "graph)",
+  path: pathlib.Path = Field(description="Mesh file (.msh, from make-ocean-mesh or make-icosahedral-mesh)")
+  message_passing_steps: NonNegativeInt = Field(
+    description="Message passing steps of the mesh's processor (the model's gnn_msg_steps for one mesh; in a "
+    "hierarchy, the steps on this mesh on the way down the V-cycle)"
   )
+
+  _path_is_absolute = field_validator("path")(_absolute)
+
+
+class SquashedGraphConfig(BaseModel):
+  """Settings of the squashed grid-to-grid graph (`squashed`)."""
+
+  model_config = ConfigDict(extra="forbid")
+
   num_sources: PositiveInt = Field(
-    default=1024, description="Grid nodes sampled as senders (out-degrees, horizon) and as receivers (in-degrees)"
+    default=1024,
+    description="Grid nodes sampled as senders (forward: out-degrees, horizon) and as receivers (backward: in-degrees)",
   )
   max_targets: PositiveInt = Field(
     default=4096,
-    description="Edges per sampled sender whose geodesic length is computed (sampled when it reaches more grid nodes)",
+    description="Edges per sampled node whose geodesic length is computed (sampled when it has more)",
   )
   batch_size: PositiveInt = Field(
     default=64,
@@ -45,6 +64,10 @@ class GraphStatisticsConfig(BaseModel):
 
   model_config = ConfigDict(extra="forbid")
 
+  mask: pathlib.Path = Field(description="Training mask written by moby-dick download-mask: its grid and ocean points")
+  meshes: list[MeshLevelConfig] = Field(
+    min_length=1, description="The model's meshes, finest first (one, or a hierarchy)"
+  )
   radius_query_fraction_edge_length: PositiveFloat = Field(
     default=0.6,
     description="Encoder radius as a fraction of the longest triangle edge at each mesh vertex, as the model's "
@@ -63,5 +86,7 @@ class GraphStatisticsConfig(BaseModel):
     "[-1, 1] with twice as many, angles over [0°, 180°])",
   )
   squashed: SquashedGraphConfig = Field(
-    default_factory=SquashedGraphConfig, description="The squashed grid-to-grid graphs"
+    default_factory=SquashedGraphConfig, description="The squashed grid-to-grid graph"
   )
+
+  _mask_is_absolute = field_validator("mask")(_absolute)

@@ -89,7 +89,9 @@ def graph_statistics(graph: Graph, config: GraphStatisticsConfig, rng: np.random
 
 def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfig) -> dict[str, Any]:
   """The statistics of every graph (by name, in data-flow order), the coverage of every pair of levels and the
-  squashed grid-to-grid graphs."""
+  squashed grid-to-grid graph; `meshes` are those of `config.meshes`, read."""
+  if len(meshes) != len(config.meshes):
+    raise ValueError(f"{len(meshes)} meshes for {len(config.meshes)} entries of the settings")
   with _timed(f"Built the graphs of {len(meshes)} mesh(es)"):
     graphs = model_graphs(meshes, grid, config.radius_query_fraction_edge_length)
   # One generator for all components of all processors: the sampled sources depend only on the seed.
@@ -107,37 +109,28 @@ def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfi
   squashed_rng = np.random.default_rng([config.seed, 1])
   grid_nodes = graphs[0].sender_nodes.size
   sampled = squashed_rng.choice(grid_nodes, min(config.squashed.num_sources, grid_nodes), replace=False)
-  results["squashed"] = []
-  for steps in config.squashed.message_passing_steps:
-    with _timed(f"Squashed grid-to-grid graph with {steps} steps, from {len(sampled):,} grid nodes"):
-      results["squashed"].append(
-        squashed.squashed_statistics(
-          graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng
-        )
-      )
+  steps = [mesh.message_passing_steps for mesh in config.meshes]
+  with _timed(f"Squashed grid-to-grid graph with {steps} steps, from {len(sampled):,} grid nodes"):
+    results["squashed"] = squashed.squashed_statistics(
+      graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng
+    )
   return results
 
 
 @click.command("graph-statistics")
 @click.argument("config_path", type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False))
-@click.argument("mask_path", type=click.Path(path_type=pathlib.Path, exists=True))
 @click.argument("output_path", type=click.Path(path_type=pathlib.Path, dir_okay=False, writable=True))
-@click.argument(
-  "mesh_paths", nargs=-1, required=True, type=click.Path(path_type=pathlib.Path, exists=True, dir_okay=False)
-)
 @click.option("--overwrite/--no-overwrite", default=False, help="Whether to overwrite existing outputs", is_flag=True)
 @cli_utils.LOG_LEVEL_OPTION
 def graph_statistics_command(
   config_path: pathlib.Path,
-  mask_path: pathlib.Path,
   output_path: pathlib.Path,
-  mesh_paths: tuple[pathlib.Path, ...],
   overwrite: bool = False,
   log_level: str = "info",
 ):
-  """Statistics of the graphs of a model on the grid of MASK_PATH (written by moby-dick download-mask) and the meshes
-  MESH_PATHS (one, or a hierarchy, finest first), with the settings of CONFIG_PATH. Prints a summary and writes every
-  value, with its description, to OUTPUT_PATH (JSON). The environment variable NETWORKX_BACKEND_PRIORITY selects a
+  """Statistics of the graphs of the model described by CONFIG_PATH: its mask (written by moby-dick download-mask)
+  and meshes (one, or a hierarchy, finest first) with their message passing steps, and the settings of the
+  statistics. Prints a summary and writes every value, with its description, to OUTPUT_PATH (JSON). The environment variable NETWORKX_BACKEND_PRIORITY selects a
   networkx backend for the path metrics (e.g. cugraph, with the graph-gpu extra)."""
   from mobydick.geospatial_mesh_utils import read_mesh_data
 
@@ -146,13 +139,13 @@ def graph_statistics_command(
   if output_path.exists() and not overwrite:
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {config!r}, networkx backend priority {nx.config.backend_priority}")
-  with _timed(f"Read {len(mesh_paths)} mesh(es) and the mask"):
-    meshes = [read_mesh_data(path) for path in mesh_paths]
-    grid = get_grid(mask_path)
+  with _timed(f"Read {len(config.meshes)} mesh(es) and the mask"):
+    meshes = [read_mesh_data(mesh.path) for mesh in config.meshes]
+    grid = get_grid(config.mask)
   results = compute(meshes, grid, config)
   # The JSON first: the results are kept even if printing fails.
   output_path.parent.mkdir(parents=True, exist_ok=True)
-  output = {"meshes": [str(path) for path in mesh_paths], "mask": str(mask_path), "settings": config.model_dump()}
+  output = {"settings": config.model_dump(mode="json")}
   output_path.write_text(json.dumps(finite_or_null({**output, **results}), indent=1, allow_nan=False))
   logger.info(f"Wrote {output_path}")
   print_summary(results, Console())

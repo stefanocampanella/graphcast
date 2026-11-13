@@ -1,11 +1,12 @@
 # Distances on the meshes and horizon of the squashed grid-to-grid graph (13 Nov 2026)
 
-`moby-dick graph-statistics` with `configs/analysis/graph_statistics.toml` (32 sampled sources per processor component,
-1,024 sampled grid nodes for the squashed graphs, 8 and 16 message passing steps) on the ten uniform meshes and the
-two new ones (200 and 150 km), the icosahedral M6 multi-mesh and the 50 km + 120 km hierarchy, all seamsh v0.6.0+fork
-meshes of `data/geometry`, on the 693,039 ocean points of the training mask; job 2880077 (one booster node, the 14
-cases in parallel, 7 min; 25 km: 6.7 min, of which 2 min processor statistics and 3.8 min squashed graphs).
-`distances.csv` and `squashed.csv` hold the values below.
+`moby-dick graph-statistics` with the settings of `configs/analysis/graph_statistics.toml` (32 sampled sources per
+processor component, 1,024 sampled grid nodes for the squashed graph), one config per mesh and number of message
+passing steps (8 and 16 on every mesh): the twelve uniform meshes from 200 to 25 km, the icosahedral M6 multi-mesh and
+the 50 km + 120 km hierarchy, all seamsh v0.6.0+fork meshes of `data/geometry`, on the 693,039 ocean points of the
+training mask. Job 2881277: the 28 cases in parallel on one booster node, 5.2 min (25 km × 16 the longest). A first run
+(job 2880077, float32 propagation with thresholding instead of booleans) gave the same degrees exactly and horizons
+within 0.09 % (sampled edges differ). `distances.csv` and `squashed.csv` hold the values below.
 
 ## Hops × edge length is the distance along the mesh, not between the points
 
@@ -43,33 +44,39 @@ points of the ocean" is not right. From the same sampled sources to every other 
 ## The squashed grid-to-grid graph
 
 Grid point i → j when the input at i can reach the output at j through the encoder, L message passing steps and the
-decoder (`mobydick.graph_statistics.squashed`; every node update keeps the node's own state, so for one mesh the
-adjacency is I + D (I + P)^L E). It is never formed: indicator vectors of 64 sampled grid nodes at a time are propagated
-forward (out-degree, horizon) and backward with the transposed operations (in-degree). Horizon: the geodesic length of
-the squashed graph's edges (self-loops left out), at most 4,096 per sender, weighted by out-degree.
+decoder (`mobydick.graph_statistics.squashed`). Every node update keeps the node's own state, so in boolean algebra
+(OR of ANDs) one step is x ← x OR P x and L steps give (I + P)^L = I + P + … + P^L: the nodes within at most L hops.
+For one mesh the adjacency is I + D (I + P)^L E; for a hierarchy, a V-cycle: L steps on each mesh on the way down,
+then each decoder ORs the coarser mesh's result into the finer mesh's state of the way down (the U-Net skip
+connection, so paths that stay on the finer mesh count). The adjacency is never formed: boolean indicator vectors of
+64 sampled grid nodes at a time are propagated through the boolean sparse matrices, forward (the grid points each
+sender's input reaches: out-degree, domain of influence, horizon) and backward with the transposed operations in
+reverse order (the grid points whose input reaches each receiver: in-degree, receptive field). Horizon: the geodesic
+length of the squashed graph's edges (self-loops left out), at most 4,096 per sender, weighted by out-degree.
 
-| Mesh | Steps | Out-degree mean (median) | Share of the ocean | Horizon mean (km) | p50 | p75 | max | Steps × edge (km) |
-|---|---|---|---|---|---|---|---|---|
-| 200 km | 8 | 18,986 (12,974) | 2.7 % | 1,003 | 1,040 | 1,343 | 2,054 | 1,534 |
-| 200 km | 16 | 49,841 (44,827) | 7.2 % | 1,837 | 1,890 | 2,492 | 3,621 | 3,067 |
-| 120 km | 8 | 8,637 (4,778) | 1.2 % | 623 | 649 | 830 | 1,208 | 939 |
-| 120 km | 16 | 23,778 (16,714) | 3.4 % | 1,146 | 1,192 | 1,542 | 2,173 | 1,878 |
-| 85 km | 16 | 13,886 (8,534) | 2.0 % | 824 | 861 | 1,104 | 1,535 | 1,342 |
-| 60 km | 16 | 7,936 (4,278) | 1.1 % | 591 | 618 | 787 | 1,107 | 954 |
-| 50 km | 8 | 1,956 (875) | 0.28 % | 266 | 279 | 351 | 500 | 398 |
-| 50 km | 16 | 5,863 (3,025) | 0.85 % | 495 | 519 | 658 | 907 | 795 |
-| 25 km | 16 | 1,764 (778) | 0.25 % | 251 | 264 | 333 | 480 | 398 |
-| icosahedral M6 | 8 | 539,636 (560,312) | 78 % | 8,773 | 8,648 | 11,828 | 20,004 | – |
-| icosahedral M6 | 16 | 693,038 (all) | 100 % | 9,933 | 9,974 | 13,514 | 20,004 | – |
-| 50 km + 120 km | 8 | 15,265 (9,572) | 2.2 % | 873 | 911 | 1,170 | 1,657 | – |
-| 50 km + 120 km | 16 | 40,751 (33,655) | 5.9 % | 1,604 | 1,664 | 2,171 | 2,999 | – |
+| Mesh | Steps | Out-degree mean (median) | Share of the ocean | Horizon mean (km) | p50 | p75 | max | Steps × edge (km) | Receptive field, median receiver (km) |
+|---|---|---|---|---|---|---|---|---|---|
+| 200 km | 8 | 18,986 (12,974) | 2.7 % | 1,003 | 1,040 | 1,344 | 2,044 | 1,533 | 1,087 |
+| 200 km | 16 | 49,841 (44,827) | 7.2 % | 1,837 | 1,891 | 2,493 | 3,625 | 3,067 | 1,997 |
+| 120 km | 8 | 8,637 (4,778) | 1.2 % | 623 | 649 | 830 | 1,208 | 940 | 659 |
+| 120 km | 16 | 23,778 (16,714) | 3.4 % | 1,146 | 1,192 | 1,542 | 2,180 | 1,879 | 1,227 |
+| 85 km | 16 | 13,886 (8,534) | 2.0 % | 824 | 861 | 1,104 | 1,544 | 1,343 | 879 |
+| 60 km | 16 | 7,936 (4,278) | 1.1 % | 590 | 617 | 786 | 1,116 | 953 | 623 |
+| 50 km | 8 | 1,956 (875) | 0.28 % | 266 | 279 | 351 | 500 | 397 | 277 |
+| 50 km | 16 | 5,863 (3,025) | 0.85 % | 495 | 520 | 658 | 907 | 795 | 520 |
+| 25 km | 16 | 1,764 (778) | 0.25 % | 251 | 264 | 332 | 480 | 399 | 261 |
+| icosahedral M6 | 8 | 539,636 (560,312) | 77.9 % | 8,770 | 8,645 | 11,826 | 20,004 | – | 8,713 |
+| icosahedral M6 | 16 | 693,038 (all) | 100 % | 9,935 | 9,977 | 13,512 | 20,004 | – | 9,910 |
+| 50 km + 120 km | 8 | 15,265 (9,572) | 2.2 % | 873 | 911 | 1,170 | 1,662 | – | 928 |
+| 50 km + 120 km | 16 | 40,751 (33,655) | 5.9 % | 1,604 | 1,663 | 2,170 | 2,995 | – | 1,724 |
 
 (all meshes and both step counts in `squashed.csv`)
 
 - **Uniform meshes:** the mean horizon is 0.60–0.67 × steps × median edge, the largest 1.13–1.51 × (the encoder
   radius and the decoder's face add to the steps at both ends). The squashed graph is sparse: 50 km × 16, the best configuration, links
-  a grid point to 0.85 % of the ocean, within 907 km. In-degrees equal out-degrees on average (the processors are
-  symmetric; encoder and decoder differ only in their reach).
+  a grid point to 0.85 % of the ocean, within 907 km. Mean in- and out-degrees are equal (both are edges /
+  nodes), and the receptive field of a receiver is as wide as the domain of influence of a sender (median mean
+  distance within 1 %).
 - **Median out-degree well below the mean:** a skewed distribution; the 0.25° grid has more points per area at high
   latitudes, and land takes part of a coastal point's neighbourhood (not separated here).
 - **Senders without edges** (0.1–0.2 % at 35 and 25 km): ocean points outside the mesh domain, without encoder edges.

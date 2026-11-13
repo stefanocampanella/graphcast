@@ -1605,3 +1605,23 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   (9,880–10,030 km); the artifact's sentence is corrected. Squashed graphs: 50 km × 16 links a grid point to 0.85 % of
   the ocean (mean 495 km, at most 907 km), 120 km × 8 to 1.2 % (623 km), icosahedral M6 × 16 to all of it, 50 km +
   120 km × 16 to 5.9 % (1,604 km).
+
+## 2026-11-13 13:30: graph statistics: settings in the config, booleans, V-cycle with skip connections
+
+- **Requests:** mask and mesh paths in the configuration file (absolute paths, as other commands), with the message
+  passing steps of each processor mesh; check that the V-cycle accounts for the U-Net residual (the coarser result
+  added to the finer mesh's state of the way down); paths of up to L hops, not exactly L (the OR of the powers in the
+  `graph_pruning.py` comment); when to run forward or backward; booleans instead of float32 and thresholding.
+- **Answers:** the propagation already ORs every operation into the receiving level's state, so the decoders keep
+  the finer mesh's state of the way down (the skip connection) and each step is x ← x OR P x, i.e. (I + P)^L =
+  I + P + … + P^L, the nodes within at most L hops (a test on a path graph and one showing that a hierarchy's squashed
+  graph contains its finest mesh's). Forward gives domains of influence (out-degree, horizon), backward receptive
+  fields (in-degree); pruning needs both, statistics of one end one.
+- **Code:** `moby-dick graph-statistics CONFIG OUTPUT.json`; `mask` and `[[meshes]]` (`path`, `message_passing_steps`)
+  in the config, absolute paths checked; one squashed graph per run with per-mesh steps; boolean sparse matrices and
+  blocks (scipy's boolean product is OR of ANDs, as fast as float32); mean distance per receiver (receptive field);
+  the module docstring explains the algebra, the V-cycle and the two directions. The test TOML writer writes inline
+  tables. 502 tests pass (booster node).
+- **Rerun** (job 2881277, 28 configs, 5.2 min on one node): degrees identical to the float32 run, horizons within
+  0.09 % (edge sampling); receptive fields as wide as domains of influence (median per-node mean distance within 1 %).
+  Report, CSVs, CLAUDE.md and the artifact updated.

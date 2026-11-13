@@ -44,13 +44,16 @@ LAND_COLUMN = (3, 4)
 
 
 def to_toml(settings: dict) -> str:
-  """TOML of flat settings: scalars, lists of strings, and tables of lists (enough for the download configs)."""
+  """TOML of flat settings: scalars, lists (of scalars or of tables, written inline) and tables of them (enough for
+  the download and graph-statistics configs)."""
 
   def value(item) -> str:
     if isinstance(item, bool):
       return str(item).lower()
     if isinstance(item, str):
       return f'"{item}"'
+    if isinstance(item, dict):
+      return "{" + ", ".join(f'"{name}" = {value(element)}' for name, element in item.items()) + "}"
     if isinstance(item, (list, tuple)):
       return "[" + ", ".join(value(element) for element in item) + "]"
     return str(item)

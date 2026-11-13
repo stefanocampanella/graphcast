@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Stefano Campanella
 # SPDX-License-Identifier: Apache-2.0
 
-# Settings of moby-dick graph-statistics (mobydick.graph_statistics.GraphStatisticsConfig).
+# Settings of moby-dick graph-statistics (mobydick.graph_statistics.GraphStatisticsConfig): the graphs of the model of
+# configs/training/production_run.toml (50 km mesh, 16 message passing steps). Paths are container paths, as in the
+# training configs.
+mask = "/data/mask"
 # Encoder radius as a fraction of the longest triangle edge at each mesh vertex: keep equal to the training config's
 # model.radius_query_fraction_edge_length.
 radius_query_fraction_edge_length = 0.6
@@ -12,12 +15,18 @@ seed = 0
 length_bin_width_km = 5.0
 quality_bins = 20
 
-# Squashed grid-to-grid graphs (mobydick.graph_statistics.squashed): grid node i -> j when the input at i reaches the
-# output at j through the encoders, message_passing_steps steps on every mesh and the decoders. One graph per entry.
+# The model's meshes, finest first: one, or a hierarchy (a V-cycle with message_passing_steps on each mesh on the way
+# down; each decoder adds the coarser mesh's result to the finer mesh's state on the way up). Repeat the table for
+# each mesh.
+[[meshes]]
+path = "/data/geometry/uniform_50km.msh"
+message_passing_steps = 16
+
+# Squashed grid-to-grid graph (mobydick.graph_statistics.squashed): grid node i -> j when the input at i reaches the
+# output at j through the encoders, the message passing steps and the decoders. Grid nodes sampled as senders and
+# receivers; geodesic lengths of at most max_targets edges per sampled node; nodes propagated together (dense boolean
+# blocks of batch_size × grid nodes).
 [squashed]
-message_passing_steps = [8, 16]
-# Grid nodes sampled as senders and receivers; geodesic lengths of at most max_targets edges per sender; sources
-# propagated together (dense blocks of batch_size × grid nodes).
 num_sources = 1024
 max_targets = 4096
 batch_size = 64
