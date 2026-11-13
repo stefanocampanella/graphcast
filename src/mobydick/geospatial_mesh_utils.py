@@ -41,6 +41,7 @@ from mobydick.gis_utils import (
   CRSRegistry,
   cartesian_crs,
   get_transform,
+  lat_lon_to_cartesian,
   stereographic_crs,
   xarray_to_gdal_raster,
 )
@@ -310,29 +311,63 @@ class BathymetryHessianField(RasterField):
     return hessian_matrix_norm
 
 
-FieldName = Literal["constant", "shore_proximity", "bathymetry", "bathymetry_hessian"]
+class PointRefinementField(StereoMeshSizeField):
+  """Size `size` at the points, growing by `growth` per unit of distance from the nearest point (chord distance in
+  Earth-centred coordinates). Used, combined with other fields by the minimum, to resolve straits narrower than the
+  other fields' size: the coastline coarsening closes a strait narrower than its size, and gmsh needs elements about
+  as wide as the strait to mesh it."""
+
+  def __init__(self, points: list[tuple[float, float]], size: float, growth: float):
+    self.size = size
+    self.growth = growth
+    lat, lon = np.asarray(points, dtype=np.float64).T
+    self.points = lat_lon_to_cartesian(lat, lon)  # [num_points, 3], metres
+
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    projection_crs = CoordinateReferenceSystem.from_osr(projection)
+    if not cartesian_crs.IsSame(projection_crs):
+      x = get_transform(projection_crs, cartesian_crs)(np.asarray(x))
+    # CHORD DISTANCE (straight line through the Earth), not geodesic. A chord of geodesic length d on a sphere of
+    # radius R is shorter by about d³ / (24 R²): 0.003 % at 100 km, 0.08 % at 500 km, beyond which every refinement in
+    # the configs has reached its base size ((10 km - 250 m) / 0.02 = 490 km; (120 km - 3 km) / 0.3 = 390 km). The
+    # ellipsoid changes this by less (flattening 1/298). The geodesic (pyproj.Geod.inv) would cost a call per point
+    # and refinement point for no visible difference. See also mesh_graph.longest_incident_edges.
+    distance = np.min(np.linalg.norm(np.asarray(x)[:, None, :3] - self.points[None], axis=-1), axis=1)
+    return self.size + self.growth * distance
+
+
+class MinimumField(StereoMeshSizeField):
+  """The minimum of several fields."""
+
+  def __init__(self, components: Iterable[StereoMeshSizeField]):
+    self.components = list(components)
+
+  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
+    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.components])
+
+
+FieldName = Literal["uniform", "shore_proximity", "bathymetry", "bathymetry_hessian", "point_refinement"]
 FieldsRegistry = {
   "uniform": UniformField,
   "shore_proximity": BoundaryProximityField,
   "bathymetry": BathymetryField,
   "bathymetry_hessian": BathymetryHessianField,
+  "point_refinement": PointRefinementField,
 }
 
 
-class CompositeMeshSizeField(StereoMeshSizeField):
-  """Stereographic mesh size field which takes the minimum of other fields."""
+class CompositeMeshSizeField(MinimumField):
+  """The minimum of the fields of a config, by name (`fields`: each is also written as a view of the mesh)."""
 
-  def __init__(self, fields_config: Iterable[FieldConfig], prefix: pathlib.Path | None = None):
-    """Build each field from its validated settings (mesh_config); file paths are relative to prefix, if given."""
+  def __init__(self, fields_config: Iterable[FieldConfig]):
+    """Build each field from its validated settings (mesh_config)."""
     fields = {}
     for config in fields_config:
-      arguments = field_arguments(config, prefix)
+      arguments = field_arguments(config)
       logger.info("Creating field %s with config %s.", config.name, arguments)
       fields[config.name] = FieldsRegistry[config.name](**arguments)
     self.fields = fields
-
-  def mesh_size_3d(self, x: np.ndarray, projection: osr.SpatialReference) -> np.ndarray:
-    return np.minimum.reduce([field.mesh_size_3d(x, projection) for field in self.fields.values()])
+    super().__init__(fields.values())
 
 
 # TODO: update implementation to save boundary elements into TriangleMesh, and read reference system from mesh file and
@@ -384,9 +419,12 @@ def read_mesh(
   # Flat arrays of size 2 * num_lines.
   boundary_node_tags = np.concatenate(boundary_node_tags) if boundary_node_tags else np.empty((0,), dtype=int)
 
-  # Meshes produced with seamsh might contain isolated points. Their existence, number and location are determined by
-  # the resolution of the shapefile containing the coastlines, and the target mesh size used when coarsening the
-  # coastlines. Here we remove those points: the mesh is valid only if all nodes are used by at least one element.
+  # Meshes produced with seamsh up to the fork's develop at f1ab87d (checked on 11 Nov 2026) contain nodes that belong
+  # to no triangle: the outlines of islands smaller than the mesh size (they survive the coastline coarsening, but gmsh
+  # triangulates the sea over them, so they are not holes). 743 of 34,750 nodes at 120 km (632 islands of 1-3 nodes, up
+  # to ~100 km across), 655 of 181,980 at 50 km. seamsh v0.6.0+fork (the pinned version) leaves them out of the file.
+  # The model needs a mesh whose every node is in a triangle (a node in none would be in no edge), so they are removed
+  # here, for meshes made with older versions; expected there, hence logged as information, not as a warning.
 
   # Get valid nodes, i.e., those belonging to a triangle by querying all triangular elements (type=2).
   triangle_tags, triangle_node_tags = gmsh.model.mesh.get_elements_by_type(2)
@@ -421,6 +459,8 @@ def read_mesh(
 
   # Node coords have the same order as in node_tags, so we can filter them directly.
   node_mask = np.isin(node_tags, valid_node_tags)
+  if num_dropped := int((~node_mask).sum()):
+    logger.info(f"Dropped {num_dropped} of {len(node_mask)} nodes in no triangle (outlines of islands not meshed)")
   node_tags = node_tags[node_mask]  # [num_valid_node_tags]
   node_coords = node_coords[node_mask, :]  # [num_valid_node_tags, 3]
 
@@ -468,15 +508,16 @@ def load_domain(path: pathlib.Path, physical_name_field: str = "featurecla", cur
 
 def coarsen_boundaries(
   domain: seamsh.geometry.Domain,
-  mesh_size: float,
+  fields: Iterable[FieldConfig],
   x0: tuple[float, float] = (0.0, 0.0),
   x0_projection_name: CRSName = "stereographic",
 ):
-  """Creates a new Domain with the same projection and coarsened boundaries."""
+  """Creates a new Domain with the same projection and coarsened boundaries: resampled at the minimum of `fields`,
+  keeping the water reachable from x0 (see mesh_config.CoarsenBoundariesConfig). A single uniform field gives exactly
+  the coarsening of the configs with one size (the minimum of one field is that field)."""
   x0_projection = CRSRegistry[x0_projection_name]
-  mesh_size_f = UniformField(mesh_size)
-  coarse = seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=mesh_size_f)
-  return coarse
+  size = CompositeMeshSizeField(fields)
+  return seamsh.geometry.coarsen_boundaries(domain, x0=x0, x0_projection=x0_projection, mesh_size=size)
 
 
 def read_mesh_data(

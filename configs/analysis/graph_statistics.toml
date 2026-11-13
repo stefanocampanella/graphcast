@@ -1,0 +1,160 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+# Settings of moby-dick graph-statistics (mobydick.graph_statistics.GraphStatisticsConfig): the graphs of the model of
+# configs/training/production_run.toml (50 km mesh, 16 message passing steps). Paths are container paths, as in the
+# training configs.
+mask = "/data/mask"
+# Encoder radius as a fraction of the longest triangle edge at each mesh vertex: keep equal to the training config's
+# model.radius_query_fraction_edge_length.
+radius_query_fraction_edge_length = 0.6
+# Shortest paths of the processors from this many sampled nodes per connected component (0: all nodes, exact but only
+# feasible for small graphs: one breadth-first search per node).
+num_sources = 32
+seed = 0
+length_bin_width_km = 5.0
+quality_bins = 20
+
+# The model's meshes, finest first: one, or a hierarchy (a V-cycle with message_passing_steps on each mesh on the way
+# down; each decoder adds the coarser mesh's result to the finer mesh's state on the way up). Repeat the table for
+# each mesh.
+[[meshes]]
+path = "/data/geometry/uniform_50km.msh"
+message_passing_steps = 16
+
+# Squashed grid-to-grid graph (mobydick.graph_statistics.squashed): grid node i -> j when the input at i reaches the
+# output at j through the encoders, the message passing steps and the decoders. Grid nodes sampled as senders and
+# receivers; geodesic lengths of at most max_targets edges per sampled node; nodes propagated together (dense boolean
+# blocks of batch_size × grid nodes).
+[squashed]
+num_sources = 1024
+max_targets = 4096
+batch_size = 64
+# Largest number of message passing steps (on every mesh) tried for the fewest steps connecting a basin and its ocean.
+max_steps_to_connect = 128
+
+# Basin connectivity in the squashed graph: each [[basin_connections]] pairs a semi-enclosed basin or inner sea with the
+# nearby ocean it opens to, both regions of the regions file given to the command (configs/analysis/ocean_regions.toml,
+# CC BY-NC-SA 4.0 as it is partly based on the IHO Sea Areas). Grid nodes in both regions count for the basin.
+[[basin_connections]]
+basin = "Mediterranean Sea"
+ocean = "Gulf of Cadiz and off Portugal"
+
+[[basin_connections]]
+basin = "Black Sea"
+ocean = "Aegean Sea"
+
+[[basin_connections]]
+basin = "Sea of Azov"
+ocean = "Black Sea"
+
+[[basin_connections]]
+basin = "Red Sea"
+ocean = "Gulf of Aden"
+
+[[basin_connections]]
+basin = "Persian Gulf"
+ocean = "Gulf of Oman"
+
+[[basin_connections]]
+basin = "Baltic Sea"
+ocean = "North Sea"
+
+[[basin_connections]]
+basin = "Gulf of California"
+ocean = "Eastern tropical Pacific off the Gulf of California"
+
+[[basin_connections]]
+basin = "Hudson Bay"
+ocean = "Labrador Sea"
+
+# Archipelagic basins and seas with several openings have one connection per opening: the Indonesian seas to the
+# Indian Ocean (outflow), the South China Sea and the Pacific (inflow); the Sea of Japan through the Korea, Tsugaru and
+# La Pérouse Straits; the Sea of Marmara to the Aegean and the Black Sea.
+[[basin_connections]]
+basin = "Sea of Marmara"
+ocean = "Aegean Sea"
+
+[[basin_connections]]
+basin = "Sea of Marmara"
+ocean = "Black Sea"
+
+[[basin_connections]]
+basin = "Seto Inland Sea"
+ocean = "Philippine Sea south of Shikoku"
+
+[[basin_connections]]
+basin = "Seto Inland Sea"
+ocean = "Sea of Japan"
+
+[[basin_connections]]
+basin = "Lake Maracaibo"
+ocean = "Gulf of Venezuela"
+
+[[basin_connections]]
+basin = "Sea of Japan"
+ocean = "East China Sea off the Korea Strait"
+
+[[basin_connections]]
+basin = "Sea of Japan"
+ocean = "North Pacific east of the Tsugaru Strait"
+
+[[basin_connections]]
+basin = "Sea of Japan"
+ocean = "Sea of Okhotsk off the La Perouse Strait"
+
+[[basin_connections]]
+basin = "Baffin Bay"
+ocean = "Labrador Sea"
+
+[[basin_connections]]
+basin = "Baffin Bay"
+ocean = "Lincoln Sea"
+
+[[basin_connections]]
+basin = "White Sea"
+ocean = "Barents Sea off the White Sea"
+
+[[basin_connections]]
+basin = "Gulf of Corinth"
+ocean = "Ionian Sea off the Gulf of Patras"
+
+[[basin_connections]]
+basin = "Indonesian seas (Java, Bali, Flores, Banda)"
+ocean = "Indian Ocean south of the Lesser Sunda Islands"
+
+[[basin_connections]]
+basin = "Indonesian seas (Java, Bali, Flores, Banda)"
+ocean = "South China Sea off the Karimata Strait"
+
+[[basin_connections]]
+basin = "Indonesian seas (Java, Bali, Flores, Banda)"
+ocean = "Pacific east of Mindanao and Halmahera"
+
+[[basin_connections]]
+basin = "Gulf of Boothia and Prince Regent Inlet"
+ocean = "Baffin Bay"
+
+[[basin_connections]]
+basin = "Gulf of Boothia and Prince Regent Inlet"
+ocean = "Foxe Basin"
+
+[[basin_connections]]
+basin = "Foxe Basin"
+ocean = "Hudson Strait"
+
+[[basin_connections]]
+basin = "Sulu Sea"
+ocean = "South China Sea west of Palawan and Mindoro"
+
+[[basin_connections]]
+basin = "Sulu Sea"
+ocean = "Celebes Sea"
+
+[[basin_connections]]
+basin = "Bohol Sea"
+ocean = "Sulu Sea"
+
+[[basin_connections]]
+basin = "Bohol Sea"
+ocean = "Philippine Sea east of the Surigao Strait"

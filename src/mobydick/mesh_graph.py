@@ -31,10 +31,7 @@ import numpy as np
 from mobydick import typed_graph
 from mobydick.gis_utils import (
   _cartesian_wkt,
-  cartesian_crs,
-  cartesian_unit_sphere_crs,
-  equirectangular_crs,
-  get_transform,
+  cartesian_to_lat_lon,
 )
 
 
@@ -156,28 +153,97 @@ def merge_meshes(mesh_list: Sequence[TriangleMesh]) -> MeshGraph:
 
 
 def faces_to_edges(faces: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-  """Transforms polygonal faces to sender and receiver indices.
+  """Transforms triangular faces to sender and receiver indices, every edge in both directions.
 
-  It does so by transforming every face into N_i edges. Such if the triangular
-  face has indices [0, 1, 2], three edges are added 0->1, 1->2, and 2->0.
-
-  If all faces have consistent orientation, and the surface represented by the
-  faces is closed, then every edge in a polygon with a certain orientation
-  is also part of another polygon with the opposite orientation. In this
-  situation, the edges returned by the method are always bidirectional.
+  Each face [a, b, c] gives the edges a->b, b->c and c->a (first edges of all faces, then second, then third).
+  With consistently oriented faces, an interior edge is shared by two faces that traverse it in opposite directions,
+  so both directions are already there. A boundary edge belongs to one face only (e.g. along the coastline of an
+  ocean mesh), so its reverse is appended after the face edges. On a closed mesh (GraphCast's sphere) there are no
+  boundary edges and the result is the 3 * num_faces face edges, as in GraphCast. Before Nov 2026 the reverses were
+  missing, so messages ran along the boundary of open meshes in one direction only.
 
   Args:
      faces: Integer array of shape [num_faces, 3]. Contains node indices
         adjacent to each face.
   Returns:
-     Tuple with sender/receiver indices, each of shape [num_edges=num_faces*3].
-
+     Tuple with sender/receiver indices, each of shape [num_edges], num_edges = 3 * num_faces + boundary edges.
   """
   assert faces.ndim == 2
   assert faces.shape[-1] == 3
   senders = np.concatenate([faces[:, 0], faces[:, 1], faces[:, 2]])
   receivers = np.concatenate([faces[:, 1], faces[:, 2], faces[:, 0]])
-  return senders, receivers
+  num_nodes = int(faces.max(initial=-1)) + 1
+  # The face edges whose reverse is not among the face edges are the boundary edges: append the reverses
+  # (receiver -> sender) after the face edges, which keep their positions.
+  boundary = reverse_is_missing(senders, receivers, num_nodes)
+  senders, receivers = np.concatenate([senders, receivers[boundary]]), np.concatenate([receivers, senders[boundary]])
+  # Each directed edge once, in order of first appearance. A consistently oriented mesh has no duplicates (nothing
+  # changes); two faces running a shared edge in the same direction (a flipped face) would otherwise give it twice,
+  # and its reverse twice, so that messages across it would count double.
+  _, first = np.unique(directed_edge_codes(senders, receivers, num_nodes), return_index=True)
+  keep = np.sort(first)
+  return senders[keep], receivers[keep]
+
+
+# Largest number of nodes whose edge codes fit in uint64: num_nodes**2 <= 2**64.
+MAX_NODES_FOR_EDGE_CODES = 2**32
+
+
+def directed_edge_codes(senders: np.ndarray, receivers: np.ndarray, num_nodes: int) -> np.ndarray:
+  """One integer per directed edge (s, r): s * num_nodes + r, as uint64.
+
+  With 0 <= s, r < num_nodes the encoding is one-to-one (s and r are its quotient and remainder by num_nodes), so
+  comparing integers compares edges, and numpy set operations (`np.isin`, `np.unique`: sorting, O(E log E)) handle all
+  edges at once instead of a Python loop over pairs. The largest code is num_nodes**2 - 1: uint64 holds it up to
+  2**32 (~4.3 billion) nodes (the 25 km mesh has 704,078); beyond, or with indices outside [0, num_nodes), the codes
+  would wrap around and merge different edges, so that is an error.
+  """
+  senders, receivers = np.asarray(senders), np.asarray(receivers)
+  if not 0 <= num_nodes <= MAX_NODES_FOR_EDGE_CODES:
+    raise ValueError(f"{num_nodes} nodes: edge codes need 0 <= num_nodes <= {MAX_NODES_FOR_EDGE_CODES}")
+  for name, indices in (("sender", senders), ("receiver", receivers)):
+    if indices.size and (indices.min() < 0 or indices.max() >= num_nodes):
+      raise ValueError(f"{name} indices must be in [0, {num_nodes}), got [{indices.min()}, {indices.max()}]")
+  return senders.astype(np.uint64) * np.uint64(num_nodes) + receivers.astype(np.uint64)
+
+
+def reverse_is_missing(senders: np.ndarray, receivers: np.ndarray, num_nodes: int) -> np.ndarray:
+  """For each directed edge, whether its reverse (receiver -> sender) is not among the edges."""
+  forward = directed_edge_codes(senders, receivers, num_nodes)
+  backward = directed_edge_codes(receivers, senders, num_nodes)
+  return ~np.isin(backward, forward)
+
+
+def longest_incident_edges(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+  """Length of the longest triangle edge at each vertex (straight line, in the units of `vertices`; 0 for a vertex in
+  no face).
+
+  The encoder's radius at each mesh vertex is a fraction of it (`radius_query_fraction_edge_length`). Only the
+  triangles count, not a multi-mesh's coarser edges. A point inside a triangle is never farther from a vertex than
+  that vertex's longest edge in the triangle (the farthest point of a triangle from a vertex is another vertex), and
+  with the fraction 0.6 every point inside a triangle of the ocean meshes and of the icosahedral mesh reaches at
+  least one vertex (checked on the 120, 50 and 25 km meshes and icosahedral M6, Nov 2026). The mesh size field the
+  radius used before is the target size, smaller than the actual edges along coastlines, where it left points
+  inside triangles without encoder edges (1,129 at 120 km).
+
+  Args:
+    vertices: Coordinates [num_vertices, 3].
+    faces: Vertex indices [num_faces, 3].
+  """
+  # The three edges of every face, (v0, v1), (v1, v2), (v2, v0): an edge shared by two faces counts twice, which a
+  # maximum ignores, so the deduplicated edges of faces_to_edges are not needed.
+  faces = np.asarray(faces)
+  senders, receivers = faces.reshape(-1), np.roll(faces, -1, axis=1).reshape(-1)
+  # CHORD DISTANCE (straight line through the Earth), as the encoder's radius query (mesh_connectivity.
+  # get_points_to_mesh_edges, a k-d tree in Earth-centred coordinates) and the triangles themselves: the two must use
+  # the same metric. Using geodesic distances instead (planned) means changing both; at the mesh sizes in use the chord
+  # is shorter than the geodesic by about d³ / (24 R²): 0.0003 % at 120 km.
+  lengths = np.linalg.norm(vertices[senders] - vertices[receivers], axis=-1)
+  longest = np.zeros(len(vertices), dtype=lengths.dtype)
+  # Every edge counts for both its vertices.
+  np.maximum.at(longest, senders, lengths)
+  np.maximum.at(longest, receivers, lengths)
+  return longest
 
 
 def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
@@ -200,12 +266,7 @@ def _get_undirected_edges(edges: tuple[np.ndarray, np.ndarray]) -> tuple[np.ndar
 def graph_to_latlon(graph: Graph, unit_sphere: bool = False) -> EquirectangularGraph:
   """Gets the graph (WGS coordinates of vertices and (undirected) edges) from a 3D graph."""
 
-  transformer = get_transform(
-    cartesian_unit_sphere_crs if unit_sphere else cartesian_crs,
-    equirectangular_crs,
-    pack_back=False,
-  )
-  longitudes, latitudes = transformer(graph.vertices)
+  latitudes, longitudes = cartesian_to_lat_lon(graph.vertices, unit_sphere=unit_sphere)
   longitudes = np.where(longitudes < 0, longitudes + 360, longitudes)
   # We use the convention used by graphcast coordinates are (lat, lon), in this order.
   vertices = (latitudes, longitudes)

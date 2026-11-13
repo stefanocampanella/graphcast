@@ -24,6 +24,7 @@ import xarray as xr
 
 from mobydick import icosahedral_mesh
 from mobydick.leviathan.model import Leviathan, ModelConfig, TaskConfig, _check_rollout_inputs
+from mobydick.mesh_graph import longest_incident_edges
 
 
 def _task(input_variables: tuple[str, ...]) -> TaskConfig:
@@ -58,14 +59,15 @@ def test_time_dependent_inputs_that_are_not_rolled_out_fail():
     _check_rollout_inputs(_inputs(), _task(("thetao", "deptho", "swh")))
 
 
-def test_a_mesh_without_mesh_size_is_rejected():
-  """The encoder's query radius is a fraction of the mesh size: a mesh without one fails with a clear error (it was a
-  TypeError multiplying None)."""
+def test_the_encoder_radius_follows_the_triangle_edges():
+  """The encoder's query radius at each mesh vertex is 0.6 × its longest triangle edge, not the mesh size field (which
+  is not needed any more: a mesh without one builds), so the radius adapts to stretched coastal triangles."""
   mesh_data = dataclasses.replace(icosahedral_mesh.get_multi_mesh_data(1), mesh_size=None)
   model_config = ModelConfig(latent_size=4, gnn_msg_steps=1, hidden_layers=1, radius_query_fraction_edge_length=0.6)
+  radius = {}
 
   def build():
-    Leviathan(
+    model = Leviathan(
       _model_config=model_config,
       _task_config=_task(("thetao", "2t")),
       _grid_lat=np.array([-10.0, 10.0]),
@@ -73,9 +75,11 @@ def test_a_mesh_without_mesh_size_is_rejected():
       _grid_mask=None,
       _mesh_data=mesh_data,
     )
+    radius["model"] = model._query_radius
 
-  with pytest.raises(ValueError, match="mesh size"):
-    hk.transform(build).init(None)
+  hk.transform(build).init(None)
+  mesh = mesh_data.mesh_graph
+  np.testing.assert_allclose(radius["model"], 0.6 * longest_incident_edges(mesh.vertices, mesh.faces))
 
 
 def test_forcings_without_grid_dimensions(tiny_model):
@@ -117,6 +121,13 @@ def _leviathan(tiny_model, mask=None, **options):
   )
 
 
+# Two equivalent computations in float32 (scanned or unrolled processor, more or fewer grid nodes) compile to different
+# operation orders, and runners with other CPUs reduce in other orders: predictions of order 0.1-1 then differ by a few
+# 1e-6 (CI, Nov 2026: 3e-6 on 0.0435, relative 7e-5, in 1 of 384 values, on some runs only). A real difference (wrong or
+# swapped parameters, missing nodes) is of order 1.
+FLOAT32_RTOL, FLOAT32_ATOL = 1e-4, 1e-5
+
+
 @pytest.mark.parametrize("options", [{"_remat": True}, {"_edge_chunk_size": 50}], ids=["remat", "edge_chunks"])
 def test_scan_and_unrolled_processor_are_interchangeable(tiny_model, options):
   """The scanned and unrolled processors (and with rematerialization or edge chunks) have the same parameters and give
@@ -129,7 +140,7 @@ def test_scan_and_unrolled_processor_are_interchangeable(tiny_model, options):
 
   expected = unrolled.apply(params, None, inputs, targets, forcings)
   actual = scanned.apply(params, None, inputs, targets, forcings)
-  np.testing.assert_allclose(actual["zos"].data, expected["zos"].data, rtol=1e-5, atol=1e-6)
+  np.testing.assert_allclose(actual["zos"].data, expected["zos"].data, rtol=FLOAT32_RTOL, atol=FLOAT32_ATOL)
 
 
 def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
@@ -155,7 +166,7 @@ def test_connected_grid_nodes_only_drop_unconnected_points(tiny_model):
 
   expected = np.asarray(everything.apply(params, None, inputs, targets, forcings)["zos"].data)
   actual = np.asarray(connected.apply(params, None, inputs, targets, forcings)["zos"].data)
-  np.testing.assert_allclose(actual[..., mask], expected[..., mask], rtol=1e-5, atol=1e-6)
+  np.testing.assert_allclose(actual[..., mask], expected[..., mask], rtol=FLOAT32_RTOL, atol=FLOAT32_ATOL)
   np.testing.assert_array_equal(actual[..., ~mask], 0.0)
 
 

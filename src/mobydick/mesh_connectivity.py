@@ -26,7 +26,9 @@ import numpy.typing as npt
 import scipy
 import trimesh
 
-from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
+from mobydick.gis_utils import (
+  lat_lon_to_cartesian,
+)
 from mobydick.mesh_graph import Mesh, TriangleMesh, faces_to_edges
 from mobydick.typed_graph import (
   Context,
@@ -50,9 +52,7 @@ def _grid_lat_lon_to_coordinates(grid_latitude: np.ndarray, grid_longitude: np.n
   lon = np.where(lon > 180, lon - 360, lon)
   lon = lon.reshape(-1)
   lat = lat.reshape(-1)
-  lonlat_coordinates = np.stack([lon, lat], axis=-1)
-  transform = get_transform(equirectangular_crs, cartesian_crs)
-  cartesian_coordinates = transform(lonlat_coordinates)
+  cartesian_coordinates = lat_lon_to_cartesian(lat, lon)
   cartesian_coordinates = cartesian_coordinates.reshape(num_lon, num_lat, 3)
   cartesian_coordinates = cartesian_coordinates.transpose(1, 0, 2)
   return cartesian_coordinates
@@ -65,7 +65,7 @@ def radius_query_indices(
   mesh: Mesh,
   radius: float | np.ndarray,
   mask: np.ndarray | None = None,
-  workers: int = 1,
+  workers: int = -1,
 ) -> tuple[np.ndarray, np.ndarray]:
   """Returns mesh-grid edge indices for radius query.
 
@@ -76,6 +76,7 @@ def radius_query_indices(
     radius: Radius of connectivity (straight line, metres), one for all mesh vertices or one per vertex
       [num_mesh_vertices]: the balls are centred on the mesh vertices.
     mask: Boolean mask of shape [num_lat_points, num_lon_points]: only unmasked grid points are connected.
+    workers: Threads of the k-d tree query (-1: all cores); the edges do not depend on it.
 
   Returns:
     tuple with `grid_senders` and `mesh_receivers` indicating edges from the
@@ -91,30 +92,51 @@ def radius_query_indices(
   mask = mask.reshape([-1])
   # [num_grid_points=num_lat_points * num_lon_points, 3]
   grid_positions = _grid_lat_lon_to_coordinates(grid_latitude, grid_longitude).reshape([-1, 3])
-  # [num_mesh_points, 3]
-  mesh_positions = mesh.vertices
   # [num_valid_grid_points=sum(mask)]
   valid_grid_positions = grid_positions[mask]
-
-  # NOTICE:
-  #   1. the number of grid points per mesh point is not constant, so `query_ball_point` return an array of lists,
-  #     rather than a 2d array,
-  #   2. the ball is in 3D space, so the distances are not geodesic,
-  #   3. if radius is a number, then building a KDTree of grid points and querying mesh nodes is the same
-  #     as building a KDTree of mesh nodes and querying grid points: for varying radius this is not the case,
-  #   4. the original implementation was more readable, but unfeasible for large grids/meshes.
-  kd_tree = scipy.spatial.cKDTree(valid_grid_positions)
-  # [num_grid_points, num_mesh_points_per_grid_point (variable)]
-  # noinspection PyTypeChecker
-  query_indices = kd_tree.query_ball_point(x=mesh_positions, r=radius, workers=workers)
-  _, masked_to_unmasked_fn = get_masking_indices_fns(mask)
-  # noinspection PyTypeChecker
-  grid_senders = np.concatenate(list(map(masked_to_unmasked_fn, query_indices)), axis=0).astype(int)
-  mesh_receivers = np.repeat(
-    np.arange(mesh_positions.shape[0], dtype=int),
-    np.fromiter(map(len, query_indices), dtype=int),  # ty: ignore[invalid-argument-type]  # an array of lists
+  valid_grid_senders, mesh_receivers = get_points_to_mesh_edges(
+    senders_position=valid_grid_positions, receivers_mesh=mesh, radius=radius, workers=workers
   )
+  # Index among the unmasked points -> index in the flattened grid (vectorized; millions of edges at 25-50 km).
+  grid_senders = np.flatnonzero(mask)[valid_grid_senders]
   return grid_senders, mesh_receivers
+
+
+def get_points_to_mesh_edges(
+  *, senders_position: np.ndarray, receivers_mesh: Mesh, radius: float | np.ndarray, workers: int = -1
+) -> tuple[np.ndarray, np.ndarray]:
+  """Returns edges from the points to the mesh vertices within `radius` of them (straight line).
+
+  Args:
+    senders_position: Array of points in R3 [num_points, 3], in the coordinates of the mesh.
+    receivers_mesh: Mesh object.
+    radius: Radius of connectivity, one for all mesh vertices or one per vertex [num_mesh_vertices]: the balls are
+      centred on the mesh vertices.
+    workers: Threads of the k-d tree query (-1: all cores); the edges do not depend on it.
+
+  Returns:
+    senders (indices into the points), receivers (indices into the mesh vertices), sorted by receiver, then sender.
+  """
+  # NOTICE:
+  #   1. the number of points per mesh vertex is not constant, so `query_ball_point` return an array of lists,
+  #     rather than a 2d array,
+  #   2. the ball is in 3D space, so the distances are not geodesic (CHORD DISTANCE: geodesic distances are planned;
+  #      change the radius in mesh_graph.longest_incident_edges together with this query),
+  #   3. if radius is a number, then building a KDTree of the points and querying mesh nodes is the same
+  #     as building a KDTree of mesh nodes and querying the points: for varying radius this is not the case,
+  #   4. the original implementation was more readable, but unfeasible for large grids/meshes.
+  kd_tree = scipy.spatial.cKDTree(senders_position)
+  # [num_mesh_vertices, num_points_per_mesh_vertex (variable)], each list sorted (several query points).
+  # noinspection PyTypeChecker
+  query_indices = kd_tree.query_ball_point(x=receivers_mesh.vertices, r=radius, workers=workers)
+  counts = np.fromiter(
+    map(len, query_indices),  # ty: ignore[invalid-argument-type]  # an array of lists
+    dtype=int,
+    count=len(query_indices),
+  )
+  senders = np.concatenate([np.asarray(indices, dtype=int) for indices in query_indices])
+  receivers = np.repeat(np.arange(len(query_indices), dtype=int), counts)
+  return senders, receivers
 
 
 def get_mesh_to_grid_edges(
@@ -145,9 +167,8 @@ def get_mesh_to_grid_edges(
   mesh_senders, valid_grid_receivers = get_mesh_to_points_edges(
     senders_mesh=mesh, receivers_position=valid_grid_positions
   )
-  _, masked_to_unmasked_fn = get_masking_indices_fns(grid_mask)
-  # noinspection PyTypeChecker
-  grid_receivers: np.ndarray = masked_to_unmasked_fn(valid_grid_receivers)
+  # Index among the unmasked points -> index in the flattened grid (vectorized).
+  grid_receivers = np.flatnonzero(grid_mask)[valid_grid_receivers]
 
   return mesh_senders, grid_receivers
 

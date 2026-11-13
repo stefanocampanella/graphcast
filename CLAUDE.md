@@ -22,7 +22,12 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
 
 - CLI (`src/mobydick/__init__.py`, click; every command first prints the banner `src/mobydick/assets/banner.txt` to
   stderr, on rank 0 only, `MOBYDICK_NO_BANNER=1` to silence it; `python -m mobydick` works too): `moby-dick train CONFIG.toml OUTPUT TRAIN_CKPT`,
-  `moby-dick make-ocean-mesh` (mesh from `configs/mesh/*.toml`), `moby-dick compute-grid-basis MESH MASK OUTPUT.npz`
+  `moby-dick make-ocean-mesh CONFIG.toml OUTPUT.msh` (mesh from `configs/mesh/*.toml`; their paths are container
+  paths, as in the training configs: run it in the image with the data mounted, e.g. `apptainer exec --bind
+  data/geometry:/data/geometry moby-dick.sif python -m mobydick make-ocean-mesh configs/mesh/uniform_120km.toml
+  /data/geometry/uniform_120km.msh`; the `lambrechts*` configs also need the bathymetry at `/data/bathymetry`; the
+  coastline coarsening is the minimum of `[[coarsen_boundaries.fields]]`, like the mesh size of `[[fields]]`; there is
+  no `--data-path` since 12 Nov 2026), `moby-dick compute-grid-basis MESH MASK OUTPUT.npz`
   (draft: linear basis functions of the mesh at the ocean points of the training grid, barycentric weights in the
   decoder faces, a sparse matrix; `basis_utils.compute_basis` evaluates them at any points, e.g. the vertices of
   another mesh for the planned interpolating decoder and hierarchical meshes; on a flat mesh it equals scipy's
@@ -37,8 +42,68 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   output; `icosahedral_6.toml`, GraphCast's 6 refinements, gives 40,962 vertices, 327,660 directed edges, finest
   edges 110–132 km, 11.6 MB). Its `.msh`
   holds the finest triangles, the edges of all levels as line elements in the `multi_mesh_edges` physical group (line
-  elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. A tiny
-  model runs on it; it has not been trained yet.
+  elements outside it are a mesh's boundary), and GraphCast's mesh size (longest finest edge) at every node. Trained
+  on 8 Nov 2026 against the ocean meshes (see "Icosahedral multi-mesh vs ocean mesh" below); the file is
+  `data/geometry/icosahedral_6.msh`.
+- Graph statistics: `moby-dick graph-statistics CONFIG.toml REGIONS.toml OUTPUT.json` (package
+  `mobydick.graph_statistics`: `config`, `graphs`, `structure`, `geometry`, `squashed`, `quantities`, `report`, `cli`;
+  `configs/analysis/graph_statistics.toml`, the production model: `mask` and `[[meshes]]` with `path` and
+  `message_passing_steps` each, finest first, absolute container paths as in the training configs, so run it in the
+  image with `--bind data/geometry:/data/geometry --bind MASK:/data/mask`; until 13 Nov 2026 the mask and meshes were
+  CLI arguments): the graphs of a model on the grid of the mask and one mesh or a hierarchy, built as the model builds them (a test checks they are equal): encoders grid → mesh 0
+  and mesh i−1 → mesh i, processors, decoders mesh i → mesh i−1 and mesh 0 → grid (mesh-to-mesh graphs follow the
+  grid's rules until hierarchical models define theirs). Every graph: nodes, edges, geodesic edge lengths; encoders:
+  degrees; decoders: the 3-edges-per-receiver check; processors: degrees, density, one-way edges, connected
+  components with, per component, the diameter (2-sweep lower bound) and shortest path lengths from `num_sources`
+  sampled nodes (0 = exact), from the same sources the geodesic distances and the path lengths along the mesh in km
+  (scipy Dijkstra) and their ratio (detour), and triangle quality (aspect ratio, radius ratio, volume-length, angles, edge ratio);
+  coverage of each pair of levels; the squashed grid-to-grid graph (`[squashed]`; i → j when the input at i reaches
+  the output at j through encoders, steps and decoders; a hierarchy is a V-cycle, as the planned hierarchical
+  processor: steps on each mesh on the way down, then each decoder ORs the coarser result into the finer mesh's state
+  of the way down, the U-Net skip connection): out-degrees (domain of influence, forward) and in-degrees (receptive
+  field, backward with the transposed operations in reverse order) from `num_sources` sampled grid nodes, by
+  propagating boolean indicator blocks through the boolean sparse matrices (scipy's boolean products are OR of ANDs;
+  each step is x ← x OR P x, so L steps give (I + P)^L = I + P + … + P^L, the nodes within at most L hops; the
+  adjacency I + D (I + P)^L E is never formed), and the horizon, the geodesic length of its edges (at most
+  `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver; basin
+  connectivity (`[[basin_connections]]` of the settings, basin and nearby ocean by name, nodes in both counting for
+  the basin; the regions are in REGIONS.toml, `configs/analysis/ocean_regions.toml`, `RegionsConfig`: `[[regions]]`
+  with a name and a list of polygons of (longitude, latitude) vertices each, longitudes in [-180, 360] so that a region
+  may cross the antimeridian, CC BY-NC-SA 4.0 as partly based on IHO
+  data; the command checks that every connection names regions of it): exact shares of each region's nodes linked to the other, from one column per region marking all its
+  nodes, and the fewest steps on every mesh linking them, by bisection up to `max_steps_to_connect`). Prints rich tables to stdout and writes every quantity with a description to the
+  JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
+  (25 km) per mesh on a login node; all statistics of a mesh, squashed graphs (1,024 grid nodes, 8 and 16 steps)
+  included: 53 s (200 km) to 6.7 min (25 km) on a booster node. networkx's `NETWORKX_BACKEND_PRIORITY=cugraph` would run them on the GPU with
+  nx-cugraph (`pip install .[graph-gpu]`, 3.2 GB with its dependencies; not in the image, untested).
+  - **Path metrics scale with the mesh** (11 Nov 2026, all uniform meshes, 32 sources): the mean shortest path is
+    L = 0.517 · N^0.504 hops (N nodes, within 2.3 % on every mesh), i.e. L × median edge length ≈ 11,400–11,900 km at
+    every resolution (13 Nov 2026: that is the length of the paths along the mesh, 11,230–12,000 km, not the
+    distance between the points: the mean geodesic distance between two ocean nodes is 9,880–10,030 km on every
+    uniform mesh, πR/2 = 10,008 km as on a whole sphere; mean detour 1.14–1.22, median 1.06–1.09, from the zig-zag
+    along edges and paths around continents); diameter ≥ 1.37 · N^0.49 (233 hops at 120 km, 515 at 50 km, 1,034 at 25 km). Average
+    betweenness is exactly (L − 1)/(N − 2) and closeness ≈ 1/L (checked with exact networkx values on small
+    meshes), so both scale as N^−0.5 and were dropped. The icosahedral M6 multi-mesh: L = 7.8, diameter ≥ 14.
+  - **Horizon of the squashed graph** (13 Nov 2026, job 2881277, `docs/jupiter-hackathon/results/graph_horizon-2026-11-13`):
+    on uniform meshes the mean horizon is 0.60–0.67 × steps × median edge, the largest 1.13–1.51 ×; 50 km × 16: a
+    grid point reaches 5,863 others on average (0.85 % of the ocean), mean 495 km, at most 907 km; 120 km × 8: 8,637,
+    623 km; icosahedral M6 × 16: every grid point (78 % with 8 steps, mean 8,770 km); 50 km + 120 km × 16 (V-cycle):
+    5.9 %, 1,604 km. Uniform meshes × 16 from 200 to 50 km lose horizon (1,837 → 495 km) and gain 14 % in validation
+    loss: resolution, not reach, limits the skill today, except for `zos`.
+  - **Basin connectivity** (13 Nov 2026, job 2883258, same report): the Black Sea is cut off from the Aegean in every
+    uniform-mesh model: 28–30 steps link them on every mesh from 200 to 25 km (the 3 km elements of the refined
+    straits and Marmara set the hops, not the base size); icosahedral M6 1 step, 50 km + 120 km hierarchy 14–15 on each of its two meshes (28–30 in all). The
+    Sea of Azov is linked to the Black Sea directly (0–1). Distance-limited: Hudson Bay–Labrador Sea 6 / 21 / 41 steps
+    and Baltic–North Sea 2 / 9 / 18 at 200 / 50 / 25 km (at 50 km × 16 Hudson Bay is cut off, 0.1 % of the Baltic
+    reaches the North Sea); the Mediterranean, Red Sea, Persian Gulf and Gulf of California connect within 0–6 steps.
+    30 connections since 13 Nov 2026 (job 2884014): 22 added for the Sea of Marmara, Seto Inland Sea, Lake Maracaibo,
+    Sea of Japan, Baffin Bay, White Sea, Gulf of Corinth, the Indonesian throughflow seas, Gulf of Boothia, Foxe Basin
+    and the Sulu and Bohol Seas, one per opening, polygons from the IHO Sea Areas v3 of Marine Regions (CC BY-NC-SA 4.0: in their own file, grown
+    0.3°, neighbours removed, simplified) or drawn after the documented straits; maps in
+    https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq. Lake Maracaibo (2 grid points) and the Gulf of Corinth (8) are
+    outside the mesh domain (no encoder edges, decoded from the neighbouring gulf); Gulf of Boothia–Foxe Basin needs
+    62 steps at 50 km (Fury and Hecla Strait closed, path round Baffin Island); Indonesian seas–Pacific 12, Baffin
+    Bay–Labrador Sea 20; most other new pairs meet at wide openings (0 steps).
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -54,7 +119,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   tendency statistics with `--tendency-std STANDARDIZED OUTPUT --config configs/download/tendency_std.toml`. See
   "Standardized anomaly stores" below.
 - Mesh study: `clusters/jupiter/slurm/mesh_study.sh [--account A] STUDY SEEDS MESH:MSG_STEPS[:EDGE_CHUNK_SIZE[:HH:MM:SS]]
-  ...` (demo_5000 on 8 nodes per case and seed, validation loss on held-out windows; jobs use the checkout's `src`).
+  ...` (demo_5000 on 8 nodes per case and seed, validation loss on held-out windows; jobs use the checkout's `src`;
+  MESH is a uniform mesh's size, `GEOMETRY_DIR/uniform_MESH.msh`, or another mesh file's name, `GEOMETRY_DIR/MESH.msh`).
 - Benchmarks: JUBE in `clusters/jupiter/benchmarks/jube` (`uv sync`, then
   `uv run jube run training.xml --tag <sweep> [modifiers]`; add `dryrun` to check without submitting).
   Everything runs at all 50 levels (`production_run.toml`, coarse mesh × 8 steps unless a tag says otherwise); cases
@@ -80,7 +146,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (453 tests, ~3.5 min on a login node, CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (515 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in
@@ -112,7 +178,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   whose `pyproject.toml` and `src/` the image should contain (a worktree works with
   `spack -e /e/project1/e-dev-2026d09-119/graphcast/spack-env`, as long as that environment was created from the
   current `spack.yaml`: it keeps a copy, and the template is `container/moby-dick.def` since the rename); the build
-  takes ~6 min on a login node. Previous images are kept as `moby-dick-YYYY-MM-DD.sif` (before the rename
+  takes ~6 min on a login node (40 min when the login node is busy, as on 12 Nov 2026: the current image, with
+  seamsh v0.6.0+fork, was built then; the previous one is `moby-dick-2026-11-08.sif`). Previous images are kept as `moby-dick-YYYY-MM-DD.sif` (before the rename
   `graphcast-YYYY-MM-DD.sif`, which install the package as `graphcast`: with sources from `PYTHONPATH` they need
   `python -m mobydick`, and their `graphcast` command runs the old installed code). Past commands are in
   `~/.bash_eternal_history`.
@@ -330,6 +397,33 @@ DataArray (`configs/download/mask.toml`); training loads it as is (`dataloader_u
     resolution: sea-ice thickness −28 %, currents −14 % at 40 km × 16.
   - **Value:** at equal cost more steps beat a finer mesh (50 km × 16 beats 40 km × 12).
   - **Next:** 20–24 steps on 50 km and 35 km × 12.
+- Icosahedral multi-mesh vs ocean mesh (8 Nov 2026, `docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08`, detailed
+  version https://claude.ai/artifact/Bm8DGCiTHcJhL7k9AR5Lwg; jobs 2765280–2765287, 78 node-h):
+  - **Setup:** the mesh study's protocol (demo_5000, 2 seeds) on `icosahedral_6` × 16 (GraphCast) and × 8, 50 km × 16
+    and 120 km × 8, baselines rerun with the current code.
+  - **The ocean mesh wins:** validation loss 120 km × 8 0.0838, icosahedral × 8 0.0837, 50 km × 16 0.0752 (−10.2 %),
+    icosahedral × 16 0.0826 (−1.4 %), i.e. 9.8 % worse than 50 km × 16, a gap stable from step 2500.
+  - **Only `zos` gains** (−16.7 % against 50 km × 16, from edges up to 7,076 km: the processor's diameter is 14 hops,
+    against at least 515 on the 50 km mesh); the other targets are 10–31 % worse (sea-ice thickness +31 %). 23 % of the
+    icosahedral nodes are over land; its 31,371 ocean-connected nodes match the 120 km mesh, which it equals on local
+    fields. 8 → 16 steps gain only 1.3 % on it.
+  - **Cost:** icosahedral × 16 0.78 s per step and 55 GiB, against 1.40 s and 74 GiB.
+  - **Next:** long-range edges on the ocean mesh (hierarchy merged into the 50 km processor); icosahedral M7 for a
+    resolution-matched comparison.
+  - **Rerun on 12 Nov 2026** (current code and meshes: two-way edges, new encoder radius, Black Sea, seamsh
+    v0.6.0+fork; study `ico_vs_ocean_v060`, jobs 2864519–2864527, 75.5 node-h): 120 km × 8 0.0833, icosahedral × 8
+    0.0838, 50 km × 16 0.0746, icosahedral × 16 0.0826: icosahedral × 16 is 10.7 % worse than 50 km × 16, better only
+    for `zos` (−16.0 %); the ocean cases gained 0.6–0.8 % since 8 Nov, the icosahedral ones nothing.
+  - **The baselines are ~8 % better than in the mesh study** (120 km × 8 0.0907 → 0.0838, 50 km × 16 0.0818 → 0.0752;
+    same config and validation windows), most likely from the edge-direction fix of 6 Nov (`0473751`, not ablated):
+    do not compare runs from before 6 Nov with later ones.
+- Lambrechts vs uniform meshes (13 Nov 2026, `docs/jupiter-hackathon/results/lambrechts_vs_uniform-2026-11-13`; study
+  `lambrechts_vs_uniform`, 146.6 node-h): the protocol of the mesh study at 16 message passing steps, seamsh
+  v0.6.0+fork meshes. Uniform meshes (200 to 50 km, new configs `uniform_200km`, `uniform_150km`) follow valid loss =
+  0.153 · N^−0.060 within 0.6 %. The coast- and depth-refined `lambrechts*` meshes are worse at equal node count:
+  mini +1.1 %, coarse +1.5 %, full `lambrechts` (116k nodes, 25–30 km on shelves and coasts, up to ~200 km offshore)
+  +9.7 %, i.e. 10.6 % worse than uniform 60 km at the same step time, and worse than uniform 120 km × 16; only `zos`
+  gains (−4.7 %), currents and sea-ice thickness lose 14–18 %. The uniform 50 km × 16 stays the configuration to use.
 - SquashFS images for the dataloader benchmarks, on the same filesystem as the stores (fair comparison):
   `$FSCRATCH/graphcast/data/anomalies/squashfs/{zarr_v2,zarr_v3_lexi,zarr_v3_colexi}.sqsh`, written on a login node
   by `mksquashfs.sh` there, with the settings of the earlier raw-data images (deleted on 3 Nov 2026) (from
@@ -438,7 +532,11 @@ log) predicts GPU OOM before training starts.
 → the model of `[model] architecture` (`models.MODELS`; `Leviathan`, `leviathan/model.py`). Training is one-step; `autoregressive.py` / `rollout.py` handle multi-step.
 
 **Leviathan model** (`leviathan/model.py`, settings `leviathan/config.py`): grid ↔ mesh connectivity comes from `mesh_connectivity.py` (encoder edges by
-radius query, decoder edges by containing triangle, both restricted by the ocean mask). With
+radius query, decoder edges by containing triangle, both restricted by the ocean mask; the k-d tree query uses all
+cores since 11 Nov 2026, one thread before, with the same edges). The encoder radius at each mesh vertex is
+`radius_query_fraction_edge_length` × the longest triangle edge at the vertex (`mesh_graph.longest_incident_edges`,
+since 11 Nov 2026; before, × the mesh size field, i.e. the target size, which left ocean points inside coastal
+triangles without encoder edges; GraphCast uses the longest edge of the whole mesh). With
 `model.connected_grid_nodes` only grid points that are encoder senders or decoder receivers become grid nodes;
 the decoder writes back only ocean (unmasked) points. Three `DeepTypedGraphNet`s (`deep_typed_graph_net.py`,
 built from `typed_graph_net.py` blocks on `typed_graph.TypedGraph`) form encoder (grid2mesh), processor
@@ -495,6 +593,81 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
 - **Descriptions** of all `configs/mesh/*.toml` match their fields (checked on 30 Oct 2026). The `lambrechts*`
   configs take the smaller of a shore-proximity and a bathymetry field; they said "uniform 300 km" before.
   `domain.sampling` in them is ignored (the shore-proximity field has its own).
+- **seamsh limits the domain** (11 Nov 2026, read from the fork's `develop` at `f1ab87d` and measured with the
+  standalone `validate_seamsh.py`): `coarsen_boundaries` keeps only the water reachable from the single seed `x0`
+  (moby-dick: the stereographic origin, the North Pole) by a flood fill over a Delaunay triangulation of the coastline
+  samples that crosses only edges longer than the coarsening size, so basins behind narrower straits are dropped:
+  Black Sea and Sea of Azov at 10 km (all configs), plus the Mediterranean and Baltic at 20 km, the Red Sea at 30 km,
+  the White Sea at 50 km. `seamsh.gmsh.mesh` also builds one plane surface (largest loop exterior, all others holes),
+  so a second basin could not be meshed anyway. Natural Earth's coastline counts ice shelves as ocean. Mesh files
+  hold nodes in no triangle: the outlines of islands smaller than the mesh size, which survive the coarsening but are
+  covered by triangles (743 of 34,750 nodes at 120 km, 632 islands up to ~100 km across; 655 of 181,980 at 50 km);
+  `read_mesh` drops them and logs how many (since 11 Nov 2026). A
+  refactoring of seamsh (tests, hooks, fixes, several seeds and one surface per basin) is prepared in a separate PR to
+  the fork's `develop`: kit with PR guide, notes (bugs with line numbers), validation script, reference results, data
+  and moby-dick's mesh code in `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/seamsh-refactoring-kit{,.tar.gz}` (copy it out before this session's directory is deleted). The script reproduces
+  `uniform_120km.msh` exactly (vertices within 1.4e-9 m, same triangles).
+- **Black Sea in the configs (11 Nov 2026):** every ocean config refines the coarsening
+  (`[[coarsen_boundaries.fields]]`, 250 m, growth 0.02) and the mesh (`[[fields]]`, 3 km, growth 0.3) with the
+  `point_refinement` field at the Bosporus, Dardanelles and Kerch Strait.
+- **Meshes made with seamsh v0.6.0+fork (12 Nov 2026):** `pyproject.toml` pins the fork's release tag (its
+  `doc/fork.rst`: moby-dick's calls run unchanged; `mesh` optimises the triangles by default, so meshes differ; files
+  hold no node outside the triangles; `x0` may be several seeds). The ten `data/geometry/uniform_*km.msh` are
+  regenerated from the configs with it (copies in `$FSCRATCH/graphcast/data/geometry_seamsh060_2026-11-12`, with their
+  graph statistics); the previous generations are in `data/geometry/previous_2026-11-12/` (seamsh `f1ab87d`, with the
+  straits) and `data/geometry/previous_2026-10/` (without the Black Sea, mesh stored twice). Runs from before 12 Nov used
+  the older meshes. Against seamsh `f1ab87d` with the same configs: one component each, the Black Sea and Sea of Azov
+  in; triangles better on the whole (25th percentile of the smallest angle per face +1° at every size, median
+  volume-length up), smallest angle better at 85, 70, 50, 30 and 25 km (25 km 5.4° → 9.0°), slightly worse at 100, 40
+  and 35 km (100 km 3.7° → 3.4°); 2–3 % fewer encoder edges; ocean points without encoder edges within ±5 % (120 km
+  287, 50 km 774, 25 km 2,157; none inside a triangle; 2–9 in the Black Sea box), longest decoder edge 261 km (120 km),
+  196 km (50 km); no node dropped when reading. Path scaling over the ten meshes: L = 0.542 · N^0.501 (within 3.1 %),
+  L × edge 11,300–12,200 km, diameter ≥ 2.65 · N^0.45. The strait elements carry no grid point but are the only link to
+  the Black Sea, Azov and Marmara: without the nodes in neither encoder nor decoder, 4 % of the paths between
+  data-carrying nodes break at 120 km (0.3 % at 50 km); the Black Sea is 45 (120 km) and 48 (50 km) hops from the
+  Aegean. Mesh-to-mesh encoder 50 → 120 km: 6 finer vertices without edges, all outside the coarser mesh.
+- **The Black Sea can be kept with today's seamsh** (11 Nov 2026, `strait_experiment.py` in the kit): the 1:10m
+  coastline keeps the straits open (narrowest gaps: Bosporus 1.09 km, Dardanelles 2.36 km, Kerch 2.51 km). A
+  coarsening size of 0.25–0.5 km at the three straits growing by at most 0.05 km per km to 10 km (they are 30–60 km
+  long: faster growth closes them again), and a mesh size of 1–3 km there growing 0.3 km per km to the base size, give
+  one connected ocean with the Black Sea and Sea of Azov: at 120 km 34,449 used nodes with 3 km (34,007 today),
+  34,621 with 1 km; at 50 km +849 nodes with 1 km; smallest angles unchanged (7.2° at 120 km, 15.0° at 50 km),
+  shortest edges 1.4 km / 0.9 km, meshing time unchanged (now in the configs: see the bullet above). For the processor
+  the Black Sea stays a separate basin: 47–61 hops from the Aegean through the strait elements, more than any
+  `gnn_msg_steps`; what changes is that its ocean points get mesh vertices. A coarser coastline (30 km) with nine
+  straits refined keeps every basin but lowers the smallest angle at 120 km to 2.5°: 10 km stays the better choice.
+- **Processor edges go both ways since 11 Nov 2026:** `mesh_graph.faces_to_edges` (from GraphCast) gave each face's
+  edges in one direction, which covers both only on a closed mesh. On the ocean meshes the coastline edges belong to
+  one face, so they were one-way (3,612 of 194,040 edges at 120 km, 9,357 of 1,061,739 at 50 km): every model trained
+  on ocean meshes before then, including the mesh study and the icosahedral comparison, passed messages along the
+  coast in one direction only. Their reverses are now appended (`.msh` files unchanged: edges are rebuilt from the
+  faces when read). Rerun with both fixes (two-way edges, encoder radius from the longest triangle edge; meshes without the Black Sea; study `edge_fixes`, jobs 2841380–2841383, 46 node-h): validation loss 120 km × 8 0.08382 → 0.08373 (−0.10 %), 50 km × 16 0.07524 → 0.07494 (−0.39 %), within the seed spread (0.04–0.40 %), every variable within ±1.1 %; XLA memory +1.1 GiB (120 km, 54.9 GiB) and +0.8 GiB (50 km, 74.8 GiB); step time +8 % / +3.5 %, within the run-to-run variation. No measurable effect on skill.
+- **Coverage of the ocean points** (8 Nov 2026, `moby-dick graph-statistics`): the uniform meshes' domain leaves out the
+  Black Sea, so about 900 ocean points of the training mask (40–47° N, 27–42° E) are decoded from the vertices of the
+  nearest face in the Aegean, up to 1,232 km away, and are never encoder senders. In all, 2,222 (120 km) and 2,342
+  (50 km) ocean points had no encoder edge; the others were coastal points farther from every vertex than the local
+  radius (0.6 × target size): 1,129 (120 km), 820 (50 km), 616 (25 km) inside a triangle, the rest outside the mesh.
+  The icosahedral mesh covers every point. Since 11 Nov 2026 the radius is 0.6 × the longest triangle edge at each
+  vertex, which reaches every point inside a triangle (5–8 % more encoder edges): 1,222 (120 km), 1,725 (50 km) and
+  3,099 (25 km) points remain without encoder edges, all outside the mesh domain: the Black Sea (936) and coastal
+  channels and ice-shelf fronts (e.g. Tierra del Fuego, the Weddell Sea). A radius of 1.0 × the longest edge leaves
+  993 / 1,191 / 1,546 for 2.9 × the encoder edges. Mesh hierarchies: finer vertices without encoder edges to the
+  coarser mesh went from 260 to 2 (50 → 120 km) and 802 to 8 (25 → 50 km), the rest outside the coarser mesh.
+  To fix the rest: the Black Sea and the coastal gaps in the domain, or out of the mask.
+  - Mesh vertices without encoder edges are not lost: on the 25 km mesh 7.8 % of the vertices receive no grid point
+    (radius ~15 km against a 0.25° grid, i.e. a mesh finer than the grid), but the processor updates every vertex at
+    every step (`_run_mesh_gnn` has no node mask; their encoder state is the embedding of their position) and 99.3 %
+    of the vertices send decoder edges. Such a vertex starts without data and holds its neighbours' after one step:
+    it costs one step of reach there, not coverage.
+  - Vertices in neither the encoder nor the decoder never exchange data with the grid but are full processor nodes:
+    they receive and pass on messages at every step. Measured (11 Nov 2026, `relay_nodes.py` in the session
+    directory, shortest paths between the other nodes from 32 sources, with and without them): on the icosahedral
+    mesh they are the 9,591 land vertices (23 %), and they are needed as relays: without them 20 % of the paths
+    between data-carrying nodes get longer (mean × 1.032), across continents. On the ocean meshes they are the 233
+    (120 km) and 1,122 (50 km) vertices poleward of 60° S, median 79° S, i.e. under Antarctic ice shelves outside
+    the GLORYS mask: dead ends, with no path between data-carrying nodes through them (one 120 km vertex is connected
+    to the rest only through them; at 50 km 0.2 % of the paths get longer); they still exchange messages with their
+    neighbours.
 
 ## Repository notes
 
@@ -512,6 +685,39 @@ generated meshes and geometry live in `data/geometry` (gitignored, bound as `/da
     GraphCast is copied into another file. `spack/templates/container/moby-dick.def` is Spack's Singularity template
     (Apache-2.0 OR MIT), modified.
   - The license grants no rights to DeepMind's, Google's or GraphCast's names (§6), hence the rename to Moby-Dick.
+  - **Dependencies** (audit of 12 Nov 2026, the image's 224 Python distributions and the Spack libraries; tables in
+    `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/licenses/`; not legal advice):
+    - All direct dependencies are permissive (Apache-2.0, BSD, MIT, PSF-like; tqdm MPL-2.0 AND MIT, file-level
+      copyleft, fine unmodified) **except gmsh** (GPL-2.0-or-later with the Gmsh exception, Ubuntu `python3-gmsh`)
+      **and seamsh** (GPL-3.0: README, `COPYING.txt`, classifier; its file headers say LGPL-3.0-or-later, but
+      `libseamsh.so` compiles gmsh's `polymesh.c`, GPL-2.0-or-later, so it cannot be LGPL as a whole).
+    - Apache-2.0 code may be combined with GPL-3.0 code (one-way compatible; gmsh's "or later" allows GPL-3.0), so
+      moby-dick's own files stay Apache-2.0 and the repository (which contains no GPL code) is fine. But every
+      `moby-dick` command loads gmsh and seamsh (`mobydick/__init__.py` imports `geospatial_mesh`; training reads
+      `.msh` files with gmsh): distributing moby-dick *together with* them (e.g. `moby-dick.sif`, or a bundle) is
+      distributing a combined work under GPL-3.0 terms (source of everything, no further restrictions). The same
+      process also loads proprietary NVIDIA libraries (CUDA, cuDNN, CUTLASS DSL, through jaxlib), whose terms GPL-3.0
+      does not allow in a combined work unless they count as System Libraries: a gray area. Running on JUPITER is not
+      distribution; publishing the image would be. Remedy if needed (code change, not done): gmsh and seamsh as an
+      optional `meshing` extra, imported lazily, and `.msh` files read without gmsh (e.g. meshio, MIT), so that
+      training never loads GPL code.
+    - Native libraries: GDAL, PROJ MIT; GEOS LGPL-2.1 (dynamically linked: fine); gcc runtime GPL with the runtime
+      exception; Spack's and Ubuntu's readline (GPL-3.0) are not linked by GDAL; OpenCASCADE (with gmsh) LGPL-2.1.
+    - The base image `nvcr.io/nvidia/jax` is governed by the NVIDIA Software License Agreement and Product-Specific
+      Terms for AI Products (`/workspace/license.txt`): check them before sharing `moby-dick.sif` outside the project.
+      The `graph-gpu` extra (nx-cugraph, Apache-2.0) pulls proprietary CUDA libraries.
+    - `configs/analysis/ocean_regions.toml` (all ocean regions of graph-statistics, passed to the command as an
+      argument) is partly adapted from the IHO Sea Areas v3 (Flanders Marine Institute 2018,
+      https://doi.org/10.14284/323, CC BY-NC-SA 4.0), so the whole file is CC BY-NC-SA 4.0 (non-commercial,
+      share-alike; `LICENSES/CC-BY-NC-SA-4.0.txt`), with the attribution, the changes and each region's source in
+      it; the settings (`graph_statistics.toml`) stay Apache-2.0. Marine Regions products are CC BY only since 2019:
+      check a dataset's own record.
+    - Mesh files are declared CC BY-NC-SA 4.0 in every mesh config (perhaps copied from GraphCast's weights license),
+      although their inputs need neither NC nor SA (Natural Earth is public domain; GLORYS bathymetry, used by the
+      `lambrechts*` meshes, is under the Copernicus Marine licence, which allows commercial use with attribution, and
+      that attribution is missing from their license text). Trained model weights have no declared license, and the
+      README does not state the data attributions (Copernicus Marine for GLORYS and WAVERYS, C3S for ERA5, CEMS for
+      GloFAS) needed when distributing weights, predictions or derived data. Decisions for the maintainer.
 <!-- REUSE-IgnoreEnd -->
 - Do not commit `moby-dick.sif`, `moby-dick.def` (generated copy), `spack-env/`, `runs/`, `logs/`, `data/`,
   benchmark `results/` or the local `repro/` reproducers.

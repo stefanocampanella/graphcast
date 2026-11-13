@@ -1,0 +1,57 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+
+description = """
+  Global ocean triangular mesh, \
+  with a target mesh size set to a uniform field with a value of 200 km. \
+  The mesh size and the coastline coarsening are refined at the Bosporus, the Dardanelles and the Kerch Strait \
+  (3 km and 250 m there), so that the Black Sea and the Sea of Azov are part of the ocean. \
+  All units are meters. \
+  The code used the seamsh Python package by Jonathan Lambrechts \
+  and a description of the algorithm can be found at \
+  https://doi.org/10.1007/s10236-008-0148-3 \
+  The code uses coastline shapefiles, which are taken from \
+  NaturalEarth physical vector 1:10m coastline files \
+  (version 4.1.0, accessed on 21/01/2026).
+  """
+license = """
+  The mesh is licensed under the Creative Commons \
+  Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0). You \
+  may obtain a copy of the License at: \
+  https://creativecommons.org/licenses/by-nc-sa/4.0/. \
+  Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com
+  """
+
+[mesh]
+smoothness = 0.3
+
+[domain]
+filepath = "/data/geometry/ne_10m_coastline/ne_10m_coastline.shp"
+physical_name_field = "featurecla"
+curve_type = "bspline"
+
+# Coastline coarsening: the minimum of the fields.
+[[coarsen_boundaries.fields]]
+name = "uniform"
+value = 10_000.0
+
+# The Bosporus (narrowest ~1.1 km in this coastline), the Dardanelles (~2.4 km) and the Kerch Strait (~2.5 km) close at
+# a 10 km coarsening, and with them the Black Sea and the Sea of Azov. 250 m at their centres, growing by 0.02 m per m
+# (the straits are 30-60 km long: faster growth closes their ends), keeps them open.
+[[coarsen_boundaries.fields]]
+name = "point_refinement"
+points = [[41.12, 29.07], [40.20, 26.40], [45.30, 36.55]]  # Bosporus, Dardanelles, Kerch Strait (latitude, longitude)
+size = 250.0
+growth = 0.02
+
+[[fields]]
+name = "uniform"
+value = 200_000.0
+
+# Elements about as wide as the straits, so that gmsh can mesh them (the coarsening keeps them open): 3 km at their
+# centres, growing by 0.3 m per m up to the size of the other fields.
+[[fields]]
+name = "point_refinement"
+points = [[41.12, 29.07], [40.20, 26.40], [45.30, 36.55]]  # Bosporus, Dardanelles, Kerch Strait (latitude, longitude)
+size = 3_000.0
+growth = 0.3

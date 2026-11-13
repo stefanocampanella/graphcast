@@ -90,7 +90,7 @@ def get_connected_mesh_nodes(
   mesh_graph: Mesh,
   mask: np.ndarray,
   query_radius: float | np.ndarray,
-  workers: int = 1,
+  workers: int = -1,
 ) -> set[int]:
   """Returns the set of mesh vertices connected to a valid grid point.
 
@@ -179,7 +179,7 @@ def prune_mesh_from_mask(
   latitude_dim_name="lat",
   longitude_dim_name="lon",
   mode: Literal["all", "any"] = "all",
-  workers: int = 1,
+  workers: int = -1,
 ):
   num_boundary_nodes = boundary_nodes.shape[0]
   num_vertices = mesh.vertices.shape[0]

@@ -49,10 +49,12 @@ from mobydick import (
   typed_graph,
   xarray_jax,
 )
-from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
+from mobydick.gis_utils import (
+  cartesian_to_lat_lon,
+)
 from mobydick.leviathan import model_utils
 from mobydick.leviathan.model_utils import Embedder
-from mobydick.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges
+from mobydick.mesh_graph import MeshData, MeshGraph, TriangleMesh, faces_to_edges, longest_incident_edges
 from mobydick.task import TaskConfig
 
 logger = logging.getLogger(__name__)
@@ -170,11 +172,13 @@ class ModelConfig:
     latent_size: How many latent features to include in the various MLPs.
     hidden_layers: How many hidden layers for each MLP.
     radius_query_fraction_edge_length: Scalar that will be multiplied by the
-        length of the longest edge of the finest mesh to define the radius of
-        connectivity to use in the Grid2Mesh graph. Reasonable values are
+        length of the longest triangle edge at each mesh vertex to define the radius of
+        connectivity to use in the Grid2Mesh graph (`mesh_graph.longest_incident_edges`;
+        GraphCast used the longest edge of the whole finest mesh). Reasonable values are
         between 0.6 and 1. 0.6 reduces the number of grid points feeding into
-        multiple mesh nodes and therefore reduces edge count and memory use, but
-        1 gives better predictions.
+        multiple mesh nodes and therefore reduces edge count and memory use, and
+        already connects every grid point inside a triangle; GraphCast found that 1 gives
+        better predictions, but it triples the encoder edges of the ocean meshes.
     mesh2grid_edge_normalization_factor: Allows explicitly controlling edge
         normalization for mesh2grid edges. If None, defaults to max edge length.
         This supports using pre-trained model weights with a different graph
@@ -251,7 +255,7 @@ class Leviathan(hk.Module, predictor_base.Predictor):
   _grid_lat: np.ndarray
   _grid_lon: np.ndarray
   _grid_mask: np.ndarray
-  _kdtree_workers: int = 1
+  _kdtree_workers: int = -1
   _remat: bool = False
   _policy: Callable[..., bool] | None = None
   _prevent_cse: bool = False
@@ -262,9 +266,12 @@ class Leviathan(hk.Module, predictor_base.Predictor):
   def __post_init__(self):
     super().__post_init__(name=self._name or "leviathan")
 
-    if self._mesh_data.mesh_size is None:
-      raise ValueError("The mesh has no mesh size: the query radius of the encoder is a fraction of it")
-    self._query_radius = self._model_config.radius_query_fraction_edge_length * self._mesh_data.mesh_size
+    # Encoder radius per mesh vertex: a fraction of the longest triangle edge at the vertex (until Nov 2026 of the
+    # mesh size field, which left ocean points inside coastal triangles without encoder edges).
+    mesh_graph = self._mesh_data.mesh_graph
+    self._query_radius = self._model_config.radius_query_fraction_edge_length * longest_incident_edges(
+      mesh_graph.vertices, mesh_graph.faces
+    )
     self._mesh2grid_edge_normalization_factor = self._model_config.mesh2grid_edge_normalization_factor
     self._per_variable_weights = self._model_config.per_variable_weights
     self._spatial_features_kwargs = {
@@ -410,8 +417,7 @@ class Leviathan(hk.Module, predictor_base.Predictor):
     self._boundary_nodes_mask = self._mesh_graph.boundary
     self._num_mesh_nodes = self._mesh_graph.vertices.shape[0]
 
-    cartesian2latlon = get_transform(cartesian_crs, equirectangular_crs, pack_back=False)
-    mesh_nodes_lon, mesh_nodes_lat = cartesian2latlon(self._mesh_graph.vertices)
+    mesh_nodes_lat, mesh_nodes_lon = cartesian_to_lat_lon(self._mesh_graph.vertices)
 
     # Convert to f32 to ensure the lat/lon features aren't in f64.
     self._mesh_nodes_lat = mesh_nodes_lat.astype(np.float32)

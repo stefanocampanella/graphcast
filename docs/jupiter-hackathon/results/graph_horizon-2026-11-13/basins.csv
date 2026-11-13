@@ -1,0 +1,841 @@
+mesh,steps,basin,ocean,basin_nodes,ocean_nodes,basin_reaching_ocean_pct,ocean_reached_from_basin_pct,ocean_reaching_basin_pct,basin_reached_from_ocean_pct,steps_basin_to_ocean,steps_ocean_to_basin
+200km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,27.484989993328885,100.0,100.0,28.885923949299535,0,0
+200km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,28
+200km,8,Sea of Azov,Black Sea,85,821,100.0,0.730816077953715,0.9744214372716199,100.0,0,1
+200km,8,Red Sea,Gulf of Aden,741,320,75.5735492577598,100.0,100.0,69.09581646423752,0,1
+200km,8,Persian Gulf,Gulf of Oman,401,206,100.0,100.0,100.0,100.0,0,0
+200km,8,Baltic Sea,North Sea,1121,637,36.7528991971454,100.0,100.0,40.58876003568243,2,2
+200km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+200km,8,Hudson Bay,Labrador Sea,2207,896,14.725872224739463,47.879464285714285,37.05357142857143,18.849116447666518,6,6
+200km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,45.77777777777778,57.333333333333336,8.571428571428571,2,1
+200km,8,Sea of Marmara,Black Sea,35,821,8.571428571428571,24.116930572472594,30.937880633373933,8.571428571428571,1,1
+200km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,85.96491228070175,100.0,100.0,100.0,0,0
+200km,8,Seto Inland Sea,Sea of Japan,57,1960,85.96491228070175,93.77551020408164,89.08163265306122,100.0,0,0
+200km,8,Lake Maracaibo,Gulf of Venezuela,2,25,100.0,100.0,100.0,100.0,0,0
+200km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,76.08363080061193,100.0,100.0,78.07241203467619,0,0
+200km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,94.33962264150944,100.0,100.0,94.5945945945946,0,0
+200km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,91.63691993880673,100.0,100.0,92.65680775114737,0,0
+200km,8,Baffin Bay,Labrador Sea,2851,896,40.827779726411784,72.32142857142857,66.74107142857143,27.67450017537706,5,6
+200km,8,Baffin Bay,Lincoln Sea,2851,447,85.93475973342687,100.0,100.0,89.79305506839705,0,0
+200km,8,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+200km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,37.5,100.0,100.0,100.0,0,0
+200km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+200km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,53.05498981670061,100.0,100.0,54.12423625254582,0,0
+200km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,53.20773930753564,100.0,100.0,50.35641547861507,2,3
+200km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,99.7867803837953,100.0,99.82462293931954,100.0,1,1
+200km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.8528784648187633,100.0,0.7072135785007072,100.0,0,0
+200km,8,Foxe Basin,Hudson Strait,707,603,100.0,100.0,100.0,100.0,0,0
+200km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+200km,8,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+200km,8,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+200km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+200km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,68.9348454525239,100.0,100.0,69.71314209472982,0,0
+200km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,28
+200km,16,Sea of Azov,Black Sea,85,821,100.0,30.572472594397077,44.82338611449452,100.0,0,1
+200km,16,Red Sea,Gulf of Aden,741,320,99.19028340080972,100.0,100.0,100.0,0,1
+200km,16,Persian Gulf,Gulf of Oman,401,206,100.0,100.0,100.0,100.0,0,0
+200km,16,Baltic Sea,North Sea,1121,637,99.73238180196253,100.0,100.0,100.0,2,2
+200km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+200km,16,Hudson Bay,Labrador Sea,2207,896,99.95468962392387,100.0,100.0,100.0,6,6
+200km,16,Sea of Marmara,Aegean Sea,35,225,57.14285714285714,100.0,98.66666666666667,65.71428571428571,2,1
+200km,16,Sea of Marmara,Black Sea,35,821,85.71428571428571,97.92935444579781,98.41656516443362,85.71428571428571,1,1
+200km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,85.96491228070175,100.0,100.0,100.0,0,0
+200km,16,Seto Inland Sea,Sea of Japan,57,1960,85.96491228070175,100.0,100.0,100.0,0,0
+200km,16,Lake Maracaibo,Gulf of Venezuela,2,25,100.0,100.0,100.0,100.0,0,0
+200km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,100.0,100.0,100.0,100.0,0,0
+200km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,100.0,100.0,100.0,100.0,0,0
+200km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,100.0,100.0,100.0,100.0,0,0
+200km,16,Baffin Bay,Labrador Sea,2851,896,100.0,100.0,100.0,99.85969835145563,5,6
+200km,16,Baffin Bay,Lincoln Sea,2851,447,100.0,100.0,100.0,100.0,0,0
+200km,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+200km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,37.5,100.0,100.0,100.0,0,0
+200km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+200km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,100.0,100.0,100.0,100.0,0,0
+200km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,99.84725050916497,100.0,100.0,99.03258655804481,2,3
+200km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,99.7867803837953,100.0,100.0,100.0,1,1
+200km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.8528784648187633,100.0,0.7072135785007072,100.0,0,0
+200km,16,Foxe Basin,Hudson Strait,707,603,100.0,100.0,100.0,100.0,0,0
+200km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+200km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+200km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+200km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+150km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,14.676450967311542,100.0,100.0,15.565932844118302,0,0
+150km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,28
+150km,8,Sea of Azov,Black Sea,85,821,95.29411764705881,0.9744214372716199,0.730816077953715,100.0,0,0
+150km,8,Red Sea,Gulf of Aden,741,320,52.4966261808367,100.0,100.0,55.3306342780027,1,1
+150km,8,Persian Gulf,Gulf of Oman,401,206,97.2568578553616,100.0,100.0,100.0,0,1
+150km,8,Baltic Sea,North Sea,1121,637,6.333630686886709,100.0,100.0,6.95807314897413,4,3
+150km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,84.82972136222911,100.0,100.0,88.54489164086688,0,0
+150km,8,Hudson Bay,Labrador Sea,2207,896,2.8545536927956503,18.973214285714285,14.84375,3.8513819664703215,7,7
+150km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,50.22222222222222,44.888888888888886,5.714285714285714,2,2
+150km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,18.026796589524967,16.443361753958587,8.571428571428571,1,1
+150km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,80.7017543859649,100.0,100.0,100.0,0,0
+150km,8,Seto Inland Sea,Sea of Japan,57,1960,80.7017543859649,77.24489795918367,75.81632653061224,100.0,0,0
+150km,8,Lake Maracaibo,Gulf of Venezuela,2,25,100.0,100.0,100.0,100.0,0,0
+150km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,50.994390617032124,100.0,100.0,44.41611422743498,0,0
+150km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,84.90566037735849,100.0,100.0,86.79245283018868,0,0
+150km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,64.96685364609893,100.0,100.0,68.5874553799082,0,0
+150km,8,Baffin Bay,Labrador Sea,2851,896,21.150473518063837,38.839285714285715,33.14732142857143,10.452472816555595,6,7
+150km,8,Baffin Bay,Lincoln Sea,2851,447,47.001052262364084,100.0,100.0,50.648895124517715,0,0
+150km,8,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+150km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,12.5,100.0,100.0,100.0,0,0
+150km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,94.80651731160896,100.0,100.0,96.5376782077393,0,0
+150km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,45.97759674134419,100.0,100.0,46.79226069246436,0,0
+150km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,30.70264765784114,97.75510204081633,93.6734693877551,32.9938900203666,4,3
+150km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,94.88272921108742,89.19677306208348,92.70431427569274,97.86780383795309,2,1
+150km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,1.9801980198019802,100.0,24,0
+150km,8,Foxe Basin,Hudson Strait,707,603,100.0,100.0,99.17081260364843,100.0,0,1
+150km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+150km,8,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+150km,8,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+150km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+150km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,44.829886591060706,100.0,100.0,45.78607960862797,0,0
+150km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,28
+150km,16,Sea of Azov,Black Sea,85,821,100.0,42.38733252131547,36.17539585870889,100.0,0,0
+150km,16,Red Sea,Gulf of Aden,741,320,97.97570850202429,100.0,100.0,100.0,1,1
+150km,16,Persian Gulf,Gulf of Oman,401,206,100.0,100.0,100.0,100.0,0,1
+150km,16,Baltic Sea,North Sea,1121,637,77.60927743086529,100.0,100.0,80.73148974130241,4,3
+150km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+150km,16,Hudson Bay,Labrador Sea,2207,896,96.6017217942909,100.0,100.0,97.64386044404169,7,7
+150km,16,Sea of Marmara,Aegean Sea,35,225,48.57142857142857,100.0,97.77777777777777,57.14285714285714,2,2
+150km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,97.1985383678441,92.20462850182703,85.71428571428571,1,1
+150km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,80.7017543859649,100.0,100.0,100.0,0,0
+150km,16,Seto Inland Sea,Sea of Japan,57,1960,80.7017543859649,100.0,100.0,100.0,0,0
+150km,16,Lake Maracaibo,Gulf of Venezuela,2,25,100.0,100.0,100.0,100.0,0,0
+150km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,96.53238143804181,100.0,100.0,94.69658337582865,0,0
+150km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,100.0,100.0,100.0,100.0,0,0
+150km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,100.0,100.0,100.0,100.0,0,0
+150km,16,Baffin Bay,Labrador Sea,2851,896,92.8446159242371,100.0,100.0,88.67064188004208,6,7
+150km,16,Baffin Bay,Lincoln Sea,2851,447,99.96492458786392,100.0,100.0,100.0,0,0
+150km,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+150km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,12.5,100.0,100.0,100.0,0,0
+150km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+150km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,84.06313645621182,100.0,100.0,86.25254582484725,0,0
+150km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,82.68839103869654,100.0,100.0,84.06313645621182,4,3
+150km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,100.0,100.0,99.96492458786392,100.0,2,1
+150km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,1.9801980198019802,100.0,24,0
+150km,16,Foxe Basin,Hudson Strait,707,603,100.0,100.0,100.0,100.0,0,1
+150km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+150km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+150km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+150km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+120km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,10.273515677118079,100.0,99.75216852540272,10.896152990882811,0,0
+120km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+120km,8,Sea of Azov,Black Sea,85,821,100.0,0.730816077953715,0.6090133982947624,100.0,0,1
+120km,8,Red Sea,Gulf of Aden,741,320,35.62753036437247,100.0,99.6875,36.43724696356275,1,1
+120km,8,Persian Gulf,Gulf of Oman,401,206,87.78054862842892,100.0,100.0,80.29925187032418,0,1
+120km,8,Baltic Sea,North Sea,1121,637,2.31935771632471,84.61538461538461,96.86028257456829,3.6574487065120427,4,3
+120km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,74.30340557275542,100.0,100.0,75.23219814241486,1,0
+120km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,1.2276785714285714,0.1359311282283643,9,8
+120km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,64.88888888888889,57.77777777777777,8.571428571428571,1,1
+120km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,26.431181485992695,34.835566382460414,5.714285714285714,1,1
+120km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,87.71929824561403,100.0,100.0,100.0,0,0
+120km,8,Seto Inland Sea,Sea of Japan,57,1960,87.71929824561403,65.81632653061224,63.9795918367347,100.0,0,0
+120km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+120km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,43.90617032126466,100.0,100.0,46.5068842427333,0,0
+120km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,59.61244263131056,100.0,100.0,63.28403875573687,0,0
+120km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,58.490566037735846,100.0,100.0,61.958184599694036,0,0
+120km,8,Baffin Bay,Labrador Sea,2851,896,4.31427569273939,1.2276785714285714,8.035714285714286,0.45598035776920376,8,8
+120km,8,Baffin Bay,Lincoln Sea,2851,447,26.727464047702558,100.0,100.0,28.305857593826726,0,0
+120km,8,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+120km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+120km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,72.04684317718942,100.0,100.0,73.67617107942974,0,0
+120km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,38.79837067209776,100.0,100.0,39.25661914460285,0,0
+120km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,15.885947046843176,73.26530612244898,67.14285714285714,17.362525458248474,5,5
+120km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,79.95735607675905,67.7306208347948,77.93756576639775,68.86993603411514,2,2
+120km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.14144271570014144,100.0,28,0
+120km,8,Foxe Basin,Hudson Strait,707,603,99.71711456859971,94.3615257048093,90.87893864013267,100.0,0,0
+120km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+120km,8,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+120km,8,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+120km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+120km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,35.267956415388035,100.0,100.0,36.11296419835446,0,0
+120km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+120km,16,Sea of Azov,Black Sea,85,821,100.0,30.937880633373933,26.9183922046285,100.0,0,1
+120km,16,Red Sea,Gulf of Aden,741,320,84.34547908232119,100.0,100.0,85.96491228070175,1,1
+120km,16,Persian Gulf,Gulf of Oman,401,206,100.0,100.0,100.0,100.0,0,1
+120km,16,Baltic Sea,North Sea,1121,637,64.7636039250669,100.0,100.0,67.79661016949152,4,3
+120km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,1,0
+120km,16,Hudson Bay,Labrador Sea,2207,896,64.65790666062529,97.76785714285714,99.66517857142857,70.27639329406435,9,8
+120km,16,Sea of Marmara,Aegean Sea,35,225,54.285714285714285,100.0,97.33333333333334,60.0,1,1
+120km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,97.1985383678441,98.17295980511571,77.14285714285715,1,1
+120km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,87.71929824561403,100.0,100.0,100.0,0,0
+120km,16,Seto Inland Sea,Sea of Japan,57,1960,87.71929824561403,97.14285714285714,96.53061224489797,100.0,0,0
+120km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+120km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,92.65680775114737,100.0,100.0,93.37072921978582,0,0
+120km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,100.0,100.0,100.0,100.0,0,0
+120km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,98.26619071902091,100.0,100.0,98.7251402345742,0,0
+120km,16,Baffin Bay,Labrador Sea,2851,896,78.00771659066994,100.0,100.0,74.32479831638021,8,8
+120km,16,Baffin Bay,Lincoln Sea,2851,447,98.45668186601193,100.0,100.0,98.73728516310067,0,0
+120km,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+120km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+120km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+120km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,61.812627291242364,100.0,100.0,62.93279022403259,0,0
+120km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,62.270875763747455,100.0,100.0,59.62321792260692,5,5
+120km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,99.7867803837953,100.0,100.0,100.0,2,2
+120km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.14144271570014144,100.0,28,0
+120km,16,Foxe Basin,Hudson Strait,707,603,99.71711456859971,100.0,100.0,100.0,0,0
+120km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+120km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+120km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+120km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+100km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,6.671114076050701,89.71499380421314,85.13011152416357,5.892817433844785,0,0
+100km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+100km,8,Sea of Azov,Black Sea,85,821,100.0,0.9744214372716199,0.730816077953715,100.0,0,0
+100km,8,Red Sea,Gulf of Aden,741,320,32.25371120107962,87.1875,83.4375,34.0080971659919,1,1
+100km,8,Persian Gulf,Gulf of Oman,401,206,52.867830423940156,100.0,99.02912621359224,57.107231920199496,1,2
+100km,8,Baltic Sea,North Sea,1121,637,0.08920606601248886,45.211930926216645,40.34536891679748,0.08920606601248886,5,5
+100km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,67.49226006191951,100.0,100.0,63.1578947368421,1,1
+100km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,11,11
+100km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,51.11111111111111,47.55555555555556,8.571428571428571,2,2
+100km,8,Sea of Marmara,Black Sea,35,821,2.857142857142857,0.12180267965895249,24.482338611449453,8.571428571428571,7,1
+100km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,68.42105263157895,100.0,100.0,100.0,0,1
+100km,8,Seto Inland Sea,Sea of Japan,57,1960,42.10526315789473,52.806122448979586,50.40816326530613,100.0,0,0
+100km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+100km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,28.658847526772057,100.0,100.0,30.64762876083631,0,0
+100km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,45.639979602243756,100.0,100.0,47.22080571137175,0,0
+100km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,41.05048444671086,100.0,100.0,49.10759816420194,0,0
+100km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,9,10
+100km,8,Baffin Bay,Lincoln Sea,2851,447,23.07962118554893,100.0,100.0,20.308663626797614,0,0
+100km,8,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+100km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,12.5,100.0,100.0,87.5,0,0
+100km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,55.80448065173116,100.0,100.0,56.10997963340122,0,0
+100km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,32.17922606924644,100.0,100.0,32.73930753564155,0,0
+100km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,8.757637474541752,33.06122448979592,35.714285714285715,4.429735234215886,5,6
+100km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,66.95095948827291,48.3339179235356,47.49210803226938,56.50319829424307,3,3
+100km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.2828854314002829,100.0,34,0
+100km,8,Foxe Basin,Hudson Strait,707,603,100.0,67.49585406301824,64.17910447761194,100.0,1,1
+100km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+100km,8,Sulu Sea,Celebes Sea,478,627,97.69874476987448,100.0,100.0,100.0,0,0
+100km,8,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+100km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+100km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,24.705359128307762,100.0,100.0,23.015343562374916,0,0
+100km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+100km,16,Sea of Azov,Black Sea,85,821,100.0,30.937880633373933,26.30937880633374,100.0,0,0
+100km,16,Red Sea,Gulf of Aden,741,320,69.09581646423752,100.0,100.0,70.58029689608637,1,1
+100km,16,Persian Gulf,Gulf of Oman,401,206,99.75062344139651,100.0,100.0,100.0,1,2
+100km,16,Baltic Sea,North Sea,1121,637,38.18019625334523,100.0,100.0,39.696699375557536,5,5
+100km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,1,1
+100km,16,Hudson Bay,Labrador Sea,2207,896,19.166289080199366,59.375,72.43303571428571,14.27276846397825,11,11
+100km,16,Sea of Marmara,Aegean Sea,35,225,54.285714285714285,100.0,96.0,57.14285714285714,2,2
+100km,16,Sea of Marmara,Black Sea,35,821,80.0,30.694275274056025,92.81364190012181,85.71428571428571,7,1
+100km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,68.42105263157895,100.0,100.0,100.0,0,1
+100km,16,Seto Inland Sea,Sea of Japan,57,1960,68.42105263157895,90.86734693877551,90.20408163265307,100.0,0,0
+100km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+100km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,79.09229984701683,100.0,100.0,80.6221315655278,0,0
+100km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,94.39061703212647,100.0,100.0,95.00254971953085,0,0
+100km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,91.33095359510453,100.0,100.0,93.37072921978582,0,0
+100km,16,Baffin Bay,Labrador Sea,2851,896,54.82286916871273,82.03125,78.23660714285714,47.77271132935812,9,10
+100km,16,Baffin Bay,Lincoln Sea,2851,447,85.02279901788846,100.0,100.0,79.86671343388285,0,0
+100km,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+100km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,12.5,100.0,100.0,100.0,0,0
+100km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+100km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,54.02240325865581,100.0,100.0,54.42973523421588,0,0
+100km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,50.66191446028513,100.0,100.0,48.72708757637474,5,6
+100km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,100.0,100.0,99.82462293931954,100.0,3,3
+100km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.2828854314002829,100.0,34,0
+100km,16,Foxe Basin,Hudson Strait,707,603,100.0,100.0,99.83416252072969,100.0,1,1
+100km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+100km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+100km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+100km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+85km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,4.603068712474983,72.24287484510533,67.53407682775713,4.780965087836336,0,0
+85km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+85km,8,Sea of Azov,Black Sea,85,821,100.0,0.730816077953715,0.48721071863580995,100.0,0,0
+85km,8,Red Sea,Gulf of Aden,741,320,23.076923076923077,75.9375,71.25,19.4331983805668,1,2
+85km,8,Persian Gulf,Gulf of Oman,401,206,54.862842892768086,100.0,87.37864077669903,48.6284289276808,0,3
+85km,8,Baltic Sea,North Sea,1121,637,0.08920606601248886,33.28100470957614,29.04238618524333,0.08920606601248886,5,5
+85km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,61.30030959752322,98.4,96.8,63.1578947368421,1,1
+85km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,13,13
+85km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,58.666666666666664,52.888888888888886,8.571428571428571,1,1
+85km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,13.032886723507916,17.417783191230207,5.714285714285714,1,1
+85km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,77.19298245614034,100.0,100.0,98.24561403508771,1,0
+85km,8,Seto Inland Sea,Sea of Japan,57,1960,14.035087719298245,40.1530612244898,37.80612244897959,100.0,0,0
+85km,8,Lake Maracaibo,Gulf of Venezuela,2,25,50.0,100.0,100.0,100.0,0,0
+85km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,20.39775624681285,100.0,100.0,21.978582355940844,0,0
+85km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,31.565527791942888,100.0,100.0,30.341662417134113,0,0
+85km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,37.735849056603776,100.0,100.0,34.16624171341153,0,0
+85km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,12,12
+85km,8,Baffin Bay,Lincoln Sea,2851,447,18.063837250087687,100.0,100.0,16.310066643283058,0,0
+85km,8,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+85km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,25.0,100.0,100.0,100.0,1,0
+85km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,45.010183299389,97.54716981132076,95.56603773584905,44.70468431771894,0,0
+85km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,29.531568228105908,98.82352941176471,98.58823529411764,29.480651731160894,0,0
+85km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.9674134419551934,16.122448979591837,4.8979591836734695,0.6619144602851323,6,7
+85km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,50.74626865671642,33.77762188705717,29.3931953700456,54.15778251599147,3,3
+85km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,39,40
+85km,8,Foxe Basin,Hudson Strait,707,603,97.87835926449789,51.40961857379768,56.71641791044776,94.2008486562942,1,1
+85km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+85km,8,Sulu Sea,Celebes Sea,478,627,96.02510460251045,99.84051036682615,99.84051036682615,99.581589958159,0,0
+85km,8,Bohol Sea,Sulu Sea,62,478,100.0,98.11715481171548,98.11715481171548,100.0,0,0
+85km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+85km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,17.83411162997554,100.0,100.0,18.545697131420948,0,0
+85km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+85km,16,Sea of Azov,Black Sea,85,821,100.0,29.11084043848965,25.700365408038977,100.0,0,0
+85km,16,Red Sea,Gulf of Aden,741,320,59.91902834008097,100.0,100.0,57.3549257759784,1,2
+85km,16,Persian Gulf,Gulf of Oman,401,206,99.75062344139651,100.0,100.0,100.0,0,3
+85km,16,Baltic Sea,North Sea,1121,637,20.606601248884925,100.0,100.0,21.587867975022302,5,5
+85km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,1,1
+85km,16,Hudson Bay,Labrador Sea,2207,896,4.938830992297237,31.25,26.785714285714285,5.980969642048029,13,13
+85km,16,Sea of Marmara,Aegean Sea,35,225,45.714285714285715,100.0,96.88888888888889,48.57142857142857,1,1
+85km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,70.40194884287455,74.90864799025579,82.85714285714286,1,1
+85km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,78.94736842105263,100.0,100.0,100.0,1,0
+85km,16,Seto Inland Sea,Sea of Japan,57,1960,78.94736842105263,81.68367346938776,80.56122448979592,100.0,0,0
+85km,16,Lake Maracaibo,Gulf of Venezuela,2,25,50.0,100.0,100.0,100.0,0,0
+85km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,68.02651708312085,100.0,100.0,69.65833758286588,0,0
+85km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,89.39316675165732,100.0,100.0,87.25140234574197,0,0
+85km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,84.19173890872004,100.0,100.0,80.26517083120856,0,0
+85km,16,Baffin Bay,Labrador Sea,2851,896,29.358119957909505,47.65625,48.995535714285715,24.903542616625746,12,12
+85km,16,Baffin Bay,Lincoln Sea,2851,447,69.51946685373554,100.0,100.0,62.9954401964223,0,0
+85km,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+85km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,25.0,100.0,100.0,100.0,1,0
+85km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,99.84725050916497,100.0,100.0,99.54175152749491,0,0
+85km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,48.72708757637474,100.0,100.0,49.23625254582485,0,0
+85km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,41.80244399185336,100.0,100.0,42.4643584521385,6,7
+85km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,100.0,96.91336373202385,96.42230796211855,100.0,3,3
+85km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,39,40
+85km,16,Foxe Basin,Hudson Strait,707,603,99.85855728429985,100.0,99.83416252072969,100.0,1,1
+85km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+85km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+85km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+85km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+70km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,3.8470091171892373,49.19454770755886,52.78810408921933,3.624638647987547,0,0
+70km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+70km,8,Sea of Azov,Black Sea,85,821,96.47058823529412,0.730816077953715,0.6090133982947624,92.94117647058823,0,0
+70km,8,Red Sea,Gulf of Aden,741,320,15.519568151147098,51.5625,49.0625,16.734143049932523,2,2
+70km,8,Persian Gulf,Gulf of Oman,401,206,29.42643391521197,89.80582524271846,69.90291262135922,32.16957605985037,1,2
+70km,8,Baltic Sea,North Sea,1121,637,0.08920606601248886,13.657770800627944,10.518053375196232,0.08920606601248886,6,7
+70km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,46.13003095975232,77.8,82.19999999999999,48.91640866873065,2,1
+70km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,14,15
+70km,8,Sea of Marmara,Aegean Sea,35,225,8.571428571428571,47.11111111111111,40.44444444444444,5.714285714285714,2,2
+70km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,19.00121802679659,17.783191230207066,11.428571428571429,1,1
+70km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,71.9298245614035,100.0,100.0,96.49122807017544,0,1
+70km,8,Seto Inland Sea,Sea of Japan,57,1960,5.263157894736842,31.93877551020408,29.846938775510207,3.508771929824561,0,0
+70km,8,Lake Maracaibo,Gulf of Venezuela,2,25,50.0,100.0,100.0,100.0,0,0
+70km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,16.216216216216218,100.0,100.0,14.584395716471189,0,0
+70km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,19.22488526262111,100.0,100.0,21.06068332483427,0,0
+70km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,30.392656807751145,100.0,100.0,28.96481387047425,0,0
+70km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,15,14
+70km,8,Baffin Bay,Lincoln Sea,2851,447,13.960014030164855,100.0,99.77628635346755,14.380918975797966,0,0
+70km,8,White Sea,Barents Sea off the White Sea,348,420,90.51724137931035,100.0,100.0,93.67816091954023,0,0
+70km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+70km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,32.68839103869654,77.35849056603774,76.32075471698113,33.5030549898167,0,0
+70km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,28.0040733197556,96.0,95.29411764705881,28.411405295315685,0,0
+70km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.05091649694501018,2.6530612244897958,0.0,0.0,8,9
+70km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,37.10021321961621,22.763942476324097,20.028060329708875,42.857142857142854,3,3
+70km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,46,46
+70km,8,Foxe Basin,Hudson Strait,707,603,80.76379066478077,49.4195688225539,47.42951907131012,83.5926449787836,1,1
+70km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,97.90794979079497,100.0,100.0,99.7907949790795,0,0
+70km,8,Sulu Sea,Celebes Sea,478,627,92.46861924686193,97.4481658692185,95.85326953748007,92.88702928870293,0,0
+70km,8,Bohol Sea,Sulu Sea,62,478,100.0,91.63179916317992,90.3765690376569,100.0,0,0
+70km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+70km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,12.986435401378696,100.0,100.0,11.896820102290416,0,0
+70km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+70km,16,Sea of Azov,Black Sea,85,821,98.82352941176471,28.136419001218027,24.3605359317905,100.0,0,0
+70km,16,Red Sea,Gulf of Aden,741,320,47.77327935222672,100.0,100.0,48.852901484480434,2,2
+70km,16,Persian Gulf,Gulf of Oman,401,206,93.76558603491272,100.0,100.0,95.76059850374065,1,2
+70km,16,Baltic Sea,North Sea,1121,637,11.061552185548617,100.0,99.84301412872841,9.009812667261375,6,7
+70km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,83.28173374613003,100.0,100.0,84.52012383900929,2,1
+70km,16,Hudson Bay,Labrador Sea,2207,896,1.2686905301314002,8.035714285714286,5.803571428571429,0.5890348889895787,14,15
+70km,16,Sea of Marmara,Aegean Sea,35,225,42.857142857142854,99.55555555555556,96.88888888888889,51.42857142857142,2,2
+70km,16,Sea of Marmara,Black Sea,35,821,85.71428571428571,74.17783191230207,72.59439707673569,88.57142857142857,1,1
+70km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,73.68421052631578,100.0,100.0,100.0,0,1
+70km,16,Seto Inland Sea,Sea of Japan,57,1960,73.68421052631578,71.42857142857143,70.3061224489796,100.0,0,0
+70km,16,Lake Maracaibo,Gulf of Venezuela,2,25,50.0,100.0,100.0,100.0,0,0
+70km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,53.39112697603263,100.0,100.0,50.025497195308525,0,0
+70km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,74.75777664456909,100.0,100.0,76.69556348801632,0,0
+70km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,69.1993880673126,100.0,100.0,65.88475267720551,0,0
+70km,16,Baffin Bay,Labrador Sea,2851,896,5.752367590319187,10.714285714285714,16.40625,7.015082427218519,15,14
+70km,16,Baffin Bay,Lincoln Sea,2851,447,39.670291125920734,100.0,99.77628635346755,41.7046650298141,0,0
+70km,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+70km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+70km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,89.66395112016293,100.0,100.0,89.91853360488798,0,0
+70km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,44.5010183299389,100.0,100.0,44.95926680244399,0,0
+70km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,30.448065173116092,92.24489795918367,80.0,32.026476578411405,8,9
+70km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,100.0,89.5124517713083,88.1445106980007,100.0,3,3
+70km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,46,46
+70km,16,Foxe Basin,Hudson Strait,707,603,99.57567185289957,100.0,100.0,100.0,1,1
+70km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+70km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,99.84051036682615,100.0,0,0
+70km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+70km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+60km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,2.868579052701801,35.5638166047088,41.14002478314746,3.0909495219034913,1,0
+60km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+60km,8,Sea of Azov,Black Sea,85,821,100.0,0.730816077953715,0.730816077953715,100.0,0,0
+60km,8,Red Sea,Gulf of Aden,741,320,9.31174089068826,47.8125,44.6875,10.121457489878543,2,2
+60km,8,Persian Gulf,Gulf of Oman,401,206,25.6857855361596,42.23300970873786,49.029126213592235,27.93017456359102,3,2
+60km,8,Baltic Sea,North Sea,1121,637,0.08920606601248886,6.750392464678178,4.866562009419153,0.08920606601248886,7,7
+60km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,45.20123839009288,66.8,67.80000000000001,47.368421052631575,1,1
+60km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,18,17
+60km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,60.44444444444444,56.00000000000001,8.571428571428571,1,1
+60km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,17.295980511571255,16.68696711327649,5.714285714285714,1,1
+60km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,73.68421052631578,100.0,100.0,96.49122807017544,1,1
+60km,8,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,24.540816326530614,23.877551020408163,3.508771929824561,0,0
+60km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+60km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,12.187659357470679,100.0,100.0,11.371749107598164,0,0
+60km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,17.899031106578274,100.0,100.0,14.278429372768993,0,0
+60km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,23.45741968383478,100.0,100.0,23.91636919938807,0,0
+60km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,17,17
+60km,8,Baffin Bay,Lincoln Sea,2851,447,11.434584356366187,100.0,100.0,12.381620484040686,0,0
+60km,8,White Sea,Barents Sea off the White Sea,348,420,79.88505747126436,100.0,100.0,85.0574712643678,0,0
+60km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,37.5,,0
+60km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,26.629327902240323,66.50943396226415,61.13207547169811,26.425661914460285,0,0
+60km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,24.69450101832994,83.05882352941177,89.41176470588236,25.254582484725052,0,0
+60km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,10,10
+60km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,25.15991471215352,13.995089442300948,12.41669589617678,28.35820895522388,4,4
+60km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,53,53
+60km,8,Foxe Basin,Hudson Strait,707,603,70.01414427157002,43.28358208955223,41.956882255389715,71.99434229137199,1,1
+60km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,90.7949790794979,99.70760233918129,99.12280701754386,90.1673640167364,0,0
+60km,8,Sulu Sea,Celebes Sea,478,627,81.79916317991632,88.03827751196172,85.48644338118022,81.3807531380753,0,0
+60km,8,Bohol Sea,Sulu Sea,62,478,100.0,78.24267782426779,75.10460251046025,100.0,0,0
+60km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,98.38709677419355,100.0,100.0,95.16129032258065,1,1
+60km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,9.11718923726929,100.0,100.0,9.33955970647098,1,0
+60km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+60km,16,Sea of Azov,Black Sea,85,821,100.0,24.725943970767357,22.0462850182704,100.0,0,0
+60km,16,Red Sea,Gulf of Aden,741,320,38.8663967611336,99.6875,99.375,40.21592442645074,2,2
+60km,16,Persian Gulf,Gulf of Oman,401,206,83.0423940149626,100.0,100.0,85.286783042394,3,2
+60km,16,Baltic Sea,North Sea,1121,637,5.173951828724353,94.19152276295134,91.99372056514915,6.6904549509366635,7,7
+60km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,76.16099071207431,100.0,100.0,78.0185758513932,1,1
+60km,16,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,18,17
+60km,16,Sea of Marmara,Aegean Sea,35,225,51.42857142857142,100.0,96.88888888888889,54.285714285714285,1,1
+60km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,67.11327649208283,66.1388550548112,82.85714285714286,1,1
+60km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,75.43859649122807,100.0,100.0,100.0,1,1
+60km,16,Seto Inland Sea,Sea of Japan,57,1960,63.1578947368421,60.816326530612244,60.255102040816325,94.73684210526315,0,0
+60km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+60km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,40.74451810300867,100.0,100.0,38.296787353391124,0,0
+60km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,69.30137684854665,100.0,100.0,67.26160122386537,0,0
+60km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,52.57521672616012,100.0,100.0,51.861295257521675,0,0
+60km,16,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,17,17
+60km,16,Baffin Bay,Lincoln Sea,2851,447,29.603647842862152,100.0,100.0,30.86636267976149,0,0
+60km,16,White Sea,Barents Sea off the White Sea,348,420,99.71264367816092,100.0,100.0,100.0,0,0
+60km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+60km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,71.94501018329939,100.0,100.0,73.62525458248473,0,0
+60km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,39.765784114052956,100.0,100.0,40.224032586558046,0,0
+60km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,22.403258655804482,57.95918367346938,53.87755102040816,24.54175152749491,10,10
+60km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,91.68443496801706,80.9891266222378,77.86741494212556,93.39019189765459,4,4
+60km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,53,53
+60km,16,Foxe Basin,Hudson Strait,707,603,99.29278642149929,92.86898839137645,90.54726368159204,100.0,1,1
+60km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+60km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+60km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+60km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,1,1
+50km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,2.2904158327774073,26.270136307311027,23.915737298636927,2.112519457416055,1,1
+50km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+50km,8,Sea of Azov,Black Sea,85,821,100.0,0.730816077953715,0.9744214372716199,100.0,0,0
+50km,8,Red Sea,Gulf of Aden,741,320,6.477732793522267,31.874999999999996,35.9375,6.747638326585695,3,2
+50km,8,Persian Gulf,Gulf of Oman,401,206,14.214463840399002,28.640776699029125,26.21359223300971,16.209476309226932,4,4
+50km,8,Baltic Sea,North Sea,1121,637,0.0,0.0,0.0,0.0,9,9
+50km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,38.69969040247678,52.0,49.2,36.84210526315789,2,2
+50km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,21,21
+50km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,44.0,41.333333333333336,8.571428571428571,1,1
+50km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,14.494518879415347,16.68696711327649,8.571428571428571,1,1
+50km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,70.17543859649122,100.0,100.0,96.49122807017544,1,1
+50km,8,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,19.132653061224488,20.816326530612244,3.508771929824561,0,0
+50km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+50km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,8.567057623661398,100.0,100.0,9.178990311065782,0,0
+50km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,8.822029576746559,99.40828402366864,100.0,9.8419173890872,0,0
+50km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,18.45996940336563,100.0,100.0,19.88781234064253,0,0
+50km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,20,20
+50km,8,Baffin Bay,Lincoln Sea,2851,447,8.488249736934408,100.0,97.98657718120806,8.698702209750966,0,0
+50km,8,White Sea,Barents Sea off the White Sea,348,420,58.04597701149425,100.0,100.0,60.3448275862069,0,0
+50km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,0
+50km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,18.126272912423623,46.79245283018868,48.301886792452834,17.922606924643585,0,0
+50km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,20.519348268839106,72.94117647058823,72.47058823529412,21.23217922606925,0,0
+50km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,12,12
+50km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,18.550106609808104,9.43528586460891,8.347948088390039,20.255863539445627,4,4
+50km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,62,62
+50km,8,Foxe Basin,Hudson Strait,707,603,58.698727015558696,37.47927031509121,36.318407960199,60.67892503536068,1,1
+50km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,74.89539748953975,92.69005847953217,92.98245614035088,84.72803347280335,0,0
+50km,8,Sulu Sea,Celebes Sea,478,627,66.31799163179917,75.9170653907496,72.56778309409889,63.59832635983263,0,0
+50km,8,Bohol Sea,Sulu Sea,62,478,100.0,60.46025104602511,61.29707112970711,100.0,0,0
+50km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,95.16129032258065,100.0,100.0,91.93548387096774,1,1
+50km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,6.537691794529686,82.8996282527881,80.17348203221809,6.22637313764732,1,1
+50km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+50km,16,Sea of Azov,Black Sea,85,821,100.0,19.12302070645554,23.50791717417783,100.0,0,0
+50km,16,Red Sea,Gulf of Aden,741,320,27.66531713900135,85.3125,90.0,28.74493927125506,3,2
+50km,16,Persian Gulf,Gulf of Oman,401,206,63.092269326683294,100.0,99.02912621359224,66.08478802992519,4,4
+50km,16,Baltic Sea,North Sea,1121,637,0.08920606601248886,59.02668759811617,55.10204081632652,0.08920606601248886,9,9
+50km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,69.65944272445822,100.0,100.0,68.11145510835914,2,2
+50km,16,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,21,21
+50km,16,Sea of Marmara,Aegean Sea,35,225,60.0,99.11111111111111,95.55555555555556,62.857142857142854,1,1
+50km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,56.76004872107187,59.31790499390986,85.71428571428571,1,1
+50km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,71.9298245614035,100.0,100.0,98.24561403508771,1,1
+50km,16,Seto Inland Sea,Sea of Japan,57,1960,52.63157894736842,50.61224489795918,52.755102040816325,68.42105263157895,0,0
+50km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+50km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,24.47730749617542,100.0,100.0,25.854156042835285,0,0
+50km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,47.83273839877614,100.0,100.0,49.61754207037226,0,0
+50km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,42.98827129015808,100.0,100.0,44.05915349311576,0,0
+50km,16,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,20,20
+50km,16,Baffin Bay,Lincoln Sea,2851,447,23.430375306909855,100.0,97.98657718120806,24.482637670992634,0,0
+50km,16,White Sea,Barents Sea off the White Sea,348,420,99.42528735632183,100.0,100.0,100.0,0,0
+50km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+50km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,57.0264765784114,100.0,100.0,57.331975560081474,0,0
+50km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,33.706720977596746,100.0,99.29411764705883,34.164969450101836,0,0
+50km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,8.655804480651732,27.755102040816325,29.795918367346943,8.757637474541752,12,12
+50km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,74.20042643923242,59.97895475271835,56.68186601192564,76.54584221748401,4,4
+50km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,62,62
+50km,16,Foxe Basin,Hudson Strait,707,603,98.44413012729845,66.50082918739635,64.8424543946932,100.0,1,1
+50km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+50km,16,Sulu Sea,Celebes Sea,478,627,99.16317991631799,100.0,99.84051036682615,98.5355648535565,0,0
+50km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+50km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,1,1
+40km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,1.5121191905714921,18.463444857496903,17.967781908302356,1.467645096731154,1,2
+40km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,28
+40km,8,Sea of Azov,Black Sea,85,821,96.47058823529412,0.730816077953715,0.9744214372716199,94.11764705882352,0,0
+40km,8,Red Sea,Gulf of Aden,741,320,4.8582995951417,19.6875,19.6875,4.183535762483131,3,3
+40km,8,Persian Gulf,Gulf of Oman,401,206,11.72069825436409,28.640776699029125,25.728155339805824,12.967581047381547,3,3
+40km,8,Baltic Sea,North Sea,1121,637,0.0,0.0,0.0,0.0,12,11
+40km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,29.411764705882355,34.8,37.8,29.721362229102166,3,2
+40km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,26,26
+40km,8,Sea of Marmara,Aegean Sea,35,225,8.571428571428571,34.22222222222222,39.55555555555556,5.714285714285714,2,1
+40km,8,Sea of Marmara,Black Sea,35,821,8.571428571428571,11.814859926918391,14.372716199756393,8.571428571428571,1,1
+40km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,66.66666666666666,76.66666666666667,98.33333333333333,98.24561403508771,3,1
+40km,8,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,13.673469387755102,13.16326530612245,1.7543859649122806,0,0
+40km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+40km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,7.343192248852626,100.0,100.0,7.90413054563998,0,0
+40km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,4.640489546149924,86.3905325443787,78.10650887573965,5.2524222335543085,0,1
+40km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,13.921468638449772,100.0,95.07042253521126,14.686384497705252,0,0
+40km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,25,26
+40km,8,Baffin Bay,Lincoln Sea,2851,447,6.243423360224483,100.0,94.40715883668904,6.453875833041038,0,0
+40km,8,White Sea,Barents Sea off the White Sea,348,420,44.252873563218394,100.0,100.0,45.689655172413794,0,0
+40km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,1
+40km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,11.201629327902241,34.056603773584904,34.52830188679245,12.169042769857434,0,0
+40km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,15.325865580448065,56.23529411764706,58.11764705882353,15.682281059063136,0,0
+40km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,14,15
+40km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,7.249466950959488,1.8589968432129078,1.5082427218519818,4.477611940298507,6,7
+40km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,76,76
+40km,8,Foxe Basin,Hudson Strait,707,603,43.14002828854314,26.865671641791046,24.875621890547265,43.42291371994342,2,3
+40km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,57.32217573221757,83.33333333333334,84.21052631578947,60.66945606694561,0,0
+40km,8,Sulu Sea,Celebes Sea,478,627,49.163179916317986,58.21371610845295,57.73524720893142,51.67364016736402,0,0
+40km,8,Bohol Sea,Sulu Sea,62,478,98.38709677419355,39.9581589958159,37.029288702928866,98.38709677419355,0,0
+40km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,80.64516129032258,97.0873786407767,93.20388349514563,82.25806451612904,1,1
+40km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,3.935957304869913,56.50557620817844,54.646840148698885,4.047142539470759,1,2
+40km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,28
+40km,16,Sea of Azov,Black Sea,85,821,100.0,16.930572472594395,19.853836784409257,100.0,0,0
+40km,16,Red Sea,Gulf of Aden,741,320,20.10796221322537,63.4375,62.5,18.89338731443995,3,3
+40km,16,Persian Gulf,Gulf of Oman,401,206,49.37655860349127,91.74757281553399,89.80582524271846,52.867830423940156,3,3
+40km,16,Baltic Sea,North Sea,1121,637,0.08920606601248886,18.524332810047095,22.448979591836736,0.08920606601248886,12,11
+40km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,59.75232198142415,94.39999999999999,96.8,60.371517027863774,3,2
+40km,16,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,26,26
+40km,16,Sea of Marmara,Aegean Sea,35,225,51.42857142857142,96.88888888888889,93.33333333333333,57.14285714285714,2,1
+40km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,45.79780755176614,49.20828258221681,85.71428571428571,1,1
+40km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,66.66666666666666,100.0,100.0,98.24561403508771,3,1
+40km,16,Seto Inland Sea,Sea of Japan,57,1960,12.280701754385964,37.857142857142854,36.275510204081634,12.280701754385964,0,0
+40km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+40km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,16.420193778684343,100.0,100.0,17.440081591024985,0,0
+40km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,30.494645588985215,100.0,100.0,32.33044365119837,0,1
+40km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,30.800611932687406,100.0,100.0,31.769505354411017,0,0
+40km,16,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,25,26
+40km,16,Baffin Bay,Lincoln Sea,2851,447,15.573482988425113,100.0,94.40715883668904,16.16976499473869,0,0
+40km,16,White Sea,Barents Sea off the White Sea,348,420,93.10344827586206,100.0,100.0,96.55172413793103,0,0
+40km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,1
+40km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,40.07128309572302,86.13207547169812,86.22641509433963,41.70061099796334,0,0
+40km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,29.22606924643584,97.1764705882353,96.70588235294117,29.531568228105908,0,0
+40km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.6619144602851323,3.877551020408163,3.061224489795918,0.6619144602851323,14,15
+40km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,49.25373134328358,30.690985619081022,28.305857593826726,44.349680170575695,6,7
+40km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,76,76
+40km,16,Foxe Basin,Hudson Strait,707,603,94.48373408769449,54.22885572139303,52.40464344941957,96.18104667609619,2,3
+40km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,99.16317991631799,100.0,100.0,99.581589958159,0,0
+40km,16,Sulu Sea,Celebes Sea,478,627,94.56066945606695,98.56459330143541,99.04306220095694,94.97907949790795,0,0
+40km,16,Bohol Sea,Sulu Sea,62,478,100.0,95.81589958158996,94.56066945606695,100.0,0,0
+40km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,1,1
+35km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,1.245274627529464,12.887236679058239,13.382899628252787,1.1785634867689572,2,2
+35km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+35km,8,Sea of Azov,Black Sea,85,821,91.76470588235294,0.9744214372716199,0.730816077953715,90.58823529411765,0,0
+35km,8,Red Sea,Gulf of Aden,741,320,3.2388663967611335,15.0,17.1875,3.643724696356275,4,3
+35km,8,Persian Gulf,Gulf of Oman,401,206,7.4812967581047385,11.165048543689322,15.048543689320388,8.728179551122196,5,4
+35km,8,Baltic Sea,North Sea,1121,637,0.0,0.0,0.0,0.0,12,11
+35km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,22.910216718266255,26.200000000000003,26.200000000000003,21.981424148606813,3,3
+35km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,29,29
+35km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,31.11111111111111,27.111111111111114,8.571428571428571,2,2
+35km,8,Sea of Marmara,Black Sea,35,821,2.857142857142857,0.12180267965895249,12.545676004872108,8.571428571428571,7,1
+35km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,66.66666666666666,73.33333333333333,87.5,98.24561403508771,3,2
+35km,8,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,9.795918367346939,10.0,1.7543859649122806,0,0
+35km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,1
+35km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,6.884242733299336,94.64285714285714,97.02380952380952,7.700152983171852,0,0
+35km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,3.4166241713411525,72.7810650887574,68.63905325443787,2.855685874553799,0,1
+35km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,11.371749107598164,97.1830985915493,93.66197183098592,12.952575216726158,0,0
+35km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,30,30
+35km,8,Baffin Bay,Lincoln Sea,2851,447,5.8225184145913715,99.32885906040269,92.84116331096197,6.313574184496668,0,0
+35km,8,White Sea,Barents Sea off the White Sea,348,420,41.66666666666667,95.47619047619048,98.57142857142858,40.229885057471265,0,0
+35km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,1
+35km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,9.012219959266803,28.0188679245283,26.69811320754717,9.826883910386966,0,0
+35km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,13.289205702647658,51.52941176470588,51.05882352941177,13.034623217922606,0,0
+35km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,16,16
+35km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,3.624733475479744,0.9821115398105928,1.0171869519466854,4.904051172707889,7,6
+35km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,83,84
+35km,8,Foxe Basin,Hudson Strait,707,603,30.55162659123055,18.90547263681592,22.553897180762853,33.097595473833096,3,2
+35km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,49.7907949790795,75.43859649122807,76.31578947368422,52.719665271966534,0,0
+35km,8,Sulu Sea,Celebes Sea,478,627,42.05020920502092,49.920255183413076,48.484848484848484,42.46861924686193,0,0
+35km,8,Bohol Sea,Sulu Sea,62,478,80.64516129032258,32.21757322175732,33.054393305439326,85.48387096774194,0,0
+35km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,69.35483870967742,84.46601941747572,80.58252427184466,74.19354838709677,1,1
+35km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,3.3577940849455192,42.627013630731106,42.13135068153655,3.3800311318656884,2,2
+35km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,29,29
+35km,16,Sea of Azov,Black Sea,85,821,100.0,15.956151035322778,14.616321559074299,100.0,0,0
+35km,16,Red Sea,Gulf of Aden,741,320,14.709851551956815,51.87500000000001,54.6875,15.654520917678813,4,3
+35km,16,Persian Gulf,Gulf of Oman,401,206,35.16209476309227,64.56310679611651,69.90291262135922,36.65835411471321,5,4
+35km,16,Baltic Sea,North Sea,1121,637,0.08920606601248886,12.401883830455258,15.2276295133438,0.08920606601248886,12,11
+35km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,49.84520123839009,74.6,73.8,50.15479876160991,3,3
+35km,16,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,29,29
+35km,16,Sea of Marmara,Aegean Sea,35,225,48.57142857142857,91.11111111111111,84.0,60.0,2,2
+35km,16,Sea of Marmara,Black Sea,35,821,77.14285714285715,16.443361753958587,39.2204628501827,85.71428571428571,7,1
+35km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,66.66666666666666,100.0,100.0,98.24561403508771,3,2
+35km,16,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,27.39795918367347,28.6734693877551,1.7543859649122806,0,0
+35km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,1
+35km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,14.38041815400306,100.0,100.0,15.196328403875572,0,0
+35km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,23.71239163691994,100.0,100.0,21.162672106068335,0,1
+35km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,27.231004589495157,100.0,100.0,27.944926058133607,0,0
+35km,16,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,30,30
+35km,16,Baffin Bay,Lincoln Sea,2851,447,14.556296036478427,100.0,94.1834451901566,15.11750263065591,0,0
+35km,16,White Sea,Barents Sea off the White Sea,348,420,83.04597701149426,100.0,100.0,79.88505747126436,0,0
+35km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,1
+35km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,32.84114052953157,72.16981132075472,71.60377358490567,33.91038696537678,0,0
+35km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,27.189409368635438,95.76470588235294,95.76470588235294,26.680244399185337,0,0
+35km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.20366598778004072,0.6122448979591837,0.20408163265306123,0.15274949083503053,16,16
+35km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,33.90191897654584,22.16766047001052,22.65871623991582,35.18123667377399,7,6
+35km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,83,84
+35km,16,Foxe Basin,Hudson Strait,707,603,84.86562942008487,45.936981757877284,47.2636815920398,87.41159830268741,3,2
+35km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,97.48953974895397,100.0,100.0,98.11715481171548,0,0
+35km,16,Sulu Sea,Celebes Sea,478,627,87.86610878661088,96.01275917065391,94.25837320574163,89.5397489539749,0,0
+35km,16,Bohol Sea,Sulu Sea,62,478,100.0,87.65690376569037,89.3305439330544,100.0,0,0
+35km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,1,1
+30km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,1.0673782521681119,11.152416356877323,10.037174721189592,1.134089392928619,2,2
+30km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+30km,8,Sea of Azov,Black Sea,85,821,91.76470588235294,0.730816077953715,0.9744214372716199,90.58823529411765,0,1
+30km,8,Red Sea,Gulf of Aden,741,320,2.1592442645074224,10.0,8.4375,1.484480431848853,4,5
+30km,8,Persian Gulf,Gulf of Oman,401,206,5.236907730673317,6.796116504854369,5.825242718446602,4.239401496259352,5,6
+30km,8,Baltic Sea,North Sea,1121,637,0.0,0.0,0.0,0.0,14,13
+30km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,19.195046439628484,19.6,21.6,20.123839009287924,4,3
+30km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,33,34
+30km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,19.555555555555557,24.0,8.571428571428571,2,1
+30km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,9.500609013398295,9.500609013398295,5.714285714285714,1,1
+30km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,56.14035087719298,53.333333333333336,67.5,98.24561403508771,3,2
+30km,8,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,7.857142857142857,7.755102040816326,1.7543859649122806,0,0
+30km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,1
+30km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,6.3742988271290155,83.92857142857143,80.35714285714286,6.425293217746048,0,0
+30km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,2.498725140234574,59.76331360946746,50.29585798816568,2.1927587965323814,1,1
+30km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,8.720040795512492,76.05633802816901,68.30985915492957,9.229984701682815,0,0
+30km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,34,34
+30km,8,Baffin Bay,Lincoln Sea,2851,447,5.2262364082777975,97.98657718120806,89.26174496644296,5.576990529638723,0,0
+30km,8,White Sea,Barents Sea off the White Sea,348,420,37.93103448275862,84.52380952380952,81.19047619047619,37.35632183908046,0,0
+30km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,1
+30km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,6.822810590631365,21.32075471698113,20.754716981132077,6.720977596741344,0,0
+30km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,10.539714867617107,41.88235294117647,44.70588235294118,10.641547861507128,0,0
+30km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,18,19
+30km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,2.9850746268656714,0.4209049456331112,0.3156787092248334,1.279317697228145,7,8
+30km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,98,98
+30km,8,Foxe Basin,Hudson Strait,707,603,19.377652050919377,17.24709784411277,16.086235489220563,21.074964639321074,3,3
+30km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,39.33054393305439,68.12865497076024,68.42105263157895,38.28451882845189,0,0
+30km,8,Sulu Sea,Celebes Sea,478,627,37.238493723849366,43.0622009569378,41.62679425837321,39.74895397489539,0,0
+30km,8,Bohol Sea,Sulu Sea,62,478,82.25806451612904,25.94142259414226,25.523012552301257,77.41935483870968,0,0
+30km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,53.2258064516129,62.13592233009708,56.310679611650485,59.67741935483871,2,2
+30km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,2.8241049588614633,34.572490706319705,33.2094175960347,2.9797642873026464,2,2
+30km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,29
+30km,16,Sea of Azov,Black Sea,85,821,100.0,11.20584652862363,13.15468940316687,100.0,0,1
+30km,16,Red Sea,Gulf of Aden,741,320,9.7165991902834,42.5,41.5625,9.176788124156547,4,5
+30km,16,Persian Gulf,Gulf of Oman,401,206,27.431421446384043,48.54368932038835,47.0873786407767,26.184538653366584,5,6
+30km,16,Baltic Sea,North Sea,1121,637,0.08920606601248886,5.965463108320251,7.6923076923076925,0.08920606601248886,14,13
+30km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,42.10526315789473,63.0,64.0,43.653250773993804,4,3
+30km,16,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,33,34
+30km,16,Sea of Marmara,Aegean Sea,35,225,42.857142857142854,73.33333333333333,76.44444444444444,48.57142857142857,2,1
+30km,16,Sea of Marmara,Black Sea,35,821,82.85714285714286,32.521315468940315,31.5468940316687,82.85714285714286,1,1
+30km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,61.40350877192983,100.0,100.0,98.24561403508771,3,2
+30km,16,Seto Inland Sea,Sea of Japan,57,1960,3.508771929824561,22.346938775510203,21.581632653061224,1.7543859649122806,0,0
+30km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,1
+30km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,11.218765935747067,100.0,100.0,11.167771545130035,0,0
+30km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,16.216216216216218,100.0,100.0,14.890362060173382,1,1
+30km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,22.74349821519633,100.0,100.0,23.406425293217744,0,0
+30km,16,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,34,34
+30km,16,Baffin Bay,Lincoln Sea,2851,447,12.872676253945983,100.0,92.61744966442953,13.539109084531741,0,0
+30km,16,White Sea,Barents Sea off the White Sea,348,420,73.27586206896551,100.0,100.0,70.40229885057471,0,0
+30km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,1
+30km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,25.712830957230143,56.9811320754717,58.490566037735846,25.509164969450104,0,0
+30km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,25.254582484725052,84.47058823529412,87.29411764705883,24.84725050916497,0,0
+30km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,18,19
+30km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,30.49040511727079,15.22272886706419,14.100315678709224,26.01279317697228,7,8
+30km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,98,98
+30km,16,Foxe Basin,Hudson Strait,707,603,70.15558698727015,43.78109452736319,43.28358208955223,72.7015558698727,3,3
+30km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,88.49372384937239,98.53801169590643,98.24561403508771,87.65690376569037,0,0
+30km,16,Sulu Sea,Celebes Sea,478,627,83.05439330543933,87.08133971291866,86.1244019138756,84.30962343096235,0,0
+30km,16,Bohol Sea,Sulu Sea,62,478,100.0,74.26778242677824,73.84937238493724,100.0,0,0
+30km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,95.16129032258065,100.0,100.0,96.7741935483871,2,2
+25km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,0.711585501445408,8.550185873605948,7.806691449814126,0.8450077829664221,2,2
+25km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,30
+25km,8,Sea of Azov,Black Sea,85,821,85.88235294117646,0.730816077953715,0.730816077953715,83.52941176470588,0,0
+25km,8,Red Sea,Gulf of Aden,741,320,0.9446693657219973,3.75,2.8125,1.0796221322537112,6,6
+25km,8,Persian Gulf,Gulf of Oman,401,206,2.493765586034913,3.8834951456310676,2.912621359223301,3.2418952618453867,6,6
+25km,8,Baltic Sea,North Sea,1121,637,0.0,0.0,0.0,0.0,18,17
+25km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,11.76470588235294,12.0,11.4,12.38390092879257,5,5
+25km,8,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,41,40
+25km,8,Sea of Marmara,Aegean Sea,35,225,11.428571428571429,17.77777777777778,21.333333333333336,8.571428571428571,2,1
+25km,8,Sea of Marmara,Black Sea,35,821,5.714285714285714,7.429963459196102,7.429963459196102,8.571428571428571,1,2
+25km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,45.614035087719294,22.5,51.66666666666667,61.40350877192983,4,3
+25km,8,Seto Inland Sea,Sea of Japan,57,1960,1.7543859649122806,5.408163265306123,5.663265306122449,1.7543859649122806,0,0
+25km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,1
+25km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,5.4563997960224375,69.04761904761905,67.85714285714286,5.660377358490567,0,0
+25km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,1.5298317185109638,44.97041420118343,37.8698224852071,1.7338092809790924,1,1
+25km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,6.068332483426823,54.22535211267606,48.59154929577465,6.323304436511984,0,0
+25km,8,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,42,42
+25km,8,Baffin Bay,Lincoln Sea,2851,447,4.349351104875483,91.05145413870245,81.4317673378076,4.910557699052964,0,0
+25km,8,White Sea,Barents Sea off the White Sea,348,420,32.758620689655174,66.42857142857143,69.76190476190476,33.33333333333333,0,0
+25km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,2
+25km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,4.327902240325866,16.037735849056602,15.660377358490566,4.887983706720977,0,0
+25km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,8.401221995926681,36.705882352941174,34.588235294117645,9.063136456211812,0,0
+25km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,23,23
+25km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,0.0,0.0,0.0,0.0,9,10
+25km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,118,118
+25km,8,Foxe Basin,Hudson Strait,707,603,11.032531824611032,8.45771144278607,8.12603648424544,13.437057991513438,4,4
+25km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,27.19665271966527,56.14035087719298,58.77192982456141,27.405857740585777,0,0
+25km,8,Sulu Sea,Celebes Sea,478,627,27.405857740585777,32.854864433811805,30.62200956937799,27.19665271966527,0,0
+25km,8,Bohol Sea,Sulu Sea,62,478,62.903225806451616,18.828451882845187,16.94560669456067,69.35483870967742,1,0
+25km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,38.70967741935484,47.57281553398058,47.57281553398058,40.32258064516129,2,2
+25km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,2.0458083166555485,25.650557620817843,24.411400247831473,2.1347565043362238,2,2
+25km,16,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,30,30
+25km,16,Sea of Azov,Black Sea,85,821,98.82352941176471,8.76979293544458,8.160779537149818,100.0,0,0
+25km,16,Red Sea,Gulf of Aden,741,320,6.207827260458839,28.749999999999996,27.500000000000004,6.882591093117409,6,6
+25km,16,Persian Gulf,Gulf of Oman,401,206,17.70573566084788,35.43689320388349,33.49514563106796,19.950124688279303,6,6
+25km,16,Baltic Sea,North Sea,1121,637,0.0,0.0,0.0,0.0,18,17
+25km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,34.05572755417957,46.6,45.2,35.91331269349845,5,5
+25km,16,Hudson Bay,Labrador Sea,2207,896,0.0,0.0,0.0,0.0,41,40
+25km,16,Sea of Marmara,Aegean Sea,35,225,40.0,65.33333333333333,66.66666666666666,48.57142857142857,2,1
+25km,16,Sea of Marmara,Black Sea,35,821,80.0,25.091352009744217,24.116930572472594,82.85714285714286,1,2
+25km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,63.1578947368421,100.0,100.0,98.24561403508771,4,3
+25km,16,Seto Inland Sea,Sea of Japan,57,1960,1.7543859649122806,16.93877551020408,16.3265306122449,1.7543859649122806,0,0
+25km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,1
+25km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,9.229984701682815,100.0,100.0,9.637939826619071,0,0
+25km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,9.33197348291688,97.63313609467455,95.26627218934911,10.147883732789394,1,1
+25km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,18.76593574706782,100.0,99.29577464788733,18.612952575216728,0,0
+25km,16,Baffin Bay,Labrador Sea,2851,896,0.0,0.0,0.0,0.0,42,42
+25km,16,Baffin Bay,Lincoln Sea,2851,447,9.084531743247984,100.0,91.94630872483222,10.101718695194668,0,0
+25km,16,White Sea,Barents Sea off the White Sea,348,420,56.60919540229885,100.0,100.0,58.620689655172406,0,0
+25km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,50.0,,2
+25km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,16.802443991853362,45.660377358490564,46.320754716981135,17.922606924643585,0,0
+25km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,19.85743380855397,72.94117647058823,70.35294117647058,20.824847250509166,0,0
+25km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,0.0,0.0,0.0,0.0,23,23
+25km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,14.498933901918976,7.050157839354612,6.488951245177131,13.432835820895523,9,10
+25km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,0.0,0.0,118,118
+25km,16,Foxe Basin,Hudson Strait,707,603,55.58698727015559,35.98673300165838,34.32835820895522,58.27439886845828,4,4
+25km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,71.54811715481172,92.39766081871345,92.39766081871345,71.75732217573221,0,0
+25km,16,Sulu Sea,Celebes Sea,478,627,64.22594142259415,70.97288676236045,68.74003189792663,64.22594142259415,0,0
+25km,16,Bohol Sea,Sulu Sea,62,478,100.0,57.32217573221757,54.811715481171554,100.0,1,0
+25km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,91.93548387096774,100.0,100.0,91.93548387096774,2,2
+icosahedral_6,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Black Sea,Aegean Sea,821,225,100.0,100.0,100.0,100.0,1,1
+icosahedral_6,8,Sea of Azov,Black Sea,85,821,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Red Sea,Gulf of Aden,741,320,100.0,100.0,100.0,100.0,1,0
+icosahedral_6,8,Persian Gulf,Gulf of Oman,401,206,100.0,100.0,100.0,100.0,0,1
+icosahedral_6,8,Baltic Sea,North Sea,1121,637,100.0,100.0,100.0,100.0,1,2
+icosahedral_6,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Hudson Bay,Labrador Sea,2207,896,100.0,100.0,100.0,100.0,2,2
+icosahedral_6,8,Sea of Marmara,Aegean Sea,35,225,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Sea of Marmara,Black Sea,35,821,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Seto Inland Sea,Sea of Japan,57,1960,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Lake Maracaibo,Gulf of Venezuela,2,25,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Baffin Bay,Labrador Sea,2851,896,100.0,100.0,100.0,100.0,2,3
+icosahedral_6,8,Baffin Bay,Lincoln Sea,2851,447,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,100.0,100.0,100.0,100.0,2,2
+icosahedral_6,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,100.0,100.0,100.0,100.0,1,1
+icosahedral_6,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Foxe Basin,Hudson Strait,707,603,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Black Sea,Aegean Sea,821,225,100.0,100.0,100.0,100.0,1,1
+icosahedral_6,16,Sea of Azov,Black Sea,85,821,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Red Sea,Gulf of Aden,741,320,100.0,100.0,100.0,100.0,1,0
+icosahedral_6,16,Persian Gulf,Gulf of Oman,401,206,100.0,100.0,100.0,100.0,0,1
+icosahedral_6,16,Baltic Sea,North Sea,1121,637,100.0,100.0,100.0,100.0,1,2
+icosahedral_6,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Hudson Bay,Labrador Sea,2207,896,100.0,100.0,100.0,100.0,2,2
+icosahedral_6,16,Sea of Marmara,Aegean Sea,35,225,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Sea of Marmara,Black Sea,35,821,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Seto Inland Sea,Sea of Japan,57,1960,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Lake Maracaibo,Gulf of Venezuela,2,25,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Baffin Bay,Labrador Sea,2851,896,100.0,100.0,100.0,100.0,2,3
+icosahedral_6,16,Baffin Bay,Lincoln Sea,2851,447,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,White Sea,Barents Sea off the White Sea,348,420,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,100.0,100.0,100.0,100.0,2,2
+icosahedral_6,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,100.0,100.0,100.0,100.0,1,1
+icosahedral_6,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Foxe Basin,Hudson Strait,707,603,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+icosahedral_6,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+50km+120km,8,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,20.547031354236157,100.0,100.0,19.702023571269738,0,0
+50km+120km,8,Black Sea,Aegean Sea,821,225,0.0,0.0,0.0,0.0,14,15
+50km+120km,8,Sea of Azov,Black Sea,85,821,100.0,29.11084043848965,29.232643118148598,100.0,0,0
+50km+120km,8,Red Sea,Gulf of Aden,741,320,57.3549257759784,100.0,100.0,64.91228070175438,1,0
+50km+120km,8,Persian Gulf,Gulf of Oman,401,206,99.50124688279301,100.0,100.0,100.0,0,1
+50km+120km,8,Baltic Sea,North Sea,1121,637,23.1935771632471,100.0,99.84301412872841,21.052631578947366,3,2
+50km+120km,8,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+50km+120km,8,Hudson Bay,Labrador Sea,2207,896,13.094698685999093,48.4375,56.47321428571429,18.169460806524697,6,6
+50km+120km,8,Sea of Marmara,Aegean Sea,35,225,85.71428571428571,100.0,96.44444444444444,91.42857142857143,0,1
+50km+120km,8,Sea of Marmara,Black Sea,35,821,82.85714285714286,95.61510353227771,82.21680876979293,88.57142857142857,1,0
+50km+120km,8,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,71.9298245614035,100.0,100.0,100.0,0,0
+50km+120km,8,Seto Inland Sea,Sea of Japan,57,1960,71.9298245614035,88.57142857142857,82.39795918367348,100.0,0,0
+50km+120km,8,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+50km+120km,8,Sea of Japan,East China Sea off the Korea Strait,1961,168,72.76899541050484,100.0,100.0,72.97297297297297,0,0
+50km+120km,8,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,92.40183579806221,100.0,100.0,95.10453850076492,0,0
+50km+120km,8,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,86.63946965833759,100.0,100.0,87.6083630800612,0,0
+50km+120km,8,Baffin Bay,Labrador Sea,2851,896,39.8105927744651,60.04464285714286,62.5,27.56927393896878,6,6
+50km+120km,8,Baffin Bay,Lincoln Sea,2851,447,62.25885654156437,100.0,97.98657718120806,62.71483689933357,0,0
+50km+120km,8,White Sea,Barents Sea off the White Sea,348,420,99.42528735632183,100.0,100.0,100.0,0,0
+50km+120km,8,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+50km+120km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,99.949083503055,100.0,100.0,99.89816700610999,0,0
+50km+120km,8,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,49.43991853360489,100.0,99.29411764705883,51.069246435845216,0,0
+50km+120km,8,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,45.16293279022403,100.0,100.0,45.264765784114054,4,3
+50km+120km,8,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,99.7867803837953,100.0,98.21115398105927,100.0,1,1
+50km+120km,8,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,40.31117397454031,100.0,18,0
+50km+120km,8,Foxe Basin,Hudson Strait,707,603,98.44413012729845,100.0,99.83416252072969,100.0,0,0
+50km+120km,8,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+50km+120km,8,Sulu Sea,Celebes Sea,478,627,100.0,100.0,99.84051036682615,100.0,0,0
+50km+120km,8,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+50km+120km,8,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0
+50km+120km,16,Mediterranean Sea,Gulf of Cadiz and off Portugal,4497,807,60.840560373582385,100.0,100.0,61.70780520346898,0,0
+50km+120km,16,Black Sea,Aegean Sea,821,225,3.41047503045067,8.444444444444445,4.0,1.0962241169305724,14,15
+50km+120km,16,Sea of Azov,Black Sea,85,821,100.0,100.0,99.87819732034104,100.0,0,0
+50km+120km,16,Red Sea,Gulf of Aden,741,320,98.51551956815115,100.0,100.0,100.0,1,0
+50km+120km,16,Persian Gulf,Gulf of Oman,401,206,99.50124688279301,100.0,100.0,100.0,0,1
+50km+120km,16,Baltic Sea,North Sea,1121,637,98.03746654772524,100.0,99.84301412872841,100.0,3,2
+50km+120km,16,Gulf of California,Eastern tropical Pacific off the Gulf of California,323,500,100.0,100.0,100.0,100.0,0,0
+50km+120km,16,Hudson Bay,Labrador Sea,2207,896,99.77344811961939,100.0,99.88839285714286,100.0,6,6
+50km+120km,16,Sea of Marmara,Aegean Sea,35,225,94.28571428571428,100.0,96.44444444444444,100.0,0,1
+50km+120km,16,Sea of Marmara,Black Sea,35,821,94.28571428571428,99.51278928136419,99.87819732034104,100.0,1,0
+50km+120km,16,Seto Inland Sea,Philippine Sea south of Shikoku,57,120,71.9298245614035,100.0,100.0,100.0,0,0
+50km+120km,16,Seto Inland Sea,Sea of Japan,57,1960,71.9298245614035,100.0,99.64285714285714,100.0,0,0
+50km+120km,16,Lake Maracaibo,Gulf of Venezuela,2,25,0.0,0.0,100.0,100.0,,0
+50km+120km,16,Sea of Japan,East China Sea off the Korea Strait,1961,168,99.64303926568078,100.0,100.0,100.0,0,0
+50km+120km,16,Sea of Japan,North Pacific east of the Tsugaru Strait,1961,169,99.64303926568078,100.0,100.0,100.0,0,0
+50km+120km,16,Sea of Japan,Sea of Okhotsk off the La Perouse Strait,1961,142,99.64303926568078,100.0,100.0,100.0,0,0
+50km+120km,16,Baffin Bay,Labrador Sea,2851,896,99.08803928446159,100.0,99.88839285714286,96.10662925289371,6,6
+50km+120km,16,Baffin Bay,Lincoln Sea,2851,447,99.08803928446159,100.0,97.98657718120806,100.0,0,0
+50km+120km,16,White Sea,Barents Sea off the White Sea,348,420,99.42528735632183,100.0,100.0,100.0,0,0
+50km+120km,16,Gulf of Corinth,Ionian Sea off the Gulf of Patras,8,25,0.0,0.0,100.0,100.0,,0
+50km+120km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Indian Ocean south of the Lesser Sunda Islands,1964,1060,100.0,100.0,100.0,100.0,0,0
+50km+120km,16,"Indonesian seas (Java, Bali, Flores, Banda)",South China Sea off the Karimata Strait,1964,425,98.87983706720978,100.0,99.29411764705883,99.64358452138494,0,0
+50km+120km,16,"Indonesian seas (Java, Bali, Flores, Banda)",Pacific east of Mindanao and Halmahera,1964,490,91.95519348268839,100.0,100.0,87.5254582484725,4,3
+50km+120km,16,Gulf of Boothia and Prince Regent Inlet,Baffin Bay,469,2851,99.7867803837953,100.0,99.08803928446159,100.0,1,1
+50km+120km,16,Gulf of Boothia and Prince Regent Inlet,Foxe Basin,469,707,0.0,0.0,97.31258840169731,100.0,18,0
+50km+120km,16,Foxe Basin,Hudson Strait,707,603,98.44413012729845,100.0,99.83416252072969,100.0,0,0
+50km+120km,16,Sulu Sea,South China Sea west of Palawan and Mindoro,478,342,100.0,100.0,100.0,100.0,0,0
+50km+120km,16,Sulu Sea,Celebes Sea,478,627,100.0,100.0,99.84051036682615,100.0,0,0
+50km+120km,16,Bohol Sea,Sulu Sea,62,478,100.0,100.0,100.0,100.0,0,0
+50km+120km,16,Bohol Sea,Philippine Sea east of the Surigao Strait,62,103,100.0,100.0,100.0,100.0,0,0

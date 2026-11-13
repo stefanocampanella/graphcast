@@ -1,0 +1,217 @@
+# SPDX-FileCopyrightText: 2026 Stefano Campanella
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS-IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Summary tables of the statistics, printed to stdout (rich).
+
+Each function reads the results of `cli.compute` (the JSON content) and builds one table; the JSON holds every value.
+"""
+
+import math
+from typing import Any
+
+from rich.console import Console
+from rich.table import Table
+
+from mobydick.graph_statistics.geometry import TRIANGLE_QUALITY
+from mobydick.graph_statistics.quantities import SUMMARY_KEYS
+
+
+def _format(value: Any) -> str:
+  """Integers with thousands separators, floats with 4 significant digits, missing values as "-"."""
+  if value is None:
+    return "-"
+  if isinstance(value, bool):
+    return "yes" if value else "no"
+  if isinstance(value, int):
+    return f"{value:,}"
+  if isinstance(value, float):
+    return f"{value:.4g}"
+  return str(value)
+
+
+def _table(title: str, columns: list[str], left: int = 1) -> Table:
+  """A table whose first `left` columns are labels (left-aligned) and the others numbers (right-aligned)."""
+  table = Table(title=title, title_justify="left")
+  for i, column in enumerate(columns):
+    table.add_column(column, justify="left" if i < left else "right")
+  return table
+
+
+def summary_table(title: str, rows: list[tuple[str, dict[str, Any]]]) -> Table:
+  """One row per summary (`quantities.summarize`): label, mean, std, min, quartiles, max."""
+  table = _table(title, ["", *SUMMARY_KEYS])
+  for label, summary in rows:
+    table.add_row(label, *(_format(summary[key]) for key in SUMMARY_KEYS))
+  return table
+
+
+def graphs_table(graphs: dict[str, Any]) -> Table:
+  """Node and edge counts of every graph; edges per receiver is 3 for decoders and the mean in-degree otherwise."""
+  table = _table("Graphs", ["graph", "kind", "senders", "receivers", "edges", "edges per receiver"], left=2)
+  for name, stats in graphs.items():
+    if stats["kind"] == "processor":
+      senders = receivers = stats["nodes"]["value"]
+    else:
+      senders, receivers = stats["sender_nodes"]["value"], stats["receiver_nodes"]["value"]
+    edges = stats["edges"]["value"]
+    per_receiver = f"{edges / receivers:.2f}" if receivers else "-"
+    table.add_row(name, stats["kind"], _format(senders), _format(receivers), _format(edges), per_receiver)
+  return table
+
+
+def degrees_table(graphs: dict[str, Any]) -> Table:
+  """Degree summaries of the encoders (senders and receivers) and processors."""
+  rows = []
+  for name, stats in graphs.items():
+    for key in ("sender_out_degree", "receiver_in_degree", "out_degree"):
+      if key in stats:
+        rows.append((f"{name} {key.replace('_', ' ')}", stats[key]))
+  return summary_table("Degrees", rows)
+
+
+def processors_table(graphs: dict[str, Any]) -> Table:
+  """Structure of each processor, with the path metrics of its largest component ("≥": a lower bound)."""
+  columns = ["graph", "density", "one-way edges", "components", "isolated", "nodes", "diameter", "sources"]
+  table = _table("Processors (largest component)", [*columns, "path mean", "path p50", "path max"])
+  for name, stats in graphs.items():
+    if stats["kind"] != "processor":
+      continue
+    structure = [
+      _format(stats[key]["value"])
+      for key in ("density", "edges_without_reverse", "connected_components", "isolated_nodes")
+    ]
+    if not stats["components"]["value"]:  # No component of more than one node: no paths.
+      table.add_row(name, *structure, *("-",) * 6)
+      continue
+    largest = stats["components"]["value"][0]
+    path = largest["shortest_path_length"]
+    bound = "" if largest["diameter_exact"]["value"] else " (≥)"
+    table.add_row(
+      name,
+      *structure,
+      _format(largest["nodes"]["value"]),
+      f"{largest['diameter']['value']}{bound}",
+      _format(largest["sources"]["value"]),
+      *(_format(path[key]) for key in ("mean", "p50", "max")),
+    )
+  return table
+
+
+def distances_table(graphs: dict[str, Any]) -> Table:
+  """Hops and distances in each processor's largest component, from its sampled sources: the mean hops × the median
+  edge length against the mean path length along the mesh and the mean geodesic distance."""
+  columns = ["graph", "hops", "median edge km", "hops × edge km", "along mesh km", "geodesic km", "detour mean"]
+  table = _table("Distances in the largest component (means over the sampled pairs)", columns)
+  for name, stats in graphs.items():
+    if stats["kind"] != "processor" or not stats["components"]["value"]:
+      continue
+    largest, edge = stats["components"]["value"][0], stats["edge_length_km"]["p50"]
+    hops = largest["shortest_path_length"]["mean"]
+    cells = [hops, edge, hops * edge, largest["path_length_km"]["mean"], largest["geodesic_distance_km"]["mean"]]
+    table.add_row(name, *(_format(value) for value in cells), _format(largest["detour"]["mean"]))
+  return table
+
+
+def squashed_table(entry: dict[str, Any]) -> Table:
+  """The squashed grid-to-grid graph: estimated edges, degrees (other grid nodes reached by a sender / reaching a
+  receiver) and horizon (geodesic edge lengths), with the mean distance per sender and per receiver."""
+  steps = ", ".join(str(s) for s in entry["message_passing_steps"]["value"])
+  table = _table(f"Squashed grid-to-grid graph, {steps} steps (self-loops left out)", ["quantity", "value"])
+  table.add_row(
+    "grid nodes (sampled)", f"{_format(entry['nodes']['value'])} ({_format(entry['sampled_nodes']['value'])})"
+  )
+  table.add_row("edges (estimated)", _format(entry["edges"]["value"]))
+  table.add_row("density", _format(entry["density"]["value"]))
+  table.add_row("senders without edges", f"{entry['senders_without_edges']['percent']:.2f} %")
+  table.add_row("receivers without edges", f"{entry['receivers_without_edges']['percent']:.2f} %")
+  rows = [
+    ("out-degree (domain of influence)", entry["out_degree"]),
+    ("in-degree (receptive field)", entry["in_degree"]),
+    ("horizon: edge lengths (km)", entry["horizon_km"]),
+    ("mean distance per sender (km)", entry["sender_mean_distance_km"]),
+    ("mean distance per receiver (km)", entry["receiver_mean_distance_km"]),
+  ]
+  summaries = summary_table("Squashed graph: degrees and distances", rows)
+  grid = Table.grid()
+  grid.add_row(table)
+  grid.add_row(summaries)
+  return grid
+
+
+def basins_table(entries: list[dict[str, Any]], steps: list[int]) -> Table:
+  """Connectivity of each basin and its nearby ocean in the squashed graph: shares of the nodes of each region linked
+  to the other, and the fewest steps that link them."""
+  columns = ["basin", "ocean", "basin nodes", "ocean nodes", "basin → ocean: basin nodes", "ocean nodes reached"]
+  columns += ["ocean → basin: ocean nodes", "basin nodes reached", "steps basin → ocean", "steps ocean → basin"]
+  title = f"Basin connectivity, squashed graph with {', '.join(map(str, steps))} steps (fewest steps: on every mesh)"
+  table = _table(title, columns, left=2)
+  for entry in entries:
+    shares = [
+      entry[key]["percent"]
+      for key in (
+        "basin_nodes_reaching_ocean",
+        "ocean_nodes_reached_from_basin",
+        "ocean_nodes_reaching_basin",
+        "basin_nodes_reached_from_ocean",
+      )
+    ]
+    table.add_row(
+      entry["basin"],
+      entry["ocean"],
+      _format(entry["basin_nodes"]["value"]),
+      _format(entry["ocean_nodes"]["value"]),
+      *("-" if share is None or math.isnan(share) else f"{share:.1f} %" for share in shares),
+      _format(entry["steps_basin_to_ocean"]["value"]),
+      _format(entry["steps_ocean_to_basin"]["value"]),
+    )
+  return table
+
+
+def coverage_table(coverage: list[dict[str, Any]], graphs: dict[str, Any]) -> Table:
+  """Percentages of the nodes of each level connected to the other level, with the number of nodes left out."""
+  keys = ["lower_in_encoder", "lower_in_decoder", "lower_in_both", "upper_in_encoder", "upper_in_decoder"]
+  keys.append("upper_in_either")
+  title = "Coverage (nodes connected to the other level; without: their number)"
+  table = _table(title, ["lower", "upper", *(key.replace("_", " ") for key in keys)], left=2)
+  for entry in coverage:
+    # The sizes of the two levels are those of their encoder's node sets.
+    encoder = graphs[f"{entry['lower']}_to_{entry['upper']}"]
+    sizes = {"lower": encoder["sender_nodes"]["value"], "upper": encoder["receiver_nodes"]["value"]}
+    cells = []
+    for key in keys:
+      size = sizes[key.split("_")[0]]
+      cells.append(f"{entry[key]['percent']:.2f} % ({size - entry[key]['count']:,} without)")
+    table.add_row(entry["lower"], entry["upper"], *cells)
+  return table
+
+
+def print_summary(results: dict[str, Any], console: Console) -> None:
+  """All tables: graphs, edge lengths, degrees, processors, distances, coverage, squashed graph, basin connectivity,
+  then the triangle quality of each processor."""
+  graphs = results["graphs"]
+  console.print(graphs_table(graphs))
+  console.print(summary_table("Edge lengths (km)", [(name, stats["edge_length_km"]) for name, stats in graphs.items()]))
+  console.print(degrees_table(graphs))
+  console.print(processors_table(graphs))
+  console.print(distances_table(graphs))
+  console.print(coverage_table(results["coverage"], graphs))
+  console.print(squashed_table(results["squashed"]))
+  if results["basin_connections"]:
+    console.print(basins_table(results["basin_connections"], results["squashed"]["message_passing_steps"]["value"]))
+  for name, stats in graphs.items():
+    if stats["kind"] == "processor":
+      triangles = stats["triangles"]
+      faces, inverted = _format(triangles["faces"]["value"]), _format(triangles["inverted"]["value"])
+      title = f"Triangle quality of {name} ({faces} faces, {inverted} inverted)"
+      console.print(summary_table(title, [(key, triangles[key]) for key in TRIANGLE_QUALITY]))

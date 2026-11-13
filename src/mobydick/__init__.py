@@ -12,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import importlib
+
 import click
 from absl import flags
 
@@ -21,12 +23,26 @@ from mobydick.downloader import compute_tendency_std, download, download_mask
 from mobydick.geospatial_mesh import make_icosahedral_mesh, make_ocean_mesh
 from mobydick.training import train
 
+# Commands imported only when they run (or --help lists them), for heavy imports no other command needs: name ->
+# (module, attribute).
+LAZY_COMMANDS = {"graph-statistics": ("mobydick.graph_statistics.cli", "graph_statistics_command")}
+
 
 class BannerGroup(click.Group):
   """A command group that prints the banner before parsing its arguments: every subcommand, --help and usage errors.
+  Commands of LAZY_COMMANDS are imported when first used.
 
   Shell completion makes contexts with resilient_parsing: no banner there, it would garble every completion.
   """
+
+  def list_commands(self, ctx):
+    return sorted({*super().list_commands(ctx), *LAZY_COMMANDS})
+
+  def get_command(self, ctx, cmd_name):
+    if cmd_name in LAZY_COMMANDS and cmd_name not in self.commands:
+      module, attribute = LAZY_COMMANDS[cmd_name]
+      self.add_command(getattr(importlib.import_module(module), attribute), cmd_name)
+    return super().get_command(ctx, cmd_name)
 
   def make_context(self, *args, **kwargs):
     if not kwargs.get("resilient_parsing"):

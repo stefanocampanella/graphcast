@@ -19,7 +19,9 @@ import pytest
 import xarray as xr
 
 from mobydick import graph_pruning, icosahedral_mesh, mesh_connectivity
-from mobydick.gis_utils import cartesian_crs, equirectangular_crs, get_transform
+from mobydick.gis_utils import (
+  cartesian_to_lat_lon,
+)
 from mobydick.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
 
 LAT = np.arange(-85.0, 90.0, 10.0)
@@ -79,7 +81,7 @@ def mask() -> np.ndarray:
 
 
 def _latitudes(vertices: np.ndarray) -> np.ndarray:
-  return np.asarray(get_transform(cartesian_crs, equirectangular_crs)(vertices))[:, 1]
+  return cartesian_to_lat_lon(vertices)[0]
 
 
 def test_connected_mesh_nodes_are_both_encoder_receivers_and_decoder_senders(earth_mesh, mask):
@@ -121,7 +123,7 @@ def test_mesh_within_box(earth_mesh):
 
   pruned, vertices_map = graph_pruning.get_mesh_within_box(mesh, box)
 
-  lon, lat = np.asarray(get_transform(cartesian_crs, equirectangular_crs)(pruned.vertices)).T
+  lat, lon = cartesian_to_lat_lon(pruned.vertices)
   assert len(pruned.faces) > 0
   assert np.all((lat > box.lat_min) & (lat < box.lat_max) & (lon > box.lon_min) & (lon < box.lon_max))
   np.testing.assert_allclose(pruned.vertices, mesh.vertices[sorted(vertices_map)])

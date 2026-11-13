@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 from mobydick import icosahedral_mesh, mesh_connectivity
-from mobydick.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges
+from mobydick.mesh_graph import MeshGraph, TriangleMesh, faces_to_edges, longest_incident_edges
 
 # WGS84 ellipsoid.
 SEMI_MAJOR_AXIS = 6_378_137.0
@@ -113,6 +113,49 @@ def test_radius_query_indices(grid, partial_mask, masked, varying):
   # Every valid grid point is reached.
   valid = np.flatnonzero(partial_mask) if masked else np.arange(grid_latitude.size * grid_longitude.size)
   np.testing.assert_array_equal(np.unique(grid_senders), valid)
+
+
+def test_radius_from_the_longest_incident_edge_reaches_every_point_on_an_irregular_mesh():
+  """The encoder's radius, 0.6 × the longest triangle edge at each vertex, connects every grid point to the mesh when
+  the triangles cover the sphere, also with irregular triangles (vertices moved by up to a third of an edge). A
+  uniform radius of 0.6 × the typical edge, like the mesh size field used before Nov 2026, leaves points inside
+  stretched triangles out."""
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(3)
+  mesh = mesh_data.mesh_graph
+  assert mesh_data.mesh_size is not None
+  edge = float(mesh_data.mesh_size[0])
+  rng = np.random.default_rng(0)
+  # Move the vertices along the surface (back to their distance from the centre): irregular, still not inverted.
+  moved = mesh.vertices + rng.uniform(-edge / 3, edge / 3, mesh.vertices.shape)
+  moved *= (np.linalg.norm(mesh.vertices, axis=1) / np.linalg.norm(moved, axis=1))[:, None]
+  irregular = MeshGraph(vertices=moved, faces=mesh.faces, edges=mesh.edges)
+  grid_latitude, grid_longitude = np.linspace(-89.0, 89.0, 90), np.arange(0.0, 360.0, 2.0)
+
+  def points_without_edges(radius):
+    senders, _ = mesh_connectivity.radius_query_indices(
+      grid_latitude=grid_latitude, grid_longitude=grid_longitude, mesh=irregular, radius=radius
+    )
+    return grid_latitude.size * grid_longitude.size - np.unique(senders).size
+
+  assert points_without_edges(0.6 * longest_incident_edges(moved, mesh.faces)) == 0
+  assert points_without_edges(0.6 * np.median(longest_incident_edges(mesh.vertices, mesh.faces))) > 0
+
+
+def test_radius_query_does_not_depend_on_the_workers():
+  """The k-d tree query uses all cores by default: the edges, and their order, are the same with one thread, so the
+  default does not change the model's graphs."""
+  mesh_data = icosahedral_mesh.get_multi_mesh_data(3)
+  assert mesh_data.mesh_size is not None
+  points = icosahedral_mesh.get_multi_mesh_graph(4).vertices
+  edges = [
+    mesh_connectivity.get_points_to_mesh_edges(
+      senders_position=points, receivers_mesh=mesh_data.mesh_graph, radius=0.6 * mesh_data.mesh_size, workers=workers
+    )
+    for workers in (1, -1)
+  ]
+  assert edges[0][0].size > 0
+  for one_thread, all_cores in zip(*edges, strict=True):
+    np.testing.assert_array_equal(one_thread, all_cores)
 
 
 @pytest.mark.parametrize("masked", [False, True], ids=["full_mask", "partial_mask"])

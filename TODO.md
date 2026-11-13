@@ -12,6 +12,27 @@
 * Rename `msl` to `mslp` in ARCO-OCEAN v2. **HIGH PRIORITY**
 
 ## Checks and improvements
+* Adopt seamsh v0.6.0+fork's features (pinned since 12 Nov 2026; guide: the fork's `doc/fork.rst`, section "For
+  moby-dick"). One PR, with the licensing item below:
+  * `coarsen_boundaries.x0` as a list of seeds (one in the open ocean, one per enclosed sea to keep), instead of or with
+    the strait refinement, and seamsh's warnings on lost seeds kept in the logs;
+  * per-level coastline coarsening for mesh hierarchies (each level coarsened at about its size);
+  * the `optimize` option of `seamsh.gmsh.mesh` (on by default) exposed in `MesherConfig`;
+  * `read_mesh`'s removal of nodes in no triangle kept only for meshes made with older seamsh versions. **Medium
+    priority**
+* Licensing (audit of 12 Nov 2026, details in CLAUDE.md, Repository notes, Dependencies). One PR:
+  * Keep GPL code out of training: gmsh (GPL-2.0-or-later) and seamsh (GPL-3.0) as an optional `meshing` extra,
+    imported lazily by `make-ocean-mesh` only (today `mobydick/__init__.py` imports `geospatial_mesh`, so every command
+    loads them), and `.msh` files read without gmsh (meshio, MIT, or a small msh 4.1 reader: nodes, triangles, boundary
+    lines, `multi_mesh_edges`, `NodeData` views, the `Projection` attribute), checked against today's `read_mesh_data`
+    on every mesh in `data/geometry`. Then a training image needs neither, and distributing it raises no GPL questions.
+  * Read NVIDIA's container terms (`/workspace/license.txt` in the image) before sharing `moby-dick.sif` outside the
+    project.
+  * Decide the license of the mesh files (CC BY-NC-SA 4.0 in every mesh config without a reason from the inputs) and of
+    trained weights; add the Copernicus Marine attribution to the `lambrechts*` meshes (GLORYS bathymetry) and the data
+    attributions (Copernicus Marine: GLORYS, WAVERYS; C3S: ERA5; CEMS: GloFAS) to the README.
+  * Ask seamsh's maintainer to fix its license statements (LGPL headers, GPL README and COPYING; `polymesh.c` from
+    gmsh makes the library GPL). **Medium priority**
 * Run the Grain profiler (execution summary per stage) for the store layouts (zarr v2, v3, their SquashFS images) and
   add it to the benchmark reports. The loader no longer limits training, so this is for comparison, not tuning.
   (Low priority)
@@ -28,7 +49,22 @@
   decoder); the processor costs ~1.2 GiB per step at 50 km, ~2 GiB at 35-40 km (with chunks), 5.6-5.8 GiB on the
   fine mesh. **HIGH PRIORITY**
 * Project icosahedral meshes produced by functions in `icosahedral_mesh.py` to WGS84 using GIS utilities, and produce either a `.msh` file or a `mesh_graph.MeshData`, such that the global ocean model can be init with either a triangular mesh or a geodesic grid. **HIGH PRIORITY**
-* Add routines to check graph statistics (number of nodes, edges, degree, etc.). In particular, one should check that all grid nodes are connected to the processor. **HIGH PRIORITY** 
+* Bring the Black Sea into the ocean meshes' domain (or out of the training mask): `moby-dick graph-statistics` (8 Nov
+  2026) found ~900 of its ocean points decoded from Aegean vertices up to 1,232 km away and never encoded; 2,222
+  (120 km) / 2,342 (50 km) ocean points had no encoder edge in all. The per-vertex radius from the longest triangle
+  edge (11 Nov 2026) covers every point inside a triangle; 1,222 (120 km) / 1,725 (50 km) remain, all outside the
+  mesh domain (the Black Sea and coastal channels such as Tierra del Fuego). **HIGH PRIORITY**
+  Since 12 Nov 2026 the Black Sea is in the meshes, but it is cut off from the Aegean in every model with fewer than
+  28–30 message passing steps, whatever the mesh size (13 Nov 2026, basin connectivity of `graph-statistics`): the
+  3 km elements of the refined straits and Marmara cost the hops. Try coarser strait refinement (10–20 km, if the
+  coastline still keeps the straits open), long-range edges across the straits, or a hierarchy.
+* Long-range edges on the ocean mesh: merge a hierarchy of coarser ocean meshes into the 50 km processor, as the
+  icosahedral multi-mesh does; the multi-mesh improved `zos` by 16.7 % over 50 km × 16 (8 Nov 2026) while losing
+  10-31 % on the other targets for lack of ocean resolution. **HIGH PRIORITY**
+* Icosahedral M7 (163,842 nodes, ~55 km, ~125,000 ocean-connected) × 16 against 50 km × 16, to separate resolution
+  from coastline alignment. (Medium priority)
+* Ablate the edge-direction fix (`0473751`): the baselines improved by ~8 % between the mesh study (Oct 2026) and
+  8 Nov 2026 with the same config. (Medium priority)
 * Check that accumulated variables in ARCO-OCEAN are consistent (e.g. they use the (t-24h, t) convention). **HIGH PRIORITY**
 * Simplify `xarray_jax.py` with the Python array API standard: JAX arrays implement it, so xarray can hold them
   directly, without `JaxArrayWrapper`, `wrap`/`unwrap` or the wrapping in `apply_ufunc` (the custom constructors would
@@ -64,6 +100,13 @@
 * Notebooks have not been updated to the current version of library code and might be broken. (Low priority)
 
 ## Done
+* One-way coastline edges in the processor (Nov 2026): `faces_to_edges` now appends the reverses of boundary edges;
+  with the encoder radius from the longest triangle edge, no measurable effect on skill (jobs 2841380–2841383).
+* Graph statistics (Nov 2026): `moby-dick graph-statistics` (all graphs of one mesh or a hierarchy: nodes, edges,
+  degrees, edge lengths; processors: components, diameter, shortest paths, triangle quality; coverage of each pair of
+  levels), summary tables on stdout and a described JSON.
+* Icosahedral multi-mesh trained against the ocean meshes (Nov 2026): 9.8 % worse than 50 km × 16 at 16 steps, better
+  only for `zos` (`docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08`).
 * PGLE (Nov 2026): no gain. The train step is compiled ahead of time, which automatic PGLE skips; the "Found 0
   instructions" warnings came from one-operation modules. Called through jit, the step gets a full profile but is no
   faster on 1 or 4 nodes (120 km x 8), for ~25 s of startup. See `clusters/jupiter/.env`.

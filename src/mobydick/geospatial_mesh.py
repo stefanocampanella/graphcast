@@ -48,13 +48,6 @@ logger = logging.getLogger(__name__)
   type=click.Path(path_type=pathlib.Path, dir_okay=True, writable=True),
 )
 @click.option(
-  "--data-path",
-  "data_path",
-  help="Prefix to filepaths contained in config file.",
-  default=None,
-  type=click.Path(path_type=pathlib.Path, file_okay=False, dir_okay=True, readable=True),
-)
-@click.option(
   "--overwrite/--no-overwrite",
   help="Whether to overwrite existing outputs",
   default=False,
@@ -64,7 +57,6 @@ logger = logging.getLogger(__name__)
 def make_ocean_mesh(
   config_path: pathlib.Path,
   output_path: pathlib.Path,
-  data_path: pathlib.Path | None = None,
   overwrite: bool = False,
   log_level: str = "info",
 ):
@@ -76,7 +68,7 @@ def make_ocean_mesh(
     raise click.ClickException(f"{output_path} exists: pass --overwrite to replace it")
   logger.info(f"Using settings: {configs!r}")
   output_path.parent.mkdir(parents=True, exist_ok=True)
-  write_ocean_mesh(configs, output_path, data_path)
+  write_ocean_mesh(configs, output_path)
 
 
 @click.command()
@@ -123,7 +115,7 @@ def make_icosahedral_mesh(
   write_multi_mesh(mesh_data, output_path, model_name=configs.model_name, mesh_size_view_name=configs.view_tag_name)
 
 
-def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, data_path: pathlib.Path | None) -> None:
+def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path) -> None:
   """Mesh the domain with seamsh and gmsh, and write the mesh with one view per mesh size field (and their minimum)."""
   # gmsh needs to be initialized before most seamsh functions can be used.
   if not gmsh.is_initialized():
@@ -139,19 +131,17 @@ def write_ocean_mesh(configs: MeshGenerationConfig, output_path: pathlib.Path, d
   if configs.description:
     gmsh.model.setAttribute("description", [configs.description])
   domain_path = pathlib.Path(configs.domain.filepath)
-  if data_path is not None:
-    domain_path = data_path / domain_path
   logger.info("Loading and coarsening boundary.")
   domain = load_domain(
     domain_path, physical_name_field=configs.domain.physical_name_field, curve_type=configs.domain.curve_type
   )
   boundary = coarsen_boundaries(
     domain,
-    configs.coarsen_boundaries.mesh_size,
+    configs.coarsen_boundaries.fields,
     x0=configs.coarsen_boundaries.x0,
     x0_projection_name=configs.coarsen_boundaries.x0_projection,
   )
-  mesh_size = CompositeMeshSizeField(configs.fields, prefix=data_path)
+  mesh_size = CompositeMeshSizeField(configs.fields)
   seamsh.gmsh.mesh(boundary, mesh_size, output_srs=CRSRegistry["cartesian"], smoothness=configs.mesh.smoothness)
   # Compute and add view containing mesh size field(s), finally save results
   node_tags, node_coords, _ = gmsh.model.mesh.getNodes(includeBoundary=True)

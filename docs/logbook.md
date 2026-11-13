@@ -1303,3 +1303,419 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   ty fails). Hook versions stay in `.pre-commit-config.yaml`. The split does not help against GitHub release-download
   outages (shellcheck-py and micromamba both download from GitHub releases).
 - If branch protection requires the old `checks` status, it has to be replaced with `lint`, `reuse` and `tests`.
+
+## 2026-11-08 14:45: icosahedral multi-mesh vs ocean mesh (branch `experiment/icosahedral-vs-ocean-mesh`)
+
+- **Request:** an experiment comparing performance and skill of the best ocean mesh setup with GraphCast's icosahedral
+  multi-mesh, long enough for a trend but shorter than a production run (the mesh study's 5000 steps), in a new branch.
+  Session directory `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd`.
+- **Setup:** `mesh_study.sh` accepts mesh files other than the uniform meshes; `data/geometry/icosahedral_6.msh` made
+  with `make-icosahedral-mesh configs/mesh/icosahedral_6.toml`. Cases icosahedral × 16 (GraphCast) and × 8, 50 km × 16
+  (`production_run.toml`) and 120 km × 8 (the mesh study's baseline), seeds 42 and 43, demo_5000 on 8 nodes; jobs
+  2765280–2765287 (`training2647`, 78.2 node-h, all completed). Report:
+  `docs/jupiter-hackathon/results/ico_vs_ocean-2026-11-08/REPORT.md`, detailed version
+  https://claude.ai/artifact/Bm8DGCiTHcJhL7k9AR5Lwg.
+- **Results** (validation loss at step 5000, mean of seeds): 120 km × 8 0.08382, icosahedral × 8 0.08371 (−0.1 %),
+  50 km × 16 0.07524 (−10.2 %), icosahedral × 16 0.08263 (−1.4 %): the icosahedral mesh is 9.8 % worse than 50 km at
+  16 steps, a gap stable from step 2500. It wins only `zos` (−16.7 % against 50 km × 16; reach: edges up to 7,076 km,
+  processor diameter 14 hops); the other eight targets are 10–31 % worse. 0.78 s per step and 55 GiB, against 1.40 s and
+  74 GiB.
+- **Graph statistics** (request at 15:30): new module `graph_statistics` and command `moby-dick graph-statistics CONFIG
+  MESH MASK OUTPUT.json` (`configs/analysis/graph_statistics.toml`): networkx structure (density, degrees,
+  connectivity, diameter, shortest paths, clustering, betweenness, closeness; sampled on large graphs), geodesic edge
+  lengths, mesh nodes connected to unmasked grid points and vice versa, triangle quality (aspect ratio, radius ratio,
+  volume-length, angles; Shewchuk 2002, https://scicomp.stackexchange.com/a/27095). `[mesh] log_statistics` logs a
+  summary at training startup (without networkx). 10–12 min per mesh on a login node, 3–4 GB.
+- **Insights:**
+  - 23 % of the icosahedral nodes are over land (no grid data); its ocean-connected nodes (31,371) are as many as the
+    120 km mesh's, and it equals that mesh on every local field.
+  - The ocean meshes leave the Black Sea out of their domain: about 900 ocean points in the mask are decoded from
+    Aegean vertices up to 1,232 km away and never encoded. In all, 2,222 (120 km) and 2,342 (50 km) ocean points have
+    no encoder edge; the icosahedral mesh covers all.
+  - The baselines are about 8 % better than in the mesh study (120 km × 8 0.09068 → 0.08382, 50 km × 16 0.08181 →
+    0.07524) with the same config and validation windows; most likely the edge-direction fix of 6 Nov (`0473751`), not
+    ablated. Results from before 6 Nov should not be mixed with later ones.
+
+## 2026-11-11 13:00: graph statistics reworked after review (PR #7)
+
+- **Request:** address the review of PR #7 (17 comments on the graph statistics module).
+- **Changes:**
+  - No statistics in training any more (`[mesh] log_statistics` removed): too slow, `moby-dick graph-statistics` only.
+  - Graphs of a mesh hierarchy (`graph-statistics CONFIG MASK OUTPUT.json MESH...`, finest first): encoders grid →
+    mesh 0 and mesh i−1 → mesh i, processors, decoders back down; mesh-to-mesh graphs use the grid's rules (new
+    `mesh_connectivity.get_points_to_mesh_edges`) until hierarchical models define theirs. Coverage per pair of levels.
+  - networkx only for the processors' path metrics, per connected component (no longer only the largest), from
+    `single_source_shortest_path_length` (implemented by nx-cugraph): diameter as the largest eccentricity of the
+    samples and of the node farthest from them, summary of the shortest path lengths. Dropped clustering, betweenness,
+    closeness. Encoders: degrees; decoders: the 3-edges-per-receiver check. Summaries: mean, std, min, quartiles, max;
+    angle summary over all angles.
+  - Output: rich tables on stdout, a description for every quantity in the JSON, only sizes and timings in the log.
+    `--networkx-backend` (or networkx's `NETWORKX_BACKEND_PRIORITY`) selects a backend; nx-cugraph is not in the image
+    (`nx-cugraph-cu13` 26.10 installs, 3.2 GB with its dependencies; running it here was not permitted, untested).
+  - `gis_utils`: `get_transform` (array in, array out) and `get_components_transform` (one array per coordinate)
+    replace `get_transform(..., pack_back=...)`, whose return type depended on the argument and the input.
+  - k-d tree queries use all cores by default (`workers=-1` in `mesh_connectivity`, `graph_pruning`, Leviathan): all
+    runs so far used 1 thread; the edges do not depend on it (test).
+- **Timing:** 21–44 s per mesh on a login node (120 km, icosahedral M6, 50 km), 51 s for 50 km + 120 km as a
+  hierarchy; it was 10–12 min with networkx on every graph.
+- **Insights:**
+  - The processor's boundary edges are one-way (`faces_to_edges` assumes a closed mesh): 3,612 of 194,040 edges (120
+    km) and 9,357 of 1,061,739 (50 km) have no reverse; the icosahedral mesh has none. TODO.
+  - The 50 km mesh's diameter is at least 515 hops (the networkx 2-sweep of 8 Nov gave 448); the report says "≥ 515".
+    The report's claim that 8 steps reach every node of the icosahedral mesh was wrong (median shortest path 8 hops,
+    diameter ≥ 14): corrected.
+
+## 2026-11-11 16:30: second review of PR #7 — one-way coastline edges fixed, graph statistics split
+
+- **Request:** fix the one-way coastline edges (a bug), split and comment the graph statistics module, show the latest
+  findings in the report artifact; review comments on `get_transform`'s axis order, the backend option, and whether
+  betweenness and closeness follow a scaling law.
+- **Changes:**
+  - `mesh_graph.faces_to_edges` appends the reverse of every boundary edge (closed meshes unchanged); all uniform
+    meshes now have 0 one-way edges (120 km: 194,040 → 197,652 edges).
+  - `gis_utils.cartesian_to_lat_lon` / `lat_lon_to_cartesian` return and take (lat, lon), replacing the transposes and
+    longitude-first unpacking at the call sites; the transforms document their axis order.
+  - `mobydick.graph_statistics` is a package (`config`, `graphs`, `structure`, `geometry`, `quantities`, `report`,
+    `cli`); `--networkx-backend` dropped for networkx's `NETWORKX_BACKEND_PRIORITY`; extra `graph-gpu` (nx-cugraph).
+- **Scaling** (all ten uniform meshes, after the fix, 28–147 s each on a login node): mean shortest path L = 0.517 ·
+  N^0.504 hops (within 2.3 %), L × median edge length 11,400–11,900 km at every resolution; diameter ≥ 1.37 · N^0.49.
+  Exact networkx values on icosahedral meshes and open patches: average betweenness = (L − 1)/(N − 2) to 6 digits,
+  closeness within 3 % of 1/L. Scripts and CSV in the session directory (`scaling.py`, `scaling.csv`,
+  `centrality_identity.py`).
+- **Open:** the mesh study and the icosahedral comparison trained with one-way coastline edges; the effect of the fix
+  is not measured (TODO: rerun 50 km × 16 and 120 km × 8, ~45 node-h).
+
+## 2026-11-11 18:30: encoder radius from the longest triangle edge (PR #7)
+
+- **Request:** check whether the encoder radius at a mesh vertex from its longest edge, instead of the mesh size,
+  fixes the grid points without encoder edges (apart from the Black Sea) and the same gaps between meshes of a
+  hierarchy; if so, include it.
+- **Check** (`radius_rules.py`, `radius_rules.out` in the session directory; points without encoder edges, and
+  whether they lie inside a mesh triangle by radial projection):
+
+  | Mesh | 0.6 × mesh size (before) | 0.6 × longest incident edge | 1.0 × longest incident edge |
+  |---|---|---|---|
+  | 120 km | 2,222 (1,129 inside a triangle) | 1,222 (0 inside; Black Sea 936) | 993 (0 inside), 2.9 × edges |
+  | 50 km | 2,342 (820 inside) | 1,725 (0 inside) | 1,191 (0 inside) |
+  | 25 km | 3,697 (616 inside) | 3,099 (0 inside) | 1,546 (0 inside) |
+  | icosahedral M6 | 0 | 0 (5 % fewer edges) | 0 |
+  | 50 → 120 km (finer vertices) | 260 (all inside) | 2 (outside) | 0 |
+  | 25 → 50 km | 802 (all inside) | 8 (outside) | 0 |
+
+  Encoder edges grow by 5.5 % (120 km) and 7.6 % (50 km). The remaining points are outside the mesh domain: the
+  Black Sea and coastal channels or ice-shelf fronts (Tierra del Fuego, the Weddell Sea).
+- **Change:** `mesh_graph.longest_incident_edges` (from the triangles only, not a multi-mesh's coarser edges); the
+  model's and graph-statistics' radius is `radius_query_fraction_edge_length` × it. The mesh size field is no longer
+  needed by the model. New tests: coverage of every point on an irregular closed mesh, the radius of the model.
+- **Not measured:** the effect on skill and on GPU memory (TODO, with the two-way edges rerun).
+
+## 2026-11-11 19:30: mesh vertices without grid points; rerun of the ocean cases with both fixes
+
+- **Side finding corrected:** I had reported that 6–8 % of the 25 km mesh's vertices receive no grid point as a
+  problem. They are still updated at every processor step (no node mask in `_run_mesh_gnn`; their encoder state is the
+  embedding of their position) and 99.3 % of the 25 km vertices send decoder edges, so their state is used. They
+  start without data and hold their neighbours' after one step: one step of reach lost there, not coverage. Only
+  vertices in neither the encoder nor the decoder (0.6 % at 25 km; 23 % of the icosahedral mesh, over land) are idle.
+- **Rerun** of 50 km × 16 and 120 km × 8 (demo_5000, seeds 42 and 43, the protocol of 8 Nov) with the two-way
+  coastline edges and the encoder radius from the longest triangle edge: study `edge_fixes`, jobs 2841380–2841383
+  (`training2647`), code of this branch (808fba5). Compare with jobs 2765280–2765287 (validation loss, per variable,
+  XLA memory, step time).
+
+## 2026-11-11 20:00: processor nodes outside the encoder and the decoder
+
+- **Question (maintainer):** are the mesh nodes with neither encoder nor decoder edges not needed as intermediates of
+  the processor's message passing? I had called them idle relays.
+- **Answer:** they are full processor nodes, so yes in general; measured with `relay_nodes.py` (shortest paths between
+  the data-carrying nodes from 32 sources, with and without them):
+  - icosahedral M6: 9,591 land vertices (23 %); without them the data nodes stay connected (long edges), but 20 % of
+    the paths get longer, mean path × 1.032: they relay across continents.
+  - 120 km / 50 km: 233 / 1,122 vertices, all poleward of 60° S (median 79° S), under Antarctic ice shelves outside
+    the GLORYS mask: dead ends for paths between data nodes (0.0 % / 0.2 % longer; one 120 km vertex reaches the
+    rest only through them). They still exchange messages with their neighbours.
+
+## 2026-11-11 21:00: seamsh refactoring kit (side quest of PR #7)
+
+- **Request:** prepare everything known about seamsh for a parallel session that will refactor the fork (tests,
+  pre-commit hooks, bug fixes, comments, self-documenting names; PR into its `develop`), with the end goal of meshing
+  disconnected domains (basins cut off by unresolved straits); include moby-dick's mesh files, a validation script
+  and a PR guide. No moby-dick code changes.
+- **Kit:** `$PROJECT/claude-work/ed336b51-7c1c-4db2-b3ca-b6880ad836fd/seamsh-refactoring-kit{,.tar.gz}`: `PR_GUIDE.md`, `NOTES_seamsh.md`, `validation/validate_seamsh.py` (standalone: seamsh, gmsh,
+  GDAL, numpy, scipy; `coarsen` and `mesh` subcommands, probe basins, mesh statistics, comparison with a reference
+  mesh), `validation/make_references.sh` and `validation/reference/` (current seamsh), Natural Earth coastlines,
+  moby-dick's mesh code, configs, tests and CLAUDE.md excerpt.
+- **Findings** (fork `develop` `f1ab87d`, read in a clone in the session directory, and measured):
+  - The coarsening keeps only the water reachable from one seed (C `color_triangles`: flood fill across Delaunay edges
+    longer than the coarsening size). Lost basins with the 1:10m coastline: Black Sea, Sea of Azov at 10 km;
+    + Mediterranean, Baltic at 20 km; + Red Sea at 30 km; + White Sea at 50 km. Coarsening takes 3–11 s.
+  - Meshing builds one gmsh plane surface: the largest loop is the exterior, all others are holes; disconnected basins
+    need one surface per region.
+  - The 120 km mesh file holds 49,054 nodes in no triangle (59 %); 0 inverted triangles, one component, smallest
+    angle 7.2°. The standalone script reproduces moby-dick's `uniform_120km.msh` (vertices within 1.4e-9 m, same
+    triangles), in 14 s.
+  - Bugs and risks by reading: dead `get_cavity` with an allocation-size and an out-of-bounds bug, `getid3` calls
+    `exit(1)`, a leak in `extract_boundaries`, unchecked allocations, `np.random.seed(0)` on the global state, an
+    unbounded sampling loop, the `tri` view left in the model, a license inconsistency (GPLv3 text, LGPL headers);
+    details in the notes.
+
+## 2026-11-11 22:00: nodes in no triangle, mesh parameters, keeping the Black Sea
+
+- **Requests:** log the nodes `read_mesh` drops; other findings worth a code change; whether the coastline and mesh
+  parameters are reasonable; parameters for one connected ocean including the Black Sea and Sea of Azov.
+- **Correction:** the kit's figure of 49,054 nodes in no triangle at 120 km was gmsh's in-memory model (a node on
+  every geometry point of the coarsened coastline), not the file. The files hold 743 of 34,750 (120 km) and 655 of
+  181,980 (50 km): outlines of islands smaller than the mesh size (632 at 120 km, 1–3 nodes, up to ~100 km across:
+  Kurils, Solomons, Canaries, Gotland, Shetland), whose sea is triangulated over them. Kit notes, guide, script (now
+  measuring the written file) and references corrected.
+- **Change:** `read_mesh` logs "Dropped N of M nodes in no triangle (outlines of islands not meshed)"; test with a
+  hand-built mesh holding a small island outline.
+- **Keeping the Black Sea** (`strait_experiment.py`, `strait_geometry.py`, `strait_hops.py` in the kit): the 1:10m
+  coastline keeps the straits open (Bosporus 1.09 km, Dardanelles 2.36 km, Kerch 2.51 km). Coarsening refined to
+  0.1–2 km at the strait centres but growing 0.2 km/km does not connect them (the straits are 30–60 km long); 0.25–0.5
+  km growing ≤ 0.05 km/km does. With a mesh size of 1–3 km at the straits (growth 0.3): one component, all basins;
+  120 km: 34,449 (3 km) or 34,621 (1 km) used nodes against 34,007; 50 km: 182,174 against 181,325; smallest angles
+  unchanged. The Black Sea is then 47–61 hops from the Aegean. A 30 km coastline with nine straits refined keeps every
+  basin but gives a 2.5° smallest angle at 120 km.
+- **Parameters:** the 10 km coastline coarsening, smoothness 0.3 and uniform fields are reasonable; the only gap is
+  the Black Sea, which needs a coarsening size field (configs have one number) and a size field refined around points.
+
+## 2026-11-11 23:00: strait refinement in the mesh configs
+
+- **Change:** `point_refinement` size field (size at points growing with distance), `coarsen_boundaries.fields`
+  (coarsening size = minimum of `mesh_size` and the fields; without fields exactly as before), all ocean configs
+  refined at the Bosporus, Dardanelles and Kerch Strait; tests (field values, validation, a synthetic inland sea
+  behind a 22 km channel kept only with the refinement).
+- **Meshes and graph statistics:** see CLAUDE.md (Meshes); comparison in `strait_meshes_comparison.json` in the
+  session directory. Not yet done: copy the meshes to `data/geometry`, update the report and the artifact.
+
+## 2026-11-12 09:00: rerun of the ocean cases with the edge fixes
+
+- Rerun with both fixes (two-way edges, encoder radius from the longest triangle edge; meshes without the Black Sea; study `edge_fixes`, jobs 2841380–2841383, 46 node-h): validation loss 120 km × 8 0.08382 → 0.08373 (−0.10 %), 50 km × 16 0.07524 → 0.07494 (−0.39 %), within the seed spread (0.04–0.40 %), every variable within ±1.1 %; XLA memory +1.1 GiB (120 km, 54.9 GiB) and +0.8 GiB (50 km, 74.8 GiB); step time +8 % / +3.5 %, within the run-to-run variation. No measurable effect on skill.
+- Per variable (50 km × 16): zos −0.9 %, thetao −0.4 %, so −0.2 %, uo/vo −0.3 %, siconc −0.7 %, sithick −1.1 %,
+  usi/vsi +0.4 %. Script `compare_edge_fixes.py`, tables `edge_fixes_runs.csv`, `edge_fixes_curves.csv` in the session
+  directory.
+
+## 2026-11-12 10:00: meshes with the Black Sea in data/geometry
+
+- **Request:** replace the meshes in `data/geometry` and delete the duplicate PR replies.
+- **Meshes:** the ten `uniform_*km.msh` moved to `data/geometry/previous_2026-10/` and replaced by the meshes
+  regenerated with the strait refinement (byte-identical copies of `$FSCRATCH/graphcast/data/geometry_straits_2026-11-11`;
+  no job was queued). The new files are a third smaller: the old ones held the mesh twice (writer bug fixed on 30 Oct).
+  `lambrechts*.msh` and `icosahedral_6.msh` are unchanged (the `lambrechts` configs have the refinement, their meshes
+  were not regenerated).
+- **Duplicate replies:** already deleted (no thread of PR #7 has two identical replies).
+
+## 2026-11-12 11:00: license audit of the dependencies
+
+- **Request:** check the license of every dependency and find inconsistencies and licensing problems (e.g. GPL code
+  requiring the Apache code to be redistributed as GPL). No code changes.
+- **Method:** metadata (License-Expression, License, classifiers) of the 224 Python distributions in the image
+  (`licenses/scan_licenses.py`, `licenses.csv`, `direct_deps.txt` in the session directory), Spack libraries and their
+  linkage (`ldd`), Ubuntu copyright files, the seamsh sources, the mesh configs and the README.
+- **Findings** (details in CLAUDE.md, Repository notes): gmsh (GPL-2.0-or-later) and seamsh (GPL-3.0; LGPL headers
+  contradicted by the bundled gmsh code) are the only copyleft direct dependencies and are loaded by every command, so
+  a distributed image is a GPL-3.0 combined work, which also loads proprietary NVIDIA libraries (gray area); the
+  repository itself is fine under Apache-2.0. Mesh files are CC BY-NC-SA without a reason from their inputs, the
+  `lambrechts` meshes lack the Copernicus attribution, and data attributions and a weights license are missing.
+  Everything else is permissive or dynamically linked LGPL. Missing metadata: namex and transformer_engine ship
+  Apache-2.0 texts; nsys-jax (NVIDIA, base image) has none.
+
+## 2026-11-12 13:00: fixes from the code review of PR #7
+
+- **Request:** fix the findings of `/code-review high 7` except the checkpoint warning (no production run yet).
+- **Changes:** graph-statistics' encoder radius described as the model's (longest triangle edge); JSON written before
+  the tables, with NaN and infinities as null (strict JSON); tables print "-" for a processor without components and
+  for graphs without receivers; volume-length histogram over [-1, 1] (inverted faces counted); `faces_to_edges` keeps
+  each directed edge once (a flipped face gave an edge and its reverse twice), with shared helpers
+  `directed_edge_codes` / `reverse_is_missing` also used by the statistics, which now count duplicate edges;
+  vectorized index mapping in `mesh_connectivity`; `CompositeMeshSizeField` derives from `MinimumField`; a missing test
+  docstring; no cluster name in `icosahedral_6.toml`. Edge counts unchanged for the meshes in use (icosahedral M6
+  327,660; 120 km 199,720). 484 tests pass.
+
+## 2026-11-12 16:00: third review of PR #7
+
+- **Comments addressed:**
+  - No path prefixes: `make-ocean-mesh` lost `--data-path`, the fields and the domain take their paths as they are,
+    and the mesh configs use container paths (`/data/geometry/...`; `lambrechts*` bathymetry at `/data/bathymetry/...`).
+  - The coastline coarsening takes size fields in full generality: `[[coarsen_boundaries.fields]]` (minimum of the
+    fields) replaces `coarsen_boundaries.mesh_size`; every config has a uniform 10 km field there (plus the strait
+    refinement). A single uniform field gives exactly the previous coarsening.
+  - `CoarsenBoundariesConfig` defined after `FieldConfig` (no forward reference and `model_rebuild`); the check of
+    unique field types, now shared, explains why (fields are kept by type name, a repeated type would replace the
+    first silently).
+  - Edge codes are uint64 (one-to-one up to 2**32 nodes), with an error beyond that or for indices outside
+    [0, num_nodes) instead of wrapping around.
+  - Chord distance: quantified in `PointRefinementField` (shorter than the geodesic by ~d³/(24 R²): 0.08 % at 500 km,
+    beyond which every refinement has reached its base size) and marked "CHORD DISTANCE" in
+    `mesh_graph.longest_incident_edges` and `mesh_connectivity.get_points_to_mesh_edges`, which must change together
+    when geodesic distances are introduced.
+  - The comment on the nodes in no triangle names the seamsh commit (fork `develop` `f1ab87d`, 11 Nov 2026) and says
+    why they are dropped and why the log is informational.
+
+## 2026-11-12 22:00: seamsh v0.6.0+fork: pin, image, meshes, reruns
+
+- **Request:** pin seamsh to v0.6.0+fork (merged PR in the fork), rebuild the image, rerun every investigation of the
+  report artifact with it; the changes the fork's documentation suggests for moby-dick go to a later PR (TODO).
+- **Image:** rebuilt from this branch (Spack environment unchanged; ~40 min on a busy login node), seamsh 0.6.0+fork at
+  `3c9304c` with gmsh 4.12.1; installed as `moby-dick.sif` with approval, previous image `moby-dick-2026-11-08.sif`.
+  486 tests pass with it (compute node, 3 min).
+- **Meshes:** the ten uniform meshes regenerated (job 2864195) and installed in `data/geometry` with approval (previous
+  in `data/geometry/previous_2026-11-12/`); details in CLAUDE.md (Meshes). Same structure, better triangles on the
+  whole, 2–3 % fewer encoder edges, no node outside the triangles.
+- **Checks** (job 2864533): encoder radius (no ocean point inside a triangle without encoder edges), nodes outside the
+  encoder and decoder (now needed: the strait elements carry no grid point and are the only link to the Black Sea, Azov
+  and Marmara, 4 % of the paths at 120 km break without them), hops through the straits (45 / 48), path scaling
+  (L = 0.542 · N^0.501).
+- **Training** (study `ico_vs_ocean_v060`, 75.5 node-h): 120 km × 8 0.08333, icosahedral × 8 0.08381, 50 km × 16
+  0.07464, icosahedral × 16 0.08262; icosahedral × 16 is 10.7 % worse than 50 km × 16, −16.0 % on `zos`. Ocean cases
+  −0.6 / −0.8 % since 8 Nov, icosahedral unchanged. Report section and CSVs added.
+
+## 2026-11-13 08:00: mesh quality in the artifact; Lambrechts vs uniform meshes
+
+- **Requests:** show the change of mesh quality with seamsh v0.6.0+fork in the artifact; test the performance and
+  skill of Lambrechts meshes of different sizes against uniform meshes.
+- **Quality** (`quality_compare.py`): table and chart of the ten uniform meshes before/after in the artifact; the bulk
+  improves at every size (25th percentile of the smallest angle per face +1°, faces with volume-length < 0.8 −3 to
+  −20 %), the 6–52 worst faces (< 0.5) do not.
+- **Meshes:** `lambrechts_mini`, `lambrechts_coarse`, `lambrechts` regenerated with seamsh v0.6.0+fork (job 2867811,
+  11,786 / 23,424 / 115,671 nodes, one component each) and installed in `data/geometry` (previous in
+  `previous_2026-11-12/`); new configs `uniform_200km` (13,743 nodes), `uniform_150km` (22,960) to match their node
+  counts.
+- **Training** (study `lambrechts_vs_uniform`, jobs 2868109–2868124, 146.6 node-h, × 16, two seeds): uniform meshes on
+  valid loss = 0.153 · N^−0.060 (within 0.6 %); Lambrechts meshes above it by +1.1 %, +1.5 % and +9.7 % (full mesh:
+  0.0837, worse than uniform 120 km × 16 at 0.0820; −4.7 % on `zos`, +10 to +18 % on temperature, salinity and
+  currents). Report `docs/jupiter-hackathon/results/lambrechts_vs_uniform-2026-11-13`.
+
+## 2026-11-13 11:30: distances on the meshes; horizon of the squashed grid-to-grid graph
+
+- **Requests:** compare "mean shortest path × median edge length is the typical distance between two ocean points"
+  with the mean geodesic distance between ocean points on the mesh; compute the statistics of the squashed grid-to-grid
+  graph (encoder, message passing steps on each mesh, mesh-to-mesh encoders and decoders, decoder) and its horizon
+  (mean geodesic distance between linked grid points), with sampling and sparse propagation (outline in the comment of
+  `graph_pruning.py`; here only the graph's statistics are wanted, no pruning).
+- **Code:** `structure.distance_statistics` (geodesic distances and Dijkstra path lengths along the mesh from the
+  path metrics' sources, detour), `graph_statistics.squashed` (forward and backward propagation of indicator blocks of
+  64 sampled grid nodes through the sparse adjacency matrices, thresholded after each operation; out- and in-degrees,
+  horizon weighted by out-degree), `quantities.weighted_summarize`, `[squashed]` settings (8 and 16 steps, 1,024 grid
+  nodes, at most 4,096 measured edges per sender), two new tables. Tests check the propagation against a dense matrix
+  product for one mesh and a two-mesh hierarchy (forward and backward), the exact statistics with every node sampled,
+  and the weighting. 498 tests pass (booster node).
+- **Results** (job 2880077, 7 min on one node, all uniform meshes, icosahedral M6, 50 km + 120 km; report
+  `docs/jupiter-hackathon/results/graph_horizon-2026-11-13`): hops × median edge (11,290–12,910 km) is the path
+  length along the mesh (11,230–12,000 km), 14–22 % longer than the mean geodesic distance between ocean nodes
+  (9,880–10,030 km); the artifact's sentence is corrected. Squashed graphs: 50 km × 16 links a grid point to 0.85 % of
+  the ocean (mean 495 km, at most 907 km), 120 km × 8 to 1.2 % (623 km), icosahedral M6 × 16 to all of it, 50 km +
+  120 km × 16 to 5.9 % (1,604 km).
+
+## 2026-11-13 13:30: graph statistics: settings in the config, booleans, V-cycle with skip connections
+
+- **Requests:** mask and mesh paths in the configuration file (absolute paths, as other commands), with the message
+  passing steps of each processor mesh; check that the V-cycle accounts for the U-Net residual (the coarser result
+  added to the finer mesh's state of the way down); paths of up to L hops, not exactly L (the OR of the powers in the
+  `graph_pruning.py` comment); when to run forward or backward; booleans instead of float32 and thresholding.
+- **Answers:** the propagation already ORs every operation into the receiving level's state, so the decoders keep
+  the finer mesh's state of the way down (the skip connection) and each step is x ← x OR P x, i.e. (I + P)^L =
+  I + P + … + P^L, the nodes within at most L hops (a test on a path graph and one showing that a hierarchy's squashed
+  graph contains its finest mesh's). Forward gives domains of influence (out-degree, horizon), backward receptive
+  fields (in-degree); pruning needs both, statistics of one end one.
+- **Code:** `moby-dick graph-statistics CONFIG OUTPUT.json`; `mask` and `[[meshes]]` (`path`, `message_passing_steps`)
+  in the config, absolute paths checked; one squashed graph per run with per-mesh steps; boolean sparse matrices and
+  blocks (scipy's boolean product is OR of ANDs, as fast as float32); mean distance per receiver (receptive field);
+  the module docstring explains the algebra, the V-cycle and the two directions. The test TOML writer writes inline
+  tables. 502 tests pass (booster node).
+- **Rerun** (job 2881277, 28 configs, 5.2 min on one node): degrees identical to the float32 run, horizons within
+  0.09 % (edge sampling); receptive fields as wide as domains of influence (median per-node mean distance within 1 %).
+  Report, CSVs, CLAUDE.md and the artifact updated.
+
+## 2026-11-13 14:30: test of `reach` against a model
+
+- **Request:** a test that builds a GNN with moby-dick's code and checks that perturbing an input grid point changes
+  no output outside its domain of influence, and that the input gradients of an output are zero outside its
+  receptive field.
+- **Test** (`test_reach_matches_the_models_dependencies`, 1 and 2 steps; Leviathan with random weights, 5° grid with a
+  continent, icosahedral mesh with 3 refinements; 4 grid points each): perturbed outputs change only inside the
+  domain; the forward-mode derivative (JVP) is nonzero exactly on the domain and the gradient (VJP) exactly on the
+  receptive field, so `reach` misses no dependency and adds none. A finite perturbation of 1 leaves some points of the
+  domain unchanged: their derivative (< 6e-7) is below float32 rounding of outputs of order 1.
+- **Mutation check:** with steps x <- P x (walks of exactly L hops) instead of x <- x OR P x the model test still
+  passes: on a triangle mesh with edges both ways, P^2 contains I (there and back) and P (around a triangle), so P^L
+  already holds every node within L hops for L >= 2, and at L = 1 the encoder reaches neighbouring vertices together.
+  The OR is still the right rule in general (one-way graphs, bipartite ones); the path-graph test catches it.
+
+## 2026-11-13 16:00: connectivity of semi-enclosed basins and inner seas
+
+- **Request:** measure the connectivity in the squashed graph between semi-enclosed basins (Mediterranean, Black Sea)
+  and inner seas (Gulf of California) and the nearby open ocean, in the report of `graph-statistics`, configurable in
+  its TOML.
+- **Code:** `[[regions]]` (name, polygon of (longitude, latitude) vertices; module `graph_statistics.regions`,
+  matplotlib's point-in-polygon on longitudes brought to [-180, 180)) and `[[basin_connections]]` (basin, ocean) in the
+  settings, names checked; `squashed.propagate` (a block whose columns mark sets of nodes: the union of their reaches),
+  `steps_to_connect` (bisection over the steps on every mesh, up to `squashed.max_steps_to_connect`, default 128),
+  `basin_connectivity` (exact shares of each region's nodes linked to the other, both directions); a report table. The
+  committed config pairs 8 basins with their ocean (Mediterranean, Black Sea, Sea of Azov, Red Sea, Persian Gulf,
+  Baltic, Gulf of California, Hudson Bay); the polygons were checked on maps of the training mask. Tests: polygons
+  (longitude wrap), shares and fewest steps against the dense matrix product (one mesh and a hierarchy), validation of
+  the region names. 508 tests pass (booster node).
+- **Results** (job 2883258, all meshes × 8 and 16 steps, 5.4 min; report section): the Black Sea needs 28–30 steps to
+  reach the Aegean on every uniform mesh (the refined straits), so it is cut off in all models trained so far since
+  12 Nov; Hudson Bay and the Baltic are cut off or barely linked at 50 km × 16 (21 and 9 steps needed); the other basins
+  connect within 0–6 steps. TODO item added.
+
+## 2026-11-13 18:30: more basins, from IHO sea areas; region maps
+
+- **Request:** add the Black Sea, Sea of Marmara, Sea of Azov, Baltic, Seto Inland Sea, Lake Maracaibo, Mediterranean,
+  Sea of Japan, Red Sea, Baffin Bay, Persian Gulf, White Sea, Gulf of Corinth, Indonesian throughflow (Java, Flores,
+  Banda), Canadian Arctic Archipelago (Boothia, Foxe) and Philippine inland seas (Sulu, Bohol) to the basin
+  connectivity, polygons and nearby oceans from online research, duplicates ignored, archipelagic basins handled; maps
+  in an artifact (then redrawn with land and higher contrast on request).
+- **Regions:** 10 new seas, 22 connections (one per opening; the Bali Sea joins the Indonesian seas along the
+  throughflow). IHO Sea Areas from the Marine Regions web service (WFS, CC BY 4.0), grown by 0.3°, without the other IHO
+  areas, simplified (2 % of the square root of the area, at least 0.12°); drawn after the documented straits where IHO
+  has no area (Gulf of Corinth, Lake Maracaibo, Bohol Sea; Foxe Basin, which IHO's Hudson Bay does not contain; the
+  Gulf of Boothia clipped on the Boothia Peninsula). The IHO Sulu Sea partly covers the Bohol Sea: removed from it.
+  Scripts and downloads in this session's claude-work directory (`iho/`, `regions_derive.py`,
+  `connections_maps.py`). Maps: https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq.
+- **Code:** regions take a list of `polygons` (regions in parts); nodes in both regions of a connection count for the
+  basin, and their number is reported (polygons meeting at a strait shared 1–11 grid points). 38 tests in the module.
+- **Results** (job 2884014; report section rewritten): Lake Maracaibo and the Gulf of Corinth are outside the mesh
+  domain (narrow straits closed by the 10 km coastline coarsening); Gulf of Boothia–Foxe Basin 62 steps at 50 km (Fury
+  and Hecla Strait closed); Indonesian seas–Pacific 12, Baffin Bay–Labrador Sea 20; the Sea of Marmara links to both
+  its neighbours in 1–2 steps (the Black Sea's 29 are spent inside it); most other new pairs meet at wide openings
+  (0 steps), so their shares matter more than the steps. The 0.25° mask turns narrow islands (Cebu, Bohol) into ocean.
+
+## 2026-11-13 20:00: hierarchy steps per mesh; license of the IHO-derived regions
+
+- **Requests:** fix the two open points: the hierarchy's fewest steps (14–15) read as a total, and the license of the
+  regions derived from the IHO Sea Areas.
+- **Wording:** report, CLAUDE.md and artifact say that the hierarchy's 14–15 steps are on each of its two meshes (28–30
+  in all, as on one mesh: both contain the refined straits).
+- **License:** the IHO Sea Areas v3 (Flanders Marine Institute (2018), IHO Sea Areas, version 3, https://www.marineregions.org/, https://doi.org/10.14284/323, CC BY-NC-SA 4.0) are CC BY-NC-SA 4.0 according to their dataset record (marineinfo.org
+  dataset 5444), not CC BY 4.0 as the entry of 18:30 says (Marine Regions products are CC BY only since 2019). Asked
+  the maintainer, who chose a separate file: the 23 adapted regions are in `configs/analysis/iho_regions.toml`
+  (CC BY-NC-SA 4.0, attribution and changes in its header, `LICENSES/CC-BY-NC-SA-4.0.txt`), read through the new
+  setting `region_files` (`cli.read_settings` adds their regions before validation); `graph_statistics.toml` keeps the
+  drawn regions and stays Apache-2.0. Same 42 regions and 30 connections, so the results are unchanged.
+
+## 2026-11-13 21:00: the regions file is an argument of graph-statistics
+
+- **Request:** `iho_regions.toml`, read through the relative `region_files`, broke the rule of absolute paths in the
+  configs; pass the regions file to `graph-statistics` as an argument instead, with all regions (drawn and IHO-derived)
+  in it, released under the right license and saying that it is partly based on IHO data.
+- **Change:** `moby-dick graph-statistics CONFIG.toml REGIONS.toml OUTPUT.json`; `configs/analysis/ocean_regions.toml`
+  holds the 42 regions (`RegionsConfig`: `[[regions]]` only, unique names), CC BY-NC-SA 4.0 with the IHO attribution,
+  the changes made and each region's source in its header and comments; the settings keep the 30
+  `[[basin_connections]]` and lose `regions` and `region_files`; `cli.read_settings` reads both files and fails if a
+  connection names a region the regions file lacks (`compute` checks it too, before any statistics). The JSON records
+  the regions file. Same regions and connections: results unchanged.
+
+## 2026-11-13 22:00: fixes from the code review of PR #7
+
+- **Request:** fix the findings of `/code-review high 7`, except the encoder radius change (deliberate) and the
+  undefined-regions check in both `read_settings` and `compute` (CLI error, guard for direct callers).
+- **Fixes:** distances in km from at most 64 of the path sources (`MAX_DISTANCE_SOURCES`; exact mode needed N²
+  memory, 9 GB at 120 km); grid coordinates in float32 in `model_graphs`, as Leviathan builds its edges (identical on
+  the 0.25° grid, a test now also runs on a grid shifted by 1/12°); the sparse matrices built once for the squashed
+  graph and the basins; no data path in the `DomainConfig` docstring; region longitudes in [-180, 360], nodes tested in
+  both conventions, so regions may cross the antimeridian and nodes at 180° are no longer lost; `graph-statistics`
+  imported only when it runs (`LAZY_COMMANDS` in `mobydick/__init__.py`; networkx and rich are loaded by other
+  imports anyway, so the saving is the package itself); `longest_incident_edges` from the faces' own edges, without
+  deduplication; a test keeps `graph_statistics.toml` equal to `production_run.toml` (mask, mesh, steps, radius).
