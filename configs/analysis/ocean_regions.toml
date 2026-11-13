@@ -6,7 +6,8 @@
 # passed to the command next to its settings (configs/analysis/graph_statistics.toml names the pairs it measures).
 #
 # Each [[regions]] table is the set of grid nodes inside any of its polygons of (longitude, latitude) vertices in
-# degrees (longitudes in [-180, 180], not crossing the antimeridian; straight edges on a longitude-latitude map). The
+# degrees (longitudes in [-180, 360], beyond 180 across the antimeridian; straight edges on a longitude-latitude
+# map). The
 # polygons follow the coasts loosely, over land where possible: land has no grid nodes. Regions may overlap (the Aegean
 # is part of the Mediterranean). The comment above each region says where it comes from.
 #

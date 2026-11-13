@@ -1706,3 +1706,16 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   `[[basin_connections]]` and lose `regions` and `region_files`; `cli.read_settings` reads both files and fails if a
   connection names a region the regions file lacks (`compute` checks it too, before any statistics). The JSON records
   the regions file. Same regions and connections: results unchanged.
+
+## 2026-11-13 22:00: fixes from the code review of PR #7
+
+- **Request:** fix the findings of `/code-review high 7`, except the encoder radius change (deliberate) and the
+  undefined-regions check in both `read_settings` and `compute` (CLI error, guard for direct callers).
+- **Fixes:** distances in km from at most 64 of the path sources (`MAX_DISTANCE_SOURCES`; exact mode needed N²
+  memory, 9 GB at 120 km); grid coordinates in float32 in `model_graphs`, as Leviathan builds its edges (identical on
+  the 0.25° grid, a test now also runs on a grid shifted by 1/12°); the sparse matrices built once for the squashed
+  graph and the basins; no data path in the `DomainConfig` docstring; region longitudes in [-180, 360], nodes tested in
+  both conventions, so regions may cross the antimeridian and nodes at 180° are no longer lost; `graph-statistics`
+  imported only when it runs (`LAZY_COMMANDS` in `mobydick/__init__.py`; networkx and rich are loaded by other
+  imports anyway, so the saving is the package itself); `longest_incident_edges` from the faces' own edges, without
+  deduplication; a test keeps `graph_statistics.toml` equal to `production_run.toml` (mask, mesh, steps, radius).

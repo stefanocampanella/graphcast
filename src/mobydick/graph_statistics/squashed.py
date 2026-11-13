@@ -188,18 +188,20 @@ def squashed_statistics(
   max_targets: int,
   batch_size: int,
   rng: np.random.Generator,
+  operations: dict[str, Operation] | None = None,
 ) -> dict[str, Any]:
   """Statistics of the squashed grid-to-grid graph of `graphs` with `steps[i]` message passing steps on mesh i, from
   the sampled grid nodes `nodes`, as senders (forward: out-degrees, horizon, domains of influence) and as receivers
   (backward: in-degrees, receptive fields). Self-loops are left out."""
   grid = next(g.sender_nodes for g in graphs if g.kind == "encoder")
-  operations = schedule(graphs, steps)
+  # `operations` are those of every graph (built here if not given); the schedule repeats the processors'.
+  forward = schedule(graphs, steps, operations)
   sizes = node_sizes(graphs)
   out_degree, in_degree = [], []
   distances, weights, sender_means, receiver_means = [], [], [], []
   for start in range(0, len(nodes), batch_size):
     batch = nodes[start : start + batch_size]
-    for sender, reached in zip(batch, reach(operations, sizes, grid.name, batch), strict=True):
+    for sender, reached in zip(batch, reach(forward, sizes, grid.name, batch), strict=True):
       receivers = np.flatnonzero(reached)
       receivers = receivers[receivers != sender]
       out_degree.append(len(receivers))
@@ -212,7 +214,7 @@ def squashed_statistics(
       # Each measured edge stands for out-degree / measured edges of this sender.
       weights.append(np.full(len(lengths), out_degree[-1] / len(lengths)))
       sender_means.append(lengths.mean())
-    for receiver, reaching in zip(batch, reach(operations, sizes, grid.name, batch, backward=True), strict=True):
+    for receiver, reaching in zip(batch, reach(forward, sizes, grid.name, batch, backward=True), strict=True):
       senders = np.flatnonzero(reaching)
       senders = senders[senders != receiver]
       in_degree.append(len(senders))

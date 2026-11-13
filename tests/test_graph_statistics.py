@@ -18,7 +18,10 @@ coverage, edge lengths, triangle quality, the CLI and its output."""
 import dataclasses
 import io
 import json
+import os
 import pathlib
+import sys
+import tomllib
 from typing import Any
 
 import click
@@ -96,10 +99,13 @@ def _config(steps: list[int], **settings) -> config.GraphStatisticsConfig:
   return config.GraphStatisticsConfig.model_validate({"mask": "/mask", "meshes": meshes, **settings})
 
 
-def test_graphs_equal_the_models(tiny_model):
+@pytest.mark.parametrize("offset", [0.0, 1.0 / 12.0], ids=["dyadic", "twelfth"])
+def test_graphs_equal_the_models(tiny_model, offset):
   """The statistics describe the graphs the model trains on: the encoder and decoder edges equal those Leviathan builds
-  with connected grid nodes (grid nodes are unmasked points), the processor edges are the mesh's."""
+  with connected grid nodes (grid nodes are unmasked points), the processor edges are the mesh's; also on a grid
+  shifted by 1/12°, whose coordinates are not exact in float32 (Leviathan builds its edges from float32 values)."""
   grid = _grid()
+  grid = Grid(lat=grid.lat + offset, lon=grid.lon + offset, mask=grid.mask)
   model_config = dataclasses.replace(tiny_model.model_config, connected_grid_nodes=True)
   captured = {}
 
@@ -661,7 +667,7 @@ def test_regions_file_is_validated(tmp_path, write_config):
   twice = write_config({"regions": [{"name": "a", "polygons": square}] * 2}, "twice.toml")
   with pytest.raises(click.ClickException, match="unique"):
     cli.read_settings(settings, twice)
-  outside = write_config({"regions": [{"name": "a", "polygons": [[[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]}]}, "o.toml")
+  outside = write_config({"regions": [{"name": "a", "polygons": [[[400.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]}]}, "o.toml")
   with pytest.raises(click.ClickException, match="longitude"):
     cli.read_settings(settings, outside)
   extra = write_config({"regions": [{"name": "a", "polygons": square}], "seed": 1}, "extra.toml")
@@ -675,6 +681,65 @@ def test_compute_rejects_connections_without_regions():
   settings = _config([1], basin_connections=[{"basin": "a", "ocean": "b"}])
   with pytest.raises(ValueError, match="undefined regions"):
     cli.compute(meshes, _grid(), settings)
+
+
+def test_distances_use_at_most_max_distance_sources():
+  """In exact mode every node is a path source, but the distances in km (arrays of sources × nodes) come from at most
+  MAX_DISTANCE_SOURCES of them, so their memory stays linear in the nodes."""
+  built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(2)], _grid(), 0.6)
+  processor = next(g for g in built if g.kind == "processor")
+  (component,) = structure.processor_statistics(processor, 0, np.random.default_rng(0))["components"]["value"]
+  assert component["sources"]["value"] == processor.sender_nodes.size == 162
+  assert component["distance_sources"]["value"] == structure.MAX_DISTANCE_SOURCES == 64
+
+
+def test_regions_across_the_antimeridian():
+  """A polygon drawn with longitudes beyond 180 covers the nodes on both sides of the antimeridian, given as 0–360 or
+  as -180–180, including a node at exactly 180° (which is -180° in the other convention)."""
+  nodes = graphs.NodeSet("grid", np.zeros(5), np.array([180.0, 190.0, -170.0, 170.0, -150.0]))
+  bering = [(175.0, -5.0), (195.0, -5.0), (195.0, 5.0), (175.0, 5.0)]
+  np.testing.assert_array_equal(regions.in_region(nodes, [bering]), [True, True, True, False, False])
+  config.RegionConfig.model_validate({"name": "Bering", "polygons": [bering]})
+  with pytest.raises(ValueError, match="longitude"):
+    config.RegionConfig.model_validate({"name": "a", "polygons": [[(350.0, 0.0), (361.0, 0.0), (355.0, 5.0)]]})
+
+
+def test_shipped_settings_describe_the_production_model():
+  """configs/analysis/graph_statistics.toml describes the model of configs/training/production_run.toml: same mask,
+  mesh, message passing steps and encoder radius, so its statistics are those of the graphs that model trains on (the
+  values are repeated in the two files, and this test keeps them equal)."""
+  configs = pathlib.Path(__file__).parents[1] / "configs"
+  settings, _ = cli.read_settings(
+    configs / "analysis" / "graph_statistics.toml", configs / "analysis" / "ocean_regions.toml"
+  )
+  with (configs / "training" / "production_run.toml").open("rb") as file:
+    training = tomllib.load(file)
+  assert str(settings.mask) == training["mask"]["path"]
+  (mesh,) = settings.meshes
+  assert str(mesh.path) == training["mesh"]["path"]
+  assert mesh.message_passing_steps == training["model"]["gnn_msg_steps"]
+  assert settings.radius_query_fraction_edge_length == training["model"]["radius_query_fraction_edge_length"]
+
+
+def test_graph_statistics_is_imported_only_when_it_runs():
+  """Importing the command line loads the graph statistics package only when its command runs or --help lists it, so
+  other commands (training on every rank) do not import it; the command is still listed and runs through the group."""
+  import subprocess
+
+  probe = "import sys, mobydick; print('mobydick.graph_statistics.cli' in sys.modules)"
+  result = subprocess.run(
+    [sys.executable, "-c", probe],
+    capture_output=True,
+    text=True,
+    check=True,
+    env={**os.environ, "MOBYDICK_NO_BANNER": "1", "PYTHONPATH": os.pathsep.join(sys.path)},
+  )
+  assert result.stdout.strip().splitlines()[-1] == "False"
+  import mobydick
+
+  assert "graph-statistics" in CliRunner().invoke(mobydick.cli, ["--help"]).output
+  result = CliRunner().invoke(mobydick.cli, ["graph-statistics", "--help"])
+  assert result.exit_code == 0 and "REGIONS_PATH" in result.output
 
 
 def test_unknown_settings_are_rejected():

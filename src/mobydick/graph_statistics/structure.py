@@ -81,6 +81,11 @@ def decoder_statistics(graph: Graph) -> dict[str, Any]:
   }
 
 
+# Sources of the distances in km (`distance_statistics`): its arrays hold len(sources) × nodes values, so in exact mode
+# (every node a source) they would need N² memory (9 GB at 120 km, 265 GB at 50 km).
+MAX_DISTANCE_SOURCES = 64
+
+
 def sample_sources(nodes: list[int], num_sources: int, rng: np.random.Generator) -> list[int]:
   """The sources of the path metrics of a component: all its nodes (exact values) if `num_sources` is 0 or at least
   their number, else `num_sources` of them sampled without replacement."""
@@ -154,6 +159,10 @@ def distance_statistics(graph: Graph, nodes: list[int], sources: list[int]) -> d
   # Distinct nodes at the same position (none in a valid mesh) have no detour.
   apart = others & (geodesic > 0)
   return {
+    "distance_sources": described(
+      f"Nodes from which the distances in km are computed (the path sources, at most {MAX_DISTANCE_SOURCES} of them)",
+      len(sources),
+    ),
     "geodesic_distance_km": described(
       "Geodesic distances on the WGS84 ellipsoid from the sources to the other nodes of the component (km)",
       summarize(geodesic[others]),
@@ -189,8 +198,10 @@ def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generato
   component_statistics = []
   for nodes in (c for c in components if len(c) > 1):
     sources = sample_sources(nodes, num_sources, rng)
+    # The same sources for both when they are few; at most MAX_DISTANCE_SOURCES of them for the distances.
+    distance_sources = sample_sources(sources, MAX_DISTANCE_SOURCES, rng)
     component_statistics.append(
-      {**path_statistics(undirected, nodes, sources), **distance_statistics(graph, nodes, sources)}
+      {**path_statistics(undirected, nodes, sources), **distance_statistics(graph, nodes, distance_sources)}
     )
   return {
     "nodes": described("Mesh vertices", num_nodes),

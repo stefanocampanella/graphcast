@@ -74,12 +74,15 @@ def model_graphs(meshes: Sequence[MeshData], grid: Grid, radius_query_fraction: 
   `model.connected_grid_nodes`; mesh nodes are the mesh vertices.
   """
   mask = np.asarray(grid.mask, dtype=bool)
+  # Leviathan builds its edges from float32 grid coordinates: the same values give the same edges on any grid (in
+  # float64, points within rounding of a radius or a triangle edge could be connected differently).
+  grid_lat, grid_lon = np.asarray(grid.lat, dtype=np.float32), np.asarray(grid.lon, dtype=np.float32)
   flat_mask = mask.reshape(-1)
   # The mesh_connectivity functions index the flattened grid: map those indices to the unmasked points.
   point_to_node = np.cumsum(flat_mask) - 1
-  grid_lon, grid_lat = np.meshgrid(grid.lon, grid.lat)
+  nodes_lon, nodes_lat = np.meshgrid(grid_lon, grid_lat)
   # `lower` is the finer level the next mesh connects to: the grid, then each mesh in turn.
-  lower = NodeSet("grid", grid_lat.reshape(-1)[flat_mask], grid_lon.reshape(-1)[flat_mask])
+  lower = NodeSet("grid", nodes_lat.reshape(-1)[flat_mask], nodes_lon.reshape(-1)[flat_mask])
   lower_mesh: MeshGraph | None = None
   encoders, processors, decoders = [], [], []
   for level, mesh_data in enumerate(meshes):
@@ -90,11 +93,11 @@ def model_graphs(meshes: Sequence[MeshData], grid: Grid, radius_query_fraction: 
     if lower_mesh is None:
       # The grid level: the model's own encoder and decoder functions.
       grid_senders, encoder_receivers = mesh_connectivity.radius_query_indices(
-        grid_latitude=grid.lat, grid_longitude=grid.lon, mesh=mesh, radius=radius, mask=mask
+        grid_latitude=grid_lat, grid_longitude=grid_lon, mesh=mesh, radius=radius, mask=mask
       )
       encoder_senders = point_to_node[grid_senders]
       decoder_senders, grid_receivers = mesh_connectivity.get_mesh_to_grid_edges(
-        grid_latitude=grid.lat, grid_longitude=grid.lon, mesh=mesh, mask=mask
+        grid_latitude=grid_lat, grid_longitude=grid_lon, mesh=mesh, mask=mask
       )
       decoder_receivers = point_to_node[grid_receivers]
     else:

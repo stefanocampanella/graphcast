@@ -41,7 +41,7 @@ class MesherConfig(ApplicationConfig):
 
 class DomainConfig(ApplicationConfig):
   """Coastline shapefile bounding the ocean, its curve names and type. Paths, here and in the fields, are used as they
-  are: container paths (e.g. /data/geometry/...), the data being mounted there, as in the training configs."""
+  are: absolute paths where the data are mounted, as in the training configs."""
 
   filepath: str
   physical_name_field: str = "featurecla"

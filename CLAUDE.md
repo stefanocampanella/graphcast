@@ -68,7 +68,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver; basin
   connectivity (`[[basin_connections]]` of the settings, basin and nearby ocean by name, nodes in both counting for
   the basin; the regions are in REGIONS.toml, `configs/analysis/ocean_regions.toml`, `RegionsConfig`: `[[regions]]`
-  with a name and a list of polygons of (longitude, latitude) vertices each, CC BY-NC-SA 4.0 as partly based on IHO
+  with a name and a list of polygons of (longitude, latitude) vertices each, longitudes in [-180, 360] so that a region
+  may cross the antimeridian, CC BY-NC-SA 4.0 as partly based on IHO
   data; the command checks that every connection names regions of it): exact shares of each region's nodes linked to the other, from one column per region marking all its
   nodes, and the fewest steps on every mesh linking them, by bisection up to `max_steps_to_connect`). Prints rich tables to stdout and writes every quantity with a description to the
   JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
@@ -145,7 +146,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (510 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (515 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in

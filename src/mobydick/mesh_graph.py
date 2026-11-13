@@ -230,15 +230,17 @@ def longest_incident_edges(vertices: np.ndarray, faces: np.ndarray) -> np.ndarra
     vertices: Coordinates [num_vertices, 3].
     faces: Vertex indices [num_faces, 3].
   """
-  senders, receivers = faces_to_edges(faces)
+  # The three edges of every face, (v0, v1), (v1, v2), (v2, v0): an edge shared by two faces counts twice, which a
+  # maximum ignores, so the deduplicated edges of faces_to_edges are not needed.
+  faces = np.asarray(faces)
+  senders, receivers = faces.reshape(-1), np.roll(faces, -1, axis=1).reshape(-1)
   # CHORD DISTANCE (straight line through the Earth), as the encoder's radius query (mesh_connectivity.
   # get_points_to_mesh_edges, a k-d tree in Earth-centred coordinates) and the triangles themselves: the two must use
   # the same metric. Using geodesic distances instead (planned) means changing both; at the mesh sizes in use the chord
   # is shorter than the geodesic by about d³ / (24 R²): 0.0003 % at 120 km.
   lengths = np.linalg.norm(vertices[senders] - vertices[receivers], axis=-1)
   longest = np.zeros(len(vertices), dtype=lengths.dtype)
-  # Every edge counts for both its vertices (each edge appears in both directions, so one side would do; both are
-  # kept so that the result does not depend on that).
+  # Every edge counts for both its vertices.
   np.maximum.at(longest, senders, lengths)
   np.maximum.at(longest, receivers, lengths)
   return longest

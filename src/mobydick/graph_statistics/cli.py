@@ -125,13 +125,14 @@ def compute(
   grid_nodes = graphs[0].sender_nodes.size
   sampled = squashed_rng.choice(grid_nodes, min(config.squashed.num_sources, grid_nodes), replace=False)
   steps = [mesh.message_passing_steps for mesh in config.meshes]
+  # The sparse matrices of every graph, built once for the squashed graph and the basins.
+  operations = squashed.graph_operations(graphs)
   with _timed(f"Squashed grid-to-grid graph with {steps} steps, from {len(sampled):,} grid nodes"):
     results["squashed"] = squashed.squashed_statistics(
-      graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng
+      graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng, operations
     )
   grid_nodes = graphs[0].sender_nodes
   polygons = regions_config.polygons()
-  operations = squashed.graph_operations(graphs)
   results["basin_connections"] = []
   for connection in config.basin_connections:
     basin, ocean = (regions.in_region(grid_nodes, polygons[name]) for name in (connection.basin, connection.ocean))

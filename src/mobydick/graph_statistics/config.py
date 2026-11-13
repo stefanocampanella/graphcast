@@ -84,16 +84,16 @@ class RegionConfig(BaseModel):
   name: str = Field(min_length=1, description="Name of the region, unique")
   polygons: list[Annotated[list[tuple[float, float]], Field(min_length=3)]] = Field(
     min_length=1,
-    description="Polygons of vertices (longitude, latitude) in degrees, longitudes in [-180, 180]; each closes by "
-    "itself and must not cross the antimeridian",
+    description="Polygons of vertices (longitude, latitude) in degrees, longitudes in [-180, 360] (beyond 180 for "
+    "a region across the antimeridian); each closes by itself",
   )
 
   @field_validator("polygons")
   @classmethod
   def _within_bounds(cls, polygons: list[list[tuple[float, float]]]) -> list[list[tuple[float, float]]]:
     for lon, lat in (vertex for polygon in polygons for vertex in polygon):
-      if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
-        raise ValueError(f"vertex ({lon}, {lat}) is not a (longitude, latitude) in [-180, 180] x [-90, 90]")
+      if not (-180.0 <= lon <= 360.0 and -90.0 <= lat <= 90.0):
+        raise ValueError(f"vertex ({lon}, {lat}) is not a (longitude, latitude) in [-180, 360] x [-90, 90]")
     return polygons
 
 

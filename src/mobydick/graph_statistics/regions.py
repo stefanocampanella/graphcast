@@ -15,9 +15,12 @@
 """Regions of the ocean (`RegionConfig`): the nodes of a node set inside any of a list of polygons of (longitude,
 latitude) vertices.
 
-The polygon is tested in plate carrée coordinates (longitude and latitude as plane coordinates), with longitudes
-brought to [-180, 180): straight polygon edges are lines of constant slope in degrees, not geodesics, which is what a
-region drawn on a map means. Polygons must not cross the antimeridian.
+The polygons are tested in plate carrée coordinates (longitude and latitude as plane coordinates): straight polygon
+edges are lines of constant slope in degrees, not geodesics, which is what a region drawn on a map means. Polygon
+longitudes are in [-180, 360]: a region across the antimeridian is drawn with longitudes beyond 180 (e.g. 160 to 200
+for the Bering Sea). Each node is tested at its longitude in [-180, 180) and in [0, 360), and is inside if either is:
+the two agree on [0, 180), and each covers what the other cannot (negative longitudes, longitudes beyond 180,
+including a node at 180°, which is -180° in the first).
 """
 
 import matplotlib.path
@@ -29,9 +32,11 @@ from mobydick.graph_statistics.graphs import NodeSet
 def in_region(nodes: NodeSet, polygons: list[list[tuple[float, float]]]) -> np.ndarray:
   """Boolean mask over `nodes`: True for the nodes inside any of `polygons` ((longitude, latitude) vertices in
   degrees)."""
-  lon = (np.asarray(nodes.lon, dtype=np.float64) + 180.0) % 360.0 - 180.0
-  points = np.column_stack([lon, np.asarray(nodes.lat, dtype=np.float64)])
-  inside = np.zeros(len(points), dtype=bool)
+  lat = np.asarray(nodes.lat, dtype=np.float64)
+  west = (np.asarray(nodes.lon, dtype=np.float64) + 180.0) % 360.0 - 180.0  # [-180, 180)
+  east = west % 360.0  # [0, 360)
+  inside = np.zeros(len(lat), dtype=bool)
   for polygon in polygons:
-    inside |= matplotlib.path.Path(np.asarray(polygon, dtype=np.float64)).contains_points(points)
+    path = matplotlib.path.Path(np.asarray(polygon, dtype=np.float64))
+    inside |= path.contains_points(np.column_stack([west, lat])) | path.contains_points(np.column_stack([east, lat]))
   return inside
