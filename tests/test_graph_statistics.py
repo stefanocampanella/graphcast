@@ -22,16 +22,19 @@ import pathlib
 from typing import Any
 
 import haiku as hk
+import jax
+import jax.numpy as jnp
 import networkx as nx
 import numpy as np
 import pytest
+import xarray as xr
 from click.testing import CliRunner
 from rich.console import Console
 
-from mobydick import icosahedral_mesh
+from mobydick import icosahedral_mesh, xarray_jax
 from mobydick.dataloader_utils import Grid
 from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, report, squashed, structure
-from mobydick.leviathan.model import Leviathan
+from mobydick.leviathan.model import Leviathan, ModelConfig, TaskConfig
 from mobydick.mesh_graph import longest_incident_edges
 
 
@@ -418,6 +421,93 @@ def test_message_passing_steps_reach_every_node_within_that_many_hops():
   np.testing.assert_array_equal(
     squashed.reach(operations, {"a": 5}, "a", np.array([4]), backward=True), [[0, 0, 1, 1, 1]]
   )
+
+
+@pytest.mark.parametrize("steps", [1, 2])
+def test_reach_matches_the_models_dependencies(steps):
+  """`reach` describes the dependencies of a Leviathan model built with moby-dick's code (random weights, 5° grid
+  with land, icosahedral mesh with 3 refinements, so that a grid point reaches about 2–30 % of the others):
+  - perturbing the input at a grid point changes the output only inside its domain of influence (forward reach);
+  - the forward-mode derivative of the outputs with respect to that input is nonzero exactly on that domain (a finite
+    perturbation leaves some points of the domain unchanged: their derivative, below 1e-6, is lost in float32
+    rounding of outputs of order 1);
+  - the gradient of the output at a grid point with respect to the inputs is nonzero exactly on its receptive field
+    (backward reach).
+  Both directions are thus exact: `reach` misses no dependency and adds none."""
+  lat, lon = np.arange(-87.5, 90.0, 5.0), np.arange(0.0, 360.0, 5.0)
+  mask = np.broadcast_to(lat[:, None] < 70.0, (lat.size, lon.size)).copy()
+  mask[10:14, 20:30] = False  # A continent: grid points without nodes, and coasts.
+  mesh = icosahedral_mesh.get_multi_mesh_data(3)
+  model_config = ModelConfig(
+    latent_size=4,
+    gnn_msg_steps=steps,
+    hidden_layers=1,
+    radius_query_fraction_edge_length=0.6,
+    connected_grid_nodes=True,
+  )
+  task = TaskConfig(
+    input_variables=("zos",), target_variables=("zos",), forcing_variables=("2t",), levels=(0,), input_duration="1D"
+  )
+  rng = np.random.default_rng(0)
+
+  def field(day: int) -> xr.DataArray:
+    return xr.DataArray(
+      rng.normal(size=(1, 1, lat.size, lon.size)).astype(np.float32),
+      dims=("batch", "time", "lat", "lon"),
+      coords={"time": np.array([day], dtype="timedelta64[D]"), "lat": lat, "lon": lon},
+    )
+
+  inputs, targets, forcings = xr.Dataset({"zos": field(0)}), xr.Dataset({"zos": field(1)}), xr.Dataset({"2t": field(1)})
+
+  def model(i, t, f):
+    return Leviathan(
+      _model_config=model_config,
+      _task_config=task,
+      _grid_lat=lat,
+      _grid_lon=lon,
+      _grid_mask=mask,
+      _mesh_data=mesh,
+    )(i, t, f)
+
+  transformed = hk.transform(model)
+  params = transformed.init(jax.random.key(0), inputs, targets, forcings)
+
+  @jax.jit
+  def predict(zos: jax.Array) -> jax.Array:
+    """The predicted (lat, lon) field from the input field (batch and time of size 1)."""
+    data = xarray_jax.Dataset({"zos": xarray_jax.DataArray(zos, dims=inputs.zos.dims, coords=inputs.zos.coords)})
+    return xarray_jax.unwrap_data(transformed.apply(params, None, data, targets, forcings)["zos"])[0, 0]
+
+  def point_output(zos: jax.Array, weights: jax.Array) -> jax.Array:
+    return jnp.sum(predict(zos) * weights)
+
+  gradient = jax.jit(jax.grad(point_output))
+  zos = jnp.asarray(inputs.zos.values)
+  unperturbed = np.asarray(predict(zos))
+
+  built = graphs.model_graphs([mesh], Grid(lat=lat, lon=lon, mask=mask), model_config.radius_query_fraction_edge_length)
+  operations, sizes = squashed.schedule(built, [steps]), squashed.node_sizes(built)
+  points = np.flatnonzero(mask.reshape(-1))  # Grid node -> flattened grid point.
+  nodes = np.array([0, len(points) // 3, len(points) // 2, len(points) - 1])
+  domains = squashed.reach(operations, sizes, "grid", nodes)
+  receptive_fields = squashed.reach(operations, sizes, "grid", nodes, backward=True)
+
+  def on_grid(reached: np.ndarray) -> np.ndarray:
+    grid = np.zeros(mask.shape, dtype=bool)
+    grid.reshape(-1)[points[reached]] = True
+    return grid
+
+  for node, domain, receptive_field in zip(nodes, map(on_grid, domains), map(on_grid, receptive_fields), strict=True):
+    i, j = np.unravel_index(points[node], mask.shape)
+    # Non-trivial sets: more than the point itself, far from the whole ocean.
+    assert 1 < domain.sum() < mask.sum() // 2 and 1 < receptive_field.sum() < mask.sum() // 2
+    changed = np.asarray(predict(zos.at[0, 0, i, j].add(1.0))) != unperturbed
+    assert changed[i, j] and not np.any(changed & ~domain), node
+    _, derivative = jax.jvp(predict, (zos,), (jnp.zeros_like(zos).at[0, 0, i, j].set(1.0),))
+    np.testing.assert_array_equal(np.asarray(derivative) != 0, domain, err_msg=f"node {node}")
+    weights = jnp.zeros(mask.shape, jnp.float32).at[i, j].set(1.0)
+    dependencies = np.asarray(gradient(zos, weights))[0, 0] != 0
+    np.testing.assert_array_equal(dependencies, receptive_field, err_msg=f"node {node}")
 
 
 def test_hierarchy_keeps_the_paths_of_the_finer_mesh():

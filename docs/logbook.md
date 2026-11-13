@@ -1625,3 +1625,18 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
 - **Rerun** (job 2881277, 28 configs, 5.2 min on one node): degrees identical to the float32 run, horizons within
   0.09 % (edge sampling); receptive fields as wide as domains of influence (median per-node mean distance within 1 %).
   Report, CSVs, CLAUDE.md and the artifact updated.
+
+## 2026-11-13 14:30: test of `reach` against a model
+
+- **Request:** a test that builds a GNN with moby-dick's code and checks that perturbing an input grid point changes
+  no output outside its domain of influence, and that the input gradients of an output are zero outside its
+  receptive field.
+- **Test** (`test_reach_matches_the_models_dependencies`, 1 and 2 steps; Leviathan with random weights, 5° grid with a
+  continent, icosahedral mesh with 3 refinements; 4 grid points each): perturbed outputs change only inside the
+  domain; the forward-mode derivative (JVP) is nonzero exactly on the domain and the gradient (VJP) exactly on the
+  receptive field, so `reach` misses no dependency and adds none. A finite perturbation of 1 leaves some points of the
+  domain unchanged: their derivative (< 6e-7) is below float32 rounding of outputs of order 1.
+- **Mutation check:** with steps x <- P x (walks of exactly L hops) instead of x <- x OR P x the model test still
+  passes: on a triangle mesh with edges both ways, P^2 contains I (there and back) and P (around a triangle), so P^L
+  already holds every node within L hops for L >= 2, and at L = 1 the encoder reaches neighbouring vertices together.
+  The OR is still the right rule in general (one-way graphs, bipartite ones); the path-graph test catches it.
