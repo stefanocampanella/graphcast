@@ -16,7 +16,7 @@
 the settings of the statistics, and the regions whose connectivity is measured."""
 
 import pathlib
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import (
   BaseModel,
@@ -75,24 +75,25 @@ class SquashedGraphConfig(BaseModel):
 
 
 class RegionConfig(BaseModel):
-  """A named region of the ocean: the grid nodes inside a polygon of (longitude, latitude) vertices."""
+  """A named region of the ocean: the grid nodes inside any of its polygons of (longitude, latitude) vertices (several
+  for archipelagic seas or regions in parts)."""
 
   model_config = ConfigDict(extra="forbid")
 
   name: str = Field(min_length=1, description="Name of the region, unique")
-  polygon: list[tuple[float, float]] = Field(
-    min_length=3,
-    description="Vertices (longitude, latitude) in degrees, longitudes in [-180, 180]; the polygon closes by itself "
-    "and must not cross the antimeridian",
+  polygons: list[Annotated[list[tuple[float, float]], Field(min_length=3)]] = Field(
+    min_length=1,
+    description="Polygons of vertices (longitude, latitude) in degrees, longitudes in [-180, 180]; each closes by "
+    "itself and must not cross the antimeridian",
   )
 
-  @field_validator("polygon")
+  @field_validator("polygons")
   @classmethod
-  def _within_bounds(cls, polygon: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    for lon, lat in polygon:
+  def _within_bounds(cls, polygons: list[list[tuple[float, float]]]) -> list[list[tuple[float, float]]]:
+    for lon, lat in (vertex for polygon in polygons for vertex in polygon):
       if not (-180.0 <= lon <= 180.0 and -90.0 <= lat <= 90.0):
         raise ValueError(f"vertex ({lon}, {lat}) is not a (longitude, latitude) in [-180, 180] x [-90, 90]")
-    return polygon
+    return polygons
 
 
 class BasinConnectionConfig(BaseModel):

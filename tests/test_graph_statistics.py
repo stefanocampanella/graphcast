@@ -334,8 +334,8 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
       "length_bin_width_km": 100.0,
       "squashed": {"num_sources": 16, "max_steps_to_connect": 8},
       "regions": [
-        {"name": "west", "polygon": [[-180.0, -90.0], [0.0, -90.0], [0.0, 90.0], [-180.0, 90.0]]},
-        {"name": "east", "polygon": [[0.0, -90.0], [180.0, -90.0], [180.0, 90.0], [0.0, 90.0]]},
+        {"name": "west", "polygons": [[[-180.0, -90.0], [0.0, -90.0], [0.0, 90.0], [-180.0, 90.0]]]},
+        {"name": "east", "polygons": [[[0.0, -90.0], [180.0, -90.0], [180.0, 90.0], [0.0, 90.0]]]},
       ],
       "basin_connections": [{"basin": "west", "ocean": "east"}],
     }
@@ -578,13 +578,14 @@ def test_distances_compare_paths_along_the_mesh_with_geodesics():
 
 
 def test_regions_are_the_nodes_inside_their_polygons():
-  """A node is in a region when its (longitude, latitude) is inside the polygon, with longitudes 0–360 of the grid
-  brought to -180–180 as the polygons' (350° is -10°)."""
+  """A node is in a region when its (longitude, latitude) is inside any of the region's polygons, with longitudes 0–360
+  of the grid brought to -180–180 as the polygons' (350° is -10°)."""
   nodes = graphs.NodeSet("grid", np.array([35.0, 35.0, 35.0, 50.0, 35.0]), np.array([350.0, -10.0, 10.0, 350.0, 5.0]))
-  inside = regions.in_polygon(nodes, [(-15.0, 30.0), (-5.0, 30.0), (-5.0, 40.0), (-15.0, 40.0)])
-  np.testing.assert_array_equal(inside, [True, True, False, False, False])
-  triangle = regions.in_polygon(nodes, [(0.0, 30.0), (20.0, 30.0), (0.0, 50.0)])
-  np.testing.assert_array_equal(triangle, [False, False, True, False, True])
+  square = [(-15.0, 30.0), (-5.0, 30.0), (-5.0, 40.0), (-15.0, 40.0)]
+  triangle = [(0.0, 30.0), (20.0, 30.0), (0.0, 50.0)]
+  np.testing.assert_array_equal(regions.in_region(nodes, [square]), [True, True, False, False, False])
+  np.testing.assert_array_equal(regions.in_region(nodes, [triangle]), [False, False, True, False, True])
+  np.testing.assert_array_equal(regions.in_region(nodes, [square, triangle]), [True, True, True, False, True])
 
 
 @pytest.mark.parametrize(("splits", "steps"), [((2,), [1]), ((2, 1), [1, 1])])
@@ -618,16 +619,31 @@ def test_basin_connectivity_matches_the_matrix_product(splits, steps):
   assert too_few["steps_basin_to_ocean"]["value"] is None
 
 
+def test_nodes_in_both_regions_count_for_the_basin():
+  """Regions that overlap (polygons meeting at a strait) would be linked with no step: the shared nodes count for the
+  basin only, so the ocean is the rest of its region, and the overlap is reported."""
+  built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(2)], _grid(), 0.6)
+  nodes = built[0].sender_nodes
+  basin = nodes.lat < -50
+  ocean = (nodes.lat < -50) & (nodes.lon < 100) | (nodes.lat > 40)
+  overlapping = squashed.basin_connectivity(built, [1], "south", basin, "ocean", ocean, max_steps=8)
+  separate = squashed.basin_connectivity(built, [1], "south", basin, "ocean", ocean & ~basin, max_steps=8)
+  assert overlapping["shared_nodes"]["value"] == (basin & ocean).sum() > 0
+  assert overlapping["ocean_nodes"]["value"] == (ocean & ~basin).sum()
+  for key in ("steps_basin_to_ocean", "steps_ocean_to_basin", "basin_nodes_reaching_ocean"):
+    assert overlapping[key] == separate[key]
+
+
 def test_basin_connections_refer_to_defined_regions():
   """A basin connection naming an undefined region, two regions with the same name and a vertex outside the
   longitude and latitude ranges are rejected when the settings are read."""
-  square = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]
+  square = [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]
   with pytest.raises(ValueError, match="undefined region 'b'"):
-    _config([1], regions=[{"name": "a", "polygon": square}], basin_connections=[{"basin": "a", "ocean": "b"}])
+    _config([1], regions=[{"name": "a", "polygons": square}], basin_connections=[{"basin": "a", "ocean": "b"}])
   with pytest.raises(ValueError, match="unique"):
-    _config([1], regions=[{"name": "a", "polygon": square}, {"name": "a", "polygon": square}])
+    _config([1], regions=[{"name": "a", "polygons": square}, {"name": "a", "polygons": square}])
   with pytest.raises(ValueError, match="longitude"):
-    _config([1], regions=[{"name": "a", "polygon": [[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]}])
+    _config([1], regions=[{"name": "a", "polygons": [[[200.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]}])
 
 
 def test_unknown_settings_are_rejected():
@@ -657,4 +673,4 @@ def test_shipped_settings_are_valid():
   path = pathlib.Path(__file__).parents[1] / "configs" / "analysis" / "graph_statistics.toml"
   settings = cli_utils.read_configs(path, schema=config.GraphStatisticsConfig)
   assert settings.meshes[0].message_passing_steps == 16 and settings.radius_query_fraction_edge_length == 0.6
-  assert len(settings.basin_connections) == 8 and len(settings.regions) == 15
+  assert len(settings.basin_connections) == 30 and len(settings.regions) == 42

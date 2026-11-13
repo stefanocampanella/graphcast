@@ -1659,3 +1659,25 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   reach the Aegean on every uniform mesh (the refined straits), so it is cut off in all models trained so far since
   12 Nov; Hudson Bay and the Baltic are cut off or barely linked at 50 km × 16 (21 and 9 steps needed); the other basins
   connect within 0–6 steps. TODO item added.
+
+## 2026-11-13 18:30: more basins, from IHO sea areas; region maps
+
+- **Request:** add the Black Sea, Sea of Marmara, Sea of Azov, Baltic, Seto Inland Sea, Lake Maracaibo, Mediterranean,
+  Sea of Japan, Red Sea, Baffin Bay, Persian Gulf, White Sea, Gulf of Corinth, Indonesian throughflow (Java, Flores,
+  Banda), Canadian Arctic Archipelago (Boothia, Foxe) and Philippine inland seas (Sulu, Bohol) to the basin
+  connectivity, polygons and nearby oceans from online research, duplicates ignored, archipelagic basins handled; maps
+  in an artifact (then redrawn with land and higher contrast on request).
+- **Regions:** 10 new seas, 22 connections (one per opening; the Bali Sea joins the Indonesian seas along the
+  throughflow). IHO Sea Areas from the Marine Regions web service (WFS, CC BY 4.0), grown by 0.3°, without the other IHO
+  areas, simplified (2 % of the square root of the area, at least 0.12°); drawn after the documented straits where IHO
+  has no area (Gulf of Corinth, Lake Maracaibo, Bohol Sea; Foxe Basin, which IHO's Hudson Bay does not contain; the
+  Gulf of Boothia clipped on the Boothia Peninsula). The IHO Sulu Sea partly covers the Bohol Sea: removed from it.
+  Scripts and downloads in this session's claude-work directory (`iho/`, `regions_derive.py`,
+  `connections_maps.py`). Maps: https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq.
+- **Code:** regions take a list of `polygons` (regions in parts); nodes in both regions of a connection count for the
+  basin, and their number is reported (polygons meeting at a strait shared 1–11 grid points). 38 tests in the module.
+- **Results** (job 2884014; report section rewritten): Lake Maracaibo and the Gulf of Corinth are outside the mesh
+  domain (narrow straits closed by the 10 km coastline coarsening); Gulf of Boothia–Foxe Basin 62 steps at 50 km (Fury
+  and Hecla Strait closed); Indonesian seas–Pacific 12, Baffin Bay–Labrador Sea 20; the Sea of Marmara links to both
+  its neighbours in 1–2 steps (the Black Sea's 29 are spent inside it); most other new pairs meet at wide openings
+  (0 steps), so their shares matter more than the steps. The 0.25° mask turns narrow islands (Cebu, Bohol) into ocean.

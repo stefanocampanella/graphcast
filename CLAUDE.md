@@ -66,8 +66,8 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   each step is x ← x OR P x, so L steps give (I + P)^L = I + P + … + P^L, the nodes within at most L hops; the
   adjacency I + D (I + P)^L E is never formed), and the horizon, the geodesic length of its edges (at most
   `max_targets` per sampled node, weighted by out-degree), with mean distances per sender and per receiver; basin
-  connectivity (`[[regions]]`, polygons of (longitude, latitude) vertices, and `[[basin_connections]]`, basin and
-  nearby ocean: exact shares of each region's nodes linked to the other, from one column per region marking all its
+  connectivity (`[[regions]]`, a list of polygons of (longitude, latitude) vertices each, and `[[basin_connections]]`,
+  basin and nearby ocean, nodes in both counting for the basin: exact shares of each region's nodes linked to the other, from one column per region marking all its
   nodes, and the fewest steps on every mesh linking them, by bisection up to `max_steps_to_connect`). Prints rich tables to stdout and writes every quantity with a description to the
   JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
   (25 km) per mesh on a login node; all statistics of a mesh, squashed graphs (1,024 grid nodes, 8 and 16 steps)
@@ -93,6 +93,14 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
     Sea of Azov is linked to the Black Sea directly (0–1). Distance-limited: Hudson Bay–Labrador Sea 6 / 21 / 41 steps
     and Baltic–North Sea 2 / 9 / 18 at 200 / 50 / 25 km (at 50 km × 16 Hudson Bay is cut off, 0.1 % of the Baltic
     reaches the North Sea); the Mediterranean, Red Sea, Persian Gulf and Gulf of California connect within 0–6 steps.
+    30 connections since 13 Nov 2026 (job 2884014): 22 added for the Sea of Marmara, Seto Inland Sea, Lake Maracaibo,
+    Sea of Japan, Baffin Bay, White Sea, Gulf of Corinth, the Indonesian throughflow seas, Gulf of Boothia, Foxe Basin
+    and the Sulu and Bohol Seas, one per opening, polygons from the IHO Sea Areas of Marine Regions (CC BY 4.0, grown
+    0.3°, neighbours removed, simplified) or drawn after the documented straits; maps in
+    https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq. Lake Maracaibo (2 grid points) and the Gulf of Corinth (8) are
+    outside the mesh domain (no encoder edges, decoded from the neighbouring gulf); Gulf of Boothia–Foxe Basin needs
+    62 steps at 50 km (Fury and Hecla Strait closed, path round Baffin Island); Indonesian seas–Pacific 12, Baffin
+    Bay–Labrador Sea 20; most other new pairs meet at wide openings (0 steps).
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -135,7 +143,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (508 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (509 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in

@@ -90,11 +90,21 @@ length of the squashed graph's edges (self-loops left out), at most 4,096 per se
 ## Connectivity of semi-enclosed basins and inner seas
 
 `graph-statistics` measures, for each pair of a basin and the nearby ocean it opens to (`[[basin_connections]]` and
-`[[regions]]` of `configs/analysis/graph_statistics.toml`, polygons in longitude and latitude, checked on a map of the
-training mask), the links of the squashed graph between the two regions. The values are exact: a column marking every
-node of a region propagates the union of their reaches, forward and backward. The fewest message passing steps (the
-same on every mesh) that link the regions come from a bisection over the steps, up to 128. Same job and cases as above
-(`basins.csv`: every mesh, 8 and 16 steps).
+`[[regions]]` of `configs/analysis/graph_statistics.toml`), the links of the squashed graph between the two regions.
+The values are exact: a column marking every node of a region propagates the union of their reaches, forward and
+backward. The fewest message passing steps (the same on every mesh) that link the regions come from a bisection over the
+steps, up to 128. Grid nodes in both regions (polygons meeting at a strait) count for the basin. Job 2884014 (every
+mesh, 8 and 16 steps, 6.5 min; `basins.csv`).
+
+Regions: the first 8 pairs were drawn by hand; 22 pairs were added for the Sea of Marmara, the Seto Inland Sea, Lake
+Maracaibo, the Sea of Japan, Baffin Bay, the White Sea, the Gulf of Corinth, the Indonesian throughflow seas (Java,
+Bali, Flores, Banda), the Canadian Arctic Archipelago (Gulf of Boothia and Prince Regent Inlet, Foxe Basin) and the
+Philippine inland seas (Sulu, Bohol), one pair per opening. Their polygons come from the IHO Sea Areas of Marine Regions
+(CC BY 4.0: grown by 0.3° for the coastal grid points, the neighbouring IHO seas removed, simplified), or are drawn
+after the documented position of their straits where IHO defines no area (Gulf of Corinth, Lake Maracaibo, Bohol Sea,
+Foxe Basin). Maps of all pairs on the training mask: https://claude.ai/artifact/CTpqbrKCmtQkMzpuiKjgnq. The 0.25° mask
+resolves the smallest basins poorly: Lake Maracaibo has 2 grid points, the Gulf of Corinth 8, the Sea of Marmara 35,
+and narrow islands (Cebu, Bohol, most of Leyte) are ocean cells.
 
 The production configuration, 50 km × 16 (shares of each region's nodes linked to the other region):
 
@@ -108,34 +118,90 @@ The production configuration, 50 km × 16 (shares of each region's nodes linked 
 | Baltic Sea → North Sea | 1,121 / 637 | 0.1 % | 59.0 % | 55.1 % | 0.1 % |
 | Gulf of California → Eastern tropical Pacific off the Gulf of California | 323 / 500 | 69.7 % | 100.0 % | 100.0 % | 68.1 % |
 | Hudson Bay → Labrador Sea | 2,207 / 896 | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| Sea of Marmara → Aegean Sea | 35 / 225 | 60.0 % | 99.1 % | 95.6 % | 62.9 % |
+| Sea of Marmara → Black Sea | 35 / 821 | 82.9 % | 56.8 % | 59.3 % | 85.7 % |
+| Seto Inland Sea → Philippine Sea south of Shikoku | 57 / 120 | 71.9 % | 100.0 % | 100.0 % | 98.2 % |
+| Seto Inland Sea → Sea of Japan | 57 / 1,960 | 52.6 % | 50.6 % | 52.8 % | 68.4 % |
+| Lake Maracaibo → Gulf of Venezuela | 2 / 25 | 0.0 % | 0.0 % | 100.0 % | 100.0 % |
+| Sea of Japan → East China Sea off the Korea Strait | 1,961 / 168 | 24.5 % | 100.0 % | 100.0 % | 25.9 % |
+| Sea of Japan → North Pacific east of the Tsugaru Strait | 1,961 / 169 | 47.8 % | 100.0 % | 100.0 % | 49.6 % |
+| Sea of Japan → Sea of Okhotsk off the La Perouse Strait | 1,961 / 142 | 43.0 % | 100.0 % | 100.0 % | 44.1 % |
+| Baffin Bay → Labrador Sea | 2,851 / 896 | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| Baffin Bay → Lincoln Sea | 2,851 / 447 | 23.4 % | 100.0 % | 98.0 % | 24.5 % |
+| White Sea → Barents Sea off the White Sea | 348 / 420 | 99.4 % | 100.0 % | 100.0 % | 100.0 % |
+| Gulf of Corinth → Ionian Sea off the Gulf of Patras | 8 / 25 | 0.0 % | 0.0 % | 100.0 % | 100.0 % |
+| Indonesian seas (Java, Bali, Flores, Banda) → Indian Ocean south of the Lesser Sunda Islands | 1,964 / 1,060 | 57.0 % | 100.0 % | 100.0 % | 57.3 % |
+| Indonesian seas (Java, Bali, Flores, Banda) → South China Sea off the Karimata Strait | 1,964 / 425 | 33.7 % | 100.0 % | 99.3 % | 34.2 % |
+| Indonesian seas (Java, Bali, Flores, Banda) → Pacific east of Mindanao and Halmahera | 1,964 / 490 | 8.7 % | 27.8 % | 29.8 % | 8.8 % |
+| Gulf of Boothia and Prince Regent Inlet → Baffin Bay | 469 / 2,851 | 74.2 % | 60.0 % | 56.7 % | 76.5 % |
+| Gulf of Boothia and Prince Regent Inlet → Foxe Basin | 469 / 707 | 0.0 % | 0.0 % | 0.0 % | 0.0 % |
+| Foxe Basin → Hudson Strait | 707 / 603 | 98.4 % | 66.5 % | 64.8 % | 100.0 % |
+| Sulu Sea → South China Sea west of Palawan and Mindoro | 478 / 342 | 100.0 % | 100.0 % | 100.0 % | 100.0 % |
+| Sulu Sea → Celebes Sea | 478 / 627 | 99.2 % | 100.0 % | 99.8 % | 98.5 % |
+| Bohol Sea → Sulu Sea | 62 / 478 | 100.0 % | 100.0 % | 100.0 % | 100.0 % |
+| Bohol Sea → Philippine Sea east of the Surigao Strait | 62 / 103 | 100.0 % | 100.0 % | 100.0 % | 100.0 % |
 
 Fewest message passing steps on every mesh that link the basin and the ocean (basin → ocean / ocean → basin when they
-differ):
+differ; –: not linked within 128 steps), with 16 steps on the configured mesh(es) for the other columns:
 
-| Basin | 200 km | 120 km | 85 km | 50 km | 40 km | 25 km | ico M6 | 50+120 km |
+| Basin → ocean | 200 km | 120 km | 85 km | 50 km | 40 km | 25 km | ico M6 | 50+120 km |
 |---|---|---|---|---|---|---|---|---|
-| Mediterranean Sea | 0 | 0 | 0 | 1 | 1 / 2 | 2 | 0 | 0 |
-| Black Sea | 29 / 28 | 30 / 29 | 30 / 29 | 29 | 29 / 28 | 30 | 1 | 14 / 15 |
-| Sea of Azov | 0 / 1 | 0 / 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| Red Sea | 0 / 1 | 1 | 1 / 2 | 3 / 2 | 3 | 6 | 1 / 0 | 1 / 0 |
-| Persian Gulf | 0 | 0 / 1 | 0 / 3 | 4 | 3 | 6 | 0 / 1 | 0 / 1 |
-| Baltic Sea | 2 | 4 / 3 | 5 | 9 | 12 / 11 | 18 / 17 | 1 / 2 | 3 / 2 |
-| Gulf of California | 0 | 1 / 0 | 1 | 2 | 3 / 2 | 5 | 0 | 0 |
-| Hudson Bay | 6 | 9 / 8 | 13 | 21 | 26 | 41 / 40 | 2 | 6 |
+| Mediterranean Sea → Gulf of Cadiz and off Portugal | 0 | 0 | 0 | 1 | 1 / 2 | 2 | 0 | 0 |
+| Black Sea → Aegean Sea | 29 / 28 | 30 / 29 | 30 / 29 | 29 | 29 / 28 | 30 | 1 | 14 / 15 |
+| Sea of Azov → Black Sea | 0 / 1 | 0 / 1 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Red Sea → Gulf of Aden | 0 / 1 | 1 | 1 / 2 | 3 / 2 | 3 | 6 | 1 / 0 | 1 / 0 |
+| Persian Gulf → Gulf of Oman | 0 | 0 / 1 | 0 / 3 | 4 | 3 | 6 | 0 / 1 | 0 / 1 |
+| Baltic Sea → North Sea | 2 | 4 / 3 | 5 | 9 | 12 / 11 | 18 / 17 | 1 / 2 | 3 / 2 |
+| Gulf of California → Eastern tropical Pacific off the Gulf of California | 0 | 1 / 0 | 1 | 2 | 3 / 2 | 5 | 0 | 0 |
+| Hudson Bay → Labrador Sea | 6 | 9 / 8 | 13 | 21 | 26 | 41 / 40 | 2 | 6 |
+| Sea of Marmara → Aegean Sea | 2 / 1 | 1 | 1 | 1 | 2 / 1 | 2 / 1 | 0 | 0 / 1 |
+| Sea of Marmara → Black Sea | 1 | 1 | 1 | 1 | 1 | 1 / 2 | 0 | 1 / 0 |
+| Seto Inland Sea → Philippine Sea south of Shikoku | 0 | 0 | 1 / 0 | 1 | 3 / 1 | 4 / 3 | 0 | 0 |
+| Seto Inland Sea → Sea of Japan | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Lake Maracaibo → Gulf of Venezuela | 0 | – / 0 | 0 | – / 0 | – / 0 | – / 1 | 0 | – / 0 |
+| Sea of Japan → East China Sea off the Korea Strait | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Sea of Japan → North Pacific east of the Tsugaru Strait | 0 | 0 | 0 | 0 | 0 / 1 | 1 | 0 | 0 |
+| Sea of Japan → Sea of Okhotsk off the La Perouse Strait | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Baffin Bay → Labrador Sea | 5 / 6 | 8 | 12 | 20 | 25 / 26 | 42 | 2 / 3 | 6 |
+| Baffin Bay → Lincoln Sea | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| White Sea → Barents Sea off the White Sea | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Gulf of Corinth → Ionian Sea off the Gulf of Patras | 0 | – / 0 | 1 / 0 | – / 0 | – / 1 | – / 2 | 0 | – / 0 |
+| Indonesian seas (Java, Bali, Flores, Banda) → Indian Ocean south of the Lesser Sunda Islands | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Indonesian seas (Java, Bali, Flores, Banda) → South China Sea off the Karimata Strait | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Indonesian seas (Java, Bali, Flores, Banda) → Pacific east of Mindanao and Halmahera | 2 / 3 | 5 | 6 / 7 | 12 | 14 / 15 | 23 | 2 | 4 / 3 |
+| Gulf of Boothia and Prince Regent Inlet → Baffin Bay | 1 | 2 | 3 | 4 | 6 / 7 | 9 / 10 | 1 | 1 |
+| Gulf of Boothia and Prince Regent Inlet → Foxe Basin | 0 | 28 / 0 | 39 / 40 | 62 | 76 | 118 | 0 | 18 / 0 |
+| Foxe Basin → Hudson Strait | 0 | 0 | 1 | 1 | 2 / 3 | 4 | 0 | 0 |
+| Sulu Sea → South China Sea west of Palawan and Mindoro | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Sulu Sea → Celebes Sea | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| Bohol Sea → Sulu Sea | 0 | 0 | 0 | 0 | 0 | 1 / 0 | 0 | 0 |
+| Bohol Sea → Philippine Sea east of the Surigao Strait | 0 | 0 | 0 | 1 | 1 | 2 | 0 | 0 |
 
+- **Regions that meet at a wide opening link with no step** (0): a grid node on each side shares a mesh vertex (the
+  Sea of Japan with its three neighbours, the White Sea, Sulu, the Indonesian seas with the Indian Ocean and the South
+  China Sea, Baffin Bay with the Lincoln Sea). For them the shares at 16 steps say how far into each region the links
+  go (e.g. 43 % of the Sea of Japan reaches the Sea of Okhotsk region, 23 % of Baffin Bay the Lincoln Sea).
 - **The Black Sea is cut off in every uniform-mesh model.** Linking it to the Aegean takes 28–30 steps on every mesh
   from 200 to 25 km: the hops go through the elements of the Turkish straits and the Sea of Marmara, refined to 3 km
-  (growing by 0.3 km per km), so their number does not depend on the base mesh size. With 8 or 16 steps no Black Sea
-  input reaches the Aegean and no Aegean input reaches the Black Sea. The Black Sea and the Sea of Azov are linked
-  directly (0–1 steps: the Kerch Strait is short and the encoder radius spans it). The icosahedral multi-mesh needs 1
-  step; the 50 km + 120 km hierarchy 14–15 (both meshes contain the refined straits), with 1–8 % of the nodes linked at
-  16 steps.
-- **Distance-limited basins:** Hudson Bay and the Baltic are far, in hops, from their open ocean (through Hudson
-  Strait, some 700 km long, and the Danish straits): the fewest steps grow as the mesh gets finer (Hudson Bay 6 at 200 km,
-  21 at 50 km, 41 at 25 km; the Baltic 2, 9, 18). At 50 km × 16 Hudson Bay is cut off from the Labrador Sea, and only
-  the Baltic nodes next to the straits (0.1 %) reach the North Sea.
-- **Open basins:** the Mediterranean, the Red Sea, the Persian Gulf and the Gulf of California connect within 0–6 steps
-  on every mesh; the shares measure how far into each region the links go (e.g. at 50 km × 16, 28 % of the Red Sea
-  nodes reach the Gulf of Aden, 63 % of the Persian Gulf nodes the Gulf of Oman).
-- **Fixes to consider:** a coarser refinement of the straits (sizes of 10–20 km instead of 3 km, if they still keep the
-  straits open), long-range edges across the straits, or a hierarchy with more steps on the coarse mesh.
+  (growing by 0.3 km per km), so their number does not depend on the base mesh size. The Sea of Marmara itself links to
+  the Aegean and the Black Sea in 1–2 steps: the hops are spent inside it. The Sea of Azov is linked to the Black Sea
+  directly (0–1 steps). The icosahedral multi-mesh needs 1 step; the 50 km + 120 km hierarchy 14–15 on each mesh
+  (28–30 in all: both meshes contain the refined straits).
+- **Basins outside the mesh domain:** Lake Maracaibo and the Gulf of Corinth are behind straits narrower than the 10 km
+  coastline coarsening (Tablazo, Rion), so their grid points have no encoder edges (–: their input reaches nothing) and
+  are decoded from the vertices of the neighbouring gulf (ocean → basin in 0–2 steps), as the Black Sea was before
+  12 Nov 2026.
+- **Distance-limited basins:** the fewest steps grow as the mesh gets finer where the opening is far, in hops, from the
+  ocean region: Hudson Bay (21 at 50 km), Baffin Bay to the Labrador Sea (20, through Davis Strait), the Baltic (9),
+  the Indonesian seas to the Pacific east of Mindanao and Halmahera (12, through the Molucca and Halmahera Seas), the
+  Gulf of Boothia to Baffin Bay (4, through Lancaster Sound). The Gulf of Boothia and Foxe Basin need 62 steps at 50 km
+  (118 at 25 km): the Fury and Hecla Strait (about 2 km wide) is closed in the meshes, so the path goes round through
+  Lancaster Sound, Baffin Bay, Davis Strait and Hudson Strait. At 120 km and in the hierarchy the two directions
+  differ (0 steps from Foxe Basin, 28 and 18 from the Gulf of Boothia), probably because Boothia grid points by the
+  strait are decoded from Foxe Basin vertices without being encoded themselves (not checked).
+- **Open basins:** the Mediterranean, the Red Sea, the Persian Gulf, the Gulf of California, the Seto Inland Sea (to
+  the Pacific through the Kii and Bungo Channels), Foxe Basin (to Hudson Strait) and the Bohol Sea connect within 0–6
+  steps on every mesh.
+- **Fixes to consider:** a coarser refinement of the Turkish straits (sizes of 10–20 km instead of 3 km, if they still
+  keep the straits open), long-range edges across the straits, or a hierarchy with more steps on the coarse mesh;
+  refinements like the Black Sea's for the Tablazo and Rion Straits only if those basins matter.

@@ -309,8 +309,11 @@ def basin_connectivity(
 ) -> dict[str, Any]:
   """Connectivity of a basin and its nearby ocean (boolean masks over the grid nodes) in the squashed graph with
   `steps[i]` message passing steps on mesh i: exact values, from the union of each region (one column each, forward
-  and backward), and the fewest steps that connect them in each direction."""
+  and backward), and the fewest steps that connect them in each direction. Nodes in both regions (polygons meeting
+  at a strait) count for the basin only: shared nodes would link the regions with no step at all."""
   operations = operations or graph_operations(graphs)
+  shared = basin & ocean
+  ocean = ocean & ~shared
   grid = next(g.sender_nodes for g in graphs if g.kind == "encoder")
   sizes = node_sizes(graphs)
   forward = schedule(graphs, steps, operations)
@@ -326,7 +329,8 @@ def basin_connectivity(
     "basin": basin_name,
     "ocean": ocean_name,
     "basin_nodes": described("Grid nodes in the basin region", int(basin.sum())),
-    "ocean_nodes": described("Grid nodes in the ocean region", int(ocean.sum())),
+    "ocean_nodes": described("Grid nodes in the ocean region, without those of the basin", int(ocean.sum())),
+    "shared_nodes": described("Grid nodes in both regions, counted for the basin", int(shared.sum())),
     "basin_nodes_reaching_ocean": described(
       "Basin nodes whose input reaches the output at some ocean node", share(reaching[:, 1], basin)
     ),

@@ -115,11 +115,11 @@ def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfi
       graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng
     )
   grid_nodes = graphs[0].sender_nodes
-  polygons = {region.name: region.polygon for region in config.regions}
+  polygons = {region.name: region.polygons for region in config.regions}
   operations = squashed.graph_operations(graphs)
   results["basin_connections"] = []
   for connection in config.basin_connections:
-    basin, ocean = (regions.in_polygon(grid_nodes, polygons[name]) for name in (connection.basin, connection.ocean))
+    basin, ocean = (regions.in_region(grid_nodes, polygons[name]) for name in (connection.basin, connection.ocean))
     with _timed(
       f"Connectivity of {connection.basin} and {connection.ocean} ({basin.sum():,} and {ocean.sum():,} nodes)"
     ):
