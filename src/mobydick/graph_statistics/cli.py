@@ -30,7 +30,7 @@ from rich.console import Console
 
 from mobydick import cli_utils
 from mobydick.dataloader_utils import Grid, get_grid
-from mobydick.graph_statistics import geometry, structure
+from mobydick.graph_statistics import geometry, squashed, structure
 from mobydick.graph_statistics.config import GraphStatisticsConfig
 from mobydick.graph_statistics.graphs import Graph, model_graphs
 from mobydick.graph_statistics.quantities import described, histogram, summarize
@@ -88,7 +88,8 @@ def graph_statistics(graph: Graph, config: GraphStatisticsConfig, rng: np.random
 
 
 def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfig) -> dict[str, Any]:
-  """The statistics of every graph (by name, in data-flow order) and the coverage of every pair of levels."""
+  """The statistics of every graph (by name, in data-flow order), the coverage of every pair of levels and the
+  squashed grid-to-grid graphs."""
   with _timed(f"Built the graphs of {len(meshes)} mesh(es)"):
     graphs = model_graphs(meshes, grid, config.radius_query_fraction_edge_length)
   # One generator for all components of all processors: the sampled sources depend only on the seed.
@@ -102,6 +103,18 @@ def compute(meshes: Sequence[MeshData], grid: Grid, config: GraphStatisticsConfi
   for encoder in (g for g in graphs if g.kind == "encoder"):
     decoder = decoders[(encoder.sender_nodes.name, encoder.receiver_nodes.name)]
     results["coverage"].append(structure.coverage(encoder, decoder))
+  # A generator of its own: the sampled grid nodes do not depend on the processors' samples.
+  squashed_rng = np.random.default_rng([config.seed, 1])
+  grid_nodes = graphs[0].sender_nodes.size
+  sampled = squashed_rng.choice(grid_nodes, min(config.squashed.num_sources, grid_nodes), replace=False)
+  results["squashed"] = []
+  for steps in config.squashed.message_passing_steps:
+    with _timed(f"Squashed grid-to-grid graph with {steps} steps, from {len(sampled):,} grid nodes"):
+      results["squashed"].append(
+        squashed.squashed_statistics(
+          graphs, steps, sampled, config.squashed.max_targets, config.squashed.batch_size, squashed_rng
+        )
+      )
   return results
 
 

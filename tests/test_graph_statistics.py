@@ -29,7 +29,7 @@ from rich.console import Console
 
 from mobydick import icosahedral_mesh
 from mobydick.dataloader_utils import Grid
-from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, report, structure
+from mobydick.graph_statistics import cli, config, geometry, graphs, quantities, report, squashed, structure
 from mobydick.leviathan.model import Leviathan
 from mobydick.mesh_graph import longest_incident_edges
 
@@ -40,7 +40,8 @@ def _grid(ocean_below: float = 70.0) -> Grid:
 
 
 def _graph(senders, receivers, num_senders, num_receivers, kind="encoder"):
-  senders_nodes = graphs.NodeSet("a", np.zeros(num_senders), np.zeros(num_senders))
+  # Nodes 1° apart along a meridian: distinct positions, so the processors' distances are defined.
+  senders_nodes = graphs.NodeSet("a", np.arange(num_senders, dtype=float), np.zeros(num_senders))
   receiver_nodes = senders_nodes if kind == "processor" else graphs.NodeSet("b", *np.zeros((2, num_receivers)))
   return graphs.Graph(
     "g", kind, np.array(senders, dtype=int), np.array(receivers, dtype=int), senders_nodes, receiver_nodes
@@ -61,6 +62,26 @@ def _quantities(entry: dict, path: str = "") -> list[str]:
       for i, component in enumerate(value["value"]):
         missing += _quantities(component, f"{path}{key}[{i}].")
   return missing
+
+
+def _reach_matrix(built: list[graphs.Graph], steps: int) -> np.ndarray:
+  """The squashed graph's dense boolean adjacency (receivers × senders) for one mesh or two, from the formula of a
+  V-cycle written out by hand: I + D0 [(I + P0)^L + D1 (I + P1)^L E1 (I + P0)^L] E0."""
+  dense = {g.name: squashed.adjacency(g).toarray() > 0 for g in built}
+
+  def steps_on(name):
+    size = dense[name].shape[0]
+    power = np.eye(size, dtype=bool)
+    for _ in range(steps):
+      power = (power.astype(int) @ (np.eye(size, dtype=bool) | dense[name]).astype(int)) > 0
+    return power.astype(int)
+
+  e0, d0 = dense["grid_to_mesh_0"].astype(int), dense["mesh_0_to_grid"].astype(int)
+  inner = steps_on("mesh_0")
+  if "mesh_1" in dense:
+    e1, d1 = dense["mesh_0_to_mesh_1"].astype(int), dense["mesh_1_to_mesh_0"].astype(int)
+    inner = inner + d1 @ steps_on("mesh_1") @ e1 @ steps_on("mesh_0")
+  return (np.eye(e0.shape[1], dtype=int) + d0 @ inner @ e0) > 0
 
 
 def test_graphs_equal_the_models(tiny_model):
@@ -137,7 +158,8 @@ def test_exact_path_statistics_match_networkx():
   """With every node as a source the values are exact: on a cycle of 6 nodes the diameter is 3 and the mean shortest
   path length equals networkx's average_shortest_path_length (1.8)."""
   graph = nx.cycle_graph(6)
-  stats = structure.path_statistics(graph, list(range(6)), 0, np.random.default_rng(0))
+  nodes = list(range(6))
+  stats = structure.path_statistics(graph, nodes, structure.sample_sources(nodes, 0, np.random.default_rng(0)))
   assert stats["diameter"]["value"] == 3 and stats["diameter_exact"]["value"] and stats["sources"]["value"] == 6
   path = stats["shortest_path_length"]
   assert path["mean"] == pytest.approx(nx.average_shortest_path_length(graph)) == pytest.approx(1.8)
@@ -148,12 +170,7 @@ def test_sampled_diameter_is_a_two_sweep_lower_bound():
   """From one source at the end of a path graph's middle, the farthest node is an end, whose eccentricity is the
   diameter: the 2-sweep finds it although the source's own eccentricity is smaller."""
   graph = nx.path_graph(11)
-
-  class Middle:
-    def choice(self, nodes, size, replace):
-      return np.array([5])
-
-  stats = structure.path_statistics(graph, list(range(11)), 1, Middle())  # ty: ignore[invalid-argument-type]
+  stats = structure.path_statistics(graph, list(range(11)), [5])
   assert stats["diameter"]["value"] == 10 and not stats["diameter_exact"]["value"]
   assert stats["shortest_path_length"]["max"] == 5
 
@@ -298,12 +315,15 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
 
   mesh_path = tmp_path / "mesh.msh"
   write_multi_mesh(icosahedral_mesh.get_multi_mesh_data(2), mesh_path)
-  config_path = write_config({"num_sources": 8, "length_bin_width_km": 100.0})
+  config_path = write_config(
+    {"num_sources": 8, "length_bin_width_km": 100.0, "squashed": {"message_passing_steps": [1], "num_sources": 16}}
+  )
   output = tmp_path / "stats.json"
   arguments = [str(config_path), mask_path, str(output), str(mesh_path), "--log-level", "warning"]
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code == 0, result.output
-  for title in ("Graphs", "Edge lengths", "Degrees", "Processors", "Coverage", "Triangle quality of mesh_0"):
+  titles = ["Graphs", "Edge lengths", "Degrees", "Processors", "Distances", "Coverage", "Squashed"]
+  for title in [*titles, "Triangle quality of mesh_0"]:
     assert title in result.output
 
   def reject(constant):
@@ -311,7 +331,8 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
 
   stats = json.loads(output.read_text(), parse_constant=reject)
   assert list(stats["graphs"]) == ["grid_to_mesh_0", "mesh_0", "mesh_0_to_grid"]
-  for name, entry in [*stats["graphs"].items(), *(("coverage", c) for c in stats["coverage"])]:
+  entries = [*stats["graphs"].items(), *(("coverage", c) for c in stats["coverage"])]
+  for name, entry in [*entries, *(("squashed", s) for s in stats["squashed"])]:
     assert _quantities(entry) == [], name
   processor = stats["graphs"]["mesh_0"]
   assert processor["nodes"]["value"] == 162 and processor["connected_components"]["value"] == 1
@@ -320,8 +341,80 @@ def test_cli_prints_tables_and_writes_described_statistics(mask_path, tmp_path, 
   assert stats["coverage"][0]["lower_in_decoder"]["percent"] == 100.0
   assert sum(processor["edge_length_km"]["histogram"]["counts"]) == processor["edges"]["value"]
   assert processor["triangles"]["inverted"]["value"] == 0
+  assert stats["squashed"][0]["message_passing_steps"]["value"] == 1 and stats["squashed"][0]["out_degree"]["max"] > 0
   result = CliRunner().invoke(cli.graph_statistics_command, arguments)
   assert result.exit_code != 0 and "exists" in result.output
+
+
+@pytest.mark.parametrize("splits", [(1,), (2, 1)])
+@pytest.mark.parametrize("steps", [0, 1, 2])
+def test_squashed_reach_equals_the_matrix_product(splits, steps):
+  """Propagating indicator vectors through the operations gives the columns (forward) and rows (backward) of the
+  squashed graph's adjacency, computed independently as a product of dense matrices, for one mesh and a hierarchy of
+  two: every grid node reaches itself, and the backward pass is the transpose of the forward one."""
+  built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(s) for s in splits], _grid(), 0.6)
+  expected = _reach_matrix(built, steps)
+  operations, sizes = squashed.schedule(built, steps), squashed.node_sizes(built)
+  nodes = np.arange(expected.shape[0])
+  np.testing.assert_array_equal(squashed.reach(operations, sizes, "grid", nodes), expected.T)
+  np.testing.assert_array_equal(squashed.reach(operations, sizes, "grid", nodes, backward=True), expected)
+
+
+def test_squashed_statistics_are_exact_with_every_node_sampled():
+  """With every grid node sampled and every edge measured, the degrees are the squashed adjacency's row and column
+  sums without the self-loops, the edge estimate is exact, and the horizon is the mean geodesic distance over the
+  pairs it links; batches of any size give the same values."""
+  grid = _grid()
+  built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(1)], grid, 0.6)
+  adjacency = _reach_matrix(built, 1) & ~np.eye(built[0].sender_nodes.size, dtype=bool)
+  nodes = np.arange(adjacency.shape[0])
+  stats = squashed.squashed_statistics(built, 1, nodes, 10_000, 5, np.random.default_rng(0))
+  assert stats["edges"]["value"] == pytest.approx(adjacency.sum())
+  assert stats["out_degree"]["mean"] == pytest.approx(adjacency.sum(axis=0).mean())
+  assert stats["in_degree"]["max"] == adjacency.sum(axis=1).max()
+  receivers, senders = np.nonzero(adjacency)
+  lat, lon = built[0].sender_nodes.lat, built[0].sender_nodes.lon
+  lengths = geometry.geodesic_lengths(lat[senders], lon[senders], lat[receivers], lon[receivers]) / 1000
+  assert stats["horizon_km"]["mean"] == pytest.approx(lengths.mean())
+  assert stats["horizon_km"]["max"] == pytest.approx(lengths.max())
+  other_batch = squashed.squashed_statistics(built, 1, nodes, 10_000, 64, np.random.default_rng(0))
+  assert other_batch["horizon_km"] == stats["horizon_km"]
+
+
+def test_sampled_horizon_weights_senders_by_their_out_degree():
+  """When only a few edges per sender are measured, each counts for out-degree / measured edges, so the horizon stays
+  an estimate of the mean over all edges (not over senders): close to the exact value on a fine icosahedral mesh."""
+  built = graphs.model_graphs([icosahedral_mesh.get_multi_mesh_data(2)], _grid(), 0.6)
+  nodes = np.arange(built[0].sender_nodes.size)
+  exact = squashed.squashed_statistics(built, 2, nodes, 10_000, 64, np.random.default_rng(0))
+  sampled = squashed.squashed_statistics(built, 2, nodes, 8, 64, np.random.default_rng(0))
+  assert sampled["measured_edges"]["value"] < exact["measured_edges"]["value"]
+  assert sampled["horizon_km"]["mean"] == pytest.approx(exact["horizon_km"]["mean"], rel=0.05)
+
+
+def test_weighted_summary_counts_each_value_by_its_weight():
+  """A value of weight 3 counts as three copies: the weighted summary equals the summary of the repeated values."""
+  weighted = quantities.weighted_summarize(np.array([1.0, 2.0, 5.0]), np.array([1.0, 3.0, 1.0]))
+  repeated = quantities.summarize(np.array([1.0, 2.0, 2.0, 2.0, 5.0]))
+  for key in ("mean", "std", "min", "p50", "max"):
+    assert weighted[key] == pytest.approx(repeated[key])
+  assert np.isnan(quantities.weighted_summarize(np.array([]), np.array([]))["mean"])
+
+
+def test_distances_compare_paths_along_the_mesh_with_geodesics():
+  """Along a chain of nodes on the equator (a geodesic) the path along the mesh equals the geodesic distance (detour
+  1); a node moved off the equator lengthens the path through it, so the detour exceeds 1."""
+
+  def chain(lat):
+    nodes = graphs.NodeSet("mesh_0", np.array(lat, dtype=float), np.array([0.0, 10.0, 20.0]))
+    return graphs.Graph("mesh_0", "processor", np.array([0, 1, 1, 2]), np.array([1, 0, 2, 1]), nodes, nodes)
+
+  straight = structure.distance_statistics(chain([0, 0, 0]), [0, 1, 2], [0, 1, 2])
+  assert straight["detour"]["max"] == pytest.approx(1.0)
+  assert straight["geodesic_distance_km"]["max"] == pytest.approx(2 * 1113.19, rel=1e-4)
+  bent = structure.distance_statistics(chain([0, 10, 0]), [0, 1, 2], [0])
+  assert bent["detour"]["max"] > 1.1
+  assert bent["path_length_km"]["max"] > bent["geodesic_distance_km"]["max"]
 
 
 def test_unknown_settings_are_rejected():

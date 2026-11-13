@@ -25,13 +25,20 @@ exactly (L − 1) / (N − 2), and the average closeness is the mean of 1 / (mea
 (exact networkx values on icosahedral meshes and open patches of them, Nov 2026: betweenness equal to 6 digits,
 closeness within 3 % of 1 / L). On the uniform ocean meshes L grows as N^0.5 (L · edge length ≈ 11,500 km), so both
 scale as N^-0.5.
+
+The mean shortest path in hops times the median edge length is not a distance between the nodes: `distance_statistics`
+gives, from the same sources, the geodesic distances to the other nodes of the component and the lengths of the
+shortest paths along the mesh (Dijkstra with geodesic edge lengths, scipy), whose ratio is the detour of the mesh.
 """
 
 from typing import Any
 
 import networkx as nx
 import numpy as np
+import scipy.sparse
+from scipy.sparse import csgraph
 
+from mobydick.graph_statistics.geometry import edge_lengths_km, geodesic_lengths
 from mobydick.graph_statistics.graphs import Graph
 from mobydick.graph_statistics.quantities import degree_summary, described, fraction, summarize
 from mobydick.mesh_graph import directed_edge_codes, reverse_is_missing
@@ -74,17 +81,25 @@ def decoder_statistics(graph: Graph) -> dict[str, Any]:
   }
 
 
-def path_statistics(graph: nx.Graph, nodes: list[int], num_sources: int, rng: np.random.Generator) -> dict[str, Any]:
-  """Diameter and shortest path lengths of the connected component `nodes` of the undirected `graph`.
+def sample_sources(nodes: list[int], num_sources: int, rng: np.random.Generator) -> list[int]:
+  """The sources of the path metrics of a component: all its nodes (exact values) if `num_sources` is 0 or at least
+  their number, else `num_sources` of them sampled without replacement."""
+  if num_sources == 0 or num_sources >= len(nodes):
+    return nodes
+  return rng.choice(nodes, num_sources, replace=False).tolist()
 
-  One breadth-first search runs from every source: all nodes of the component (exact), or `num_sources` sampled ones.
-  A search from a node of the component reaches exactly the component, so no subgraph is needed. When sampling:
+
+def path_statistics(graph: nx.Graph, nodes: list[int], sources: list[int]) -> dict[str, Any]:
+  """Diameter and shortest path lengths (hops) of the connected component `nodes` of the undirected `graph`.
+
+  One breadth-first search runs from every source: all nodes of the component (exact), or a sample of them
+  (`sample_sources`). A search from a node of the component reaches exactly the component, so no subgraph is needed.
+  When sampling:
   - the shortest path lengths are those from the sources to every other node of the component;
   - the diameter is a lower bound: the largest eccentricity (distance to the farthest node) of the sources, improved
     by one more search from the farthest node found (a 2-sweep), which on mesh-like graphs is close to the diameter.
   """
-  exact = num_sources == 0 or num_sources >= len(nodes)
-  sources = nodes if exact else rng.choice(nodes, num_sources, replace=False).tolist()
+  exact = len(sources) == len(nodes)
   lengths, diameter, farthest = [], 0, sources[0]
   for source in sources:
     # {node: hops from the source} for every node of the component, the source included (0 hops).
@@ -112,11 +127,55 @@ def path_statistics(graph: nx.Graph, nodes: list[int], num_sources: int, rng: np
   }
 
 
+def distance_statistics(graph: Graph, nodes: list[int], sources: list[int]) -> dict[str, Any]:
+  """Geodesic distances and shortest path lengths along the mesh (km) from `sources` to the other nodes of the
+  connected component `nodes` of a processor, with their ratio (the detour).
+
+  The pairs are those of `path_statistics` with the same sources, so the means compare directly with the mean
+  shortest path in hops. Paths along the mesh are Dijkstra's shortest paths with the geodesic edge lengths as weights
+  (scipy, one row of len(sources) × all nodes per source: keep the sources few on large meshes).
+  """
+  num_nodes = graph.sender_nodes.size
+  weights = scipy.sparse.csr_array((edge_lengths_km(graph), (graph.senders, graph.receivers)), (num_nodes, num_nodes))
+  # Undirected, as the components and hops: the processor's edges go both ways.
+  along_mesh = csgraph.dijkstra(weights, directed=False, indices=sources)[:, nodes]
+  lat, lon = graph.sender_nodes.lat[nodes], graph.sender_nodes.lon[nodes]
+  geodesic = np.stack(
+    [
+      geodesic_lengths(
+        np.full(len(nodes), graph.sender_nodes.lat[s]), np.full(len(nodes), graph.sender_nodes.lon[s]), lat, lon
+      )
+      / 1000
+      for s in sources
+    ]
+  )
+  # Every pair but a source with itself (geodesic distance 0).
+  others = np.asarray(nodes)[None, :] != np.asarray(sources)[:, None]
+  # Distinct nodes at the same position (none in a valid mesh) have no detour.
+  apart = others & (geodesic > 0)
+  return {
+    "geodesic_distance_km": described(
+      "Geodesic distances on the WGS84 ellipsoid from the sources to the other nodes of the component (km)",
+      summarize(geodesic[others]),
+    ),
+    "path_length_km": described(
+      "Lengths of the shortest paths along the mesh (sum of geodesic edge lengths) from the sources to the other "
+      "nodes of the component (km)",
+      summarize(along_mesh[others]),
+    ),
+    "detour": described(
+      "Ratio of the path length along the mesh to the geodesic distance, per pair (of nodes at distinct positions)",
+      summarize(along_mesh[apart] / geodesic[apart]),
+    ),
+  }
+
+
 def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generator) -> dict[str, Any]:
   """Structure of a mesh graph: degrees, density, one-way edges, connected components and their path metrics.
 
   Paths are computed on the undirected graph: the processor's edges go both ways (`mesh_graph.faces_to_edges`), which
-  `edges_without_reverse` = 0 confirms.
+  `edges_without_reverse` = 0 confirms. Each component's sources serve both the hops (`path_statistics`) and the
+  distances in km (`distance_statistics`).
   """
   num_nodes = graph.sender_nodes.size
   num_edges = len(graph.senders)
@@ -127,6 +186,12 @@ def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generato
   undirected.add_edges_from(zip(graph.senders.tolist(), graph.receivers.tolist(), strict=True))
   # Sorted node lists, largest component first, so that sampling is reproducible.
   components = sorted((sorted(c) for c in nx.connected_components(undirected)), key=len, reverse=True)
+  component_statistics = []
+  for nodes in (c for c in components if len(c) > 1):
+    sources = sample_sources(nodes, num_sources, rng)
+    component_statistics.append(
+      {**path_statistics(undirected, nodes, sources), **distance_statistics(graph, nodes, sources)}
+    )
   return {
     "nodes": described("Mesh vertices", num_nodes),
     "edges": described("Directed edges", num_edges),
@@ -148,7 +213,7 @@ def processor_statistics(graph: Graph, num_sources: int, rng: np.random.Generato
     "isolated_nodes": described("Nodes without edges", sum(len(c) == 1 for c in components)),
     "components": described(
       "Components of more than one node, largest first",
-      [path_statistics(undirected, c, num_sources, rng) for c in components if len(c) > 1],
+      component_statistics,
     ),
   }
 

@@ -24,8 +24,10 @@ Modules, in the order the command uses them:
 - `config`: the settings (`configs/analysis/graph_statistics.toml`);
 - `graphs`: the node sets and graphs of the model;
 - `structure`: degrees and node counts of every graph, connected components and shortest paths of the processors
-  (networkx), coverage of each pair of levels;
+  (networkx: hops; scipy: km along the mesh, against geodesic distances), coverage of each pair of levels;
 - `geometry`: geodesic edge lengths and the quality of the mesh triangles;
+- `squashed`: the squashed grid-to-grid graph (grid node i -> j when the input at i reaches the output at j through
+  the encoders, the message passing steps and the decoders), from sampled grid nodes: degrees and horizon;
 - `quantities`: how values are summarized and described in the JSON output;
 - `report`: the summary tables printed to stdout;
 - `cli`: `compute` (all statistics) and the command.

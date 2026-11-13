@@ -107,6 +107,44 @@ def processors_table(graphs: dict[str, Any]) -> Table:
   return table
 
 
+def distances_table(graphs: dict[str, Any]) -> Table:
+  """Hops and distances in each processor's largest component, from its sampled sources: the mean hops × the median
+  edge length against the mean path length along the mesh and the mean geodesic distance."""
+  columns = ["graph", "hops", "median edge km", "hops × edge km", "along mesh km", "geodesic km", "detour mean"]
+  table = _table("Distances in the largest component (means over the sampled pairs)", columns)
+  for name, stats in graphs.items():
+    if stats["kind"] != "processor" or not stats["components"]["value"]:
+      continue
+    largest, edge = stats["components"]["value"][0], stats["edge_length_km"]["p50"]
+    hops = largest["shortest_path_length"]["mean"]
+    cells = [hops, edge, hops * edge, largest["path_length_km"]["mean"], largest["geodesic_distance_km"]["mean"]]
+    table.add_row(name, *(_format(value) for value in cells), _format(largest["detour"]["mean"]))
+  return table
+
+
+def squashed_table(entries: list[dict[str, Any]]) -> Table:
+  """The squashed grid-to-grid graphs: estimated edges, degrees (other grid nodes reached by a sender / reaching a
+  receiver) and horizon (geodesic edge lengths)."""
+  columns = ["steps", "nodes", "sampled", "edges (est.)", "density", "out-degree mean", "out-degree max"]
+  columns += ["in-degree mean", "no out-edges", "horizon mean km", "horizon p50 km", "horizon max km"]
+  table = _table("Squashed grid-to-grid graphs (self-loops left out)", columns)
+  for entry in entries:
+    horizon = entry["horizon_km"]
+    table.add_row(
+      _format(entry["message_passing_steps"]["value"]),
+      _format(entry["nodes"]["value"]),
+      _format(entry["sampled_nodes"]["value"]),
+      _format(entry["edges"]["value"]),
+      _format(entry["density"]["value"]),
+      _format(entry["out_degree"]["mean"]),
+      _format(entry["out_degree"]["max"]),
+      _format(entry["in_degree"]["mean"]),
+      f"{entry['senders_without_edges']['percent']:.2f} %",
+      *(_format(horizon[key]) for key in ("mean", "p50", "max")),
+    )
+  return table
+
+
 def coverage_table(coverage: list[dict[str, Any]], graphs: dict[str, Any]) -> Table:
   """Percentages of the nodes of each level connected to the other level, with the number of nodes left out."""
   keys = ["lower_in_encoder", "lower_in_decoder", "lower_in_both", "upper_in_encoder", "upper_in_decoder"]
@@ -126,13 +164,17 @@ def coverage_table(coverage: list[dict[str, Any]], graphs: dict[str, Any]) -> Ta
 
 
 def print_summary(results: dict[str, Any], console: Console) -> None:
-  """All tables: graphs, edge lengths, degrees, processors, coverage, then the triangle quality of each processor."""
+  """All tables: graphs, edge lengths, degrees, processors, distances, coverage, squashed graphs, then the triangle
+  quality of each processor."""
   graphs = results["graphs"]
   console.print(graphs_table(graphs))
   console.print(summary_table("Edge lengths (km)", [(name, stats["edge_length_km"]) for name, stats in graphs.items()]))
   console.print(degrees_table(graphs))
   console.print(processors_table(graphs))
+  console.print(distances_table(graphs))
   console.print(coverage_table(results["coverage"], graphs))
+  if results["squashed"]:
+    console.print(squashed_table(results["squashed"]))
   for name, stats in graphs.items():
     if stats["kind"] == "processor":
       triangles = stats["triangles"]

@@ -17,6 +17,29 @@
 from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt, PositiveFloat, PositiveInt
 
 
+class SquashedGraphConfig(BaseModel):
+  """Settings of the squashed grid-to-grid graphs (`squashed`)."""
+
+  model_config = ConfigDict(extra="forbid")
+
+  message_passing_steps: list[PositiveInt] = Field(
+    default=[],
+    description="One squashed graph per entry, with this many message passing steps on every mesh (none: no squashed "
+    "graph)",
+  )
+  num_sources: PositiveInt = Field(
+    default=1024, description="Grid nodes sampled as senders (out-degrees, horizon) and as receivers (in-degrees)"
+  )
+  max_targets: PositiveInt = Field(
+    default=4096,
+    description="Edges per sampled sender whose geodesic length is computed (sampled when it reaches more grid nodes)",
+  )
+  batch_size: PositiveInt = Field(
+    default=64,
+    description="Sources propagated together (columns of the dense blocks: memory grows as batch_size × grid nodes)",
+  )
+
+
 class GraphStatisticsConfig(BaseModel):
   """Settings of moby-dick graph-statistics (unknown keys are rejected)."""
 
@@ -38,4 +61,7 @@ class GraphStatisticsConfig(BaseModel):
     default=20,
     description="Bins of the triangle quality histograms per unit (radius ratio over [0, 1], volume-length over "
     "[-1, 1] with twice as many, angles over [0°, 180°])",
+  )
+  squashed: SquashedGraphConfig = Field(
+    default_factory=SquashedGraphConfig, description="The squashed grid-to-grid graphs"
   )

@@ -11,3 +11,13 @@ num_sources = 32
 seed = 0
 length_bin_width_km = 5.0
 quality_bins = 20
+
+# Squashed grid-to-grid graphs (mobydick.graph_statistics.squashed): grid node i -> j when the input at i reaches the
+# output at j through the encoders, message_passing_steps steps on every mesh and the decoders. One graph per entry.
+[squashed]
+message_passing_steps = [8, 16]
+# Grid nodes sampled as senders and receivers; geodesic lengths of at most max_targets edges per sender; sources
+# propagated together (dense blocks of batch_size × grid nodes).
+num_sources = 1024
+max_targets = 4096
+batch_size = 64

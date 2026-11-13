@@ -50,6 +50,25 @@ def summarize(values: np.ndarray) -> dict[str, float]:
   }
 
 
+def weighted_summarize(values: np.ndarray, weights: np.ndarray) -> dict[str, float]:
+  """`summarize` of values with non-negative weights: each value counts as `weights` values (a sample standing for a
+  larger population). Quartiles are those of the weighted empirical distribution (numpy's inverted CDF)."""
+  values, weights = np.asarray(values, dtype=np.float64), np.asarray(weights, dtype=np.float64)
+  if values.size == 0:
+    return dict.fromkeys(SUMMARY_KEYS, float("nan"))
+  mean = np.average(values, weights=weights)
+  p25, p50, p75 = np.quantile(values, [0.25, 0.5, 0.75], weights=weights, method="inverted_cdf")
+  return {
+    "mean": float(mean),
+    "std": float(np.sqrt(np.average((values - mean) ** 2, weights=weights))),
+    "min": float(values.min()),
+    "p25": float(p25),
+    "p50": float(p50),
+    "p75": float(p75),
+    "max": float(values.max()),
+  }
+
+
 def histogram(values: np.ndarray, bins: np.ndarray) -> dict[str, list]:
   """Counts of the values in the bins (`bin_edges` has one more entry than `counts`)."""
   counts, edges = np.histogram(values, bins=bins)

@@ -46,23 +46,39 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   on 8 Nov 2026 against the ocean meshes (see "Icosahedral multi-mesh vs ocean mesh" below); the file is
   `data/geometry/icosahedral_6.msh`.
 - Graph statistics: `moby-dick graph-statistics CONFIG.toml MASK OUTPUT.json MESH...` (package
-  `mobydick.graph_statistics`: `config`, `graphs`, `structure`, `geometry`, `quantities`, `report`, `cli`; settings
+  `mobydick.graph_statistics`: `config`, `graphs`, `structure`, `geometry`, `squashed`, `quantities`, `report`, `cli`; settings
   `configs/analysis/graph_statistics.toml`): the graphs of a model on the grid of MASK and one mesh or a hierarchy
   (MESH paths finest first), built as the model builds them (a test checks they are equal): encoders grid → mesh 0
   and mesh i−1 → mesh i, processors, decoders mesh i → mesh i−1 and mesh 0 → grid (mesh-to-mesh graphs follow the
   grid's rules until hierarchical models define theirs). Every graph: nodes, edges, geodesic edge lengths; encoders:
   degrees; decoders: the 3-edges-per-receiver check; processors: degrees, density, one-way edges, connected
   components with, per component, the diameter (2-sweep lower bound) and shortest path lengths from `num_sources`
-  sampled nodes (0 = exact), and triangle quality (aspect ratio, radius ratio, volume-length, angles, edge ratio);
-  coverage of each pair of levels. Prints rich tables to stdout and writes every quantity with a description to the
+  sampled nodes (0 = exact), from the same sources the geodesic distances and the path lengths along the mesh in km
+  (scipy Dijkstra) and their ratio (detour), and triangle quality (aspect ratio, radius ratio, volume-length, angles, edge ratio);
+  coverage of each pair of levels; the squashed grid-to-grid graph (`[squashed]`: one per entry of
+  `message_passing_steps`, i → j when the input at i reaches the output at j through encoders, steps and decoders;
+  a hierarchy is assumed to be a V-cycle with the same steps on every mesh): out- and in-degrees from `num_sources`
+  sampled grid nodes (boolean propagation of indicator blocks with sparse matrices, forward and with the transposed
+  operations backward; the adjacency I + D (I + P)^L E is never formed) and the horizon, the geodesic length of its
+  edges (at most `max_targets` per sender, weighted by out-degree). Prints rich tables to stdout and writes every quantity with a description to the
   JSON; the log has only sizes and timings. networkx runs only the processors' path metrics: 28 s (120 km) to 147 s
-  (25 km) per mesh on a login node. networkx's `NETWORKX_BACKEND_PRIORITY=cugraph` would run them on the GPU with
+  (25 km) per mesh on a login node; all statistics of a mesh, squashed graphs (1,024 grid nodes, 8 and 16 steps)
+  included: 53 s (200 km) to 6.7 min (25 km) on a booster node. networkx's `NETWORKX_BACKEND_PRIORITY=cugraph` would run them on the GPU with
   nx-cugraph (`pip install .[graph-gpu]`, 3.2 GB with its dependencies; not in the image, untested).
   - **Path metrics scale with the mesh** (11 Nov 2026, all uniform meshes, 32 sources): the mean shortest path is
     L = 0.517 · N^0.504 hops (N nodes, within 2.3 % on every mesh), i.e. L × median edge length ≈ 11,400–11,900 km at
-    every resolution; diameter ≥ 1.37 · N^0.49 (233 hops at 120 km, 515 at 50 km, 1,034 at 25 km). Average
+    every resolution (13 Nov 2026: that is the length of the paths along the mesh, 11,230–12,000 km, not the
+    distance between the points: the mean geodesic distance between two ocean nodes is 9,880–10,030 km on every
+    uniform mesh, πR/2 = 10,008 km as on a whole sphere; mean detour 1.14–1.22, median 1.06–1.09, from the zig-zag
+    along edges and paths around continents); diameter ≥ 1.37 · N^0.49 (233 hops at 120 km, 515 at 50 km, 1,034 at 25 km). Average
     betweenness is exactly (L − 1)/(N − 2) and closeness ≈ 1/L (checked with exact networkx values on small
     meshes), so both scale as N^−0.5 and were dropped. The icosahedral M6 multi-mesh: L = 7.8, diameter ≥ 14.
+  - **Horizon of the squashed graph** (13 Nov 2026, job 2880077, `docs/jupiter-hackathon/results/graph_horizon-2026-11-13`):
+    on uniform meshes the mean horizon is 0.60–0.67 × steps × median edge, the largest 1.13–1.51 ×; 50 km × 16: a
+    grid point reaches 5,863 others on average (0.85 % of the ocean), mean 495 km, at most 907 km; 120 km × 8: 8,637,
+    623 km; icosahedral M6 × 16: every grid point (78 % with 8 steps, mean 8,773 km); 50 km + 120 km × 16 (V-cycle):
+    5.9 %, 1,604 km. Uniform meshes × 16 from 200 to 50 km lose horizon (1,837 → 495 km) and gain 14 % in validation
+    loss: resolution, not reach, limits the skill today, except for `zos`.
 - Training run on JUPITER: `sbatch [--account=… --nodes=N] clusters/jupiter/slurm/train.slurm [--env-file F]
   [--config-dir D] [--tb-dir D] CONFIG_NAME OUTPUT_NAME TRAIN_CKPT_NAME`. It sources `clusters/jupiter/.env`
   (data paths, Grain and zarr settings) and calls `scripts/train.sh`, which binds DATASET (the standardized anomaly
@@ -105,7 +121,7 @@ NVIDIA JAX container `nvcr.io/nvidia/jax:26.09-py3` plus GDAL/PROJ from Spack). 
   pytest is in the `dev` dependency group, and `[tool.pytest.ini_options]` collects `tests/` and imports `src/`, not
   the package copy installed in the image). The image installs the `dev` group (since 27 Oct 2026; the recipe
   upgrades pip, as the base image's pip 24 cannot install dependency groups): run
-  `apptainer run moby-dick.sif python -m pytest` from the repository root (486 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
+  `apptainer run moby-dick.sif python -m pytest` from the repository root (498 tests, ~4 min on a login node when it is not busy, ~3 min on a booster node with `sbatch` (a 30-minute 1-node job runs `apptainer run moby-dick.sif python -m pytest` from the checkout), CPU
   only, also on compute nodes; `run`, like training, goes through NVIDIA's entrypoint, see "CUDA forward
   compatibility on JUPITER"). Add `--cov` for coverage (93 % on 7 Nov 2026, ~4.7 min; `fail_under = 80`). The tests set
   `JAX_PLATFORMS=cpu` and 4 host devices (`tests/conftest.py`). Tests use synthetic data (small Zarr stores in

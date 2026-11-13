@@ -1584,3 +1584,24 @@ Session directory `$PROJECT/claude-work/875379cd-19a4-4f43-a956-bd19e2b1b6a6`.
   valid loss = 0.153 · N^−0.060 (within 0.6 %); Lambrechts meshes above it by +1.1 %, +1.5 % and +9.7 % (full mesh:
   0.0837, worse than uniform 120 km × 16 at 0.0820; −4.7 % on `zos`, +10 to +18 % on temperature, salinity and
   currents). Report `docs/jupiter-hackathon/results/lambrechts_vs_uniform-2026-11-13`.
+
+## 2026-11-13 11:30: distances on the meshes; horizon of the squashed grid-to-grid graph
+
+- **Requests:** compare "mean shortest path × median edge length is the typical distance between two ocean points"
+  with the mean geodesic distance between ocean points on the mesh; compute the statistics of the squashed grid-to-grid
+  graph (encoder, message passing steps on each mesh, mesh-to-mesh encoders and decoders, decoder) and its horizon
+  (mean geodesic distance between linked grid points), with sampling and sparse propagation (outline in the comment of
+  `graph_pruning.py`; here only the graph's statistics are wanted, no pruning).
+- **Code:** `structure.distance_statistics` (geodesic distances and Dijkstra path lengths along the mesh from the
+  path metrics' sources, detour), `graph_statistics.squashed` (forward and backward propagation of indicator blocks of
+  64 sampled grid nodes through the sparse adjacency matrices, thresholded after each operation; out- and in-degrees,
+  horizon weighted by out-degree), `quantities.weighted_summarize`, `[squashed]` settings (8 and 16 steps, 1,024 grid
+  nodes, at most 4,096 measured edges per sender), two new tables. Tests check the propagation against a dense matrix
+  product for one mesh and a two-mesh hierarchy (forward and backward), the exact statistics with every node sampled,
+  and the weighting. 498 tests pass (booster node).
+- **Results** (job 2880077, 7 min on one node, all uniform meshes, icosahedral M6, 50 km + 120 km; report
+  `docs/jupiter-hackathon/results/graph_horizon-2026-11-13`): hops × median edge (11,290–12,910 km) is the path
+  length along the mesh (11,230–12,000 km), 14–22 % longer than the mean geodesic distance between ocean nodes
+  (9,880–10,030 km); the artifact's sentence is corrected. Squashed graphs: 50 km × 16 links a grid point to 0.85 % of
+  the ocean (mean 495 km, at most 907 km), 120 km × 8 to 1.2 % (623 km), icosahedral M6 × 16 to all of it, 50 km +
+  120 km × 16 to 5.9 % (1,604 km).
